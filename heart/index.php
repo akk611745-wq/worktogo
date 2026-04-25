@@ -60,7 +60,7 @@ define('SYSTEM_ROOT', dirname(__DIR__));
 define('HEART_START', microtime(true));
 
 // ── 1. Load environment ───────────────────────────────────────
-$envFile = SYSTEM_ROOT . '/config/.env';
+$envFile = SYSTEM_ROOT . '/.env';
 if (file_exists($envFile)) {
     foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
         $line = trim($line);
