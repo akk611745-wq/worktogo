@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Services</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Service Control</h1>
+          <p class="page-subtitle" id="service-count">Loading…</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body" style="padding-bottom:12px">
+          <div class="filter-bar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="search-input" class="form-control" placeholder="Search services…">
+            </div>
+            <select id="status-filter" class="form-control" style="width:140px">
+              <option value="">All Status</option>
+              <option value="enabled">Enabled</option>
+              <option value="disabled">Disabled</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" id="apply-filter">Filter</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>SERVICE</th><th>VENDOR</th><th>CATEGORY</th><th>BASE PRICE</th><th>BOOKINGS</th><th>STATUS</th><th>ACTIONS</th></tr>
+            </thead>
+            <tbody id="services-tbody">
+              <tr class="loading-row"><td colspan="7"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-body" style="padding-top:8px">
+          <div class="pagination" id="services-pagination"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Service Control', active: 'services.html' });
+
+let currentPage = 1, totalPages = 1;
+
+async function loadServices(page = 1) {
+  currentPage = page;
+  tableLoading('services-tbody', 7);
+  const params = { page, limit: CONFIG.DEFAULT_PAGE_SIZE };
+  const search = document.getElementById('search-input').value.trim();
+  const status = document.getElementById('status-filter').value;
+  if (search) params.search = search;
+  if (status) params.status = status;
+
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.SERVICES, params);
+    const services = data.services || data.data || [];
+    const total = data.total || services.length;
+    totalPages = Math.ceil(total / CONFIG.DEFAULT_PAGE_SIZE);
+    document.getElementById('service-count').textContent = `${total.toLocaleString()} total services`;
+    renderServices(services);
+    buildPagination('services-pagination', currentPage, totalPages, loadServices);
+  } catch(e) {
+    tableEmpty('services-tbody', 7, 'Failed: ' + (e.message||''));
+    Toast.error('Failed to load services');
+  }
+}
+
+function renderServices(services) {
+  const tbody = document.getElementById('services-tbody');
+  if (!services.length) { tableEmpty('services-tbody', 7); return; }
+  tbody.innerHTML = services.map(s => {
+    const id = s.id || s._id;
+    const status = s.status || 'enabled';
+    return `<tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:32px;height:32px;border-radius:6px;background:var(--purple-dim);color:var(--purple);display:flex;align-items:center;justify-content:center;font-size:16px">🔧</div>
+          <div>
+            <div style="font-size:12px;color:var(--text-primary)">${Fmt.truncate(s.name||s.title,26)}</div>
+            <div style="font-size:10px;color:var(--text-muted)">${s.duration ? s.duration + ' min' : ''}</div>
+          </div>
+        </div>
+      </td>
+      <td>${Fmt.truncate(s.vendorName||s.vendor?.name,20)||'—'}</td>
+      <td><span class="badge badge-purple">${s.category||'—'}</span></td>
+      <td style="color:var(--accent)">${Fmt.currency(s.basePrice||s.price)}</td>
+      <td style="color:var(--text-muted)">${s.bookingCount??'—'}</td>
+      <td>${statusBadge(status)}</td>
+      <td>
+        <div class="td-actions">
+          ${status==='enabled'||status==='active'
+            ? `<button class="btn btn-warn btn-sm"    onclick="toggleService('${id}','disabled')">Disable</button>`
+            : `<button class="btn btn-success btn-sm" onclick="toggleService('${id}','enabled')">Enable</button>`}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function toggleService(id, newStatus) {
+  const action = newStatus === 'disabled' ? 'disable' : 'enable';
+  if (!await confirmAction(`${Fmt.capitalize(action)} this service?`)) return;
+  try {
+    await API.patch(CONFIG.ENDPOINTS.SERVICE_STATUS(id), { status: newStatus });
+    Toast.success(`Service ${action}d.`); loadServices(currentPage);
+  } catch(e) { Toast.error(e.message||'Failed'); }
+}
+
+document.getElementById('apply-filter').addEventListener('click', () => loadServices(1));
+document.getElementById('search-input').addEventListener('keydown', e => { if(e.key==='Enter') loadServices(1); });
+loadServices(1);
+</script>
+</body>
+</html>

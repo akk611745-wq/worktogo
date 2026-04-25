@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Payments</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Payment Monitor</h1>
+          <p class="page-subtitle">Display-only — no gateway integration</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="export-btn">⬇ Export CSV</button>
+      </div>
+
+      <!-- Summary Cards -->
+      <div class="stats-grid" style="margin-bottom:20px" id="pay-stats">
+        <div class="stat-card green">
+          <div class="stat-label">Total Paid</div>
+          <div class="stat-value" id="pay-paid">—</div>
+        </div>
+        <div class="stat-card amber">
+          <div class="stat-label">Pending</div>
+          <div class="stat-value" id="pay-pending">—</div>
+        </div>
+        <div class="stat-card red">
+          <div class="stat-label">Failed</div>
+          <div class="stat-value" id="pay-failed">—</div>
+        </div>
+        <div class="stat-card blue">
+          <div class="stat-label">Total Volume</div>
+          <div class="stat-value" id="pay-volume">—</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body" style="padding-bottom:12px">
+          <div class="filter-bar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="search-input" class="form-control" placeholder="Search by transaction ID, order…">
+            </div>
+            <select id="status-filter" class="form-control" style="width:140px">
+              <option value="">All Status</option>
+              <option value="paid">Paid</option>
+              <option value="pending">Pending</option>
+              <option value="failed">Failed</option>
+              <option value="refunded">Refunded</option>
+            </select>
+            <select id="method-filter" class="form-control" style="width:140px">
+              <option value="">All Methods</option>
+              <option value="upi">UPI</option>
+              <option value="card">Card</option>
+              <option value="netbanking">Net Banking</option>
+              <option value="cod">COD</option>
+              <option value="wallet">Wallet</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" id="apply-filter">Filter</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>TXN ID</th><th>ORDER</th><th>USER</th><th>METHOD</th><th>AMOUNT</th><th>DATE</th><th>STATUS</th></tr>
+            </thead>
+            <tbody id="payments-tbody">
+              <tr class="loading-row"><td colspan="7"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-body" style="padding-top:8px">
+          <div class="pagination" id="payments-pagination"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Payment Monitor', active: 'payments.html' });
+
+let currentPage = 1, totalPages = 1, allPayments = [];
+
+async function loadPayments(page = 1) {
+  currentPage = page;
+  tableLoading('payments-tbody', 7);
+  const params = { page, limit: CONFIG.DEFAULT_PAGE_SIZE, sort: 'createdAt:desc' };
+  const search = document.getElementById('search-input').value.trim();
+  const status = document.getElementById('status-filter').value;
+  const method = document.getElementById('method-filter').value;
+  if (search) params.search = search;
+  if (status) params.status = status;
+  if (method) params.method = method;
+
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.PAYMENTS, params);
+    allPayments = data.payments || data.data || [];
+    const total = data.total || allPayments.length;
+    const summary = data.summary || {};
+    totalPages = Math.ceil(total / CONFIG.DEFAULT_PAGE_SIZE);
+
+    // Summary stats
+    document.getElementById('pay-paid').textContent    = Fmt.currency(summary.paidAmount);
+    document.getElementById('pay-pending').textContent = Fmt.currency(summary.pendingAmount);
+    document.getElementById('pay-failed').textContent  = (summary.failedCount || 0).toString();
+    document.getElementById('pay-volume').textContent  = Fmt.currency(summary.totalVolume);
+
+    renderPayments(allPayments);
+    buildPagination('payments-pagination', currentPage, totalPages, loadPayments);
+  } catch(e) {
+    tableEmpty('payments-tbody', 7, 'Failed: ' + (e.message||''));
+    Toast.error('Failed to load payments');
+  }
+}
+
+function renderPayments(payments) {
+  const tbody = document.getElementById('payments-tbody');
+  if (!payments.length) { tableEmpty('payments-tbody', 7); return; }
+  tbody.innerHTML = payments.map(p => {
+    const methodIcon = { upi:'💳', card:'💳', netbanking:'🏦', cod:'💵', wallet:'👝' };
+    const method = (p.method||p.paymentMethod||'').toLowerCase();
+    return `<tr>
+      <td><code style="font-size:11px;color:var(--purple)">${Fmt.truncate(p.transactionId||p.txnId||p.id,18)}</code></td>
+      <td><a style="color:var(--accent);font-size:11px" href="orders.html">#${p.orderId||p.order?.id||'—'}</a></td>
+      <td style="font-size:11px">${Fmt.truncate(p.userName||p.user?.name,18)||'—'}</td>
+      <td>
+        <span style="font-size:12px">${methodIcon[method]||'💰'}</span>
+        <span style="font-size:11px;color:var(--text-secondary);margin-left:4px">${Fmt.capitalize(method||'—')}</span>
+      </td>
+      <td style="color:var(--accent);font-weight:500">${Fmt.currency(p.amount)}</td>
+      <td style="color:var(--text-muted);font-size:11px">${Fmt.date(p.createdAt||p.paidAt)}</td>
+      <td>${statusBadge(p.status||p.paymentStatus)}</td>
+    </tr>`;
+  }).join('');
+}
+
+document.getElementById('apply-filter').addEventListener('click', () => loadPayments(1));
+document.getElementById('search-input').addEventListener('keydown', e => { if(e.key==='Enter') loadPayments(1); });
+document.getElementById('export-btn').addEventListener('click', () => {
+  exportCSV(allPayments, ['transactionId','orderId','amount','method','status','createdAt'], 'payments.csv');
+});
+
+loadPayments(1);
+</script>
+</body>
+</html>

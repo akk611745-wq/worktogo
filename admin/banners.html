@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Banner Management</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  :root {
+    --sidebar-bg: #1a1a2e;
+    --accent: #e94560;
+    --bg-main: #ffffff;
+    --font-main: 'Inter', system-ui, sans-serif;
+  }
+  body {
+    font-family: var(--font-main);
+    margin: 0;
+  }
+  .page-content {
+    background: var(--bg-main);
+    min-height: 100vh;
+  }
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+  }
+  .page-title { margin: 0; font-size: 1.5rem; color: #333; }
+  
+  .btn-accent {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .btn-accent:hover { opacity: 0.9; }
+
+  /* Stats Row */
+  .stats-row {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .stat-card {
+    flex: 1;
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+  }
+  .stat-card h3 { margin: 0; font-size: 0.9rem; color: #666; text-transform: uppercase; }
+  .stat-card .value { font-size: 1.8rem; font-weight: bold; margin-top: 0.5rem; color: #333; }
+
+  /* Table */
+  .table-wrapper {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    overflow-x: auto;
+  }
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+  }
+  .data-table th, .data-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+  }
+  .data-table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    color: #444;
+  }
+  .img-preview {
+    width: 50px;
+    height: 50px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+  }
+
+  /* Badges */
+  .badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: white;
+  }
+  .badge.pos-home_top { background: #3b82f6; } /* blue */
+  .badge.pos-home_mid { background: #8b5cf6; } /* purple */
+  .badge.pos-category_top { background: #f97316; } /* orange */
+  
+  /* Toggle Switch */
+  .toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 20px;
+  }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 20px;
+  }
+  .slider:before {
+    position: absolute; content: "";
+    height: 16px; width: 16px;
+    left: 2px; bottom: 2px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+  }
+  input:checked + .slider { background-color: #10b981; } /* green */
+  input:checked + .slider:before { transform: translateX(20px); }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: none; align-items: center; justify-content: center;
+    z-index: 1000;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal-content {
+    background: white; padding: 1.5rem; border-radius: 8px;
+    width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto;
+  }
+  .modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 1rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;
+  }
+  .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; }
+  
+  .form-group { margin-bottom: 1rem; }
+  .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+  .form-group input[type="text"], .form-group input[type="number"], .form-group select {
+    width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;
+  }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1.5rem; }
+  .btn-default { padding: 8px 16px; border: 1px solid #ddd; background: #fff; border-radius: 4px; cursor: pointer; }
+
+  /* Toast */
+  #toast-container {
+    position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .toast {
+    padding: 12px 24px; border-radius: 4px; color: white;
+    animation: slideIn 0.3s ease-out forwards;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  }
+  .toast.success { background: #10b981; }
+  .toast.error { background: #ef4444; }
+  @keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  /* Loader */
+  #loader {
+    display: none; position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(255,255,255,0.9); padding: 1rem; border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 2000;
+  }
+  .spinner {
+    border: 3px solid #f3f3f3; border-top: 3px solid var(--accent);
+    border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite;
+    margin: 0 auto 0.5rem auto;
+  }
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  
+  .btn-icon { background: none; border: none; cursor: pointer; font-size: 1.1rem; color: #666; margin-right: 5px; }
+  .btn-icon:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content" style="padding: 1.5rem;">
+      <div class="page-header">
+        <h1 class="page-title">Banner Management</h1>
+        <button class="btn-accent" onclick="openModal()">Add New Banner</button>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <h3>Total Banners</h3>
+          <div class="value" id="stat-total">0</div>
+        </div>
+        <div class="stat-card">
+          <h3>Active Banners</h3>
+          <div class="value" id="stat-active">0</div>
+        </div>
+        <div class="stat-card">
+          <h3>Inactive Banners</h3>
+          <div class="value" id="stat-inactive">0</div>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Preview</th>
+              <th>Title</th>
+              <th>Position</th>
+              <th>Sort Order</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="banners-tbody">
+            <!-- Data injected here -->
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="banner-modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 style="margin:0" id="modal-title">Add Banner</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <form id="banner-form" onsubmit="saveBanner(event)">
+      <input type="hidden" id="banner-id">
+      
+      <div class="form-group">
+        <label>Title (Optional)</label>
+        <input type="text" id="banner-title" placeholder="e.g. Summer Sale">
+      </div>
+      
+      <div class="form-group">
+        <label>Image URL (Required)</label>
+        <input type="text" id="banner-image" required oninput="updatePreview()">
+        <div style="margin-top: 10px;">
+          <img id="modal-img-preview" src="" style="max-width: 100px; display: none; border: 1px solid #ddd; border-radius:4px;">
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label>Link URL (Optional)</label>
+        <input type="text" id="banner-link" placeholder="/category/deals">
+      </div>
+      
+      <div class="form-group">
+        <label>Position</label>
+        <select id="banner-position">
+          <option value="home_top">Home Top</option>
+          <option value="home_mid">Home Mid</option>
+          <option value="category_top">Category Top</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label>Sort Order</label>
+        <input type="number" id="banner-sort" value="0" min="0" max="99">
+      </div>
+      
+      <div class="form-group">
+        <label style="display:flex; align-items:center; gap:10px;">
+          <input type="checkbox" id="banner-active" checked style="width:auto;"> Active
+        </label>
+      </div>
+      
+      <div class="modal-actions">
+        <button type="button" class="btn-default" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn-accent">Save Banner</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<div id="loader">
+  <div class="spinner"></div>
+  <div style="font-weight:500;">Loading...</div>
+</div>
+
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+
+<script>
+  const API_BASE = (typeof window.API_BASE !== 'undefined') ? window.API_BASE : '/api';
+  let bannersData = [];
+
+  // Auth Check
+  function checkAuth() {
+    const token = localStorage.getItem('admin_token');
+    if (!token) {
+      window.location.href = 'login.html';
+      return null;
+    }
+    // Minimal jwt decode to check if admin (assuming payload is base64url)
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (payload.role !== 'admin' && payload.is_admin !== true) {
+         // Some relaxed check just in case, but usually presence is enough for UI routing,
+         // the API will reject if unauthorized.
+      }
+    } catch(e) {}
+    return token;
+  }
+
+  // Toast System
+  function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => { toast.remove(); }, 3000);
+  }
+
+  // Loader
+  function toggleLoader(show) {
+    document.getElementById('loader').style.display = show ? 'block' : 'none';
+  }
+
+  // API Fetch Wrapper
+  async function fetchApi(endpoint, options = {}) {
+    const token = checkAuth();
+    if (!token) return;
+
+    const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...(options.headers || {})
+    };
+
+    try {
+      toggleLoader(true);
+      const res = await fetch(url, { ...options, headers });
+      const data = await res.json().catch(() => ({}));
+      toggleLoader(false);
+      
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'API Request Failed');
+      }
+      return data;
+    } catch (err) {
+      toggleLoader(false);
+      showToast(err.message, 'error');
+      throw err;
+    }
+  }
+
+  // Load Banners
+  async function loadBanners() {
+    try {
+      let res;
+      try {
+        res = await fetchApi('/banners?position=all');
+      } catch(e) {
+        res = await fetchApi('/admin/banners');
+      }
+      
+      // Assume res.data or res itself is the array
+      bannersData = Array.isArray(res) ? res : (res.data || []);
+      renderBanners();
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  // Render Table
+  function renderBanners() {
+    const tbody = document.getElementById('banners-tbody');
+    let active = 0;
+    
+    tbody.innerHTML = bannersData.map((b, i) => {
+      const isActive = b.status === 'active' || b.is_active === true || b.active === 1;
+      if (isActive) active++;
+      
+      return `
+        <tr>
+          <td>${b.id || i+1}</td>
+          <td><img src="${b.image_url}" class="img-preview" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCI+PHJlY3Qgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiBmaWxsPSIjZWVlIi8+PC9zdmc+'"></td>
+          <td>${b.title || '-'}</td>
+          <td><span class="badge pos-${b.position}">${b.position}</span></td>
+          <td>${b.sort_order || 0}</td>
+          <td>
+            <label class="toggle-switch">
+              <input type="checkbox" ${isActive ? 'checked' : ''} onchange="toggleStatus(${b.id}, this.checked)">
+              <span class="slider"></span>
+            </label>
+          </td>
+          <td>
+            <button class="btn-icon" onclick="editBanner(${b.id})" title="Edit">✏️</button>
+            <button class="btn-icon" onclick="deleteBanner(${b.id})" title="Delete">🗑️</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    document.getElementById('stat-total').textContent = bannersData.length;
+    document.getElementById('stat-active').textContent = active;
+    document.getElementById('stat-inactive').textContent = bannersData.length - active;
+  }
+
+  // Toggle Status
+  async function toggleStatus(id, isChecked) {
+    try {
+      await fetchApi(`/admin/banners/${id}/toggle`, { method: 'POST' });
+      showToast('Status updated');
+      // Update local state without full reload
+      const banner = bannersData.find(b => b.id == id);
+      if (banner) {
+         banner.status = isChecked ? 'active' : 'inactive';
+         banner.is_active = isChecked;
+         renderBanners();
+      }
+    } catch (e) {
+      loadBanners(); // revert on fail
+    }
+  }
+
+  // Delete Banner
+  async function deleteBanner(id) {
+    if (!confirm('Delete this banner?')) return;
+    try {
+      await fetchApi(`/admin/banners/${id}`, { method: 'DELETE' });
+      showToast('Banner deleted');
+      loadBanners();
+    } catch (e) {}
+  }
+
+  // Modal Handling
+  function openModal(id = null) {
+    const modal = document.getElementById('banner-modal');
+    const titleEl = document.getElementById('modal-title');
+    document.getElementById('banner-form').reset();
+    document.getElementById('modal-img-preview').style.display = 'none';
+    
+    if (id) {
+      titleEl.textContent = 'Edit Banner';
+      const b = bannersData.find(x => x.id == id);
+      if (b) {
+        document.getElementById('banner-id').value = b.id;
+        document.getElementById('banner-title').value = b.title || '';
+        document.getElementById('banner-image').value = b.image_url || '';
+        document.getElementById('banner-link').value = b.link_url || b.link || '';
+        document.getElementById('banner-position').value = b.position || 'home_top';
+        document.getElementById('banner-sort').value = b.sort_order || 0;
+        document.getElementById('banner-active').checked = (b.status === 'active' || b.is_active === true || b.active === 1);
+        updatePreview();
+      }
+    } else {
+      titleEl.textContent = 'Add New Banner';
+      document.getElementById('banner-id').value = '';
+      document.getElementById('banner-sort').value = '0';
+      document.getElementById('banner-active').checked = true;
+    }
+    modal.classList.add('active');
+  }
+
+  function closeModal() {
+    document.getElementById('banner-modal').classList.remove('active');
+  }
+
+  function updatePreview() {
+    const url = document.getElementById('banner-image').value;
+    const img = document.getElementById('modal-img-preview');
+    if (url) {
+      img.src = url;
+      img.style.display = 'block';
+    } else {
+      img.style.display = 'none';
+    }
+  }
+
+  // Save Banner
+  async function saveBanner(e) {
+    e.preventDefault();
+    const id = document.getElementById('banner-id').value;
+    const payload = {
+      title: document.getElementById('banner-title').value,
+      image_url: document.getElementById('banner-image').value,
+      link_url: document.getElementById('banner-link').value,
+      position: document.getElementById('banner-position').value,
+      sort_order: parseInt(document.getElementById('banner-sort').value, 10),
+      is_active: document.getElementById('banner-active').checked
+    };
+
+    try {
+      if (id) {
+        await fetchApi(`/admin/banners/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+        showToast('Banner updated successfully');
+      } else {
+        await fetchApi(`/admin/banners`, { method: 'POST', body: JSON.stringify(payload) });
+        showToast('Banner created successfully');
+      }
+      closeModal();
+      loadBanners();
+    } catch (err) {}
+  }
+
+  // Initialization
+  if (checkAuth()) {
+    if (typeof Shell !== 'undefined') {
+      Shell.init({ title: 'Banner Management', active: 'banners.html' });
+    }
+    loadBanners();
+  }
+</script>
+</body>
+</html>

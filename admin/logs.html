@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Logs</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Logs & Activity</h1>
+          <p class="page-subtitle">System events · User actions · Auto-refreshes every 10s</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" id="pause-btn">⏸ Pause</button>
+          <button class="btn btn-ghost btn-sm" id="clear-btn">🗑 Clear</button>
+          <button class="btn btn-ghost btn-sm" id="export-btn">⬇ Export</button>
+        </div>
+      </div>
+
+      <!-- Live indicator -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+        <span id="live-dot" style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;box-shadow:0 0 6px var(--green)"></span>
+        <span style="font-size:11px;color:var(--text-muted)" id="live-label">Live — polling every 10s</span>
+      </div>
+
+      <div class="two-col" style="margin-bottom:20px">
+        <!-- System Logs -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">System Logs</span>
+            <div class="filter-bar" style="margin:0">
+              <select id="log-level-filter" class="form-control" style="width:120px;padding:4px 8px;font-size:11px">
+                <option value="">All Levels</option>
+                <option value="info">Info</option>
+                <option value="warn">Warning</option>
+                <option value="error">Error</option>
+              </select>
+            </div>
+          </div>
+          <div id="system-logs" style="max-height:460px;overflow-y:auto;min-height:200px">
+            <div style="padding:40px;text-align:center"><div class="spinner" style="margin:auto"></div></div>
+          </div>
+        </div>
+
+        <!-- User Activity -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">User Activity</span>
+            <div class="search-box" style="margin:0;flex:unset;min-width:unset">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:12px;height:12px;color:var(--text-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="activity-search" class="form-control" placeholder="Filter activity…" style="padding-left:28px;width:160px;padding-top:4px;padding-bottom:4px;font-size:11px">
+            </div>
+          </div>
+          <div id="activity-logs" style="max-height:460px;overflow-y:auto;min-height:200px">
+            <div style="padding:40px;text-align:center"><div class="spinner" style="margin:auto"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Full Log Table -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Full Log History</span>
+          <div class="filter-bar" style="margin:0;gap:8px">
+            <input type="date" id="date-from" class="form-control" style="width:140px;padding:4px 8px;font-size:11px">
+            <input type="date" id="date-to"   class="form-control" style="width:140px;padding:4px 8px;font-size:11px">
+            <button class="btn btn-ghost btn-sm" id="apply-date-filter">Filter</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>TIMESTAMP</th><th>LEVEL</th><th>MODULE</th><th>MESSAGE</th><th>USER/IP</th></tr>
+            </thead>
+            <tbody id="full-log-tbody">
+              <tr class="loading-row"><td colspan="5"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-body" style="padding-top:8px">
+          <div class="pagination" id="log-pagination"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Logs & Activity', active: 'logs.html' });
+
+let paused = false, pollingTimer = null, currentPage = 1, totalPages = 1, allLogs = [];
+
+// ── Live Panels ──────────────────────────────────────────────
+async function fetchLiveLogs() {
+  if (paused) return;
+  const level = document.getElementById('log-level-filter').value;
+  const params = { limit: 30, sort: 'createdAt:desc' };
+  if (level) params.level = level;
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.LOGS, params);
+    const logs = data.logs || data.data || [];
+    const el = document.getElementById('system-logs');
+    if (!logs.length) { el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:12px">No logs yet</div>'; return; }
+    el.innerHTML = logs.map(l => `
+      <div class="log-line">
+        <span class="log-time">${Fmt.date(l.createdAt||l.timestamp)}</span>
+        <span class="log-level ${(l.level||'info').toLowerCase()}">${(l.level||'INFO').toUpperCase()}</span>
+        <span class="log-msg">${escHtml(l.message||l.msg||'')}</span>
+      </div>`).join('');
+  } catch(_) {}
+}
+
+async function fetchActivity() {
+  if (paused) return;
+  const search = document.getElementById('activity-search').value.trim();
+  const params = { limit: 30 };
+  if (search) params.search = search;
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.ACTIVITY, params);
+    const logs = data.logs || data.activity || data.data || [];
+    const el = document.getElementById('activity-logs');
+    if (!logs.length) { el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:12px">No activity yet</div>'; return; }
+    el.innerHTML = logs.map(l => {
+      const user = l.userName || l.user?.name || l.userId || 'System';
+      const icon = actionIcon(l.action || l.type || '');
+      return `<div class="log-line">
+        <span class="log-time">${Fmt.date(l.createdAt||l.timestamp)}</span>
+        <span style="font-size:14px;flex-shrink:0">${icon}</span>
+        <span class="log-msg">
+          <span style="color:var(--accent)">${escHtml(user)}</span>
+          <span style="color:var(--text-secondary)"> ${escHtml(l.action||l.message||'performed action')}</span>
+        </span>
+      </div>`;
+    }).join('');
+  } catch(_) {}
+}
+
+function actionIcon(action) {
+  const a = action.toLowerCase();
+  if (a.includes('login'))   return '🔐';
+  if (a.includes('order'))   return '📦';
+  if (a.includes('user'))    return '👤';
+  if (a.includes('vendor'))  return '🏪';
+  if (a.includes('payment')) return '💳';
+  if (a.includes('delete'))  return '🗑';
+  if (a.includes('update'))  return '✏️';
+  return '📋';
+}
+
+// ── Full Log Table ───────────────────────────────────────────
+async function loadFullLogs(page = 1) {
+  currentPage = page;
+  tableLoading('full-log-tbody', 5);
+  const from = document.getElementById('date-from').value;
+  const to   = document.getElementById('date-to').value;
+  const params = { page, limit: CONFIG.DEFAULT_PAGE_SIZE, sort: 'createdAt:desc' };
+  if (from) params.from = from;
+  if (to)   params.to   = to;
+
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.LOGS, params);
+    allLogs = data.logs || data.data || [];
+    const total = data.total || allLogs.length;
+    totalPages = Math.ceil(total / CONFIG.DEFAULT_PAGE_SIZE);
+    renderFullLogs(allLogs);
+    buildPagination('log-pagination', currentPage, totalPages, loadFullLogs);
+  } catch(e) {
+    tableEmpty('full-log-tbody', 5, 'Failed: ' + (e.message||''));
+  }
+}
+
+function renderFullLogs(logs) {
+  const tbody = document.getElementById('full-log-tbody');
+  if (!logs.length) { tableEmpty('full-log-tbody', 5); return; }
+  tbody.innerHTML = logs.map(l => {
+    const level = (l.level||'info').toLowerCase();
+    const colors = { info:'var(--blue)', warn:'var(--accent)', error:'var(--red)' };
+    return `<tr>
+      <td style="font-size:11px;color:var(--text-muted);white-space:nowrap">${Fmt.date(l.createdAt||l.timestamp)}</td>
+      <td><span style="font-size:10px;font-weight:600;color:${colors[level]||'var(--text-muted)'}">${level.toUpperCase()}</span></td>
+      <td><span class="badge badge-gray" style="font-size:9px">${escHtml(l.module||l.source||'system')}</span></td>
+      <td style="color:var(--text-secondary);font-size:11px">${escHtml(Fmt.truncate(l.message||l.msg,80))}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${escHtml(l.userId||l.ip||'—')}</td>
+    </tr>`;
+  }).join('');
+}
+
+function escHtml(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Controls ─────────────────────────────────────────────────
+document.getElementById('pause-btn').addEventListener('click', () => {
+  paused = !paused;
+  document.getElementById('pause-btn').textContent = paused ? '▶ Resume' : '⏸ Pause';
+  const dot = document.getElementById('live-dot');
+  const lbl = document.getElementById('live-label');
+  dot.style.background = paused ? 'var(--text-muted)' : 'var(--green)';
+  dot.style.boxShadow  = paused ? 'none' : '0 0 6px var(--green)';
+  lbl.textContent = paused ? 'Paused' : 'Live — polling every 10s';
+});
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  document.getElementById('system-logs').innerHTML  = '<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:12px">Cleared</div>';
+  document.getElementById('activity-logs').innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:12px">Cleared</div>';
+});
+
+document.getElementById('export-btn').addEventListener('click', () => {
+  exportCSV(allLogs, ['createdAt','level','module','message','userId'], 'logs.csv');
+});
+
+document.getElementById('apply-date-filter').addEventListener('click', () => loadFullLogs(1));
+document.getElementById('log-level-filter').addEventListener('change', fetchLiveLogs);
+document.getElementById('activity-search').addEventListener('input', fetchActivity);
+
+// ── Init ─────────────────────────────────────────────────────
+function loadAll() { fetchLiveLogs(); fetchActivity(); }
+loadAll();
+loadFullLogs(1);
+if (CONFIG.ENABLE_REAL_TIME_LOGS) {
+  pollingTimer = setInterval(loadAll, CONFIG.LOG_POLL_INTERVAL);
+}
+</script>
+</body>
+</html>

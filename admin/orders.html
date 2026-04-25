@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Orders</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Order Control</h1>
+          <p class="page-subtitle" id="orders-count">Loading…</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="export-btn">⬇ Export CSV</button>
+      </div>
+
+      <div class="card">
+        <div class="card-body" style="padding-bottom:12px">
+          <div class="filter-bar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="search-input" class="form-control" placeholder="Search by order ID, customer…">
+            </div>
+            <select id="status-filter" class="form-control" style="width:160px">
+              <option value="">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="processing">Processing</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="in_transit">In Transit</option>
+              <option value="delivered">Delivered</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <select id="type-filter" class="form-control" style="width:140px">
+              <option value="">All Types</option>
+              <option value="shopping">Shopping</option>
+              <option value="service">Service</option>
+              <option value="delivery">Delivery</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" id="apply-filter">Filter</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>ORDER ID</th><th>CUSTOMER</th><th>VENDOR</th><th>TYPE</th><th>AMOUNT</th><th>DATE</th><th>STATUS</th><th>ACTIONS</th></tr>
+            </thead>
+            <tbody id="orders-tbody">
+              <tr class="loading-row"><td colspan="8"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-body" style="padding-top:8px">
+          <div class="pagination" id="orders-pagination"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Order Detail Modal -->
+<div class="modal-overlay" id="order-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title" id="order-modal-title">Order Details</span>
+      <button class="modal-close" onclick="Modal.close('order-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" id="order-modal-body">Loading…</div>
+    <div class="modal-footer" id="order-modal-footer"></div>
+  </div>
+</div>
+
+<!-- Update Status Modal -->
+<div class="modal-overlay" id="status-modal">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <span class="modal-title">Update Order Status</span>
+      <button class="modal-close" onclick="Modal.close('status-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">NEW STATUS</label>
+        <select id="new-status" class="form-control">
+          <option value="pending">Pending</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="processing">Processing</option>
+          <option value="in_transit">In Transit</option>
+          <option value="delivered">Delivered</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">NOTE (Optional)</label>
+        <input type="text" id="status-note" class="form-control" placeholder="Admin note…">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="Modal.close('status-modal')">Cancel</button>
+      <button class="btn btn-primary" id="confirm-status-btn">Update Status</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Order Control', active: 'orders.html' });
+
+let currentPage = 1, totalPages = 1, allOrders = [], statusTargetId = null;
+
+async function loadOrders(page = 1) {
+  currentPage = page;
+  tableLoading('orders-tbody', 8);
+  const params = { page, limit: CONFIG.DEFAULT_PAGE_SIZE, sort: 'createdAt:desc' };
+  const search = document.getElementById('search-input').value.trim();
+  const status = document.getElementById('status-filter').value;
+  const type   = document.getElementById('type-filter').value;
+  if (search) params.search = search;
+  if (status) params.status = status;
+  if (type)   params.type   = type;
+
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.ORDERS, params);
+    allOrders = data.orders || data.data || [];
+    const total = data.total || allOrders.length;
+    totalPages = Math.ceil(total / CONFIG.DEFAULT_PAGE_SIZE);
+    document.getElementById('orders-count').textContent = `${total.toLocaleString()} total orders`;
+    renderOrders(allOrders);
+    buildPagination('orders-pagination', currentPage, totalPages, loadOrders);
+  } catch(e) {
+    tableEmpty('orders-tbody', 8, 'Failed: ' + (e.message||''));
+    Toast.error('Failed to load orders');
+  }
+}
+
+function renderOrders(orders) {
+  const tbody = document.getElementById('orders-tbody');
+  if (!orders.length) { tableEmpty('orders-tbody', 8); return; }
+  tbody.innerHTML = orders.map(o => {
+    const id = o.id || o.uuid;
+    const cancellable = !['delivered','cancelled'].includes((o.status||'').toLowerCase());
+    return `<tr>
+      <td><code style="color:var(--accent);font-size:11px">#${escHtml(id)}</code></td>
+      <td>${escHtml(Fmt.truncate(o.customer_name||o.name||'User',18))}</td>
+      <td>${escHtml(Fmt.truncate(o.vendor_name||'Store',18)||'—')}</td>
+      <td><span class="badge badge-blue">${escHtml(o.type||'—')}</span></td>
+      <td style="color:var(--accent)">${Fmt.currency(o.total_amount||o.amount)}</td>
+      <td style="color:var(--text-muted);font-size:11px">${Fmt.date(o.created_at)}</td>
+      <td>${statusBadge(o.status)}</td>
+      <td>
+        <div class="td-actions">
+          <button class="btn btn-ghost btn-sm"   onclick="viewOrder('${escHtml(id)}')">View</button>
+          <button class="btn btn-primary btn-sm" onclick="openStatus('${escHtml(id)}','${escHtml(o.status)}')">Status</button>
+          ${cancellable ? `<button class="btn btn-danger btn-sm" onclick="cancelOrder('${escHtml(id)}')">Cancel</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function viewOrder(id) {
+  Modal.open('order-modal');
+  document.getElementById('order-modal-body').innerHTML = '<div style="text-align:center;padding:20px"><div class="spinner" style="margin:auto"></div></div>';
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.ORDER_DETAIL(id));
+    const o = data.order || data;
+    document.getElementById('order-modal-title').textContent = `Order #${id}`;
+    const items = (o.items||[]).map(i => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-dim);font-size:11px"><span style="color:var(--text-secondary)">${escHtml(i.name||i.product_name)} × ${i.qty||i.quantity||1}</span><span style="color:var(--accent)">${Fmt.currency(i.price||i.total)}</span></div>`).join('');
+    document.getElementById('order-modal-body').innerHTML = `
+      <div style="display:grid;gap:12px">
+        ${field('Customer', escHtml(o.customer_name||o.name))}
+        ${field('Vendor', escHtml(o.vendor_name))}
+        ${field('Type', escHtml(o.type))}
+        ${field('Status', statusBadge(o.status))}
+        ${field('Payment', statusBadge(o.payment_status))}
+        ${field('Total', Fmt.currency(o.total_amount||o.amount))}
+        ${field('Date', Fmt.date(o.created_at))}
+        ${o.delivery_address ? field('Delivery Address', escHtml(o.delivery_address)) : ''}
+        ${o.notes ? field('Notes', escHtml(o.notes)) : ''}
+      </div>
+      ${items ? `<div style="margin-top:16px"><div style="font-size:10px;color:var(--text-muted);margin-bottom:8px;letter-spacing:0.5px">ORDER ITEMS</div>${items}</div>` : ''}`;
+  } catch(e) { document.getElementById('order-modal-body').innerHTML = '<p style="color:var(--red)">Failed to load.</p>'; }
+}
+
+function openStatus(id, current) {
+  statusTargetId = id;
+  document.getElementById('new-status').value = current || 'pending';
+  document.getElementById('status-note').value = '';
+  Modal.open('status-modal');
+}
+
+document.getElementById('confirm-status-btn').addEventListener('click', async () => {
+  if (!statusTargetId) return;
+  const status = document.getElementById('new-status').value;
+  const note   = document.getElementById('status-note').value.trim();
+  try {
+    await API.patch(CONFIG.ENDPOINTS.ORDER_STATUS(statusTargetId), { status, note });
+    Toast.success('Order status updated.'); Modal.close('status-modal'); loadOrders(currentPage);
+  } catch(e) { Toast.error(e.message||'Failed'); }
+});
+
+async function cancelOrder(id) {
+  if (!await confirmAction('Cancel this order? This cannot be undone.')) return;
+  try {
+    await API.post(CONFIG.ENDPOINTS.ORDER_CANCEL(id));
+    Toast.success('Order cancelled.'); loadOrders(currentPage);
+  } catch(e) { Toast.error(e.message||'Failed'); }
+}
+
+function field(label, val) {
+  return `<div style="display:flex;gap:12px;justify-content:space-between;border-bottom:1px solid var(--border-dim);padding-bottom:8px">
+    <span style="font-size:11px;color:var(--text-muted)">${label}</span>
+    <span style="font-size:12px;color:var(--text-primary);text-align:right">${val||'—'}</span>
+  </div>`;
+}
+
+document.getElementById('apply-filter').addEventListener('click', () => loadOrders(1));
+document.getElementById('search-input').addEventListener('keydown', e => { if(e.key==='Enter') loadOrders(1); });
+document.getElementById('export-btn').addEventListener('click', () => {
+  exportCSV(allOrders, ['id','customerName','vendorName','type','total','status','createdAt'], 'orders.csv');
+});
+
+loadOrders(1);
+</script>
+</body>
+</html>

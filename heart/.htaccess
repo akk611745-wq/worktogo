@@ -1,0 +1,46 @@
+# ================================================================
+#  WorkToGo — HEART SYSTEM v1.2.0
+#  heart/.htaccess — Apache configuration for Hostinger
+# ================================================================
+
+Options -Indexes
+RewriteEngine On
+RewriteBase /heart/
+
+# ── Security: block access to sensitive files ─────────────────
+<FilesMatch "\.(env|log|cache|sql|json|md|txt|py|pyc|sh|bak|tmp)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Block hidden files (.env, .git, etc.)
+RewriteRule ^\.  - [F,L]
+
+# Block access to logs and cache directories
+RewriteRule ^../logs/  - [F,L]
+
+# ── Allow health check without index routing ──────────────────
+RewriteCond %{REQUEST_FILENAME} health.php
+RewriteRule ^health\.php$ health.php [L]
+
+# ── Route all other requests to index.php ────────────────────
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# ── Security headers ─────────────────────────────────────────
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "no-referrer"
+</IfModule>
+
+# ── PHP settings ─────────────────────────────────────────────
+php_flag  display_errors        Off
+php_flag  log_errors            On
+php_value error_log             ../logs/php_errors.log
+php_value max_execution_time    30
+php_value memory_limit          128M
+php_value post_max_size         2M
+php_value upload_max_filesize   2M

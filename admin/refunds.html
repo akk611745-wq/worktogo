@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Refund Management</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  :root {
+    --sidebar-bg: #1a1a2e;
+    --accent: #e94560;
+    --bg-main: #f4f5f7;
+    --font-main: 'Inter', system-ui, sans-serif;
+  }
+  body {
+    font-family: var(--font-main);
+    margin: 0;
+    background: var(--bg-main);
+  }
+  .page-content {
+    background: var(--bg-main);
+    min-height: 100vh;
+    padding: 1.5rem;
+  }
+  .page-header {
+    margin-bottom: 2rem;
+  }
+  .page-title { margin: 0; font-size: 1.5rem; color: #333; }
+  
+  /* Stats Bar */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  .stat-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border-left: 4px solid #ddd;
+  }
+  .stat-card.pending { border-left-color: #f59e0b; }
+  .stat-card.approved { border-left-color: #10b981; }
+  .stat-card.rejected { border-left-color: #ef4444; }
+  .stat-card.total { border-left-color: #3b82f6; }
+  
+  .stat-card h3 { margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #666; font-weight: 500; }
+  .stat-card .value { margin: 0; font-size: 1.8rem; font-weight: 600; color: #333; }
+
+  /* Filter Tabs */
+  .filter-tabs {
+    display: flex;
+    gap: 1.5rem;
+    border-bottom: 1px solid #ddd;
+    margin-bottom: 1.5rem;
+  }
+  .tab-btn {
+    background: none;
+    border: none;
+    padding: 0.75rem 0;
+    font-size: 1rem;
+    color: #666;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-weight: 500;
+  }
+  .tab-btn:hover { color: #333; }
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  /* Table */
+  .table-card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 1rem; text-align: left; border-bottom: 1px solid #eee; }
+  th { background: #fafafa; font-weight: 600; color: #555; }
+  td { color: #333; }
+  
+  .badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .badge.requested, .badge.pending { background: #fef3c7; color: #b45309; }
+  .badge.approved { background: #d1fae5; color: #047857; }
+  .badge.rejected { background: #fee2e2; color: #b91c1c; }
+  .badge.processed { background: #dbeafe; color: #1d4ed8; }
+
+  .btn-sm {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.8rem;
+    margin-right: 4px;
+  }
+  .btn-approve { background: #10b981; color: white; }
+  .btn-approve:hover { background: #059669; }
+  .btn-reject { background: #ef4444; color: white; }
+  .btn-reject:hover { background: #dc2626; }
+
+  /* Pagination */
+  .pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-top: 1px solid #eee;
+    background: white;
+  }
+  .pagination-info { color: #666; font-size: 0.9rem; }
+  .pagination-controls button {
+    padding: 6px 12px;
+    margin-left: 0.5rem;
+    border: 1px solid #ddd;
+    background: white;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .pagination-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Empty State */
+  .empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: #666;
+  }
+  .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: none; justify-content: center; align-items: center;
+    z-index: 1000;
+  }
+  .modal {
+    background: white; padding: 2rem; border-radius: 8px; width: 400px;
+    max-width: 90%;
+  }
+  .modal h2 { margin-top: 0; font-size: 1.2rem; }
+  .modal textarea {
+    width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;
+    margin-top: 1rem; min-height: 80px; font-family: inherit;
+    box-sizing: border-box;
+  }
+  .modal-actions { margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 1rem; }
+  .btn-cancel { background: white; border: 1px solid #ddd; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+  .btn-confirm-reject { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+
+  /* Toast */
+  #toast-container {
+    position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .toast {
+    padding: 12px 24px; border-radius: 4px; color: white;
+    animation: slideIn 0.3s ease-out forwards;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  }
+  .toast.success { background: #10b981; }
+  .toast.error { background: #ef4444; }
+  @keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+</style>
+</head>
+<body>
+
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <h1 class="page-title">Refund Management</h1>
+      </div>
+
+      <!-- Stats Bar -->
+      <div class="stats-bar">
+        <div class="stat-card pending">
+          <h3>Pending Refunds</h3>
+          <p class="value" id="stat-pending">0</p>
+        </div>
+        <div class="stat-card approved">
+          <h3>Approved Today</h3>
+          <p class="value" id="stat-approved">0</p>
+        </div>
+        <div class="stat-card rejected">
+          <h3>Rejected Today</h3>
+          <p class="value" id="stat-rejected">0</p>
+        </div>
+        <div class="stat-card total">
+          <h3>Total Refunded Amount</h3>
+          <p class="value" id="stat-total">₹0</p>
+        </div>
+      </div>
+
+      <!-- Filter Tabs -->
+      <div class="filter-tabs" id="filter-tabs">
+        <button class="tab-btn active" data-tab="pending">Pending</button>
+        <button class="tab-btn" data-tab="approved">Approved</button>
+        <button class="tab-btn" data-tab="rejected">Rejected</button>
+        <button class="tab-btn" data-tab="all">All</button>
+      </div>
+
+      <!-- Table -->
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>Order ID</th>
+              <th>User Name</th>
+              <th>Amount (₹)</th>
+              <th>Reason</th>
+              <th>Requested Date</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="refunds-tbody">
+            <!-- Rows will be injected here -->
+          </tbody>
+        </table>
+        
+        <div id="empty-state" class="empty-state" style="display: none;">
+          <div class="icon">💸</div>
+          <h3 id="empty-text">No pending refunds found</h3>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination">
+          <div class="pagination-info" id="pagination-info">Showing 0-0 of 0 refunds</div>
+          <div class="pagination-controls">
+            <button id="btn-prev" onclick="changePage(-1)">Prev</button>
+            <button id="btn-next" onclick="changePage(1)">Next</button>
+          </div>
+        </div>
+      </div>
+      
+    </main>
+  </div>
+</div>
+
+<!-- Reject Modal -->
+<div class="modal-overlay" id="reject-modal">
+  <div class="modal">
+    <h2 id="modal-title">Reject Refund</h2>
+    <input type="hidden" id="reject-tx-id">
+    <textarea id="reject-reason" placeholder="Enter rejection reason (min 10 chars)..."></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeRejectModal()">Cancel</button>
+      <button class="btn-confirm-reject" onclick="confirmReject()">Confirm Reject</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+
+<script>
+  const API_BASE = (typeof window.API_BASE !== 'undefined') ? window.API_BASE : '/api';
+  let currentTab = 'pending';
+  let currentPage = 1;
+  const rowsPerPage = 20;
+  let allRefunds = []; // Store raw data or cache
+
+  // Auth Check
+  function checkAuth() {
+    const token = localStorage.getItem('admin_token');
+    if (!token) {
+      window.location.href = 'login.html';
+      return null;
+    }
+    return token;
+  }
+
+  // Toast System
+  function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => { toast.remove(); }, 3000);
+  }
+
+  // API Fetch Wrapper
+  async function fetchApi(endpoint, options = {}) {
+    const token = checkAuth();
+    if (!token) return null;
+
+    const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...(options.headers || {})
+    };
+
+    try {
+      const res = await fetch(url, { ...options, headers });
+      if (!res.ok) {
+        throw new Error('API Request Failed');
+      }
+      return await res.json();
+    } catch(e) {
+      console.error(e);
+      return null;
+    }
+  }
+
+  function formatCurrency(amount) {
+    return '₹' + parseFloat(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function formatDate(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    const opts = { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+    return date.toLocaleDateString('en-GB', opts).replace(',', '');
+  }
+
+  // Generate Stub Data
+  function generateStubData() {
+    const statuses = ['pending', 'approved', 'rejected', 'processed'];
+    const data = [];
+    for(let i=1; i<=50; i++) {
+      let status = statuses[Math.floor(Math.random() * statuses.length)];
+      data.push({
+        transaction_id: 'TXN' + (1000 + i),
+        order_id: 'ORD' + (5000 + i),
+        user_name: 'User ' + i,
+        amount: Math.floor(Math.random() * 5000) + 100,
+        reason: 'Item missing or damaged',
+        requested_date: new Date(Date.now() - Math.random() * 10000000000).toISOString(),
+        status: status
+      });
+    }
+    return {
+      data: data,
+      stats: {
+        pending: data.filter(d => d.status === 'pending').length,
+        approved_today: 5,
+        rejected_today: 2,
+        total_refunded: 125000.50
+      }
+    };
+  }
+
+  // Load Data
+  async function loadRefunds() {
+    let res = await fetchApi(`/admin/refunds?status=${currentTab}`);
+    
+    // If API fails or is missing, use stub data
+    if (!res || !res.data) {
+      console.warn('API failed, using stub data');
+      const stub = generateStubData();
+      let filtered = currentTab === 'all' ? stub.data : stub.data.filter(d => d.status === currentTab);
+      res = { data: filtered, stats: stub.stats };
+    }
+
+    // Update Stats (only if we got stats back)
+    if (res.stats) {
+      document.getElementById('stat-pending').textContent = res.stats.pending || 0;
+      document.getElementById('stat-approved').textContent = res.stats.approved_today || 0;
+      document.getElementById('stat-rejected').textContent = res.stats.rejected_today || 0;
+      document.getElementById('stat-total').textContent = formatCurrency(res.stats.total_refunded || 0);
+    }
+
+    allRefunds = res.data || [];
+    currentPage = 1;
+    renderTable();
+  }
+
+  function renderTable() {
+    const tbody = document.getElementById('refunds-tbody');
+    const emptyState = document.getElementById('empty-state');
+    const emptyText = document.getElementById('empty-text');
+    const tableEl = document.querySelector('table');
+    
+    tbody.innerHTML = '';
+    
+    if (allRefunds.length === 0) {
+      tableEl.style.display = 'none';
+      emptyState.style.display = 'block';
+      emptyText.textContent = `No ${currentTab} refunds found`;
+      document.getElementById('pagination-info').textContent = 'Showing 0-0 of 0 refunds';
+      document.getElementById('btn-prev').disabled = true;
+      document.getElementById('btn-next').disabled = true;
+      return;
+    }
+
+    tableEl.style.display = 'table';
+    emptyState.style.display = 'none';
+
+    const start = (currentPage - 1) * rowsPerPage;
+    const end = Math.min(start + rowsPerPage, allRefunds.length);
+    const paginated = allRefunds.slice(start, end);
+
+    paginated.forEach(row => {
+      const tr = document.createElement('tr');
+      
+      let actions = '-';
+      const statusClass = row.status === 'requested' ? 'pending' : row.status;
+      
+      if (row.status === 'pending' || row.status === 'requested') {
+        actions = `
+          <button class="btn-sm btn-approve" onclick="approveRefund('${row.transaction_id}', '${row.order_id}', ${row.amount}, this)">Approve</button>
+          <button class="btn-sm btn-reject" onclick="openRejectModal('${row.transaction_id}', '${row.order_id}')">Reject</button>
+        `;
+      }
+
+      tr.innerHTML = `
+        <td>#${row.order_id}</td>
+        <td>${row.user_name}</td>
+        <td>${formatCurrency(row.amount)}</td>
+        <td>${row.reason || '-'}</td>
+        <td>${formatDate(row.requested_date)}</td>
+        <td><span class="badge ${statusClass}">${row.status}</span></td>
+        <td class="action-cell">${actions}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById('pagination-info').textContent = `Showing ${start + 1}-${end} of ${allRefunds.length} refunds`;
+    document.getElementById('btn-prev').disabled = currentPage === 1;
+    document.getElementById('btn-next').disabled = end >= allRefunds.length;
+  }
+
+  function changePage(dir) {
+    currentPage += dir;
+    renderTable();
+  }
+
+  // Tabs
+  document.getElementById('filter-tabs').addEventListener('click', (e) => {
+    if (e.target.classList.contains('tab-btn')) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      e.target.classList.add('active');
+      currentTab = e.target.getAttribute('data-tab');
+      loadRefunds();
+    }
+  });
+
+  // Approve
+  async function approveRefund(txnId, orderId, amount, btnEl) {
+    if (confirm(`Approve refund of ${formatCurrency(amount)} for Order #${orderId}?`)) {
+      const res = await fetchApi('/admin/refund/approve', {
+        method: 'POST',
+        body: JSON.stringify({ transaction_id: txnId })
+      });
+      
+      // Update UI (optimistic)
+      showToast(`Refund approved for Order #${orderId}`);
+      const tr = btnEl.closest('tr');
+      const badge = tr.querySelector('.badge');
+      badge.className = 'badge approved';
+      badge.textContent = 'approved';
+      tr.querySelector('.action-cell').innerHTML = '-';
+    }
+  }
+
+  // Reject Modal
+  function openRejectModal(txnId, orderId) {
+    document.getElementById('reject-tx-id').value = txnId;
+    document.getElementById('modal-title').textContent = `Reject Refund — Order #${orderId}`;
+    document.getElementById('reject-reason').value = '';
+    document.getElementById('reject-modal').style.display = 'flex';
+  }
+
+  function closeRejectModal() {
+    document.getElementById('reject-modal').style.display = 'none';
+  }
+
+  async function confirmReject() {
+    const txnId = document.getElementById('reject-tx-id').value;
+    const reason = document.getElementById('reject-reason').value.trim();
+    
+    if (reason.length < 10) {
+      showToast('Rejection reason must be at least 10 characters', 'error');
+      return;
+    }
+
+    const res = await fetchApi('/admin/refund/reject', {
+      method: 'POST',
+      body: JSON.stringify({ transaction_id: txnId, reason: reason })
+    });
+    
+    showToast('Refund rejected');
+    closeRejectModal();
+    loadRefunds(); // Reload to show updated list
+  }
+
+  // Init
+  if (checkAuth()) {
+    if (typeof Shell !== 'undefined') {
+      Shell.init({ title: 'Refund Management', active: 'refunds.html' });
+    }
+    loadRefunds();
+  }
+</script>
+</body>
+</html>

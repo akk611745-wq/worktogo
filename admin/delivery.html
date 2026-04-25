@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Delivery</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Delivery Control</h1>
+          <p class="page-subtitle" id="delivery-count">Loading…</p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="Modal.open('assign-modal')">+ Assign Delivery</button>
+      </div>
+
+      <div class="card">
+        <div class="card-body" style="padding-bottom:12px">
+          <div class="filter-bar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="search-input" class="form-control" placeholder="Search by order ID or delivery agent…">
+            </div>
+            <select id="status-filter" class="form-control" style="width:160px">
+              <option value="">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="assigned">Assigned</option>
+              <option value="picked_up">Picked Up</option>
+              <option value="in_transit">In Transit</option>
+              <option value="out_for_delivery">Out for Delivery</option>
+              <option value="delivered">Delivered</option>
+              <option value="failed">Failed</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" id="apply-filter">Filter</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>DELIVERY ID</th><th>ORDER</th><th>AGENT</th><th>PICKUP</th><th>DROP</th><th>DISTANCE</th><th>STATUS</th><th>ACTIONS</th></tr>
+            </thead>
+            <tbody id="delivery-tbody">
+              <tr class="loading-row"><td colspan="8"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-body" style="padding-top:8px">
+          <div class="pagination" id="delivery-pagination"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Assign Delivery Modal -->
+<div class="modal-overlay" id="assign-modal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span class="modal-title">Assign Delivery</span>
+      <button class="modal-close" onclick="Modal.close('assign-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">ORDER ID</label>
+        <input type="text" id="assign-order-id" class="form-control" placeholder="e.g. ORD-12345">
+      </div>
+      <div class="form-group">
+        <label class="form-label">DELIVERY AGENT ID</label>
+        <input type="text" id="assign-agent-id" class="form-control" placeholder="Agent ID or leave blank for auto-assign">
+      </div>
+      <div class="form-group">
+        <label class="form-label">NOTES</label>
+        <textarea id="assign-notes" class="form-control" rows="2" placeholder="Special instructions…"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="Modal.close('assign-modal')">Cancel</button>
+      <button class="btn btn-primary" id="confirm-assign-btn">Assign</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Delivery Control', active: 'delivery.html' });
+
+let currentPage = 1, totalPages = 1;
+
+async function loadDeliveries(page = 1) {
+  currentPage = page;
+  tableLoading('delivery-tbody', 8);
+  const params = { page, limit: CONFIG.DEFAULT_PAGE_SIZE };
+  const search = document.getElementById('search-input').value.trim();
+  const status = document.getElementById('status-filter').value;
+  if (search) params.search = search;
+  if (status) params.status = status;
+
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.DELIVERIES, params);
+    const deliveries = data.deliveries || data.data || [];
+    const total = data.total || deliveries.length;
+    totalPages = Math.ceil(total / CONFIG.DEFAULT_PAGE_SIZE);
+    document.getElementById('delivery-count').textContent = `${total.toLocaleString()} deliveries · ${data.activeCount||0} active`;
+    renderDeliveries(deliveries);
+    buildPagination('delivery-pagination', currentPage, totalPages, loadDeliveries);
+  } catch(e) {
+    tableEmpty('delivery-tbody', 8, 'Failed: ' + (e.message||''));
+    Toast.error('Failed to load deliveries');
+  }
+}
+
+function renderDeliveries(list) {
+  const tbody = document.getElementById('delivery-tbody');
+  if (!list.length) { tableEmpty('delivery-tbody', 8); return; }
+  tbody.innerHTML = list.map(d => {
+    const id = d.id || d._id;
+    return `<tr>
+      <td><code style="color:var(--orange);font-size:11px">#${id}</code></td>
+      <td><a style="color:var(--accent);font-size:11px" href="orders.html">#${d.orderId||d.order?.id||'—'}</a></td>
+      <td>
+        <div style="font-size:12px;color:var(--text-primary)">${d.agentName||d.agent?.name||'Unassigned'}</div>
+        <div style="font-size:10px;color:var(--text-muted)">${d.agentPhone||''}</div>
+      </td>
+      <td style="font-size:11px;color:var(--text-muted)">${Fmt.truncate(d.pickupAddress||d.pickup,20)}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${Fmt.truncate(d.dropAddress||d.drop,20)}</td>
+      <td style="color:var(--text-muted)">${d.distance ? d.distance + ' km' : '—'}</td>
+      <td>${statusBadge(d.status||'pending')}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="viewDelivery('${id}')">Track</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function viewDelivery(id) {
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.DELIVERY_STATUS(id));
+    const d = data.delivery || data;
+    alert(`Delivery #${id}\nAgent: ${d.agentName||'—'}\nStatus: ${d.status}\nETA: ${d.eta||'—'}\nLocation: ${d.currentLocation||'—'}`);
+  } catch(e) { Toast.error('Failed to load delivery details'); }
+}
+
+document.getElementById('confirm-assign-btn').addEventListener('click', async () => {
+  const orderId  = document.getElementById('assign-order-id').value.trim();
+  const agentId  = document.getElementById('assign-agent-id').value.trim();
+  const notes    = document.getElementById('assign-notes').value.trim();
+  if (!orderId) { Toast.warn('Order ID is required.'); return; }
+  try {
+    await API.post(CONFIG.ENDPOINTS.DELIVERY_ASSIGN, { orderId, agentId: agentId||undefined, notes });
+    Toast.success('Delivery assigned!'); Modal.close('assign-modal'); loadDeliveries(1);
+  } catch(e) { Toast.error(e.message||'Failed to assign'); }
+});
+
+document.getElementById('apply-filter').addEventListener('click', () => loadDeliveries(1));
+document.getElementById('search-input').addEventListener('keydown', e => { if(e.key==='Enter') loadDeliveries(1); });
+loadDeliveries(1);
+</script>
+</body>
+</html>

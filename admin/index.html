@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo — Admin Login</title>
+<link rel="stylesheet" href="assets/style.css">
+<script>window.IS_LOGIN_PAGE = true;</script>
+</head>
+<body>
+<div class="login-root">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon">W</div>
+      <div class="login-logo-text">Work<span>ToGo</span></div>
+    </div>
+    <h1 class="login-title">Admin Control Panel</h1>
+    <p class="login-sub">Enter your admin credentials to continue</p>
+    <div class="login-alert" id="login-error"></div>
+    <div class="form-group">
+      <label class="form-label">EMAIL ADDRESS</label>
+      <input type="email" id="email" class="form-control" placeholder="admin@worktogo.com" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label class="form-label">PASSWORD</label>
+      <input type="password" id="password" class="form-control" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px" id="login-btn">
+      Sign In →
+    </button>
+    <p style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:20px;">
+      WorkToGo Admin v<span id="ver"></span> · Restricted Access
+    </p>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="assets/app.js"></script>
+<script>
+document.getElementById('ver').textContent = CONFIG.APP_VERSION;
+
+document.getElementById('login-btn').addEventListener('click', doLogin);
+document.getElementById('password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+async function doLogin() {
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const errEl = document.getElementById('login-error');
+  const btn = document.getElementById('login-btn');
+
+  if (!email || !password) { showErr('Please enter email and password.'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+  errEl.style.display = 'none';
+
+  try {
+    await Auth.login(email, password);
+    Toast.success('Welcome back!');
+    setTimeout(() => { window.location.href = 'dashboard.html'; }, 500);
+  } catch (err) {
+    showErr(err.message || 'Invalid credentials. Please try again.');
+    btn.disabled = false;
+    btn.textContent = 'Sign In →';
+  }
+}
+function showErr(msg) {
+  const el = document.getElementById('login-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+</script>
+</body>
+</html>

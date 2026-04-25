@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Products</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Product Control</h1>
+          <p class="page-subtitle" id="product-count">Loading…</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="export-btn">⬇ Export CSV</button>
+      </div>
+
+      <div class="card">
+        <div class="card-body" style="padding-bottom:12px">
+          <div class="filter-bar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="search-input" class="form-control" placeholder="Search products…">
+            </div>
+            <select id="category-filter" class="form-control" style="width:150px">
+              <option value="">All Categories</option>
+            </select>
+            <select id="status-filter" class="form-control" style="width:140px">
+              <option value="">All Status</option>
+              <option value="active">Active</option>
+              <option value="disabled">Disabled</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" id="apply-filter">Filter</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>PRODUCT</th>
+                <th>VENDOR</th>
+                <th>CATEGORY</th>
+                <th>PRICE</th>
+                <th>STOCK</th>
+                <th>STATUS</th>
+                <th>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="products-tbody">
+              <tr class="loading-row"><td colspan="7"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-body" style="padding-top:8px">
+          <div class="pagination" id="products-pagination"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Product Control', active: 'products.html' });
+
+let currentPage = 1, totalPages = 1, allProducts = [];
+
+async function loadProducts(page = 1) {
+  currentPage = page;
+  tableLoading('products-tbody', 7);
+  const search   = document.getElementById('search-input').value.trim();
+  const category = document.getElementById('category-filter').value;
+  const status   = document.getElementById('status-filter').value;
+  const params   = { page, limit: CONFIG.DEFAULT_PAGE_SIZE };
+  if (search)   params.search   = search;
+  if (category) params.category = category;
+  if (status)   params.status   = status;
+
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.PRODUCTS, params);
+    allProducts = data.products || data.data || [];
+    const total = data.total || allProducts.length;
+    totalPages = Math.ceil(total / CONFIG.DEFAULT_PAGE_SIZE);
+    document.getElementById('product-count').textContent = `${total.toLocaleString()} total products`;
+
+    // Populate categories dynamically
+    const cats = [...new Set(allProducts.map(p => p.category).filter(Boolean))];
+    const catSelect = document.getElementById('category-filter');
+    if (catSelect.options.length === 1 && cats.length) {
+      cats.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; catSelect.appendChild(o); });
+    }
+
+    renderProducts(allProducts);
+    buildPagination('products-pagination', currentPage, totalPages, loadProducts);
+  } catch(e) {
+    tableEmpty('products-tbody', 7, 'Failed: ' + (e.message||''));
+    Toast.error('Failed to load products');
+  }
+}
+
+function renderProducts(products) {
+  const tbody = document.getElementById('products-tbody');
+  if (!products.length) { tableEmpty('products-tbody', 7); return; }
+  tbody.innerHTML = products.map(p => {
+    const id = p.id || p._id;
+    const status = p.status || 'active';
+    return `<tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${p.image ? `<img src="${p.image}" style="width:32px;height:32px;border-radius:4px;object-fit:cover;border:1px solid var(--border-dim)">` : `<div style="width:32px;height:32px;border-radius:4px;background:var(--bg-raised);display:flex;align-items:center;justify-content:center;font-size:16px">📦</div>`}
+          <div>
+            <div style="font-size:12px;color:var(--text-primary)">${Fmt.truncate(p.name||p.title,26)}</div>
+            <div style="font-size:10px;color:var(--text-muted)">${p.sku||p.id||''}</div>
+          </div>
+        </div>
+      </td>
+      <td>${Fmt.truncate(p.vendorName||p.vendor?.name,20)||'—'}</td>
+      <td><span class="badge badge-blue">${p.category||'—'}</span></td>
+      <td style="color:var(--accent)">${Fmt.currency(p.price||p.mrp)}</td>
+      <td style="color:${(p.stock||p.quantity||0)===0?'var(--red)':'var(--text-secondary)'}">${p.stock??p.quantity??'—'}</td>
+      <td>${statusBadge(status)}</td>
+      <td>
+        <div class="td-actions">
+          ${status==='active'
+            ? `<button class="btn btn-warn btn-sm"  onclick="toggleProduct('${id}','disable')">Disable</button>`
+            : `<button class="btn btn-success btn-sm" onclick="toggleProduct('${id}','enable')">Enable</button>`}
+          <button class="btn btn-danger btn-sm" onclick="deleteProduct('${id}')">Delete</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function toggleProduct(id, action) {
+  if (!await confirmAction(`${Fmt.capitalize(action)} this product?`)) return;
+  try {
+    await API.patch(CONFIG.ENDPOINTS.PRODUCT_STATUS(id), { status: action==='enable'?'active':'disabled' });
+    Toast.success(`Product ${action}d.`); loadProducts(currentPage);
+  } catch(e) { Toast.error(e.message||'Failed'); }
+}
+
+async function deleteProduct(id) {
+  if (!await confirmAction('PERMANENTLY DELETE this product? This cannot be undone.')) return;
+  try {
+    await API.delete(CONFIG.ENDPOINTS.PRODUCT_DELETE(id));
+    Toast.success('Product deleted.'); loadProducts(currentPage);
+  } catch(e) { Toast.error(e.message||'Failed'); }
+}
+
+document.getElementById('apply-filter').addEventListener('click', () => loadProducts(1));
+document.getElementById('search-input').addEventListener('keydown', e => { if(e.key==='Enter') loadProducts(1); });
+document.getElementById('export-btn').addEventListener('click', () => {
+  exportCSV(allProducts, ['id','name','category','price','stock','status'], 'products.csv');
+});
+
+loadProducts(1);
+</script>
+</body>
+</html>

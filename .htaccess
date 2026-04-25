@@ -1,0 +1,65 @@
+# ============================================
+# WorkToGo — Production .htaccess
+# Security hardened for Hostinger shared hosting
+# ============================================
+
+Options -Indexes
+ServerSignature Off
+
+# Force HTTPS
+RewriteEngine On
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Redirect browser visitors to app (GET only - keeps POST pipeline safe)
+RewriteCond %{REQUEST_METHOD} GET
+RewriteCond %{REQUEST_URI} ^/$
+RewriteRule ^$ /app/ [R=302,L]
+
+# Block direct access to sensitive folders
+RewriteRule ^(core|brain|config|database|logs|tests|lib)(/.*)?$ - [F,L]
+
+# Block access to sensitive files
+<FilesMatch "\.(env|sql|log|md|sh|bak|git|json)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Block direct PHP access except index.php and allowed subsystems
+RewriteCond %{REQUEST_URI} \.php$
+RewriteCond %{REQUEST_URI} !^/index\.php$
+RewriteCond %{REQUEST_URI} !^/heart/
+RewriteCond %{REQUEST_URI} !^/body/
+RewriteCond %{REQUEST_URI} !^/brain/
+RewriteCond %{REQUEST_URI} !^/api/
+RewriteRule . - [F]
+
+# Route all requests through index.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# Security Headers
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "geolocation=(self)"
+    Header unset Server
+    Header unset X-Powered-By
+</IfModule>
+
+# Block bad bots and scanners
+RewriteCond %{HTTP_USER_AGENT} (sqlmap|nikto|nmap|masscan|zgrab) [NC]
+RewriteRule . - [F,L]
+
+# PHP settings for production
+<IfModule mod_php.c>
+    php_flag display_errors off
+    php_flag log_errors on
+    php_value error_log ../logs/php_errors.log
+    php_value upload_max_filesize 5M
+    php_value post_max_size 6M
+    php_value max_execution_time 30
+</IfModule>

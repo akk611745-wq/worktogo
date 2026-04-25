@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Platform Settings</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  :root {
+    --sidebar-bg: #1a1a2e;
+    --accent: #e94560;
+    --bg-main: #ffffff;
+    --font-main: 'Inter', system-ui, sans-serif;
+  }
+  body {
+    font-family: var(--font-main);
+    margin: 0;
+  }
+  .page-content {
+    background: var(--bg-main);
+    min-height: 100vh;
+    padding: 1.5rem;
+  }
+  .page-header {
+    margin-bottom: 2rem;
+  }
+  .page-title { margin: 0; font-size: 1.5rem; color: #333; }
+  
+  .btn-accent {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .btn-accent:hover { opacity: 0.9; }
+
+  /* Grid Layout for Cards */
+  .settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+  }
+  .settings-card {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 1.5rem;
+  }
+  .settings-card h2 {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    font-size: 1.2rem;
+    color: #333;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 0.5rem;
+  }
+
+  .form-group { margin-bottom: 1rem; }
+  .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; font-size: 0.95rem; }
+  .form-group .helper-text { font-size: 0.8rem; color: #666; margin-top: 4px; }
+  .form-group input[type="text"], .form-group input[type="number"] {
+    width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;
+  }
+  
+  /* Range Slider */
+  .range-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .range-wrapper input[type="range"] {
+    flex: 1;
+  }
+  .range-val {
+    background: #f8f9fa;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    min-width: 40px;
+    text-align: center;
+    font-weight: 600;
+  }
+
+  .card-actions {
+    margin-top: 1.5rem;
+    text-align: right;
+  }
+
+  /* Toast */
+  #toast-container {
+    position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .toast {
+    padding: 12px 24px; border-radius: 4px; color: white;
+    animation: slideIn 0.3s ease-out forwards;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  }
+  .toast.success { background: #10b981; }
+  .toast.error { background: #ef4444; }
+  @keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  /* Loader */
+  #loader {
+    display: none; position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(255,255,255,0.9); padding: 1rem; border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 2000;
+  }
+  .spinner {
+    border: 3px solid #f3f3f3; border-top: 3px solid var(--accent);
+    border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite;
+    margin: 0 auto 0.5rem auto;
+  }
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  
+</style>
+</head>
+<body>
+
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <h1 class="page-title">Platform Settings</h1>
+      </div>
+
+      <div class="settings-grid">
+        <!-- CARD 1: Brain Intelligence -->
+        <div class="settings-card">
+          <h2>🧠 Brain Intelligence</h2>
+          
+          <div class="form-group">
+            <label>Discovery Mix %</label>
+            <div class="range-wrapper">
+              <input type="range" id="brain_discovery_percent" min="0" max="100" oninput="document.getElementById('bdp-val').textContent = this.value">
+              <span class="range-val" id="bdp-val">0</span>
+            </div>
+            <div class="helper-text">Higher = more new discoveries shown to users. Lower = more personalized.</div>
+          </div>
+          
+          <div class="form-group">
+            <label>Cold Start Threshold</label>
+            <input type="number" id="cold_start_threshold" min="1" max="100">
+            <div class="helper-text">Number of user actions needed before personalization starts</div>
+          </div>
+
+          <div class="card-actions">
+            <button class="btn-accent" id="btn-save-brain" onclick="saveCard('brain')">Save Brain Settings</button>
+          </div>
+        </div>
+
+        <!-- CARD 2: Business Settings -->
+        <div class="settings-card">
+          <h2>💼 Business Settings</h2>
+          
+          <div class="form-group">
+            <label>Platform Commission %</label>
+            <input type="number" id="default_commission_rate" min="0" max="50">
+          </div>
+          
+          <div class="form-group">
+            <label>QuickBook Search Radius (KM)</label>
+            <input type="number" id="quickbook_radius_km" min="1" max="100">
+          </div>
+          
+          <div class="form-group">
+            <label>Story Expiry Hours</label>
+            <input type="number" id="story_expiry_hours" min="1" max="168">
+            <div class="helper-text">How long vendor stories stay visible (default: 24)</div>
+          </div>
+
+          <div class="form-group">
+            <label>Max Image Upload (MB)</label>
+            <input type="number" id="max_file_upload_mb" min="1" max="50">
+          </div>
+
+          <div class="card-actions">
+            <button class="btn-accent" id="btn-save-business" onclick="saveCard('business')">Save Business Settings</button>
+          </div>
+        </div>
+
+        <!-- CARD 3: Platform Info -->
+        <div class="settings-card">
+          <h2>🏙️ Platform Info</h2>
+          
+          <div class="form-group">
+            <label>Platform Name</label>
+            <input type="text" id="platform_name">
+          </div>
+          
+          <div class="form-group">
+            <label>Primary City</label>
+            <input type="text" id="platform_city">
+          </div>
+
+          <div class="card-actions">
+            <button class="btn-accent" id="btn-save-platform" onclick="saveCard('platform')">Save Platform Info</button>
+          </div>
+        </div>
+      </div>
+      
+    </main>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<div id="loader">
+  <div class="spinner"></div>
+  <div style="font-weight:500;">Loading...</div>
+</div>
+
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+
+<script>
+  const API_BASE = (typeof window.API_BASE !== 'undefined') ? window.API_BASE : '/api';
+
+  // Auth Check
+  function checkAuth() {
+    const token = localStorage.getItem('admin_token');
+    if (!token) {
+      window.location.href = 'login.html';
+      return null;
+    }
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (payload.role !== 'admin' && payload.is_admin !== true) {}
+    } catch(e) {}
+    return token;
+  }
+
+  // Toast System
+  function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => { toast.remove(); }, 3000);
+  }
+
+  // API Fetch Wrapper (No loader so we can handle custom save text)
+  async function fetchApi(endpoint, options = {}) {
+    const token = checkAuth();
+    if (!token) return;
+
+    const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...(options.headers || {})
+    };
+
+    const res = await fetch(url, { ...options, headers });
+    const data = await res.json().catch(() => ({}));
+    
+    if (!res.ok) {
+      throw new Error(data.message || data.error || 'API Request Failed');
+    }
+    return data;
+  }
+
+  // Load Settings
+  async function loadSettings() {
+    try {
+      document.getElementById('loader').style.display = 'block';
+      const res = await fetchApi('/admin/settings');
+      const data = res.data || res || {};
+      
+      const fields = [
+        'brain_discovery_percent', 'cold_start_threshold',
+        'default_commission_rate', 'quickbook_radius_km',
+        'story_expiry_hours', 'max_file_upload_mb',
+        'platform_name', 'platform_city'
+      ];
+
+      fields.forEach(key => {
+        const el = document.getElementById(key);
+        if (el && data[key] !== undefined && data[key] !== null) {
+          el.value = data[key];
+          if (key === 'brain_discovery_percent') {
+            document.getElementById('bdp-val').textContent = data[key];
+          }
+        }
+      });
+      document.getElementById('loader').style.display = 'none';
+    } catch (e) {
+      document.getElementById('loader').style.display = 'none';
+      console.error(e);
+      showToast('Could not load settings', 'error');
+    }
+  }
+
+  // Save Card logic
+  const cardFields = {
+    brain: ['brain_discovery_percent', 'cold_start_threshold'],
+    business: ['default_commission_rate', 'quickbook_radius_km', 'story_expiry_hours', 'max_file_upload_mb'],
+    platform: ['platform_name', 'platform_city']
+  };
+
+  async function saveCard(cardType) {
+    const keys = cardFields[cardType];
+    const btn = document.getElementById(`btn-save-${cardType}`);
+    const originalText = btn.textContent;
+    
+    btn.textContent = 'Saving...';
+    btn.disabled = true;
+
+    let hasError = false;
+    let errKey = '';
+
+    for (const key of keys) {
+      const val = document.getElementById(key).value;
+      try {
+        await fetchApi(`/admin/settings/${key}`, {
+          method: 'PUT',
+          body: JSON.stringify({ value: val })
+        });
+      } catch (err) {
+        hasError = true;
+        errKey = key;
+        break;
+      }
+    }
+
+    btn.textContent = originalText;
+    btn.disabled = false;
+
+    if (hasError) {
+      showToast(`Failed to save: ${errKey}`, 'error');
+    } else {
+      showToast('Settings saved!');
+    }
+  }
+
+  // Initialization
+  if (checkAuth()) {
+    if (typeof Shell !== 'undefined') {
+      Shell.init({ title: 'Platform Settings', active: 'settings.html' });
+    }
+    loadSettings();
+  }
+</script>
+</body>
+</html>

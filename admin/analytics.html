@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Analytics Dashboard</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  :root {
+    --sidebar-bg: #1a1a2e;
+    --accent: #e94560;
+    --bg-main: #f4f5f7;
+    --font-main: 'Inter', system-ui, sans-serif;
+  }
+  body {
+    font-family: var(--font-main);
+    margin: 0;
+    background: var(--bg-main);
+  }
+  .page-content {
+    background: var(--bg-main);
+    min-height: 100vh;
+    padding: 1.5rem;
+  }
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+  }
+  .page-title { margin: 0; font-size: 1.5rem; color: #333; }
+
+  /* Date Range Selector */
+  .date-range-selector {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .range-btn {
+    padding: 6px 12px;
+    border: 1px solid #ddd;
+    background: white;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #555;
+  }
+  .range-btn.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+  .custom-dates {
+    display: none;
+    gap: 0.5rem;
+    align-items: center;
+    margin-left: 0.5rem;
+  }
+  .custom-dates input {
+    padding: 6px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+
+  /* Top Stats */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  .stat-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border-top: 4px solid #ddd;
+  }
+  .stat-card.revenue { border-top-color: #10b981; } /* Green */
+  .stat-card.orders { border-top-color: #3b82f6; } /* Blue */
+  .stat-card.users { border-top-color: #a855f7; } /* Purple */
+  .stat-card.vendors { border-top-color: #f97316; } /* Orange */
+  
+  .stat-card h3 { margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #666; font-weight: 500; }
+  .stat-card .value { margin: 0; font-size: 1.8rem; font-weight: 600; color: #333; }
+
+  /* Grid Layout for Charts/Tables */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 1024px) {
+    .dashboard-grid { grid-template-columns: 1fr; }
+  }
+
+  /* Cards */
+  .card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    padding: 1.5rem;
+    position: relative;
+  }
+  .card-title {
+    margin: 0 0 1rem 0;
+    font-size: 1.1rem;
+    color: #333;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 0.5rem;
+  }
+
+  /* Chart Skeleton */
+  .skeleton {
+    animation: pulse 1.5s infinite;
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    border-radius: 4px;
+    height: 300px;
+    width: 100%;
+  }
+  @keyframes pulse {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+  th { font-weight: 600; color: #555; }
+  
+  /* Activity Feed */
+  .activity-list {
+    list-style: none; padding: 0; margin: 0;
+  }
+  .activity-item {
+    display: flex; align-items: center; padding: 0.75rem 0;
+    border-bottom: 1px solid #eee; gap: 1rem;
+  }
+  .activity-item:last-child { border-bottom: none; }
+  .activity-icon { font-size: 1.5rem; }
+  .activity-details { flex: 1; }
+  .activity-title { font-weight: 500; font-size: 0.95rem; margin-bottom: 0.25rem; }
+  .activity-meta { font-size: 0.8rem; color: #666; }
+  
+  /* Badges */
+  .badge {
+    padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+  }
+  .badge.order { background: #dbeafe; color: #1d4ed8; }
+  .badge.booking { background: #d1fae5; color: #047857; }
+  .badge.success { background: #d1fae5; color: #047857; }
+  .badge.pending { background: #fef3c7; color: #b45309; }
+
+  .stub-label {
+    position: absolute; top: 1.5rem; right: 1.5rem;
+    font-size: 0.75rem; color: #888; background: #f8f9fa;
+    padding: 2px 6px; border-radius: 4px; border: 1px solid #ddd;
+  }
+
+</style>
+</head>
+<body>
+
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      
+      <div class="page-header">
+        <h1 class="page-title">Analytics Dashboard</h1>
+        
+        <div class="date-range-selector" id="range-selector">
+          <button class="range-btn" data-range="1d">Today</button>
+          <button class="range-btn active" data-range="7d">Last 7 Days</button>
+          <button class="range-btn" data-range="30d">Last 30 Days</button>
+          <button class="range-btn" data-range="custom">Custom</button>
+          
+          <div class="custom-dates" id="custom-dates-wrap">
+            <input type="date" id="date-from">
+            <span>to</span>
+            <input type="date" id="date-to">
+            <button class="range-btn" onclick="applyCustomDate()">Apply</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top Stats -->
+      <div class="stats-grid">
+        <div class="stat-card revenue">
+          <h3>Total Revenue</h3>
+          <p class="value" id="stat-revenue">₹0</p>
+        </div>
+        <div class="stat-card orders">
+          <h3>Total Orders</h3>
+          <p class="value" id="stat-orders">0</p>
+        </div>
+        <div class="stat-card users">
+          <h3>New Users</h3>
+          <p class="value" id="stat-users">0</p>
+        </div>
+        <div class="stat-card vendors">
+          <h3>Active Vendors</h3>
+          <p class="value" id="stat-vendors">0</p>
+        </div>
+      </div>
+
+      <div class="dashboard-grid">
+        <!-- Revenue Chart -->
+        <div class="card">
+          <h2 class="card-title">Revenue (₹)</h2>
+          <div id="chart-skeleton" class="skeleton"></div>
+          <canvas id="revenueChart" style="display:none; width: 100%; height: 300px;"></canvas>
+        </div>
+
+        <!-- Activity Feed -->
+        <div class="card">
+          <h2 class="card-title">Recent Activity</h2>
+          <ul class="activity-list" id="activity-feed">
+            <li>Loading...</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="dashboard-grid" style="grid-template-columns: 1fr 1fr;">
+        <!-- Top Products -->
+        <div class="card">
+          <h2 class="card-title">Top Products This Period</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Product Name</th>
+                <th>Orders</th>
+                <th>Revenue (₹)</th>
+                <th>Vendor Name</th>
+              </tr>
+            </thead>
+            <tbody id="top-products-body">
+              <tr><td colspan="5">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Top Vendors -->
+        <div class="card">
+          <h2 class="card-title">Top Service Vendors</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Vendor Name</th>
+                <th>Bookings</th>
+                <th>Revenue (₹)</th>
+                <th>Rating</th>
+              </tr>
+            </thead>
+            <tbody id="top-vendors-body">
+              <tr><td colspan="5">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+    </main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+
+<script>
+  const API_BASE = (typeof window.API_BASE !== 'undefined') ? window.API_BASE : '/api';
+  let currentRange = '7d';
+  let chartInstance = null;
+
+  // Auth Check
+  function checkAuth() {
+    const token = localStorage.getItem('admin_token');
+    if (!token) {
+      window.location.href = 'login.html';
+      return null;
+    }
+    return token;
+  }
+
+  function formatCurrency(amount) {
+    return '₹' + parseFloat(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function renderStubLabel(cardEl) {
+    if (!cardEl.querySelector('.stub-label')) {
+      const lbl = document.createElement('div');
+      lbl.className = 'stub-label';
+      lbl.textContent = '⚠ Sample data — connect API for live data';
+      cardEl.appendChild(lbl);
+    }
+  }
+
+  async function fetchWithFallback(endpoint, stubGenerator, cardSelector) {
+    const token = checkAuth();
+    if (!token) return stubGenerator();
+
+    try {
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('API failed');
+      const data = await res.json();
+      if (!data || Object.keys(data).length === 0) throw new Error('Empty data');
+      return data;
+    } catch (e) {
+      console.warn(`API ${endpoint} failed, using stub.`);
+      if (cardSelector) renderStubLabel(document.querySelector(cardSelector));
+      return stubGenerator();
+    }
+  }
+
+  // --- Stubs ---
+  function getRevenueStub() {
+    const days = currentRange === '1d' ? 24 : (currentRange === '7d' ? 7 : 30);
+    const labels = [];
+    const data = [];
+    let totalRev = 0;
+    
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date();
+      if (currentRange === '1d') {
+        d.setHours(d.getHours() - i);
+        labels.push(`${d.getHours()}:00`);
+      } else {
+        d.setDate(d.getDate() - i);
+        labels.push(d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }));
+      }
+      const val = Math.floor(Math.random() * 5000) + 500;
+      data.push(val);
+      totalRev += val;
+    }
+
+    return {
+      stats: {
+        total_revenue: totalRev,
+        total_orders: Math.floor(totalRev / 200),
+        new_users: Math.floor(Math.random() * 50) + 10,
+        active_vendors: Math.floor(Math.random() * 20) + 5
+      },
+      chart: { labels, data }
+    };
+  }
+
+  function getTopProductsStub() {
+    return {
+      data: [
+        { id: 1, name: 'Premium Haircut', orders: 45, revenue: 22500, vendor: 'Style Studio' },
+        { id: 2, name: 'AC Service', orders: 38, revenue: 38000, vendor: 'CoolTech Services' },
+        { id: 3, name: 'Plumbing Repair', orders: 30, revenue: 15000, vendor: 'QuickFix Plumbers' },
+        { id: 4, name: 'House Cleaning', orders: 25, revenue: 25000, vendor: 'Sparkle Clean' },
+        { id: 5, name: 'Electrician Visit', orders: 22, revenue: 11000, vendor: 'Volt Experts' }
+      ]
+    };
+  }
+
+  function getTopVendorsStub() {
+    return {
+      data: [
+        { id: 1, name: 'CoolTech Services', bookings: 40, revenue: 40000, rating: 4.8 },
+        { id: 2, name: 'Style Studio', bookings: 55, revenue: 27500, rating: 4.9 },
+        { id: 3, name: 'Sparkle Clean', bookings: 30, revenue: 30000, rating: 4.5 },
+        { id: 4, name: 'QuickFix Plumbers', bookings: 35, revenue: 17500, rating: 4.2 },
+        { id: 5, name: 'Volt Experts', bookings: 25, revenue: 12500, rating: 4.6 }
+      ]
+    };
+  }
+
+  function getActivityStub() {
+    const types = ['order', 'booking'];
+    const statuses = ['success', 'pending'];
+    const data = [];
+    for(let i=0; i<10; i++) {
+      const t = types[Math.floor(Math.random()*types.length)];
+      data.push({
+        id: i,
+        type: t,
+        user: 'User ' + (Math.floor(Math.random()*100)),
+        amount: Math.floor(Math.random() * 2000) + 100,
+        status: statuses[Math.floor(Math.random()*statuses.length)],
+        time_ago: (i * 15) + ' mins ago'
+      });
+    }
+    return { data };
+  }
+
+
+  // --- Loaders ---
+  async function loadRevenueAndStats() {
+    let q = `range=${currentRange}`;
+    if (currentRange === 'custom') {
+      q += `&from=${document.getElementById('date-from').value}&to=${document.getElementById('date-to').value}`;
+    }
+
+    const res = await fetchWithFallback(`/admin/analytics/revenue?${q}`, getRevenueStub, '.card:nth-child(1)');
+    
+    // Update Stats
+    document.getElementById('stat-revenue').textContent = formatCurrency(res.stats.total_revenue || 0);
+    document.getElementById('stat-orders').textContent = res.stats.total_orders || 0;
+    document.getElementById('stat-users').textContent = res.stats.new_users || 0;
+    document.getElementById('stat-vendors').textContent = res.stats.active_vendors || 0;
+
+    // Update Chart
+    document.getElementById('chart-skeleton').style.display = 'none';
+    const canvas = document.getElementById('revenueChart');
+    canvas.style.display = 'block';
+
+    if (chartInstance) chartInstance.destroy();
+
+    const ctx = canvas.getContext('2d');
+    chartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: res.chart.labels,
+        datasets: [{
+          label: 'Revenue (₹)',
+          data: res.chart.data,
+          backgroundColor: '#e94560',
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { beginAtZero: true }
+        }
+      }
+    });
+  }
+
+  async function loadTopProducts() {
+    let q = `range=${currentRange}`;
+    const res = await fetchWithFallback(`/admin/analytics/top-products?${q}`, getTopProductsStub, '.dashboard-grid:nth-of-type(3) .card:nth-child(1)');
+    
+    const tbody = document.getElementById('top-products-body');
+    tbody.innerHTML = '';
+    
+    if (!res.data || res.data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5">No data available</td></tr>';
+      return;
+    }
+
+    res.data.forEach((p, idx) => {
+      tbody.innerHTML += `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${p.name}</td>
+          <td>${p.orders}</td>
+          <td>${formatCurrency(p.revenue)}</td>
+          <td>${p.vendor}</td>
+        </tr>
+      `;
+    });
+  }
+
+  function getStarRating(rating) {
+    const full = Math.floor(rating);
+    const empty = 5 - full;
+    return '★'.repeat(full) + '☆'.repeat(empty);
+  }
+
+  async function loadTopVendors() {
+    let q = `range=${currentRange}`;
+    const res = await fetchWithFallback(`/admin/analytics/top-vendors?${q}`, getTopVendorsStub, '.dashboard-grid:nth-of-type(3) .card:nth-child(2)');
+    
+    const tbody = document.getElementById('top-vendors-body');
+    tbody.innerHTML = '';
+
+    if (!res.data || res.data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5">No data available</td></tr>';
+      return;
+    }
+
+    res.data.forEach((v, idx) => {
+      tbody.innerHTML += `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${v.name}</td>
+          <td>${v.bookings}</td>
+          <td>${formatCurrency(v.revenue)}</td>
+          <td style="color: #f59e0b;">${getStarRating(v.rating)}</td>
+        </tr>
+      `;
+    });
+  }
+
+  async function loadRecentActivity() {
+    const res = await fetchWithFallback(`/admin/analytics/recent-activity`, getActivityStub, '.dashboard-grid:nth-of-type(2) .card:nth-child(2)');
+    
+    const list = document.getElementById('activity-feed');
+    list.innerHTML = '';
+
+    res.data.forEach(act => {
+      const icon = act.type === 'order' ? '🛍️' : '🔧';
+      list.innerHTML += `
+        <li class="activity-item">
+          <div class="activity-icon">${icon}</div>
+          <div class="activity-details">
+            <div class="activity-title">${act.user} <span style="font-weight:normal">paid</span> ${formatCurrency(act.amount)}</div>
+            <div class="activity-meta">${act.time_ago} • <span class="badge ${act.type}">${act.type}</span> <span class="badge ${act.status}">${act.status}</span></div>
+          </div>
+        </li>
+      `;
+    });
+  }
+
+  function loadAllData() {
+    loadRevenueAndStats();
+    loadTopProducts();
+    loadTopVendors();
+    loadRecentActivity();
+  }
+
+  // --- Events ---
+  document.getElementById('range-selector').addEventListener('click', (e) => {
+    if (e.target.classList.contains('range-btn') && e.target.hasAttribute('data-range')) {
+      const range = e.target.getAttribute('data-range');
+      
+      document.querySelectorAll('.range-btn[data-range]').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      
+      currentRange = range;
+      
+      if (range === 'custom') {
+        document.getElementById('custom-dates-wrap').style.display = 'flex';
+      } else {
+        document.getElementById('custom-dates-wrap').style.display = 'none';
+        loadAllData();
+      }
+    }
+  });
+
+  function applyCustomDate() {
+    if (!document.getElementById('date-from').value || !document.getElementById('date-to').value) {
+      alert('Please select both dates');
+      return;
+    }
+    loadAllData();
+  }
+
+  // Init
+  if (checkAuth()) {
+    if (typeof Shell !== 'undefined') {
+      Shell.init({ title: 'Analytics Dashboard', active: 'analytics.html' });
+    }
+    loadAllData();
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Users</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">User Management</h1>
+          <p class="page-subtitle" id="users-count">Loading…</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="export-btn">⬇ Export CSV</button>
+      </div>
+
+      <div class="card">
+        <div class="card-body" style="padding-bottom:12px">
+          <div class="filter-bar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="search-input" class="form-control" placeholder="Search by name, email or phone…">
+            </div>
+            <select id="status-filter" class="form-control" style="width:140px">
+              <option value="">All Status</option>
+              <option value="active">Active</option>
+              <option value="blocked">Blocked</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" id="apply-filter">Filter</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>USER</th>
+                <th>EMAIL</th>
+                <th>PHONE</th>
+                <th>ORDERS</th>
+                <th>JOINED</th>
+                <th>STATUS</th>
+                <th>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="users-tbody">
+              <tr class="loading-row"><td colspan="7"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-body" style="padding-top:8px">
+          <div class="pagination" id="users-pagination"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- User Detail Modal -->
+<div class="modal-overlay" id="user-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">User Details</span>
+      <button class="modal-close" onclick="Modal.close('user-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" id="user-modal-body">Loading…</div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'User Management', active: 'users.html' });
+
+let currentPage = 1, totalPages = 1, allUsers = [];
+const PAGE_SIZE = CONFIG.DEFAULT_PAGE_SIZE;
+
+async function loadUsers(page = 1) {
+  currentPage = page;
+  tableLoading('users-tbody', 7);
+  const search = document.getElementById('search-input').value.trim();
+  const status = document.getElementById('status-filter').value;
+  const params = { page, limit: PAGE_SIZE };
+  if (search) params.search = search;
+  if (status) params.status = status;
+
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.USERS, params);
+    allUsers = data.users || data.data || [];
+    const total = data.total || data.totalCount || allUsers.length;
+    totalPages = Math.ceil(total / PAGE_SIZE);
+    document.getElementById('users-count').textContent = `${total.toLocaleString()} total users`;
+    renderUsers(allUsers);
+    buildPagination('users-pagination', currentPage, totalPages, loadUsers);
+  } catch(e) {
+    tableEmpty('users-tbody', 7, 'Failed to load users: ' + (e.message || ''));
+    Toast.error('Failed to load users');
+  }
+}
+
+function renderUsers(users) {
+  const tbody = document.getElementById('users-tbody');
+  if (!users.length) { tableEmpty('users-tbody', 7); return; }
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:26px;height:26px;border-radius:50%;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0">
+            ${escHtml((u.name || u.firstName || 'U').charAt(0).toUpperCase())}
+          </div>
+          <span>${escHtml(Fmt.truncate(u.name || u.firstName + ' ' + (u.lastName||''), 24))}</span>
+        </div>
+      </td>
+      <td>${escHtml(u.email || '—')}</td>
+      <td>${escHtml(u.phone || u.mobile || '—')}</td>
+      <td style="color:var(--text-secondary)">${escHtml(u.order_count ?? u.total_orders ?? '—')}</td>
+      <td style="color:var(--text-muted);font-size:11px">${Fmt.date(u.created_at)}</td>
+      <td>${statusBadge(u.status || (u.is_blocked ? 'blocked' : 'active'))}</td>
+      <td>
+        <div class="td-actions">
+          <button class="btn btn-ghost btn-sm" onclick="viewUser('${escHtml(u.id || u.uuid)}')">View</button>
+          ${(u.status === 'blocked' || u.is_blocked)
+            ? `<button class="btn btn-success btn-sm" onclick="toggleBlock('${escHtml(u.id||u.uuid)}','unblock')">Unblock</button>`
+            : `<button class="btn btn-danger btn-sm"  onclick="toggleBlock('${escHtml(u.id||u.uuid)}','block')">Block</button>`
+          }
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+async function toggleBlock(id, action) {
+  const msg = action === 'block' ? 'Block this user? They will lose access.' : 'Unblock this user?';
+  if (!await confirmAction(msg)) return;
+  try {
+    const ep = action === 'block'
+      ? CONFIG.ENDPOINTS.USER_BLOCK(id)
+      : CONFIG.ENDPOINTS.USER_UNBLOCK(id);
+    await API.post(ep);
+    Toast.success(`User ${action}ed successfully.`);
+    loadUsers(currentPage);
+  } catch(e) { Toast.error(e.message || 'Action failed'); }
+}
+
+async function viewUser(id) {
+  Modal.open('user-modal');
+  document.getElementById('user-modal-body').innerHTML = '<div style="text-align:center;padding:20px"><div class="spinner" style="margin:auto"></div></div>';
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.USER_DETAIL(id));
+    const u = data.user || data;
+    document.getElementById('user-modal-body').innerHTML = `
+      <div style="display:grid;gap:12px">
+        ${field('Full Name', escHtml(u.name || u.firstName + ' ' + (u.lastName||'')))}
+        ${field('Email', escHtml(u.email))}
+        ${field('Phone', escHtml(u.phone || u.mobile))}
+        ${field('Status', statusBadge(u.status || (u.is_blocked?'blocked':'active')))}
+        ${field('Total Orders', escHtml(u.order_count ?? u.total_orders ?? '—'))}
+        ${field('Joined', Fmt.date(u.created_at))}
+        ${field('Last Active', Fmt.date(u.last_login_at || u.updated_at))}
+        ${u.address ? field('Address', escHtml(u.address)) : ''}
+      </div>`;
+  } catch(e) { document.getElementById('user-modal-body').innerHTML = '<p style="color:var(--red)">Failed to load user details.</p>'; }
+}
+
+function field(label, val) {
+  return `<div style="display:flex;gap:12px;justify-content:space-between;border-bottom:1px solid var(--border-dim);padding-bottom:8px">
+    <span style="font-size:11px;color:var(--text-muted)">${label}</span>
+    <span style="font-size:12px;color:var(--text-primary);text-align:right">${val || '—'}</span>
+  </div>`;
+}
+
+document.getElementById('apply-filter').addEventListener('click', () => loadUsers(1));
+document.getElementById('search-input').addEventListener('keydown', e => { if (e.key === 'Enter') loadUsers(1); });
+document.getElementById('export-btn').addEventListener('click', () => {
+  exportCSV(allUsers, ['id','name','email','phone','status','createdAt'], 'users.csv');
+});
+
+loadUsers(1);
+</script>
+</body>
+</html>

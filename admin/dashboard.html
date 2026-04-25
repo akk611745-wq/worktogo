@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Control Center</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .dashboard-section { margin-bottom: 2rem; }
+  .dashboard-section h2 { font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-bottom: 1rem; color: var(--text-primary); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+  .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 1rem; }
+  
+  .metric-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; position: relative; }
+  .metric-card.clickable { cursor: pointer; transition: all 0.2s; }
+  .metric-card.clickable:hover { border-color: var(--accent); box-shadow: 0 4px 12px rgba(0,0,0,0.1); transform: translateY(-2px); }
+  .metric-label { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 0.5rem; }
+  .metric-value { font-size: 1.8rem; font-weight: 700; color: var(--text-primary); }
+  
+  .metric-danger .metric-value { color: var(--red); }
+  .metric-warning .metric-value { color: var(--orange); }
+  .metric-success .metric-value { color: var(--green); }
+  .metric-info .metric-value { color: var(--blue); }
+
+  .alert-banner { padding: 1rem; border-radius: 8px; margin-bottom: 1rem; font-weight: 500; display: flex; align-items: center; gap: 10px; }
+  .alert-banner.critical { background: #fee2e2; color: #991b1b; border: 1px solid #f87171; }
+  .alert-banner.danger { background: #fee2e2; color: #991b1b; }
+  .alert-banner.warning { background: #fef3c7; color: #92400e; }
+  
+  .insight-list { list-style: none; padding: 0; margin: 0; }
+  .insight-item { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+  .insight-item:last-child { border-bottom: none; }
+
+  /* Modal */
+  .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 1000; }
+  .modal-overlay.active { display: flex; }
+  .modal-content { background: var(--bg-card); padding: 1.5rem; border-radius: 8px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; border: 1px solid var(--border); box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 1rem; margin-bottom: 1rem; }
+  .modal-title { font-size: 1.2rem; font-weight: 600; }
+  .modal-close { background: none; border: none; cursor: pointer; font-size: 1.5rem; color: var(--text-muted); }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  .data-table th, .data-table td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); }
+  .data-table th { color: var(--text-muted); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Intelligence Control Center</h1>
+          <p class="page-subtitle">Real-time system insights & monitoring</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="refresh-btn">↻ Refresh</button>
+      </div>
+
+      <!-- System Alerts -->
+      <div id="alerts-container"></div>
+
+      <!-- 1. Orders Overview -->
+      <div class="dashboard-section">
+        <h2>📦 Orders Today</h2>
+        <div class="grid-4">
+          <div class="metric-card metric-info">
+            <div class="metric-label">Total Orders</div>
+            <div class="metric-value" id="val-total-orders">-</div>
+          </div>
+          <div class="metric-card metric-success">
+            <div class="metric-label">Completed</div>
+            <div class="metric-value" id="val-completed-orders">-</div>
+          </div>
+          <div class="metric-card metric-danger">
+            <div class="metric-label">Failed</div>
+            <div class="metric-value" id="val-failed-orders">-</div>
+          </div>
+          <div class="metric-card metric-warning">
+            <div class="metric-label">Pending / Active</div>
+            <div class="metric-value" id="val-pending-orders">-</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Financial Overview -->
+      <div class="dashboard-section">
+        <h2>💰 Finance Today</h2>
+        <div class="grid-4">
+          <div class="metric-card metric-success">
+            <div class="metric-label">Total Revenue</div>
+            <div class="metric-value" id="val-revenue">-</div>
+          </div>
+          <div class="metric-card metric-info">
+            <div class="metric-label">Platform Earnings</div>
+            <div class="metric-value" id="val-earnings">-</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Pending Vendor Payout</div>
+            <div class="metric-value" id="val-vendor-payout">-</div>
+          </div>
+          <div class="metric-card metric-danger">
+            <div class="metric-label">Total Refunds</div>
+            <div class="metric-value" id="val-refunds">-</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Driver Status -->
+      <div class="dashboard-section">
+        <h2>🛵 Delivery Fleet</h2>
+        <div class="grid-3">
+          <div class="metric-card">
+            <div class="metric-label">Active Drivers</div>
+            <div class="metric-value" id="val-drivers-active">-</div>
+          </div>
+          <div class="metric-card metric-danger clickable" onclick="openModal('blocked_drivers')">
+            <div class="metric-label">Blocked (Cash Limit) <span>👆</span></div>
+            <div class="metric-value" id="val-drivers-blocked">-</div>
+          </div>
+          <div class="metric-card metric-warning">
+            <div class="metric-label">Total Cash in Hand</div>
+            <div class="metric-value" id="val-cash-in-hand">-</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. System Health -->
+      <div class="dashboard-section">
+        <h2>⚠️ System Health</h2>
+        <div class="grid-3">
+          <div class="metric-card metric-danger clickable" onclick="openModal('stuck_orders')">
+            <div class="metric-label">Stuck Orders (>60m) <span>👆</span></div>
+            <div class="metric-value" id="val-stuck-orders">-</div>
+          </div>
+          <div class="metric-card metric-warning">
+            <div class="metric-label">Failed Payments</div>
+            <div class="metric-value" id="val-failed-payments">-</div>
+          </div>
+          <div class="metric-card metric-warning">
+            <div class="metric-label">Refunds Pending</div>
+            <div class="metric-value" id="val-refunds-pending">-</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Smart Insights -->
+      <div class="dashboard-section">
+        <h2>🧠 Smart Insights</h2>
+        <div class="grid-3">
+          <!-- Insight: Top Vendors -->
+          <div class="card">
+            <div class="card-header"><span class="card-title">Top Vendors (Sales)</span></div>
+            <div class="card-body">
+              <ul class="insight-list" id="list-top-vendors">
+                <li class="insight-item">Loading...</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Insight: Most Cancelled -->
+          <div class="card">
+            <div class="card-header"><span class="card-title">Most Cancelled Items</span></div>
+            <div class="card-body">
+              <ul class="insight-list" id="list-cancelled-items">
+                <li class="insight-item">Loading...</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Insight: Cash Flow Check -->
+          <div class="card">
+            <div class="card-header"><span class="card-title">Cash Flow Integrity</span></div>
+            <div class="card-body">
+              <div style="margin-bottom: 0.5rem">
+                <div style="font-size: 0.8rem; color: var(--text-muted)">Expected COD Cash</div>
+                <div style="font-size: 1.1rem; font-weight: 600" id="val-expected-cash">-</div>
+              </div>
+              <div style="margin-bottom: 0.5rem">
+                <div style="font-size: 0.8rem; color: var(--text-muted)">Actual Cash Collected</div>
+                <div style="font-size: 1.1rem; font-weight: 600" id="val-actual-cash">-</div>
+              </div>
+              <div style="padding-top: 0.5rem; border-top: 1px dashed var(--border)">
+                <div style="font-size: 0.8rem; color: var(--text-muted)">Deviation</div>
+                <div style="font-size: 1.2rem; font-weight: 700" id="val-cash-deviation">-</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- Modal for Lists -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Details</div>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div id="modal-body">
+      <!-- Data injected here -->
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Intelligence Center', active: 'dashboard.html' });
+
+let dashboardData = null;
+
+async function loadDashboard() {
+  try {
+    // Override API endpoint config for dashboard to use our new API
+    const data = await API.get('/api/admin/dashboard');
+    dashboardData = data;
+
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? '—'; };
+    
+    // Orders
+    set('val-total-orders', data.orders.total_orders_today);
+    set('val-completed-orders', data.orders.completed_orders_today);
+    set('val-failed-orders', data.orders.failed_orders_today);
+    set('val-pending-orders', data.orders.pending_orders);
+
+    // Finance
+    set('val-revenue', Fmt.currency(data.finance.total_revenue_today));
+    set('val-earnings', Fmt.currency(data.finance.platform_earnings_today));
+    set('val-vendor-payout', Fmt.currency(data.finance.pending_vendor_payout));
+    set('val-refunds', Fmt.currency(data.finance.total_refunds_today));
+
+    // Drivers
+    set('val-drivers-active', data.driver_status.total_drivers_active);
+    set('val-drivers-blocked', data.driver_status.drivers_blocked);
+    set('val-cash-in-hand', Fmt.currency(data.driver_status.total_cash_in_hand));
+
+    // Health
+    set('val-stuck-orders', data.system_health.stuck_orders_count);
+    set('val-failed-payments', data.system_health.failed_payments_today);
+    set('val-refunds-pending', data.system_health.refund_pending);
+
+    // Insights
+    const topVendorsEl = document.getElementById('list-top-vendors');
+    if (data.insights.top_vendors.length === 0) {
+      topVendorsEl.innerHTML = '<li class="insight-item" style="color:var(--text-muted)">No data yet today</li>';
+    } else {
+      topVendorsEl.innerHTML = data.insights.top_vendors.map(v => 
+        `<li class="insight-item"><span>${escHtml(v.business_name)}</span> <strong>${Fmt.currency(v.total_sales)}</strong></li>`
+      ).join('');
+    }
+
+    const cancelledItemsEl = document.getElementById('list-cancelled-items');
+    if (data.insights.most_cancelled_items.length === 0) {
+      cancelledItemsEl.innerHTML = '<li class="insight-item" style="color:var(--text-muted)">No cancellations!</li>';
+    } else {
+      cancelledItemsEl.innerHTML = data.insights.most_cancelled_items.map(i => 
+        `<li class="insight-item"><span>${escHtml(i.product_name)}</span> <strong>${i.cancel_count}x</strong></li>`
+      ).join('');
+    }
+
+    set('val-expected-cash', Fmt.currency(data.insights.cash_flow.expected_cash_from_cod));
+    set('val-actual-cash', Fmt.currency(data.insights.cash_flow.actual_cash_collected));
+    
+    const devEl = document.getElementById('val-cash-deviation');
+    const devAmount = data.insights.cash_flow.deviation;
+    devEl.textContent = Fmt.currency(devAmount);
+    if (Math.abs(devAmount) > 1000) { devEl.style.color = 'var(--red)'; }
+    else if (Math.abs(devAmount) > 0) { devEl.style.color = 'var(--orange)'; }
+    else { devEl.style.color = 'var(--green)'; }
+
+    // Alerts
+    const alertsEl = document.getElementById('alerts-container');
+    if (data.alerts && data.alerts.length > 0) {
+      alertsEl.innerHTML = data.alerts.map(a => 
+        `<div class="alert-banner ${a.type}">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          ${escHtml(a.message)}
+        </div>`
+      ).join('');
+    } else {
+      alertsEl.innerHTML = '';
+    }
+
+  } catch(e) { 
+    Toast.error('Could not load dashboard data'); 
+    console.error(e);
+  }
+}
+
+function openModal(type) {
+  if (!dashboardData) return;
+  const modal = document.getElementById('detail-modal');
+  const title = document.getElementById('modal-title');
+  const body = document.getElementById('modal-body');
+  
+  if (type === 'stuck_orders') {
+    title.textContent = 'Stuck Orders (>60m)';
+    const orders = dashboardData.system_health.stuck_orders_list;
+    if (!orders || orders.length === 0) {
+      body.innerHTML = '<p>No stuck orders found.</p>';
+    } else {
+      let html = '<table class="data-table"><thead><tr><th>Order #</th><th>Status</th><th>Last Update</th><th>Action</th></tr></thead><tbody>';
+      orders.forEach(o => {
+        html += `<tr>
+          <td><a href="orders.html?id=${o.id}">#${o.order_number || o.id}</a></td>
+          <td><span class="badge ${o.status}">${o.status}</span></td>
+          <td>${new Date(o.updated_at).toLocaleString()}</td>
+          <td><a href="orders.html?id=${o.id}" class="btn btn-sm btn-ghost">View</a></td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+      body.innerHTML = html;
+    }
+  } else if (type === 'blocked_drivers') {
+    title.textContent = 'Blocked Drivers (Limit Reached)';
+    // In a real app we'd fetch the list. Since we only fetched counts in API, we'll show a message or make a sub-call.
+    body.innerHTML = `<p>There are ${dashboardData.driver_status.drivers_blocked} drivers blocked. <br><br><a href="users.html?role=delivery" class="btn btn-primary">Go to Users page to manage</a></p>`;
+  }
+  
+  modal.classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('detail-modal').classList.remove('active');
+}
+
+loadDashboard();
+document.getElementById('refresh-btn').addEventListener('click', loadDashboard);
+// Refresh every 30s
+setInterval(loadDashboard, 30000);
+</script>
+</body>
+</html>

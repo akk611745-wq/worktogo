@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Vendors</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Vendor Control</h1>
+          <p class="page-subtitle" id="vendor-count">Loading…</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="export-btn">⬇ Export CSV</button>
+      </div>
+
+      <!-- Pending Approvals Banner -->
+      <div id="pending-banner" style="display:none;background:var(--accent-dim);border:1px solid rgba(245,158,11,0.3);border-radius:var(--radius-md);padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <span style="font-size:13px;color:var(--accent)">⚠ <span id="pending-count">0</span> vendors awaiting approval</span>
+        <button class="btn btn-warn btn-sm" onclick="document.getElementById('type-filter').value='pending';loadVendors(1)">Review Now</button>
+      </div>
+
+      <div class="card">
+        <div class="card-body" style="padding-bottom:12px">
+          <div class="filter-bar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="search-input" class="form-control" placeholder="Search vendors…">
+            </div>
+            <select id="type-filter" class="form-control" style="width:150px">
+              <option value="">All Types</option>
+              <option value="shopping">Shopping</option>
+              <option value="service">Service</option>
+            </select>
+            <select id="status-filter" class="form-control" style="width:140px">
+              <option value="">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+              <option value="disabled">Disabled</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" id="apply-filter">Filter</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>VENDOR</th>
+                <th>TYPE</th>
+                <th>EMAIL / PHONE</th>
+                <th>PRODUCTS/SERVICES</th>
+                <th>JOINED</th>
+                <th>STATUS</th>
+                <th>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="vendors-tbody">
+              <tr class="loading-row"><td colspan="7"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-body" style="padding-top:8px">
+          <div class="pagination" id="vendors-pagination"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Vendor Detail Modal -->
+<div class="modal-overlay" id="vendor-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title" id="vendor-modal-title">Vendor Details</span>
+      <button class="modal-close" onclick="Modal.close('vendor-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" id="vendor-modal-body">Loading…</div>
+    <div class="modal-footer" id="vendor-modal-footer"></div>
+  </div>
+</div>
+
+<!-- Reject Reason Modal -->
+<div class="modal-overlay" id="reject-modal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <span class="modal-title">Reject Vendor</span>
+      <button class="modal-close" onclick="Modal.close('reject-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">REJECTION REASON</label>
+        <textarea id="reject-reason" class="form-control" rows="3" placeholder="Provide a reason for rejection…"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="Modal.close('reject-modal')">Cancel</button>
+      <button class="btn btn-danger" id="confirm-reject-btn">Confirm Reject</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Vendor Control', active: 'vendors.html' });
+
+let currentPage = 1, totalPages = 1, allVendors = [], rejectTargetId = null;
+
+async function loadVendors(page = 1) {
+  currentPage = page;
+  tableLoading('vendors-tbody', 7);
+  const search = document.getElementById('search-input').value.trim();
+  const type   = document.getElementById('type-filter').value;
+  const status = document.getElementById('status-filter').value;
+  const params = { page, limit: CONFIG.DEFAULT_PAGE_SIZE };
+  if (search) params.search = search;
+  if (type)   params.type   = type;
+  if (status) params.status = status;
+
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.VENDORS, params);
+    allVendors = data.vendors || data.data || [];
+    const total = data.total || data.totalCount || allVendors.length;
+    const pending = data.pendingCount || allVendors.filter(v => v.status === 'pending').length;
+    totalPages = Math.ceil(total / CONFIG.DEFAULT_PAGE_SIZE);
+
+    document.getElementById('vendor-count').textContent = `${total.toLocaleString()} total vendors`;
+    const banner = document.getElementById('pending-banner');
+    if (pending > 0) {
+      banner.style.display = 'flex';
+      document.getElementById('pending-count').textContent = pending;
+    } else { banner.style.display = 'none'; }
+
+    renderVendors(allVendors);
+    buildPagination('vendors-pagination', currentPage, totalPages, loadVendors);
+  } catch(e) {
+    tableEmpty('vendors-tbody', 7, 'Failed to load: ' + (e.message||''));
+    Toast.error('Failed to load vendors');
+  }
+}
+
+function renderVendors(vendors) {
+  const tbody = document.getElementById('vendors-tbody');
+  if (!vendors.length) { tableEmpty('vendors-tbody', 7); return; }
+  tbody.innerHTML = vendors.map(v => {
+    const id = v.id || v.uuid;
+    const status = v.status || 'pending';
+    const type = v.type || v.vendor_type || 'shopping';
+    let actions = `<button class="btn btn-ghost btn-sm" onclick="viewVendor('${escHtml(id)}')">View</button>`;
+    if (status === 'pending') {
+      actions += `<button class="btn btn-success btn-sm" onclick="approveVendor('${escHtml(id)}')">Approve</button>`;
+      actions += `<button class="btn btn-danger btn-sm"  onclick="openReject('${escHtml(id)}')">Reject</button>`;
+    } else if (status === 'approved' || status === 'active') {
+      actions += `<button class="btn btn-warn btn-sm" onclick="toggleVendorStatus('${escHtml(id)}','disable')">Disable</button>`;
+    } else if (status === 'disabled') {
+      actions += `<button class="btn btn-success btn-sm" onclick="toggleVendorStatus('${escHtml(id)}','enable')">Enable</button>`;
+    }
+    return `<tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:26px;height:26px;border-radius:6px;background:var(--blue-dim);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">
+            ${escHtml((v.business_name||v.name||'V').charAt(0).toUpperCase())}
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--text-primary)">${escHtml(Fmt.truncate(v.business_name||v.name,22))}</div>
+            <div style="font-size:10px;color:var(--text-muted)">${escHtml(v.owner_name||'')}</div>
+          </div>
+        </div>
+      </td>
+      <td>${statusBadge(type)}</td>
+      <td><div style="font-size:11px">${escHtml(v.email||'—')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(v.phone||'')}</div></td>
+      <td style="color:var(--text-muted)">${escHtml(v.product_count??v.service_count??'—')}</td>
+      <td style="color:var(--text-muted);font-size:11px">${Fmt.date(v.created_at)}</td>
+      <td>${statusBadge(status)}</td>
+      <td><div class="td-actions">${actions}</div></td>
+    </tr>`;
+  }).join('');
+}
+
+async function approveVendor(id) {
+  if (!await confirmAction('Approve this vendor?')) return;
+  try {
+    await API.post(CONFIG.ENDPOINTS.VENDOR_APPROVE(id));
+    Toast.success('Vendor approved!'); loadVendors(currentPage);
+  } catch(e) { Toast.error(e.message||'Failed'); }
+}
+
+function openReject(id) {
+  rejectTargetId = id;
+  document.getElementById('reject-reason').value = '';
+  Modal.open('reject-modal');
+}
+
+document.getElementById('confirm-reject-btn').addEventListener('click', async () => {
+  if (!rejectTargetId) return;
+  const reason = document.getElementById('reject-reason').value.trim();
+  if (!reason) { Toast.warn('Please provide a reason.'); return; }
+  try {
+    await API.post(CONFIG.ENDPOINTS.VENDOR_REJECT(rejectTargetId), { reason });
+    Toast.success('Vendor rejected.'); Modal.close('reject-modal'); loadVendors(currentPage);
+  } catch(e) { Toast.error(e.message||'Failed'); }
+});
+
+async function toggleVendorStatus(id, action) {
+  if (!await confirmAction(`${Fmt.capitalize(action)} this vendor?`)) return;
+  try {
+    await API.patch(CONFIG.ENDPOINTS.VENDOR_STATUS(id), { status: action === 'enable' ? 'enabled' : 'disabled' });
+    Toast.success(`Vendor ${action}d.`); loadVendors(currentPage);
+  } catch(e) { Toast.error(e.message||'Failed'); }
+}
+
+async function viewVendor(id) {
+  Modal.open('vendor-modal');
+  document.getElementById('vendor-modal-body').innerHTML = '<div style="text-align:center;padding:20px"><div class="spinner" style="margin:auto"></div></div>';
+  document.getElementById('vendor-modal-footer').innerHTML = '';
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.VENDOR_DETAIL(id));
+    const v = data.vendor || data;
+    document.getElementById('vendor-modal-title').textContent = v.business_name || v.name || 'Vendor';
+    document.getElementById('vendor-modal-body').innerHTML = `
+      <div style="display:grid;gap:12px">
+        ${field('Business Name', escHtml(v.business_name||v.name))}
+        ${field('Owner', escHtml(v.owner_name))}
+        ${field('Email', escHtml(v.email))}
+        ${field('Phone', escHtml(v.phone))}
+        ${field('Type', statusBadge(v.type||v.vendor_type))}
+        ${field('Status', statusBadge(v.status))}
+        ${field('Products/Services', escHtml(v.product_count??v.service_count??'—'))}
+        ${field('Total Revenue', Fmt.currency(v.total_revenue))}
+        ${field('Joined', Fmt.date(v.created_at))}
+        ${v.address ? field('Address', escHtml(v.address)) : ''}
+        ${v.gst_number ? field('GST', escHtml(v.gst_number)) : ''}
+        ${v.bank_account ? field('Bank Account', '****' + escHtml(v.bank_account.slice(-4))) : ''}
+      </div>`;
+  } catch(e) { document.getElementById('vendor-modal-body').innerHTML = '<p style="color:var(--red)">Failed to load.</p>'; }
+}
+
+function field(label, val) {
+  return `<div style="display:flex;gap:12px;justify-content:space-between;border-bottom:1px solid var(--border-dim);padding-bottom:8px">
+    <span style="font-size:11px;color:var(--text-muted)">${label}</span>
+    <span style="font-size:12px;color:var(--text-primary);text-align:right">${val||'—'}</span>
+  </div>`;
+}
+
+document.getElementById('apply-filter').addEventListener('click', () => loadVendors(1));
+document.getElementById('search-input').addEventListener('keydown', e => { if (e.key==='Enter') loadVendors(1); });
+document.getElementById('export-btn').addEventListener('click', () => {
+  exportCSV(allVendors, ['id','businessName','email','phone','type','status','createdAt'], 'vendors.csv');
+});
+
+loadVendors(1);
+</script>
+</body>
+</html>

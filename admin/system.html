@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — System Control</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">System Control</h1>
+          <p class="page-subtitle">Master switches for the entire WorkToGo platform</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="refresh-config">↻ Reload Config</button>
+      </div>
+
+      <!-- Emergency Stop -->
+      <div class="emergency-block" id="emergency-section">
+        <div class="emergency-text">
+          <h3>⚡ Emergency Kill Switch</h3>
+          <p>Instantly halts ALL platform operations. Use only in critical situations.<br>All active sessions, orders, and deliveries will be paused.</p>
+        </div>
+        <button class="btn btn-danger" id="emergency-btn" style="padding:10px 20px;font-size:13px">
+          🛑 EMERGENCY STOP
+        </button>
+      </div>
+
+      <!-- System Toggles -->
+      <div style="margin-top:24px" class="two-col">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Platform Engines</span></div>
+          <div id="engine-toggles">
+            <div class="loading-row" style="padding:30px;text-align:center"><div class="spinner" style="margin:auto"></div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><span class="card-title">Feature Flags</span></div>
+          <div id="feature-toggles">
+            <div class="loading-row" style="padding:30px;text-align:center"><div class="spinner" style="margin:auto"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Delivery & Maps Config -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <span class="card-title">Delivery & Pricing Configuration</span>
+          <button class="btn btn-primary btn-sm" id="save-delivery-config-btn">Save Delivery Settings</button>
+        </div>
+        <div class="card-body">
+          <div class="two-col" id="delivery-config-fields">
+            <div class="form-group">
+                <label class="form-label">BASE FARE (₹)</label>
+                <input type="number" id="cfg-delivery_base_fare" class="form-control" placeholder="30.00">
+            </div>
+            <div class="form-group">
+                <label class="form-label">PER KM RATE (₹)</label>
+                <input type="number" id="cfg-delivery_per_km_rate" class="form-control" placeholder="10.00">
+            </div>
+            <div class="form-group">
+                <label class="form-label">RIDER SHARE (%)</label>
+                <input type="number" id="cfg-delivery_rider_share" class="form-control" placeholder="80">
+            </div>
+            <div class="form-group">
+                <label class="form-label">PLATFORM MARGIN (%)</label>
+                <input type="number" id="cfg-delivery_platform_margin" class="form-control" placeholder="20">
+            </div>
+            <div class="form-group" style="grid-column: span 2">
+                <label class="form-label">GOOGLE MAPS API KEY</label>
+                <input type="password" id="cfg-google_maps_api_key" class="form-control" placeholder="AIza...">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Config Panel -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <span class="card-title">System Configuration</span>
+          <button class="btn btn-primary btn-sm" id="save-config-btn">Save Changes</button>
+        </div>
+        <div class="card-body">
+          <div class="two-col" id="config-fields">
+            <div style="text-align:center;padding:30px;color:var(--text-muted)"><div class="spinner" style="margin:auto"></div></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Emergency Confirm Modal -->
+<div class="modal-overlay" id="emergency-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header" style="border-bottom:1px solid rgba(239,68,68,0.3)">
+      <span class="modal-title" style="color:var(--red)">⚡ Confirm Emergency Stop</span>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-primary);margin-bottom:12px;font-size:13px;line-height:1.7">
+        This will <strong style="color:var(--red)">immediately halt all platform operations</strong> including active orders, deliveries, and payments.
+      </p>
+      <p style="color:var(--text-muted);font-size:12px;margin-bottom:16px">
+        Type <code style="color:var(--red);background:var(--red-dim);padding:2px 6px;border-radius:3px">STOP</code> to confirm.
+      </p>
+      <input type="text" id="emergency-confirm-input" class="form-control" placeholder="Type STOP to confirm…" style="border-color:rgba(239,68,68,0.4)">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="Modal.close('emergency-modal')">Cancel</button>
+      <button class="btn btn-danger" id="confirm-emergency-btn">Execute Emergency Stop</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'System Control', active: 'system.html' });
+
+let systemConfig = {};
+
+async function loadConfig() {
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.SYSTEM_CONFIG);
+    systemConfig = data.config || data;
+    renderEngineToggles(systemConfig);
+    renderFeatureToggles(systemConfig);
+    renderConfigFields(systemConfig);
+    
+    // Load delivery settings from platform_settings
+    const settingsData = await API.get('/admin/settings');
+    if (settingsData && settingsData.settings) {
+        settingsData.settings.forEach(s => {
+            const el = document.getElementById(`cfg-${s.key}`);
+            if (el) el.value = s.value;
+        });
+    }
+  } catch(e) {
+    document.getElementById('engine-toggles').innerHTML  = `<div style="padding:20px;color:var(--red);font-size:12px">Failed to load: ${e.message||''}</div>`;
+    document.getElementById('feature-toggles').innerHTML = `<div style="padding:20px;color:var(--red);font-size:12px">Failed to load</div>`;
+    Toast.error('Failed to load system config');
+  }
+}
+
+function toggle(key, label, enabled, section) {
+  return `<div class="sys-toggle-card">
+    <div class="sys-toggle-info">
+      <div class="sys-toggle-name">${label}</div>
+      <div class="sys-toggle-desc" id="desc-${key}">${enabled ? 'Currently enabled' : 'Currently disabled'}</div>
+    </div>
+    <label class="toggle">
+      <input type="checkbox" id="toggle-${key}" ${enabled ? 'checked' : ''} onchange="onToggle('${key}','${section}',this.checked)">
+      <span class="toggle-slider"></span>
+    </label>
+  </div>`;
+}
+
+function renderEngineToggles(cfg) {
+  const engines = {
+    shoppingEngine:  'Shopping Engine',
+    serviceEngine:   'Service Engine',
+    deliveryEngine:  'Delivery Engine',
+    paymentGateway:  'Payment Gateway',
+  };
+  document.getElementById('engine-toggles').innerHTML = Object.entries(engines)
+    .map(([k, label]) => toggle(k, label, cfg[k] !== false, 'engine'))
+    .join('');
+}
+
+function renderFeatureToggles(cfg) {
+  const features = {
+    userRegistration:   'New User Registration',
+    vendorOnboarding:   'Vendor Onboarding',
+    newOrders:          'Accept New Orders',
+    reviewsEnabled:     'Reviews & Ratings',
+    notificationsEmail: 'Email Notifications',
+    notificationsSMS:   'SMS Notifications',
+    maintenanceMode:    'Maintenance Mode',
+  };
+  document.getElementById('feature-toggles').innerHTML = Object.entries(features)
+    .map(([k, label]) => toggle(k, label, cfg[k] !== false, 'feature'))
+    .join('');
+}
+
+function renderConfigFields(cfg) {
+  const fields = [
+    { key: 'maxOrdersPerHour',   label: 'Max Orders / Hour',   type: 'number' },
+    { key: 'deliveryRadiusKm',   label: 'Delivery Radius (km)',type: 'number' },
+    { key: 'minOrderValue',      label: 'Min Order Value (₹)', type: 'number' },
+    { key: 'platformFeePercent', label: 'Platform Fee (%)',     type: 'number' },
+    { key: 'supportEmail',       label: 'Support Email',        type: 'email'  },
+    { key: 'supportPhone',       label: 'Support Phone',        type: 'text'   },
+  ];
+  document.getElementById('config-fields').innerHTML = fields.map(f => `
+    <div class="form-group">
+      <label class="form-label">${f.label.toUpperCase()}</label>
+      <input type="${f.type}" id="cfg-${f.key}" class="form-control" value="${cfg[f.key]||''}">
+    </div>`).join('');
+}
+
+async function onToggle(key, section, enabled) {
+  const descEl = document.getElementById(`desc-${key}`);
+  try {
+    await API.post(CONFIG.ENDPOINTS.SYSTEM_TOGGLE, { key, enabled });
+    if (descEl) descEl.textContent = enabled ? 'Currently enabled' : 'Currently disabled';
+    Toast.success(`${key} ${enabled ? 'enabled' : 'disabled'}.`);
+  } catch(e) {
+    Toast.error('Failed to update: ' + (e.message||''));
+    // Revert toggle
+    const input = document.getElementById(`toggle-${key}`);
+    if (input) input.checked = !enabled;
+  }
+}
+
+document.getElementById('save-delivery-config-btn').addEventListener('click', async () => {
+  const settings = {};
+  ['delivery_base_fare', 'delivery_per_km_rate', 'delivery_rider_share', 'delivery_platform_margin', 'google_maps_api_key'].forEach(k => {
+    const el = document.getElementById(`cfg-${k}`);
+    if (el) settings[k] = el.value;
+  });
+  try {
+    await API.post('/admin/settings', { settings });
+    Toast.success('Delivery settings saved!');
+  } catch(e) { Toast.error('Failed to save delivery settings: ' + (e.message||'')); }
+});
+
+document.getElementById('save-config-btn').addEventListener('click', async () => {
+  const configPatch = {};
+  ['maxOrdersPerHour','deliveryRadiusKm','minOrderValue','platformFeePercent','supportEmail','supportPhone'].forEach(k => {
+    const el = document.getElementById(`cfg-${k}`);
+    if (el) configPatch[k] = el.type === 'number' ? Number(el.value) : el.value;
+  });
+  try {
+    await API.patch(CONFIG.ENDPOINTS.SYSTEM_CONFIG, configPatch);
+    Toast.success('Configuration saved!');
+  } catch(e) { Toast.error('Failed to save: ' + (e.message||'')); }
+});
+
+// Emergency Stop
+document.getElementById('emergency-btn').addEventListener('click', () => {
+  document.getElementById('emergency-confirm-input').value = '';
+  Modal.open('emergency-modal');
+});
+
+document.getElementById('confirm-emergency-btn').addEventListener('click', async () => {
+  const val = document.getElementById('emergency-confirm-input').value.trim();
+  if (val !== 'STOP') { Toast.warn('Type STOP to confirm.'); return; }
+  try {
+    await API.post(CONFIG.ENDPOINTS.SYSTEM_EMERGENCY);
+    Toast.error('⚡ Emergency stop executed. Platform halted.');
+    Modal.close('emergency-modal');
+    document.getElementById('emergency-btn').textContent = '⚠ SYSTEM HALTED — Click to Resume';
+    document.getElementById('emergency-btn').className = 'btn btn-warn';
+    document.getElementById('emergency-section').style.background = 'var(--red-dim)';
+  } catch(e) { Toast.error('Failed: ' + (e.message||'')); }
+});
+
+document.getElementById('refresh-config').addEventListener('click', loadConfig);
+loadConfig();
+</script>
+</body>
+</html>
