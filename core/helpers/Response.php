@@ -18,6 +18,12 @@ class Response
         ]);
     }
 
+    // ── JSON (Raw) ───────────────────────────────────────────
+    public static function json(array $body, int $code = 200): never
+    {
+        self::send($code, $body);
+    }
+
     // ── Created ──────────────────────────────────────────────
     public static function created(mixed $data = null, string $message = 'Created'): never
     {
