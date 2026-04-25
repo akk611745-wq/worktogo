@@ -132,6 +132,10 @@ if ($contentLength > 1_048_576) {   // 1 MB limit
 $uri    = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/') ?: '/';
 $method = $_SERVER['REQUEST_METHOD'];
 
+if (str_starts_with($uri, '/heart')) {
+    $uri = substr($uri, 6);
+}
+
 // System / DevOps API
 if ($uri === '/api/system/deploy') {
     require_once SYSTEM_ROOT . '/deploy-hook.php';
