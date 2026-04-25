@@ -36,7 +36,7 @@ class AuthController {
         $hash = password_hash($password, PASSWORD_BCRYPT);
         
         $stmt = $this->db->prepare("
-            INSERT INTO users (name, email, password_hash, phone, auth_type, role, created_at)
+            INSERT INTO users (name, email, password, phone, auth_type, role, created_at)
             VALUES (?, ?, ?, ?, 'email', 'customer', NOW())
         ");
         $stmt->execute([$name, $email, $hash, $phone ?: null]);
@@ -77,11 +77,11 @@ class AuthController {
             Response::error('Email and password are required', 400);
         }
 
-        $stmt = $this->db->prepare("SELECT id, name, email, password_hash, role FROM users WHERE email = ? AND auth_type = 'email'");
+        $stmt = $this->db->prepare("SELECT id, name, email, password, role FROM users WHERE email = ? AND auth_type = 'email'");
         $stmt->execute([$email]);
         $userRow = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$userRow || !password_verify($password, $userRow['password_hash'])) {
+        if (!$userRow || !password_verify($password, $userRow['password'])) {
             Response::error('Invalid email or password', 401);
         }
 
