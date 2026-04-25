@@ -4,6 +4,7 @@
 //  Invalidates the current access token and clears refresh tokens.
 // ============================================================
 
+require_once HEART_ROOT . '/middleware/AuthMiddleware.php';
 $auth = AuthMiddleware::require();
 
 // Extract raw token from header for blacklisting

@@ -4,6 +4,7 @@
 //  Returns the currently authenticated user's profile.
 // ============================================================
 
+require_once HEART_ROOT . '/middleware/AuthMiddleware.php';
 $auth = AuthMiddleware::require();
 
 try {
