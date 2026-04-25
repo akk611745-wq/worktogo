@@ -15,7 +15,7 @@ const Auth = {
   },
 
   async login(email, password) {
-    const data = await API.post(CONFIG.ENDPOINTS.LOGIN, { phone: email, password });
+    const data = await API.post("/auth/email/login", { email: email, password });
     if (data.token) {
       localStorage.setItem(CONFIG.TOKEN_KEY, data.token);
       if (data.refreshToken) localStorage.setItem(CONFIG.REFRESH_TOKEN_KEY, data.refreshToken);
