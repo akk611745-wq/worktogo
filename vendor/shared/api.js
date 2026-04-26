@@ -42,7 +42,7 @@ const API = (() => {
      AUTH
   ──────────────────────────────────────────────── */
   const Auth_API = {
-    login: (email, password) => post("/api/auth/login", { email, password }),
+    login: (email, password) => post("/api/auth/email/login", { email, password }),
   };
 
   /* ────────────────────────────────────────────────

@@ -233,6 +233,21 @@ class EngineLoader
         ], JSON_UNESCAPED_UNICODE);
 
         $ch = curl_init($url);
+
+        $headers = [
+            'Content-Type: application/json',
+            'X-Heart-Version: ' . HEART_VERSION,
+            'X-Request-ID: '    . $context['request_id'],
+            'X-Internal-Key: '  . HEART_INTERNAL_KEY,
+            'X-Engine-Name: '   . $name,
+        ];
+
+        // Pass Authorization header to external engines
+        $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+        if ($authHeader !== '') {
+            $headers[] = 'Authorization: ' . $authHeader;
+        }
+
         curl_setopt_array($ch, [
             CURLOPT_POST            => true,
             CURLOPT_POSTFIELDS      => $body,
@@ -240,13 +255,7 @@ class EngineLoader
             CURLOPT_CONNECTTIMEOUT  => self::CONNECT_TIMEOUT_S,
             CURLOPT_TIMEOUT         => $timeout,
             CURLOPT_MAXFILESIZE     => self::MAX_RESPONSE_BYTES,
-            CURLOPT_HTTPHEADER      => [
-                'Content-Type: application/json',
-                'X-Heart-Version: ' . HEART_VERSION,
-                'X-Request-ID: '    . $context['request_id'],
-                'X-Internal-Key: '  . HEART_INTERNAL_KEY,
-                'X-Engine-Name: '   . $name,
-            ],
+            CURLOPT_HTTPHEADER      => $headers,
         ]);
 
         return $ch;

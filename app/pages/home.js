@@ -5,7 +5,6 @@
  */
 
 export async function render(container) {
-  if (!AUTH.requireAuth()) return;
   const user = AUTH.getUser();
 
   container.innerHTML = `
@@ -143,6 +142,12 @@ window.HomeModals = (() => {
   }
 
   async function confirmOrder() {
+    if (!AUTH.isLoggedIn()) {
+      UI.toast("Please login to place an order", "error");
+      close();
+      ROUTER.go("login");
+      return;
+    }
     if (!_currentProduct) return;
     const qty   = parseInt(document.getElementById("order-qty-val")?.textContent) || 1;
     const notes = document.getElementById("order-notes")?.value?.trim() || "";
@@ -193,6 +198,12 @@ window.HomeModals = (() => {
   }
 
   async function confirmBooking() {
+    if (!AUTH.isLoggedIn()) {
+      UI.toast("Please login to book a service", "error");
+      closeBooking();
+      ROUTER.go("login");
+      return;
+    }
     if (!_currentService) return;
     const dateVal = document.getElementById("booking-date")?.value;
     const notes   = document.getElementById("booking-notes")?.value?.trim() || "";
