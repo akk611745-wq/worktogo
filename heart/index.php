@@ -129,6 +129,14 @@ if ($contentLength > 1_048_576) {   // 1 MB limit
 }
 
 // ── 4. Standard REST Dispatcher (Non-Pipeline) ───────────────
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    header('Access-Control-Allow-Origin: *');
+    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, Accept');
+    http_response_code(200);
+    exit;
+}
+
 $uri    = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/') ?: '/';
 $method = $_SERVER['REQUEST_METHOD'];
 
