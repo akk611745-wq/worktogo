@@ -36,8 +36,8 @@ class AuthController {
         $hash = password_hash($password, PASSWORD_BCRYPT);
         
         $stmt = $this->db->prepare("
-            INSERT INTO users (name, email, password, phone, auth_type, role, created_at)
-            VALUES (?, ?, ?, ?, 'email', 'customer', NOW())
+            INSERT INTO users (uuid, name, email, password, phone, auth_type, role, created_at)
+            VALUES (UUID(), ?, ?, ?, ?, 'email', 'customer', NOW())
         ");
         $stmt->execute([$name, $email, $hash, $phone ?: null]);
         $userId = $this->db->lastInsertId();
@@ -162,8 +162,8 @@ class AuthController {
             // INSERT
             $role = 'customer';
             $stmt = $this->db->prepare("
-                INSERT INTO users (name, email, google_id, auth_type, role, created_at)
-                VALUES (?, ?, ?, 'google', ?, NOW())
+                INSERT INTO users (uuid, name, email, google_id, auth_type, role, created_at)
+                VALUES (UUID(), ?, ?, ?, 'google', ?, NOW())
             ");
             $stmt->execute([$name, $email, $googleId, $role]);
             $userId = $this->db->lastInsertId();
@@ -195,8 +195,8 @@ class AuthController {
         $name = 'Guest_' . $guestNumber;
         
         $stmt = $this->db->prepare("
-            INSERT INTO users (name, auth_type, role, is_guest, guest_expires_at, created_at)
-            VALUES (?, 'guest', 'customer', 1, DATE_ADD(NOW(), INTERVAL 24 HOUR), NOW())
+            INSERT INTO users (uuid, name, auth_type, role, is_guest, guest_expires_at, created_at)
+            VALUES (UUID(), ?, 'guest', 'customer', 1, DATE_ADD(NOW(), INTERVAL 24 HOUR), NOW())
         ");
         $stmt->execute([$name]);
         $userId = $this->db->lastInsertId();
