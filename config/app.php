@@ -35,3 +35,9 @@ define('JWT_SECRET',    getenv('JWT_SECRET') ?: 'change-me-in-production');
 define('JWT_EXPIRY',    (int)(getenv('JWT_EXPIRY') ?: 3600));
 define('JWT_REFRESH_EXP', (int)(getenv('JWT_REFRESH_EXP') ?: 86400 * 30));
 
+// OTP Constants
+define('OTP_LENGTH', 6);
+define('OTP_EXPIRY', 300); // 5 minutes
+define('OTP_RESEND_WAIT', 60); // 1 minute
+define('OTP_MAX_ATTEMPTS', 3);
+

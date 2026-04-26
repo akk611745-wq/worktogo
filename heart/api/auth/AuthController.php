@@ -102,7 +102,8 @@ class AuthController {
         Response::json([
             'success' => true,
             'token' => $token,
-            'user' => $user
+            'user' => $user,
+            'admin' => ($userRow['role'] === 'admin' ? $user : null)
         ]);
     }
 

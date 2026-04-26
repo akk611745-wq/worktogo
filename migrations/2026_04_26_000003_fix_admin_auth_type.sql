@@ -1,0 +1,1 @@
+UPDATE users SET auth_type = 'email' WHERE role = 'admin' AND auth_type != 'email';
