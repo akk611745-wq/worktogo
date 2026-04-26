@@ -799,7 +799,7 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `uuid`, `name`, `phone`, `email`, `password`, `role`, `status`, `avatar_url`, `phone_verified_at`, `last_login_at`, `google_id`, `auth_type`, `is_guest`, `guest_expires_at`, `created_at`, `updated_at`, `deleted_at`) VALUES
-(1, '54102bd6-3ee0-11f1-9a7b-d342d04f188b', 'Admin', '+919528544548', '', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9G2C2r8j6Yk5o0r8Qb6j5K', 'admin', 'active', NULL, NULL, NULL, NULL, 'phone', 0, NULL, '2026-04-23 06:47:42', '2026-04-24 09:40:41', NULL);
+(1, '54102bd6-3ee0-11f1-9a7b-d342d04f188b', 'Admin', '+919528544548', 'admin@worktogo.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9G2C2r8j6Yk5o0r8Qb6j5K', 'admin', 'active', NULL, NULL, NULL, NULL, 'email', 0, NULL, '2026-04-23 06:47:42', '2026-04-24 09:40:41', NULL);
 
 -- --------------------------------------------------------
 

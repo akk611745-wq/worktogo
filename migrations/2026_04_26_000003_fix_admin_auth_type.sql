@@ -1,1 +1,1 @@
-UPDATE users SET auth_type = 'email' WHERE role = 'admin' AND auth_type != 'email';
+UPDATE users SET auth_type = 'email', email = 'admin@worktogo.com' WHERE role = 'admin' AND email = '';
