@@ -27,7 +27,7 @@ const ROUTER = (() => {
     // Phase 3: creator: () => import('../pages/creator.js'),
   };
 
-  const PUBLIC_PAGES = ["login"];
+  const PUBLIC_PAGES = ["login", "home", "register", "services", "products", "search"];
   const POLLABLE_PAGES = ["orders", "bookings"];
 
   let _currentPage = null;

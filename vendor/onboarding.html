@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vendor Onboarding — WorkToGo</title>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+<style>
+  :root {
+    --accent: #e94560;
+    --bg-main: #f8f9fa;
+    --font-main: 'Inter', system-ui, sans-serif;
+    --text-dark: #333;
+    --text-light: #666;
+    --border-color: #e2e8f0;
+    --card-bg: #ffffff;
+    --green: #10b981;
+    --red: #ef4444;
+    --btn-disabled: #cbd5e1;
+  }
+  
+  body {
+    font-family: var(--font-main);
+    margin: 0;
+    background: var(--bg-main);
+    color: var(--text-dark);
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  /* TOP PROGRESS BAR */
+  .progress-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    z-index: 100;
+  }
+  .progress-bar-wrapper {
+    display: flex;
+    gap: 4px;
+    height: 6px;
+    padding: 0 10px;
+    margin-top: 10px;
+  }
+  .progress-segment {
+    flex: 1;
+    background: #e2e8f0;
+    border-radius: 3px;
+    transition: background 0.3s;
+  }
+  .progress-segment.filled {
+    background: var(--accent);
+  }
+  .progress-text {
+    text-align: center;
+    padding: 10px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-dark);
+  }
+  .back-btn {
+    position: absolute;
+    left: 15px;
+    top: 20px;
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: var(--text-dark);
+    display: none;
+  }
+
+  /* MAIN LAYOUT */
+  .main-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 20px 20px 20px; /* Offset for progress bar */
+  }
+  .step-container {
+    width: 100%;
+    max-width: 480px;
+    background: white;
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+    display: none;
+  }
+  .step-container.active {
+    display: block;
+    animation: fadeIn 0.3s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .step-title {
+    font-size: 1.5rem;
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    text-align: center;
+  }
+  .step-subtitle {
+    text-align: center;
+    color: var(--text-light);
+    margin-bottom: 2rem;
+    font-size: 0.95rem;
+  }
+
+  /* CARDS (Step 1 & Categories) */
+  .card-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  @media (min-width: 480px) {
+    .card-grid.row { flex-direction: row; }
+    .card-grid.row .type-card { flex: 1; }
+  }
+  
+  .type-card {
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+    position: relative;
+    background: white;
+  }
+  .type-card:hover:not(.locked) {
+    border-color: #fca5a5;
+  }
+  .type-card.selected {
+    border-color: var(--accent);
+    background: #fff1f2;
+  }
+  .type-card.locked {
+    background: #f1f5f9;
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+  .card-icon {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+  }
+  .card-title {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+  .card-desc {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin-bottom: 0.5rem;
+  }
+  .card-examples {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-style: italic;
+  }
+  .badge-locked {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: var(--text-dark);
+    color: white;
+    font-size: 0.7rem;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-weight: bold;
+  }
+  .checkmark {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    color: var(--accent);
+    font-size: 1.2rem;
+    display: none;
+  }
+  .type-card.selected .checkmark { display: block; }
+
+  /* CATEGORY GRID */
+  .cat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 2rem;
+  }
+  @media (min-width: 480px) { .cat-grid { grid-template-columns: 1fr 1fr 1fr; } }
+  
+  .cat-card {
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem 0.5rem;
+    text-align: center;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  .cat-card.selected {
+    border-color: var(--accent);
+    background: #fff1f2;
+    color: var(--accent);
+  }
+
+  /* FORMS */
+  .form-group {
+    margin-bottom: 1.5rem;
+  }
+  .form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    font-size: 0.9rem;
+  }
+  .form-control {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-sizing: border-box;
+    font-family: inherit;
+    font-size: 1rem;
+  }
+  .form-control:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .form-control[readonly] {
+    background: #f1f5f9;
+    color: #64748b;
+  }
+  textarea.form-control { resize: vertical; min-height: 80px; }
+  
+  .photo-preview {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: #e2e8f0;
+    margin-top: 10px;
+    object-fit: cover;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+
+  /* RADIO BUTTONS (Availability) */
+  .radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 1.5rem;
+  }
+  .radio-label {
+    display: flex;
+    align-items: center;
+    padding: 12px 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .radio-label:hover { border-color: #fca5a5; }
+  .radio-label input { margin-right: 10px; accent-color: var(--accent); width: 18px; height: 18px; }
+  
+  /* BUTTONS */
+  .btn-container {
+    display: flex;
+    gap: 10px;
+    margin-top: 2rem;
+  }
+  .btn {
+    padding: 14px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: center;
+    transition: all 0.2s;
+    min-height: 48px;
+  }
+  .btn-next {
+    background: var(--accent);
+    color: white;
+    flex: 1;
+  }
+  .btn-next:disabled {
+    background: var(--btn-disabled);
+    cursor: not-allowed;
+  }
+  .btn-back {
+    background: #f1f5f9;
+    color: var(--text-dark);
+    width: 100px;
+  }
+  .btn-skip {
+    background: none;
+    color: var(--text-light);
+    font-size: 0.9rem;
+    margin-top: 15px;
+    display: block;
+    text-align: center;
+    width: 100%;
+    text-decoration: underline;
+    cursor: pointer;
+    border: none;
+  }
+
+  /* PREVIEW CARD */
+  .preview-card {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    margin-bottom: 1.5rem;
+    text-align: center;
+  }
+  .preview-avatar {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 10px;
+    background: #eee;
+  }
+  .preview-name { font-size: 1.2rem; font-weight: bold; margin-bottom: 5px; }
+  .preview-loc { color: var(--text-light); font-size: 0.9rem; margin-bottom: 10px; }
+  .preview-badge {
+    display: inline-block;
+    background: #fff1f2;
+    color: var(--accent);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+  .checklist { margin-bottom: 2rem; font-size: 0.95rem; }
+  .checklist div { margin-bottom: 8px; display: flex; gap: 8px; }
+
+  .btn-golive {
+    background: linear-gradient(135deg, #e94560, #ff6b81);
+    color: white;
+    width: 100%;
+    font-size: 1.1rem;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(233, 69, 96, 0.4); }
+    70% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(233, 69, 96, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(233, 69, 96, 0); }
+  }
+
+  /* TOAST */
+  #toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .toast {
+    padding: 12px 24px;
+    border-radius: 4px;
+    color: white;
+    animation: slideIn 0.3s ease-out forwards;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  }
+  .toast.success { background: var(--green); }
+  .toast.error { background: var(--red); }
+  @keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- PROGRESS BAR -->
+  <div class="progress-container">
+    <button class="back-btn" id="topBackBtn" onclick="prevStep()">← Back</button>
+    <div class="progress-bar-wrapper" id="progressBar">
+      <div class="progress-segment filled"></div>
+      <div class="progress-segment"></div>
+      <div class="progress-segment"></div>
+      <div class="progress-segment"></div>
+      <div class="progress-segment"></div>
+    </div>
+    <div class="progress-text" id="progressText">Step 1 of 5 — Account Type</div>
+  </div>
+
+  <div class="main-content">
+    
+    <!-- STEP 1: VENDOR TYPE -->
+    <div class="step-container active" id="step1">
+      <h1 class="step-title">Welcome to WorkToGo! 👋</h1>
+      <p class="step-subtitle">Pehle batao — aap kya sell karte ho?</p>
+
+      <div class="card-grid row">
+        <div class="type-card" id="card-shopping" onclick="selectVendorType('shopping')">
+          <div class="checkmark">✔</div>
+          <div class="card-icon">🛍️</div>
+          <div class="card-title">Shopping Vendor</div>
+          <div class="card-desc">Main products sell karta hoon</div>
+          <div class="card-examples">Kapde, electronics, groceries...</div>
+        </div>
+
+        <div class="type-card" id="card-service" onclick="selectVendorType('service')">
+          <div class="checkmark">✔</div>
+          <div class="card-icon">🔧</div>
+          <div class="card-title">Service Vendor</div>
+          <div class="card-desc">Main services provide karta hoon</div>
+          <div class="card-examples">Plumber, electrician, tutor...</div>
+        </div>
+      </div>
+
+      <div class="card-grid">
+        <div class="type-card locked">
+          <div class="badge-locked">🔒 Coming Soon</div>
+          <div class="card-icon">🎬</div>
+          <div class="card-title">Creator</div>
+          <div class="card-desc">Digital products & content</div>
+        </div>
+      </div>
+
+      <div class="btn-container">
+        <button class="btn btn-next" id="btnNext1" disabled onclick="nextStep()">Next →</button>
+      </div>
+    </div>
+
+    <!-- STEP 2: BASIC INFO -->
+    <div class="step-container" id="step2">
+      <h1 class="step-title">Apni basic details bharein</h1>
+      <p class="step-subtitle">Yeh information customers ko dikhegi</p>
+
+      <div class="form-group">
+        <label>Full Name *</label>
+        <input type="text" id="f_name" class="form-control" placeholder="Aapka poora naam" oninput="validateStep2()">
+      </div>
+      <div class="form-group">
+        <label>Business / Store Name *</label>
+        <input type="text" id="f_biz" class="form-control" placeholder="Aapki dukan/business ka naam" oninput="validateStep2()">
+      </div>
+      <div class="form-group">
+        <label>Phone Number</label>
+        <input type="text" id="f_phone" class="form-control" placeholder="10-digit mobile number" readonly>
+      </div>
+      <div class="form-group">
+        <label>City / Area *</label>
+        <input type="text" id="f_city" class="form-control" placeholder="Jaise: Haldwani, Ramnagar" oninput="validateStep2()">
+      </div>
+      <div class="form-group">
+        <label>Profile Photo URL (Optional)</label>
+        <input type="url" id="f_photo" class="form-control" placeholder="Photo ka URL paste karo" oninput="updatePhotoPreview()">
+        <img src="https://ui-avatars.com/api/?name=Vendor&background=random" id="photo_preview" class="photo-preview">
+      </div>
+
+      <div class="btn-container">
+        <button class="btn btn-back" onclick="prevStep()">← Back</button>
+        <button class="btn btn-next" id="btnNext2" disabled onclick="nextStep()">Next →</button>
+      </div>
+    </div>
+
+    <!-- STEP 3: CATEGORY -->
+    <div class="step-container" id="step3">
+      <h1 class="step-title" id="s3_title">Categories</h1>
+      <p class="step-subtitle" id="s3_subtitle">Select category</p>
+
+      <div id="cat_container" class="cat-grid">
+        <!-- populated by JS -->
+      </div>
+
+      <div class="btn-container">
+        <button class="btn btn-back" onclick="prevStep()">← Back</button>
+        <button class="btn btn-next" id="btnNext3" disabled onclick="nextStep()">Next →</button>
+      </div>
+    </div>
+
+    <!-- STEP 4: FIRST LISTING -->
+    <div class="step-container" id="step4">
+      <h1 class="step-title" id="s4_title">First Listing</h1>
+      <p class="step-subtitle" id="s4_subtitle">Basic info</p>
+
+      <div id="form_shopping" style="display:none;">
+        <div class="form-group">
+          <label>Product Title *</label>
+          <input type="text" id="p_title" class="form-control" placeholder="Jaise: Cotton Kurti Set" oninput="validateStep4()">
+        </div>
+        <div style="display:flex; gap:10px;">
+          <div class="form-group" style="flex:1;">
+            <label>Price ₹ *</label>
+            <input type="number" id="p_price" class="form-control" min="1" oninput="validateStep4()">
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>Stock Qty *</label>
+            <input type="number" id="p_stock" class="form-control" min="0" oninput="validateStep4()">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Product Photo URL (Optional)</label>
+          <input type="url" id="p_photo" class="form-control" oninput="document.getElementById('p_prev').src=this.value||'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='">
+          <img src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" id="p_prev" style="width:40px;height:40px;object-fit:cover;margin-top:5px;border-radius:4px;background:#eee;">
+        </div>
+        <p style="font-size:0.8rem; color:var(--text-light);">💡 Aur products dashboard se add kar sakte ho</p>
+      </div>
+
+      <div id="form_service" style="display:none;">
+        <div class="form-group">
+          <label>Service Name *</label>
+          <input type="text" id="srv_name" class="form-control" placeholder="Jaise: Home Electrical Repair" oninput="validateStep4()">
+        </div>
+        <div style="display:flex; gap:10px;">
+          <div class="form-group" style="flex:1;">
+            <label>Base Price ₹ *</label>
+            <input type="number" id="srv_price" class="form-control" placeholder="e.g. 300" oninput="validateStep4()">
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>Coverage Area (km)</label>
+            <input type="number" id="srv_area" class="form-control" value="10">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Description *</label>
+          <textarea id="srv_desc" class="form-control" maxlength="200" placeholder="Apni service describe karo..." oninput="validateStep4()"></textarea>
+        </div>
+        
+        <h3 style="font-size:1rem; margin-top:1.5rem;">Aap kab available ho?</h3>
+        <div class="radio-group">
+          <label class="radio-label"><input type="radio" name="avail" value="Mon-Fri"> Mon–Fri (9 AM – 6 PM)</label>
+          <label class="radio-label"><input type="radio" name="avail" value="Mon-Sat" checked> Mon–Sat (9 AM – 6 PM)</label>
+          <label class="radio-label"><input type="radio" name="avail" value="Everyday"> Every Day (9 AM – 6 PM)</label>
+        </div>
+        <p style="font-size:0.8rem; color:var(--text-light);">💡 Dashboard se customize kar sakte ho</p>
+      </div>
+
+      <div class="btn-container">
+        <button class="btn btn-back" onclick="prevStep()">← Back</button>
+        <button class="btn btn-next" id="btnNext4" disabled onclick="nextStep()">Next →</button>
+      </div>
+      <button class="btn-skip" onclick="skipStep4()">Skip this step →</button>
+    </div>
+
+    <!-- STEP 5: PREVIEW & LIVE -->
+    <div class="step-container" id="step5">
+      <h1 class="step-title">Sab ready hai! 🎉</h1>
+      <p class="step-subtitle">Yeh aapka profile customers ko dikhega:</p>
+
+      <div class="preview-card">
+        <img src="" id="prev_avatar" class="preview-avatar">
+        <div class="preview-name" id="prev_biz">Business Name</div>
+        <div class="preview-loc" id="prev_loc">📍 City</div>
+        <div class="preview-badge" id="prev_badge">🛍️ Shopping</div>
+        <div style="font-weight:500; font-size:0.95rem; margin-top:10px; color:var(--accent);" id="prev_listing">
+          1 Product Listed
+        </div>
+      </div>
+
+      <div class="checklist">
+        <div>✅ Profile created</div>
+        <div>✅ Category selected</div>
+        <div id="check_listing">✅ First listing added</div>
+        <div>✅ Ready to receive orders</div>
+      </div>
+
+      <button class="btn btn-golive" id="btnGoLive" onclick="goLive()">🚀 Go Live!</button>
+      <p style="text-align:center; font-size:0.8rem; color:var(--text-light); margin-top:15px;">
+        Aap baad mein apna profile edit kar sakte ho dashboard se
+      </p>
+    </div>
+
+  </div>
+
+  <div id="toast-container"></div>
+
+<script>
+  const API_BASE = '/api';
+  
+  // STATE
+  const state = {
+    step: 1,
+    vendor_type: null,
+    name: '',
+    business_name: '',
+    phone: '',
+    city: '',
+    profile_photo_url: '',
+    category_id: null,
+    service_categories: [], // max 3
+    first_listing: null, // obj if filled, null if skipped
+    availability: null
+  };
+
+  const stepTitles = [
+    "Account Type",
+    "Basic Info",
+    "Categories",
+    "First Listing",
+    "Preview"
+  ];
+
+  // INIT
+  window.onload = () => {
+    checkAuth();
+    loadDefaults();
+    updateUI();
+  };
+
+  function checkAuth() {
+    const token = localStorage.getItem('vendor_token');
+    if(!token) {
+      window.location.href = '/vendor/login.html';
+      return;
+    }
+    // simple jwt decode for phone
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if(payload.phone) {
+        state.phone = payload.phone;
+        document.getElementById('f_phone').value = payload.phone;
+      }
+    } catch(e){}
+  }
+
+  async function loadDefaults() {
+    try {
+      const res = await fetch(`${API_BASE}/settings`);
+      const data = await res.json();
+      if(data.platform_city) {
+        document.getElementById('f_city').value = data.platform_city;
+        state.city = data.platform_city;
+        validateStep2();
+      }
+    } catch(e){}
+  }
+
+  function showToast(msg, type='success') {
+    const cont = document.getElementById('toast-container');
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    cont.appendChild(t);
+    setTimeout(()=>t.remove(), 3000);
+  }
+
+  // NAVIGATION
+  function nextStep() {
+    saveCurrentStepData();
+    if(state.step < 5) {
+      state.step++;
+      if(state.step === 3) populateCategories();
+      if(state.step === 4) setupListingForm();
+      if(state.step === 5) generatePreview();
+      updateUI();
+    }
+  }
+  function prevStep() {
+    if(state.step > 1) {
+      state.step--;
+      updateUI();
+    }
+  }
+
+  function updateUI() {
+    // Hide all steps
+    document.querySelectorAll('.step-container').forEach(el => el.classList.remove('active'));
+    // Show current
+    document.getElementById(`step${state.step}`).classList.add('active');
+    
+    // Update Progress Bar
+    const segments = document.querySelectorAll('.progress-segment');
+    segments.forEach((seg, idx) => {
+      if(idx < state.step) seg.classList.add('filled');
+      else seg.classList.remove('filled');
+    });
+    
+    document.getElementById('progressText').textContent = `Step ${state.step} of 5 — ${stepTitles[state.step-1]}`;
+    document.getElementById('topBackBtn').style.display = state.step > 1 ? 'block' : 'none';
+  }
+
+  function saveCurrentStepData() {
+    if(state.step === 2) {
+      state.name = document.getElementById('f_name').value.trim();
+      state.business_name = document.getElementById('f_biz').value.trim();
+      state.city = document.getElementById('f_city').value.trim();
+      state.profile_photo_url = document.getElementById('f_photo').value.trim();
+    }
+    if(state.step === 4) {
+      if(state.vendor_type === 'shopping') {
+        state.first_listing = {
+          title: document.getElementById('p_title').value.trim(),
+          price: document.getElementById('p_price').value,
+          stock: document.getElementById('p_stock').value,
+          photo: document.getElementById('p_photo').value.trim()
+        };
+      } else {
+        state.first_listing = {
+          name: document.getElementById('srv_name').value.trim(),
+          price: document.getElementById('srv_price').value,
+          area: document.getElementById('srv_area').value,
+          desc: document.getElementById('srv_desc').value.trim()
+        };
+        state.availability = document.querySelector('input[name="avail"]:checked').value;
+      }
+    }
+  }
+
+  // STEP 1
+  function selectVendorType(type) {
+    state.vendor_type = type;
+    document.getElementById('card-shopping').classList.remove('selected');
+    document.getElementById('card-service').classList.remove('selected');
+    document.getElementById(`card-${type}`).classList.add('selected');
+    document.getElementById('btnNext1').disabled = false;
+  }
+
+  // STEP 2
+  function updatePhotoPreview() {
+    const url = document.getElementById('f_photo').value;
+    const img = document.getElementById('photo_preview');
+    img.src = url ? url : `https://ui-avatars.com/api/?name=${document.getElementById('f_biz').value || 'Vendor'}&background=random`;
+  }
+  function validateStep2() {
+    const n = document.getElementById('f_name').value.trim();
+    const b = document.getElementById('f_biz').value.trim();
+    const c = document.getElementById('f_city').value.trim();
+    document.getElementById('btnNext2').disabled = !(n.length >= 2 && b.length >= 2 && c.length >= 2);
+    updatePhotoPreview();
+  }
+
+  // STEP 3
+  async function populateCategories() {
+    const container = document.getElementById('cat_container');
+    container.innerHTML = '<div style="text-align:center;grid-column:1/-1;">Loading...</div>';
+    
+    if(state.vendor_type === 'shopping') {
+      document.getElementById('s3_title').textContent = "Aap kya sell karte ho?";
+      document.getElementById('s3_subtitle').textContent = "Apni main category chunein";
+      
+      let cats = [
+        {id:1, name:'Grocery', icon:'🛒'}, {id:2, name:'Clothing', icon:'👕'},
+        {id:3, name:'Electronics', icon:'📱'}, {id:4, name:'Home & Kitchen', icon:'🏠'},
+        {id:5, name:'Medicine', icon:'💊'}, {id:6, name:'Food & Snacks', icon:'🍎'}
+      ];
+      try {
+        const res = await fetch(`${API_BASE}/categories`);
+        const data = await res.json();
+        if(data && data.length) cats = data;
+      } catch(e){}
+
+      container.innerHTML = cats.map(c => `
+        <div class="cat-card" id="cat_${c.id}" onclick="selectCategory('${c.id}', 'single')">
+          <div style="font-size:2rem;margin-bottom:5px;">${c.icon || '📦'}</div>
+          <div>${c.name}</div>
+        </div>
+      `).join('');
+    } else {
+      document.getElementById('s3_title').textContent = "Aap kaunsi services offer karte ho?";
+      document.getElementById('s3_subtitle').textContent = "Select up to 3 services (0/3 selected)";
+      
+      let cats = [
+        {id:1, name:'Plumber', icon:'🔧'}, {id:2, name:'Electrician', icon:'⚡'},
+        {id:3, name:'Tutor', icon:'🎓'}, {id:4, name:'Cleaner', icon:'🧹'},
+        {id:5, name:'Cook/Chef', icon:'🍳'}, {id:6, name:'Driver', icon:'🚗'},
+        {id:7, name:'Salon', icon:'💇'}, {id:8, name:'Pet Care', icon:'🐾'}
+      ];
+      try {
+        const res = await fetch(`${API_BASE}/service-categories`);
+        const data = await res.json();
+        if(data && data.length) cats = data;
+      } catch(e){}
+
+      container.innerHTML = cats.map(c => `
+        <div class="cat-card" id="scat_${c.id}" onclick="selectCategory('${c.id}', 'multi')">
+          <div style="font-size:2rem;margin-bottom:5px;">${c.icon || '🛠'}</div>
+          <div>${c.name}</div>
+        </div>
+      `).join('');
+    }
+    validateStep3();
+  }
+
+  function selectCategory(id, mode) {
+    if(mode === 'single') {
+      state.category_id = id;
+      document.querySelectorAll('.cat-card').forEach(el => el.classList.remove('selected'));
+      document.getElementById(`cat_${id}`).classList.add('selected');
+    } else {
+      const idx = state.service_categories.indexOf(id);
+      if(idx > -1) {
+        state.service_categories.splice(idx, 1);
+        document.getElementById(`scat_${id}`).classList.remove('selected');
+      } else {
+        if(state.service_categories.length >= 3) return showToast('Max 3 allowed', 'error');
+        state.service_categories.push(id);
+        document.getElementById(`scat_${id}`).classList.add('selected');
+      }
+      document.getElementById('s3_subtitle').textContent = `Select up to 3 services (${state.service_categories.length}/3 selected)`;
+    }
+    validateStep3();
+  }
+  function validateStep3() {
+    const btn = document.getElementById('btnNext3');
+    if(state.vendor_type === 'shopping') btn.disabled = !state.category_id;
+    else btn.disabled = state.service_categories.length === 0;
+  }
+
+  // STEP 4
+  function setupListingForm() {
+    document.getElementById('form_shopping').style.display = state.vendor_type === 'shopping' ? 'block' : 'none';
+    document.getElementById('form_service').style.display = state.vendor_type === 'service' ? 'block' : 'none';
+    
+    if(state.vendor_type === 'shopping') {
+      document.getElementById('s4_title').textContent = "Apna pehla product add karo! 🛍️";
+      document.getElementById('s4_subtitle').textContent = "Sirf basic info — baad mein edit kar sakte ho";
+    } else {
+      document.getElementById('s4_title').textContent = "Apni service setup karo! 🔧";
+      document.getElementById('s4_subtitle').textContent = "Customers ko batao aap kya offer karte ho";
+    }
+    validateStep4();
+  }
+
+  function validateStep4() {
+    const btn = document.getElementById('btnNext4');
+    if(state.vendor_type === 'shopping') {
+      const t = document.getElementById('p_title').value.trim();
+      const p = document.getElementById('p_price').value;
+      const s = document.getElementById('p_stock').value;
+      btn.disabled = !(t && p >= 1 && s >= 0 && p !== '' && s !== '');
+    } else {
+      const n = document.getElementById('srv_name').value.trim();
+      const p = document.getElementById('srv_price').value;
+      const d = document.getElementById('srv_desc').value.trim();
+      btn.disabled = !(n && p > 0 && d);
+    }
+  }
+
+  function skipStep4() {
+    state.first_listing = null; // explicitly skipped
+    state.step = 5;
+    generatePreview();
+    updateUI();
+  }
+
+  // STEP 5
+  function generatePreview() {
+    const avatar = state.profile_photo_url || `https://ui-avatars.com/api/?name=${state.business_name}&background=random`;
+    document.getElementById('prev_avatar').src = avatar;
+    document.getElementById('prev_biz').textContent = state.business_name;
+    document.getElementById('prev_loc').textContent = `📍 ${state.city}`;
+    
+    document.getElementById('prev_badge').textContent = state.vendor_type === 'shopping' ? '🛍️ Shopping' : '🔧 Service';
+    
+    if(state.first_listing) {
+      document.getElementById('check_listing').textContent = "✅ First listing added";
+      if(state.vendor_type === 'shopping') {
+        document.getElementById('prev_listing').textContent = `1 Product: ${state.first_listing.title} (₹${state.first_listing.price})`;
+      } else {
+        document.getElementById('prev_listing').textContent = `Service: ${state.first_listing.name} (₹${state.first_listing.price})`;
+      }
+    } else {
+      document.getElementById('check_listing').textContent = "✅ Listing skipped — add from dashboard";
+      document.getElementById('prev_listing').textContent = "Ready to add listings";
+    }
+  }
+
+  async function goLive() {
+    const btn = document.getElementById('btnGoLive');
+    btn.disabled = true;
+    btn.innerHTML = 'Publishing... <span style="font-size:0.8em">⏳</span>';
+    btn.style.animation = 'none';
+
+    try {
+      const token = localStorage.getItem('vendor_token');
+      const payload = {
+        vendor_type: state.vendor_type,
+        name: state.name,
+        business_name: state.business_name,
+        phone: state.phone,
+        city: state.city,
+        profile_photo_url: state.profile_photo_url,
+        category_id: state.category_id,
+        service_categories: state.service_categories,
+        first_listing: state.first_listing,
+        availability: state.availability
+      };
+
+      const res = await fetch(`${API_BASE}/vendor/complete-onboarding`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok) throw new Error(data.message || data.error || 'Failed to complete onboarding');
+
+      // SUCCESS!
+      confetti({ particleCount: 150, spread: 80, origin: {y: 0.6} });
+      btn.innerHTML = '✅ You\'re Live!';
+      btn.style.background = 'var(--green)';
+      
+      setTimeout(() => {
+        window.location.href = state.vendor_type === 'shopping' 
+          ? '/vendor/dashboard-shopping.html' 
+          : '/vendor/dashboard-service.html';
+      }, 2000);
+
+    } catch(err) {
+      showToast(err.message, 'error');
+      btn.disabled = false;
+      btn.innerHTML = '🚀 Try Again';
+      btn.style.animation = 'pulse 2s infinite';
+    }
+  }
+
+</script>
+</body>
+</html>

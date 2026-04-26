@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Dashboard — WorkToGo Vendor</title>
+<link rel="stylesheet" href="assets/style.css"/>
+<script src="config.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script src="shared/realtime.js"></script>
+<script src="shared/analytics.js"></script>
+</head>
+<body>
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+  const user = initShell("Dashboard");
+  if (!user) return;
+
+  const el = document.getElementById("pageContent");
+  const isService  = user.role === CONFIG.ROLES.SERVICE;
+  const isShopping = user.role === CONFIG.ROLES.SHOPPING;
+  const name = user.name || user.business_name || "Vendor";
+
+  el.innerHTML =
+    '<div class="page-header"><div>' +
+    '<h1 class="page-title">Dashboard</h1>' +
+    '<p class="page-sub">Welcome back, ' + name + '! Here\'s your live overview.</p>' +
+    '</div></div>' +
+
+    '<div class="stat-grid" id="statGrid">' +
+    '<div class="stat-card"><div style="display:flex;justify-content:center;padding:1rem;"><div class="spinner"></div></div></div>' +
+    '</div>' +
+
+    '<div id="analyticsSection" style="margin-bottom:1.25rem;"></div>' +
+
+    '<div class="card">' +
+    '<div class="card-header">' +
+    '<span class="card-title" id="recentTitle">Recent Activity</span>' +
+    '<a href="' + (isService ? 'bookings.html' : 'orders.html') + '" class="btn btn-ghost btn-sm">View All &rarr;</a>' +
+    '</div>' +
+    '<div class="card-body table-wrap">' +
+    '<table><thead><tr id="recentThead"></tr></thead><tbody id="recentTbody"><tr class="loading-row"><td colspan="5"><div class="spinner"></div></td></tr></tbody></table>' +
+    '</div></div>';
+
+  // Load summary
+  const summaryRes = await API.Dashboard.getSummary();
+  const s = summaryRes.ok ? (summaryRes.data?.data || summaryRes.data || {}) : {};
+
+  if (isService) renderServiceDash(s);
+  else renderShoppingDash(s);
+
+  // Load recent items for analytics + recent table
+  let recentItems = [];
+  if (isService) {
+    const res = await API.Bookings.list();
+    recentItems = res.ok ? (res.data?.data || res.data || []) : [];
+    loadRecentBookings(recentItems);
+  } else {
+    const res = await API.Orders.list();
+    recentItems = res.ok ? (res.data?.data || res.data || []) : [];
+    loadRecentOrders(recentItems);
+  }
+
+  // Analytics section
+  if (recentItems.length) {
+    const stats = Analytics.compute(recentItems, isService ? 'amount' : 'total_amount');
+    document.getElementById('analyticsSection').innerHTML = Analytics.renderHTML(stats, isService);
+  }
+
+  // Start realtime (bell + badge on sidebar)
+  RealtimeEngine.start({
+    fetchFn: async () => {
+      const res = isService ? await API.Bookings.list() : await API.Orders.list();
+      return res.ok ? (res.data?.data || res.data || []) : [];
+    },
+    onNew: (newItems) => {
+      // Refresh dashboard on new items
+      location.reload();
+    },
+    type: isService ? 'Booking' : 'Order',
+    interval: 10000,
+  });
+
+  const ri = document.getElementById('refreshIndicator');
+  if (ri) ri.style.display = 'flex';
+});
+
+function renderServiceDash(s) {
+  document.getElementById("statGrid").innerHTML =
+    '<div class="stat-card c-amber" style="animation-delay:.05s"><div class="stat-label">Total Bookings</div><div class="stat-value">' + (s.total_bookings ?? '—') + '</div><div class="stat-sub">All time</div><div class="stat-icon">&#x1F4C5;</div></div>' +
+    '<div class="stat-card c-green" style="animation-delay:.10s"><div class="stat-label">Completed</div><div class="stat-value">' + (s.completed_bookings ?? '—') + '</div><div class="stat-sub">Jobs done</div><div class="stat-icon">&#x2705;</div></div>' +
+    '<div class="stat-card c-blue" style="animation-delay:.15s"><div class="stat-label">Pending</div><div class="stat-value">' + (s.pending_bookings ?? '—') + '</div><div class="stat-sub">Awaiting action</div><div class="stat-icon">&#x23F3;</div></div>' +
+    '<div class="stat-card c-amber" style="animation-delay:.20s"><div class="stat-label">Earnings</div><div class="stat-value">' + (s.total_earnings ? fmtCurrency(s.total_earnings) : '—') + '</div><div class="stat-sub">Total revenue</div><div class="stat-icon">&#x1F4B0;</div></div>';
+  document.getElementById("recentTitle").textContent = "Recent Bookings";
+}
+
+function renderShoppingDash(s) {
+  document.getElementById("statGrid").innerHTML =
+    '<div class="stat-card c-amber" style="animation-delay:.05s"><div class="stat-label">Total Orders</div><div class="stat-value">' + (s.total_orders ?? '—') + '</div><div class="stat-sub">All time</div><div class="stat-icon">&#x1F6CD;&#xFE0F;</div></div>' +
+    '<div class="stat-card c-green" style="animation-delay:.10s"><div class="stat-label">Revenue</div><div class="stat-value">' + (s.total_earnings ? fmtCurrency(s.total_earnings) : '—') + '</div><div class="stat-sub">Total sales</div><div class="stat-icon">&#x1F4B0;</div></div>' +
+    '<div class="stat-card c-blue" style="animation-delay:.15s"><div class="stat-label">Products</div><div class="stat-value">' + (s.total_products ?? '—') + '</div><div class="stat-sub">Listed</div><div class="stat-icon">&#x1F4E6;</div></div>' +
+    '<div class="stat-card c-red" style="animation-delay:.20s"><div class="stat-label">Pending Orders</div><div class="stat-value">' + (s.pending_orders ?? '—') + '</div><div class="stat-sub">Needs attention</div><div class="stat-icon">&#x23F3;</div></div>';
+  document.getElementById("recentTitle").textContent = "Recent Orders";
+}
+
+function loadRecentBookings(items) {
+  const thead = document.getElementById("recentThead");
+  const tbody = document.getElementById("recentTbody");
+  thead.innerHTML = '<th>ID</th><th>Customer</th><th>Service</th><th>Date</th><th>Status</th>';
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">&#x1F4C5;</div><div class="empty-text">No bookings yet</div></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = items.slice(0,5).map(b =>
+    '<tr>' +
+    '<td class="text-sm text-muted">#' + (b.id||b._id) + '</td>' +
+    '<td>' + escHtml(b.customer_name||b.user?.name||'—') + '</td>' +
+    '<td>' + escHtml(b.service_name||b.service?.name||'—') + '</td>' +
+    '<td class="text-sm">' + fmtDate(b.date||b.booking_date||b.created_at) + '</td>' +
+    '<td>' + statusBadge(b.status) + '</td>' +
+    '</tr>'
+  ).join('');
+}
+
+function loadRecentOrders(items) {
+  const thead = document.getElementById("recentThead");
+  const tbody = document.getElementById("recentTbody");
+  thead.innerHTML = '<th>Order ID</th><th>Customer</th><th>Items</th><th>Amount</th><th>Status</th>';
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">&#x1F6CD;&#xFE0F;</div><div class="empty-text">No orders yet</div></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = items.slice(0,5).map(o =>
+    '<tr>' +
+    '<td class="text-sm text-muted">#' + (o.id||o._id) + '</td>' +
+    '<td>' + escHtml(o.customer_name||o.user?.name||'—') + '</td>' +
+    '<td class="text-sm">' + (o.items_count||o.items?.length||'—') + ' items</td>' +
+    '<td>' + fmtCurrency(o.total_amount||o.total) + '</td>' +
+    '<td>' + statusBadge(o.status) + '</td>' +
+    '</tr>'
+  ).join('');
+}
+
+function escHtml(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

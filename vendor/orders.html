@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Orders — WorkToGo Vendor</title>
+<link rel="stylesheet" href="assets/style.css"/>
+<script src="config.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script src="shared/realtime.js"></script>
+<script src="shared/analytics.js"></script>
+</head>
+<body>
+<script>
+let allOrders     = [];
+let currentFilter = "all";
+
+document.addEventListener("DOMContentLoaded", async () => {
+  const user = initShell("Orders");
+  if (!user) return;
+
+  if (user.role !== CONFIG.ROLES.SHOPPING) {
+    document.getElementById("pageContent").innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🚫</div>
+        <div class="empty-text">This section is only available for Shopping Vendors.</div>
+      </div>`;
+    return;
+  }
+
+  renderPage();
+  await loadOrders();
+
+  // ── Start real-time polling ──
+  RealtimeEngine.start({
+    fetchFn: async () => {
+      const res = await API.Orders.list();
+      return res.ok ? (res.data?.data || res.data || []) : [];
+    },
+    onNew: (newItems) => {
+      newItems.forEach(item => {
+        const id = String(item.id || item._id);
+        if (!allOrders.find(o => String(o.id || o._id) === id)) {
+          allOrders.unshift(item);
+        }
+      });
+      _updateAnalytics();
+      applyFilter();
+      _setRefreshLabel();
+    },
+    type: 'Order',
+    interval: 7000,
+  });
+
+  const ri = document.getElementById('refreshIndicator');
+  if (ri) ri.style.display = 'flex';
+});
+
+function renderPage() {
+  const el = document.getElementById("pageContent");
+  el.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Orders</h1>
+        <p class="page-sub">Live order management &middot; <span id="lastRefreshLabel" class="text-muted">Loading&hellip;</span></p>
+      </div>
+    </div>
+
+    <div id="analyticsStrip"></div>
+
+    <div class="filter-bar" style="gap:0.4rem;margin-bottom:0.75rem;">
+      <button class="btn btn-sm btn-primary"   id="tab-all"       onclick="setFilter('all')">All</button>
+      <button class="btn btn-sm btn-ghost"      id="tab-pending"   onclick="setFilter('pending')">Pending</button>
+      <button class="btn btn-sm btn-ghost"      id="tab-confirmed" onclick="setFilter('confirmed')">Confirmed</button>
+      <button class="btn btn-sm btn-ghost"      id="tab-ready"     onclick="setFilter('ready')">Ready</button>
+      <button class="btn btn-sm btn-ghost"      id="tab-delivered" onclick="setFilter('delivered')">Delivered</button>
+      <button class="btn btn-sm btn-ghost"      id="tab-cancelled" onclick="setFilter('cancelled')">Cancelled</button>
+      <input type="text" class="search-input" id="searchInput" placeholder="Search orders&hellip;" oninput="applyFilter()" style="margin-left:auto;"/>
+    </div>
+
+    <div class="card">
+      <div class="card-body table-wrap" style="padding:0;">
+        <table>
+          <thead>
+            <tr>
+              <th>Order ID</th><th>Customer</th><th>Items</th>
+              <th>Amount</th><th>Date</th><th>Status</th><th>Quick Actions</th>
+            </tr>
+          </thead>
+          <tbody id="orderTbody">
+            <tr class="loading-row"><td colspan="7"><div class="spinner"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="orderModal">
+      <div class="modal" style="max-width:560px;">
+        <div class="modal-header">
+          <span class="modal-title">Order Details</span>
+          <button class="modal-close" onclick="closeModal('orderModal')">&#x2715;</button>
+        </div>
+        <div class="modal-body" id="orderDetailBody">&#8212;</div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal('orderModal')">Close</button>
+          <div id="statusActions"></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function loadOrders() {
+  const res = await API.Orders.list();
+  if (!res.ok) { showToast(res.data?.message || "Failed to load orders.", "error"); renderOrderRows([]); return; }
+  allOrders = res.data?.data || res.data || [];
+  _updateAnalytics();
+  applyFilter();
+  _setRefreshLabel();
+}
+
+function _updateAnalytics() {
+  const strip = document.getElementById('analyticsStrip');
+  if (!strip) return;
+  if (!allOrders.length) { strip.innerHTML = ''; return; }
+  const stats = Analytics.compute(allOrders, 'total_amount');
+  strip.innerHTML = Analytics.renderHTML(stats, false);
+}
+
+function _setRefreshLabel() {
+  const el = document.getElementById('lastRefreshLabel');
+  if (el) el.textContent = 'Updated ' + new Date().toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function setFilter(status) {
+  currentFilter = status;
+  document.querySelectorAll("[id^='tab-']").forEach(b => {
+    b.classList.toggle("btn-primary", b.id === 'tab-' + status);
+    b.classList.toggle("btn-ghost",   b.id !== 'tab-' + status);
+  });
+  applyFilter();
+}
+
+function applyFilter() {
+  const q = document.getElementById("searchInput")?.value || '';
+  let list = currentFilter === "all" ? allOrders : allOrders.filter(o => o.status === currentFilter);
+  if (q.trim()) list = filterItems(list, q, ['id', '_id', 'customer_name']);
+  renderOrderRows(list);
+}
+
+const STATUS_COLOR = { pending:'#f59e0b', confirmed:'#3b82f6', ready:'#f97316', delivered:'#10b981', cancelled:'#ef4444' };
+const ORDER_LIFECYCLE = ['pending','confirmed','ready','delivered'];
+
+function _chip(status) {
+  const c = STATUS_COLOR[status] || '#6b7280';
+  return '<span style="display:inline-flex;align-items:center;gap:4px;padding:0.2rem 0.6rem;border-radius:20px;font-size:0.72rem;font-weight:600;background:' + c + '1a;color:' + c + ';border:1px solid ' + c + '40;text-transform:capitalize;"><span style="width:6px;height:6px;border-radius:50%;background:' + c + ';flex-shrink:0;"></span>' + (status||'') + '</span>';
+}
+
+function _quickBtns(id, status) {
+  if (status === 'pending')
+    return '<button class="btn btn-sm btn-accept" onclick="updateStatus(\'' + id + '\',\'confirmed\')">Accept</button><button class="btn btn-sm btn-reject" onclick="rejectOrder(\'' + id + '\')">Reject</button>';
+  if (status === 'confirmed')
+    return '<button class="btn btn-sm btn-ready" onclick="updateStatus(\'' + id + '\',\'ready\')">Mark Ready</button>';
+  if (status === 'ready')
+    return '<button class="btn btn-sm btn-accept" onclick="updateStatus(\'' + id + '\',\'delivered\')">Delivered</button>';
+  return '<span class="text-muted text-sm">&mdash;</span>';
+}
+
+function renderOrderRows(list) {
+  const tbody = document.getElementById("orderTbody");
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">&#x1F6D2;</div><div class="empty-text">No orders found.</div></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(o => {
+    const id = o.id || o._id;
+    return '<tr id="row-' + id + '">' +
+      '<td class="text-sm fw-bold" style="cursor:pointer;color:var(--accent);" onclick="viewOrder(\'' + id + '\')">#' + id + '</td>' +
+      '<td>' + escHtml(o.customer_name || o.user?.name || '—') + '</td>' +
+      '<td class="text-sm">' + (o.items_count || o.items?.length || '?') + ' item(s)</td>' +
+      '<td class="fw-bold">' + fmtCurrency(o.total_amount || o.total) + '</td>' +
+      '<td class="text-sm text-muted">' + fmtDate(o.created_at || o.date) + '</td>' +
+      '<td>' + _chip(o.status) + '</td>' +
+      '<td><div class="td-actions" style="gap:0.3rem;flex-wrap:wrap;"><button class="btn btn-ghost btn-sm" onclick="viewOrder(\'' + id + '\')">View</button>' + _quickBtns(id, o.status) + '</div></td>' +
+      '</tr>';
+  }).join('');
+}
+
+async function viewOrder(id) {
+  const order = allOrders.find(o => (o.id || o._id) == id);
+  if (!order) return;
+  const body  = document.getElementById("orderDetailBody");
+  const actEl = document.getElementById("statusActions");
+
+  const currentIdx = ORDER_LIFECYCLE.indexOf(order.status);
+  const timelineHtml = '<div class="order-timeline">' + ORDER_LIFECYCLE.map((step, i) => {
+    const isDone = i < currentIdx, isActive = i === currentIdx;
+    const conn = i < ORDER_LIFECYCLE.length - 1 ? '<div class="timeline-connector ' + (isDone?'done':(isActive?'active':'')) + '"></div>' : '';
+    return '<div class="timeline-step ' + (isDone?'done':'') + ' ' + (isActive?'active':'') + '"><div class="step-dot">' + (isDone?'&#x2713;':(i+1)) + '</div><div class="step-label">' + step + '</div></div>' + conn;
+  }).join('') + '</div>';
+
+  body.innerHTML = timelineHtml +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:1rem;">' +
+    '<div><div class="text-muted text-sm">Order ID</div><div class="fw-bold">#' + (order.id || order._id) + '</div></div>' +
+    '<div><div class="text-muted text-sm">Status</div><div>' + _chip(order.status) + '</div></div>' +
+    '<div><div class="text-muted text-sm">Customer</div><div>' + escHtml(order.customer_name || order.user?.name || '—') + '</div></div>' +
+    '<div><div class="text-muted text-sm">Date</div><div>' + fmtDateTime(order.created_at || order.date) + '</div></div>' +
+    '<div><div class="text-muted text-sm">Total</div><div class="fw-bold">' + fmtCurrency(order.total_amount || order.total) + '</div></div>' +
+    '<div><div class="text-muted text-sm">Payment</div><div>' + (order.payment_method || '—') + '</div></div>' +
+    '</div>' +
+    (order.delivery_address ? '<div style="margin-bottom:1rem;"><div class="text-muted text-sm">Delivery Address</div><div class="text-sm" style="margin-top:2px;">' + escHtml(order.delivery_address) + '</div></div>' : '') +
+    (order.items?.length ? '<div class="text-muted text-sm" style="margin-bottom:0.4rem;">Items</div><table style="width:100%;font-size:0.82rem;border-collapse:collapse;"><thead><tr style="background:var(--surface-2);"><th style="padding:0.4rem 0.6rem;text-align:left;color:var(--text-3);font-size:0.7rem;text-transform:uppercase;">Product</th><th style="padding:0.4rem 0.6rem;text-align:right;">Qty</th><th style="padding:0.4rem 0.6rem;text-align:right;">Price</th></tr></thead><tbody>' + order.items.map(i => '<tr style="border-bottom:1px solid var(--border);"><td style="padding:0.4rem 0.6rem;">' + escHtml(i.product_name||i.name||'—') + '</td><td style="padding:0.4rem 0.6rem;text-align:right;">' + (i.quantity||1) + '</td><td style="padding:0.4rem 0.6rem;text-align:right;">' + fmtCurrency(i.price||i.unit_price) + '</td></tr>').join('') + '</tbody></table>' : '');
+
+  const oid = order.id || order._id;
+  let ah = '';
+  if (order.status === 'pending') {
+    ah = '<button class="btn btn-reject" onclick="rejectOrder(\'' + oid + '\');closeModal(\'orderModal\');">Reject</button><button class="btn btn-accept" onclick="updateStatus(\'' + oid + '\',\'confirmed\');closeModal(\'orderModal\');">Accept</button>';
+  } else if (order.status === 'confirmed') {
+    ah = '<button class="btn btn-ready" onclick="updateStatus(\'' + oid + '\',\'ready\');closeModal(\'orderModal\');">Mark Ready</button>';
+  } else if (order.status === 'ready') {
+    ah = '<button class="btn btn-accept" onclick="updateStatus(\'' + oid + '\',\'delivered\');closeModal(\'orderModal\');">Mark Delivered</button>';
+  }
+  actEl.innerHTML = ah;
+  openModal("orderModal");
+}
+
+async function updateStatus(id, status) {
+  const res = await API.Orders.updateStatus(id, status);
+  if (!res.ok) { showToast(res.data?.message || "Update failed.", "error"); return; }
+  showToast('Order marked as ' + cap(status) + '.', "success");
+  const idx = allOrders.findIndex(o => (o.id || o._id) == id);
+  if (idx !== -1) allOrders[idx].status = status;
+  _updateAnalytics();
+  applyFilter();
+}
+
+async function rejectOrder(id) {
+  if (!confirmAction("Cancel/reject this order?")) return;
+  const res = await API.Orders.updateStatus(id, 'cancelled');
+  if (!res.ok) { showToast(res.data?.message || "Update failed.", "error"); return; }
+  showToast("Order cancelled.", "info");
+  const idx = allOrders.findIndex(o => (o.id || o._id) == id);
+  if (idx !== -1) allOrders[idx].status = 'cancelled';
+  _updateAnalytics();
+  applyFilter();
+}
+
+function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+function escHtml(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

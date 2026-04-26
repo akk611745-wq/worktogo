@@ -1,0 +1,1583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Service Vendor Dashboard — WorkToGo</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root {
+    --sidebar-bg: #1a1a2e;
+    --accent: #e94560;
+    --bg-main: #f4f5f7;
+    --font-main: 'Inter', system-ui, sans-serif;
+    --text-dark: #333;
+    --text-light: #666;
+    --border-color: #e2e8f0;
+    --card-bg: #ffffff;
+    --green: #10b981;
+    --blue: #3b82f6;
+    --purple: #8b5cf6;
+    --orange: #f59e0b;
+    --red: #ef4444;
+    --yellow: #eab308;
+    --gray: #9ca3af;
+  }
+  
+  body {
+    font-family: var(--font-main);
+    margin: 0;
+    background: var(--bg-main);
+    color: var(--text-dark);
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 250px;
+    background: var(--sidebar-bg);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    height: 100vh;
+    left: 0;
+    top: 0;
+    z-index: 100;
+    transition: transform 0.3s ease;
+  }
+  .sidebar-header {
+    padding: 1.5rem;
+    font-size: 1.5rem;
+    font-weight: bold;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+  .sidebar-nav {
+    flex: 1;
+    padding: 1rem 0;
+    overflow-y: auto;
+  }
+  .nav-item {
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #cbd5e1;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .nav-item:hover, .nav-item.active {
+    background: rgba(255,255,255,0.1);
+    color: white;
+    border-left: 4px solid var(--accent);
+  }
+  
+  /* MAIN CONTENT */
+  .main-content {
+    flex: 1;
+    margin-left: 250px;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+  
+  /* HEADER */
+  .header {
+    background: white;
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+  .mobile-menu-btn {
+    display: none;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+  }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .notification-bell {
+    position: relative;
+    cursor: pointer;
+    font-size: 1.25rem;
+  }
+  .notification-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: var(--red);
+    color: white;
+    font-size: 0.7rem;
+    padding: 2px 5px;
+    border-radius: 10px;
+    font-weight: bold;
+  }
+  
+  /* NOTIFICATIONS PANEL */
+  .notifications-panel {
+    display: none;
+    position: absolute;
+    top: 60px;
+    right: 20px;
+    width: 320px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 200;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  .notifications-panel.active { display: block; }
+  .notifications-header {
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: bold;
+  }
+  .mark-read-btn {
+    font-size: 0.8rem;
+    color: var(--blue);
+    cursor: pointer;
+  }
+  .notification-item {
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    gap: 10px;
+  }
+  .notification-item.unread {
+    background: #eff6ff;
+    font-weight: bold;
+  }
+  
+  /* PAGE SECTIONS */
+  .page-section {
+    display: none;
+    padding: 1.5rem;
+  }
+  .page-section.active {
+    display: block;
+  }
+  .section-title {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+  }
+  
+  /* STATS CARDS */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .stat-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .stat-card.loading .stat-value { color: transparent; background: #eee; border-radius: 4px; }
+  .stat-label { color: var(--text-light); font-size: 0.9rem; margin-bottom: 0.5rem; }
+  .stat-value { font-size: 1.8rem; font-weight: bold; display: flex; align-items: center; gap: 8px; }
+  .card-blue .stat-value { color: var(--blue); }
+  .card-green .stat-value { color: var(--green); }
+  .card-yellow .stat-value { color: var(--yellow); }
+  .card-purple .stat-value { color: var(--purple); }
+
+  /* TABS */
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 1.5rem;
+    overflow-x: auto;
+  }
+  .tab-btn {
+    padding: 10px 20px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text-light);
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .badge {
+    background: var(--red);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    margin-left: 5px;
+  }
+  
+  /* TABLES */
+  .table-wrapper {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    overflow-x: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+  }
+  th, td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+  }
+  th {
+    background: #f8fafc;
+    font-weight: 600;
+    color: var(--text-light);
+  }
+  
+  /* BUTTONS */
+  .btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    font-family: inherit;
+    transition: opacity 0.2s;
+  }
+  .btn:hover { opacity: 0.9; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-accent { background: var(--accent); color: white; }
+  .btn-green { background: var(--green); color: white; }
+  .btn-blue { background: var(--blue); color: white; }
+  .btn-red { background: var(--red); color: white; }
+  .btn-outline { background: transparent; border: 1px solid var(--border-color); }
+  .btn-sm { padding: 4px 8px; font-size: 0.85rem; }
+  .btn-full { width: 100%; }
+  
+  /* STATUS BADGES */
+  .status-badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+  .status-green { background: #d1fae5; color: #065f46; }
+  .status-yellow { background: #fef3c7; color: #92400e; }
+  .status-red { background: #fee2e2; color: #991b1b; }
+
+  /* CHARTS */
+  .chart-container {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 2rem;
+  }
+  .chart-summary {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.5rem;
+    flex-wrap: wrap;
+  }
+  .summary-pill {
+    background: #f8fafc;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-weight: 500;
+    border: 1px solid var(--border-color);
+  }
+
+  /* FORMS & INPUTS */
+  .form-group { margin-bottom: 1.5rem; }
+  .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+  .form-control {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-family: inherit;
+  }
+  .form-control:disabled { background: #f3f4f6; color: #9ca3af; }
+  textarea.form-control { resize: vertical; min-height: 100px; }
+  
+  /* MODALS */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+  
+  .modal-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  
+  /* SCHEDULE SETUP */
+  .schedule-row {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+  }
+  .schedule-row.disabled { background: #f9fafb; opacity: 0.6; }
+  .schedule-day { width: 100px; font-weight: bold; }
+  .toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 20px;
+  }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #ccc; transition: .4s; border-radius: 20px;
+  }
+  .slider:before {
+    position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px;
+    background-color: white; transition: .4s; border-radius: 50%;
+  }
+  input:checked + .slider { background-color: var(--accent); }
+  input:checked + .slider:before { transform: translateX(20px); }
+
+  /* CALENDAR */
+  .calendar-wrapper {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-weight: bold; font-size: 1.2rem; }
+  .calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+  }
+  .calendar-day-header { text-align: center; font-weight: bold; padding: 10px; background: #f8fafc; }
+  .calendar-day {
+    aspect-ratio: 1; border: 1px solid var(--border-color);
+    padding: 5px; cursor: pointer; position: relative;
+    display: flex; flex-direction: column; align-items: flex-end;
+  }
+  .calendar-day:hover { background: #f1f5f9; }
+  .calendar-day.empty { background: #f8fafc; cursor: default; border: none; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-top: auto; align-self: center; }
+  .dot.red { background: var(--red); }
+  .dot.yellow { background: var(--yellow); }
+  .dot.green { background: var(--green); }
+  .dot.gray { background: var(--gray); }
+  .calendar-legend { margin-top: 1rem; display: flex; gap: 1rem; font-size: 0.9rem; justify-content: center; }
+
+  /* PORTFOLIO */
+  .portfolio-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1.5rem;
+  }
+  .portfolio-card {
+    background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    overflow: hidden; position: relative;
+  }
+  .portfolio-images { display: flex; height: 150px; }
+  .portfolio-images img { width: 50%; object-fit: cover; }
+  .portfolio-info { padding: 1rem; }
+  .portfolio-delete { position: absolute; top: 5px; right: 5px; background: rgba(0,0,0,0.5); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  
+  /* REVIEWS */
+  .review-overall { display: flex; align-items: center; gap: 2rem; background: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .review-big-score { font-size: 3rem; font-weight: bold; color: var(--text-dark); }
+  .review-bars { flex: 1; }
+  .review-bar-row { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; margin-bottom: 5px; }
+  .review-bar-outer { flex: 1; height: 8px; background: #eee; border-radius: 4px; overflow: hidden; }
+  .review-bar-inner { height: 100%; background: var(--yellow); }
+  .review-card { background: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .review-header { display: flex; gap: 10px; align-items: center; margin-bottom: 1rem; }
+  .review-avatar { width: 40px; height: 40px; background: #e2e8f0; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+  .review-stars { color: var(--yellow); }
+  .vendor-reply { background: #f8fafc; padding: 1rem; border-left: 3px solid var(--accent); margin-top: 1rem; font-size: 0.9rem; }
+
+  /* PROFILE TAGS */
+  .tags-input-container { border: 1px solid var(--border-color); padding: 5px; border-radius: 4px; display: flex; flex-wrap: wrap; gap: 5px; background: white; }
+  .tag { background: var(--bg-main); padding: 5px 10px; border-radius: 4px; font-size: 0.85rem; display: flex; align-items: center; gap: 5px; }
+  .tag-remove { cursor: pointer; color: var(--text-light); }
+  .tags-input-container input { border: none; outline: none; flex: 1; min-width: 100px; padding: 5px; }
+
+  /* CREATOR CARD */
+  .creator-card { background: white; padding: 1.5rem; border-radius: 8px; text-align: center; position: relative; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .creator-card.locked::before { content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(244,245,247,0.7); z-index: 1; }
+  .creator-content { position: relative; z-index: 2; }
+
+  /* TOAST */
+  #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; }
+  .toast { padding: 12px 24px; border-radius: 4px; color: white; animation: slideIn 0.3s ease-out forwards; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+  .toast.success { background: var(--green); }
+  .toast.error { background: var(--red); }
+  .toast.info { background: var(--blue); }
+  @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  /* LOADER */
+  .loader { border: 3px solid #f3f3f3; border-top: 3px solid var(--accent); border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; margin: 20px auto; }
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+  /* RESPONSIVE */
+  @media (max-width: 768px) {
+    .sidebar { transform: translateX(-100%); }
+    .sidebar.active { transform: translateX(0); }
+    .main-content { margin-left: 0; }
+    .mobile-menu-btn { display: block; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .schedule-row { flex-wrap: wrap; gap: 0.5rem; }
+  }
+  @media (max-width: 480px) {
+    .stats-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">Service Vendor</div>
+    <nav class="sidebar-nav">
+      <a class="nav-item active" onclick="showSection('dashboard')">📊 Dashboard</a>
+      <a class="nav-item" onclick="showSection('bookings')">📅 Bookings</a>
+      <a class="nav-item" onclick="showSection('availability')">🗓️ Availability</a>
+      <a class="nav-item" onclick="showSection('portfolio')">🖼️ Portfolio</a>
+      <a class="nav-item" onclick="showSection('analytics')">📈 Analytics</a>
+      <a class="nav-item" onclick="showSection('reviews')">⭐ Reviews</a>
+      <a class="nav-item" onclick="showSection('profile')">👤 Profile</a>
+      <a class="nav-item" onclick="toggleNotifications()">🔔 Notifications</a>
+      <a class="nav-item" onclick="logout()">🚪 Logout</a>
+    </nav>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <div class="main-content">
+    <header class="header">
+      <button class="mobile-menu-btn" onclick="document.getElementById('sidebar').classList.toggle('active')">☰</button>
+      <div style="font-weight: 600;">WorkToGo Service Vendor</div>
+      <div class="header-actions">
+        <div class="notification-bell" onclick="toggleNotifications()">
+          🔔 <span class="notification-badge" id="nav-bell-badge" style="display:none;">0</span>
+        </div>
+      </div>
+      
+      <!-- Notifications Dropdown -->
+      <div class="notifications-panel" id="notificationsPanel">
+        <div class="notifications-header">
+          Notifications <span class="mark-read-btn" onclick="markNotificationsRead()">Mark all read</span>
+        </div>
+        <div id="notificationsList">
+          <div style="padding: 1rem; text-align: center; color: #666;">Loading...</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- SECTION: DASHBOARD (Top Stats) -->
+    <main class="page-section active" id="sec-dashboard">
+      <h1 class="section-title">Dashboard</h1>
+      
+      <div class="stats-grid" id="dashboard-stats">
+        <div class="stat-card card-blue loading">
+          <div class="stat-label">Bookings Today</div>
+          <div class="stat-value" id="stat-bookings">-</div>
+        </div>
+        <div class="stat-card card-green loading">
+          <div class="stat-label">Revenue This Week</div>
+          <div class="stat-value" id="stat-revenue">-</div>
+        </div>
+        <div class="stat-card card-yellow loading">
+          <div class="stat-label">My Rating</div>
+          <div class="stat-value" id="stat-rating">-</div>
+        </div>
+        <div class="stat-card card-purple loading">
+          <div class="stat-label">Followers</div>
+          <div class="stat-value" id="stat-followers">-</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- SECTION: BOOKINGS -->
+    <main class="page-section" id="sec-bookings">
+      <h1 class="section-title">Bookings</h1>
+      
+      <div class="tabs">
+        <button class="tab-btn active" onclick="loadBookings('incoming', this)">Incoming <span class="badge" id="incoming-badge" style="display:none;">0</span></button>
+        <button class="tab-btn" onclick="loadBookings('confirmed', this)">Active</button>
+        <button class="tab-btn" onclick="loadBookings('completed', this)">Completed</button>
+        <button class="tab-btn" onclick="loadBookings('cancelled', this)">Cancelled</button>
+      </div>
+
+      <div class="table-wrapper">
+        <table id="bookingsTable">
+          <thead>
+            <tr>
+              <th>Booking ID</th>
+              <th>Customer</th>
+              <th>Service</th>
+              <th>Date & Time</th>
+              <th>Area/Address</th>
+              <th>Amount ₹</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="bookingsTableBody">
+            <tr><td colspan="7" style="text-align: center;">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+
+    <!-- SECTION: AVAILABILITY -->
+    <main class="page-section" id="sec-availability">
+      <h1 class="section-title">My Weekly Schedule</h1>
+      <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 2rem;">
+        <div id="scheduleContainer">
+          <!-- Populated by JS -->
+        </div>
+        <button class="btn btn-accent btn-full" style="margin-top: 1rem;" onclick="saveSchedule()">Save Schedule</button>
+      </div>
+
+      <h1 class="section-title">Booking Calendar</h1>
+      <div class="calendar-wrapper">
+        <div class="calendar-header">
+          <button class="btn btn-outline btn-sm" onclick="changeMonth(-1)">◀ Prev</button>
+          <span id="calendarMonthLabel">Month YYYY</span>
+          <button class="btn btn-outline btn-sm" onclick="changeMonth(1)">Next ▶</button>
+        </div>
+        <div class="calendar-grid">
+          <div class="calendar-day-header">Sun</div><div class="calendar-day-header">Mon</div><div class="calendar-day-header">Tue</div>
+          <div class="calendar-day-header">Wed</div><div class="calendar-day-header">Thu</div><div class="calendar-day-header">Fri</div><div class="calendar-day-header">Sat</div>
+          <!-- Days populated by JS -->
+        </div>
+        <div class="calendar-legend">
+          <span><span class="dot red" style="display:inline-block; margin-right:5px;"></span>Full</span>
+          <span><span class="dot yellow" style="display:inline-block; margin-right:5px;"></span>Partial</span>
+          <span><span class="dot green" style="display:inline-block; margin-right:5px;"></span>Free</span>
+          <span><span class="dot gray" style="display:inline-block; margin-right:5px;"></span>Unavailable</span>
+        </div>
+      </div>
+    </main>
+
+    <!-- SECTION: PORTFOLIO -->
+    <main class="page-section" id="sec-portfolio">
+      <h1 class="section-title">My Work Portfolio</h1>
+      <p style="color: var(--text-light); margin-top: -1rem; margin-bottom: 1.5rem;">Show customers your best work — before & after photos</p>
+      
+      <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 2rem;">
+        <h3 style="margin-top:0;">Add New Portfolio Item</h3>
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+          <div class="form-group" style="flex:1; min-width: 200px;">
+            <label>Before Image URL</label>
+            <input type="url" id="port_before" class="form-control" required>
+          </div>
+          <div class="form-group" style="flex:1; min-width: 200px;">
+            <label>After Image URL</label>
+            <input type="url" id="port_after" class="form-control" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Caption (optional)</label>
+          <input type="text" id="port_caption" class="form-control">
+        </div>
+        <div class="form-group">
+          <label>Service Type</label>
+          <select id="port_service" class="form-control">
+            <option value="">Loading categories...</option>
+          </select>
+        </div>
+        <button class="btn btn-accent" onclick="addPortfolio()">Add to Portfolio</button>
+      </div>
+
+      <div class="portfolio-grid" id="portfolioGrid">
+        <!-- Populated by JS -->
+      </div>
+    </main>
+
+    <!-- SECTION: ANALYTICS -->
+    <main class="page-section" id="sec-analytics">
+      <h1 class="section-title">My Performance</h1>
+      <div class="chart-container">
+        <h2>Bookings — Last 4 Weeks</h2>
+        <canvas id="bookingsChart" height="250"></canvas>
+      </div>
+      <div class="chart-summary" id="analyticsSummary" style="margin-top: -1rem; margin-bottom: 2rem;">
+        <!-- Populated by JS -->
+      </div>
+    </main>
+
+    <!-- SECTION: REVIEWS -->
+    <main class="page-section" id="sec-reviews">
+      <h1 class="section-title">Customer Reviews</h1>
+      <div class="review-overall" id="reviewsOverall">
+        <!-- Populated by JS -->
+      </div>
+      <div id="reviewsList">
+        <!-- Populated by JS -->
+      </div>
+    </main>
+
+    <!-- SECTION: PROFILE -->
+    <main class="page-section" id="sec-profile">
+      <h1 class="section-title">My Service Profile</h1>
+      <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 2rem; max-width: 700px;">
+        <form onsubmit="saveProfile(event)">
+          <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" id="prof_name" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Bio (<span id="bioCounter">0</span>/500)</label>
+            <textarea id="prof_bio" class="form-control" maxlength="500" oninput="document.getElementById('bioCounter').innerText=this.value.length"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Skills</label>
+            <div class="tags-input-container" id="skillsContainer">
+              <input type="text" id="prof_skill_input" placeholder="Type skill and press Enter" onkeydown="handleSkillInput(event)">
+            </div>
+          </div>
+          <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+            <div class="form-group" style="flex:1;">
+              <label>Service Area Coverage (km radius)</label>
+              <input type="number" id="prof_radius" class="form-control" min="1">
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label>Base Pricing</label>
+              <input type="text" id="prof_pricing" class="form-control" placeholder="e.g. ₹500 onwards">
+            </div>
+          </div>
+          <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+            <div class="form-group" style="flex:1;">
+              <label>WhatsApp Number</label>
+              <input type="text" id="prof_whatsapp" class="form-control">
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label>Years of Experience</label>
+              <input type="number" id="prof_exp" class="form-control" min="0">
+            </div>
+          </div>
+          
+          <h3 style="margin-top: 1.5rem; margin-bottom: 1rem; border-bottom: 1px solid #eee; padding-bottom: 0.5rem;">Upload proof of certifications</h3>
+          <div class="form-group">
+            <label>Certification 1 URL</label>
+            <input type="url" id="prof_cert_1" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Certification 2 URL</label>
+            <input type="url" id="prof_cert_2" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Certification 3 URL</label>
+            <input type="url" id="prof_cert_3" class="form-control">
+          </div>
+
+          <button type="submit" class="btn btn-accent" id="btnSaveProfile">Save Profile</button>
+        </form>
+      </div>
+
+      <!-- Become Creator Card -->
+      <div class="creator-card locked" id="creatorCard" style="max-width: 700px;">
+        <div class="creator-content">
+          <div style="font-size: 3rem; margin-bottom: 1rem;">🎬</div>
+          <h2 style="margin-top: 0;">Unlock Creator Mode</h2>
+          <p>Complete 10 bookings to unlock video content creation.</p>
+          <div style="background: #e2e8f0; height: 10px; border-radius: 5px; overflow: hidden; margin: 1rem auto; max-width: 300px;">
+            <div id="creatorProgress" style="background: var(--accent); height: 100%; width: 0%;"></div>
+          </div>
+          <p style="font-size: 0.9rem; font-weight: bold;" id="creatorText">0/10 bookings</p>
+          <button class="btn btn-outline" disabled style="background: #cbd5e1; color: white; border: none;">Locked</button>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- TOAST CONTAINER -->
+  <div id="toast-container"></div>
+
+  <!-- MODALS -->
+
+  <!-- Decline Booking Modal -->
+  <div class="modal-overlay" id="declineModal">
+    <div class="modal-content">
+      <h2 style="margin-top:0;">Decline Booking</h2>
+      <p>Please provide a reason for declining.</p>
+      <div class="form-group">
+        <textarea id="declineReason" class="form-control" placeholder="Reason..." required></textarea>
+      </div>
+      <div style="display: flex; gap: 10px; justify-content: flex-end;">
+        <button class="btn btn-outline" onclick="closeModal('declineModal')">Cancel</button>
+        <button class="btn btn-red" onclick="confirmDecline()">Decline Booking</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- View Details Modal (Cancelled) -->
+  <div class="modal-overlay" id="detailsModal">
+    <div class="modal-content">
+      <h2 style="margin-top:0;">Booking Details</h2>
+      <div id="detailsContent">Loading...</div>
+      <div style="margin-top: 1.5rem; text-align: right;">
+        <button class="btn btn-outline" onclick="closeModal('detailsModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- View Review Modal (Read-Only) -->
+  <div class="modal-overlay" id="viewReviewModal">
+    <div class="modal-content">
+      <h2 style="margin-top:0;">Review Details</h2>
+      <div id="viewReviewContent">Loading...</div>
+      <div style="margin-top: 1.5rem; text-align: right;">
+        <button class="btn btn-outline" onclick="closeModal('viewReviewModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reply Review Modal -->
+  <div class="modal-overlay" id="replyModal">
+    <div class="modal-content">
+      <h2 style="margin-top:0;">Reply to Review</h2>
+      <div class="form-group">
+        <textarea id="replyText" class="form-control" placeholder="Write your reply..."></textarea>
+      </div>
+      <div style="display: flex; gap: 10px; justify-content: flex-end;">
+        <button class="btn btn-outline" onclick="closeModal('replyModal')">Cancel</button>
+        <button class="btn btn-accent" onclick="submitReply()">Submit Reply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Day Bookings Modal (Calendar) -->
+  <div class="modal-overlay" id="dayBookingsModal">
+    <div class="modal-content">
+      <h2 style="margin-top:0;" id="dayBookingsTitle">Bookings</h2>
+      <div id="dayBookingsList"></div>
+      <div style="margin-top: 1.5rem; text-align: right;">
+        <button class="btn btn-outline" onclick="closeModal('dayBookingsModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+
+<script>
+  const API_BASE = '/api';
+  let chartInstance = null;
+  let currentBookingTab = 'incoming';
+  
+  // State variables
+  let currentDeclineId = null;
+  let currentReplyId = null;
+  let currentMonthDate = new Date();
+  let skillsList = [];
+
+  // ==== AUTH & INIT ====
+  function checkAuth() {
+    const token = localStorage.getItem('vendor_token');
+    if (!token) {
+      window.location.href = '/vendor/login.html';
+      return null;
+    }
+    return token;
+  }
+
+  async function fetchApi(endpoint, options = {}) {
+    const token = checkAuth();
+    if (!token) return;
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...(options.headers || {})
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || 'API Request Failed');
+      return data;
+    } catch (err) {
+      console.error('API Error:', err);
+      throw err;
+    }
+  }
+
+  function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => { toast.remove(); }, 3000);
+  }
+
+  function logout() {
+    localStorage.removeItem('vendor_token');
+    window.location.href = '/vendor/login.html';
+  }
+
+  // ==== UI ROUTING ====
+  function showSection(sectionId) {
+    document.querySelectorAll('.page-section').forEach(el => el.classList.remove('active'));
+    const sec = document.getElementById(`sec-${sectionId}`);
+    if (sec) sec.classList.add('active');
+    
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(el => el.classList.remove('active'));
+    if (event && event.currentTarget.classList.contains('nav-item')) {
+      event.currentTarget.classList.add('active');
+    }
+    
+    if(window.innerWidth <= 768) {
+      document.getElementById('sidebar').classList.remove('active');
+    }
+
+    if (sectionId === 'dashboard') loadDashboard();
+    if (sectionId === 'bookings') loadBookings('incoming');
+    if (sectionId === 'availability') { loadSchedule(); renderCalendar(); }
+    if (sectionId === 'portfolio') { loadPortfolio(); loadCategories(); }
+    if (sectionId === 'analytics') loadAnalytics();
+    if (sectionId === 'reviews') loadReviews();
+    if (sectionId === 'profile') loadProfile();
+  }
+
+  // ==== DASHBOARD ====
+  async function loadDashboard() {
+    try {
+      const res = await fetchApi('/vendor/service-analytics/stats');
+      const stats = res.data || {};
+      
+      const setStat = (id, val) => {
+        const el = document.getElementById(id);
+        el.innerHTML = val;
+        el.parentElement.classList.remove('loading');
+      };
+
+      setStat('stat-bookings', stats.bookingsToday || 0);
+      setStat('stat-revenue', `₹${stats.revenueThisWeek || 0}`);
+      setStat('stat-rating', `★ ${stats.rating ? stats.rating.toFixed(1) : 'New'}`);
+      setStat('stat-followers', stats.followers || 0);
+
+    } catch (e) {
+      console.error(e);
+      document.querySelectorAll('.stat-card').forEach(el => el.classList.remove('loading'));
+    }
+  }
+
+  // ==== BOOKINGS ====
+  async function loadBookings(status, btnElement = null) {
+    currentBookingTab = status;
+    if (btnElement) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      btnElement.classList.add('active');
+    } else {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        if(btn.textContent.toLowerCase().includes(status)) {
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        }
+      });
+    }
+
+    const tbody = document.getElementById('bookingsTableBody');
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;"><div class="loader"></div></td></tr>';
+
+    try {
+      const res = await fetchApi(`/vendor/bookings?status=${status}`);
+      const bookings = res.data || [];
+      
+      if (status === 'incoming') {
+        const badge = document.getElementById('incoming-badge');
+        if(bookings.length > 0) {
+          badge.style.display = 'inline-block';
+          badge.textContent = bookings.length;
+        } else {
+          badge.style.display = 'none';
+        }
+      }
+
+      if (bookings.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 2rem;">No ${status} bookings right now</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = bookings.map(b => `
+        <tr>
+          <td>#${b.id}</td>
+          <td>${b.customer_name}</td>
+          <td>${b.service_type}</td>
+          <td>${new Date(b.date_time).toLocaleString()}</td>
+          <td>${b.address}</td>
+          <td>₹${b.amount}</td>
+          <td>${getBookingActionBtn(b, status)}</td>
+        </tr>
+      `).join('');
+    } catch (e) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: red;">Failed to load bookings</td></tr>';
+    }
+  }
+
+  function getBookingActionBtn(booking, status) {
+    if (status === 'incoming') {
+      return `
+        <button class="btn btn-green btn-sm" onclick="updateBookingStatus('${booking.id}', 'confirmed')">Accept</button>
+        <button class="btn btn-red btn-sm" onclick="openDeclineModal('${booking.id}')">Decline</button>
+      `;
+    } else if (status === 'confirmed') {
+      return `<button class="btn btn-accent btn-sm" onclick="markComplete('${booking.id}')">Mark Complete</button>`;
+    } else if (status === 'completed') {
+      return `<button class="btn btn-outline btn-sm" onclick="viewReview('${booking.id}')">View Review</button>`;
+    } else if (status === 'cancelled') {
+      return `<button class="btn btn-outline btn-sm" onclick="viewDetails('${booking.id}')">View Details</button>`;
+    }
+    return '';
+  }
+
+  async function updateBookingStatus(id, status, reason = '') {
+    try {
+      await fetchApi(`/vendor/bookings/${id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status, reason })
+      });
+      showToast(`Booking ${status}`);
+      loadBookings(currentBookingTab);
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  }
+
+  function markComplete(id) {
+    if (confirm("Mark this booking as complete?")) {
+      updateBookingStatus(id, 'completed');
+    }
+  }
+
+  function openDeclineModal(id) {
+    currentDeclineId = id;
+    document.getElementById('declineReason').value = '';
+    document.getElementById('declineModal').classList.add('active');
+  }
+
+  function confirmDecline() {
+    const reason = document.getElementById('declineReason').value;
+    if (!reason) return showToast('Reason is required', 'error');
+    updateBookingStatus(currentDeclineId, 'cancelled', reason);
+    closeModal('declineModal');
+  }
+
+  async function viewDetails(id) {
+    document.getElementById('detailsModal').classList.add('active');
+    const content = document.getElementById('detailsContent');
+    content.innerHTML = '<div class="loader"></div>';
+    try {
+      // Assuming a generic details endpoint or getting from list
+      const res = await fetchApi(`/vendor/bookings/${id}`);
+      const b = res.data;
+      content.innerHTML = `
+        <p><strong>Booking ID:</strong> #${b.id}</p>
+        <p><strong>Customer:</strong> ${b.customer_name} (${b.customer_phone || 'N/A'})</p>
+        <p><strong>Service:</strong> ${b.service_type}</p>
+        <p><strong>Date & Time:</strong> ${new Date(b.date_time).toLocaleString()}</p>
+        <p><strong>Address:</strong> ${b.full_address || b.address}</p>
+        <p><strong>Amount:</strong> ₹${b.amount} (${b.payment_status || 'Pending'})</p>
+        ${b.notes ? `<p><strong>Notes:</strong> ${b.notes}</p>` : ''}
+      `;
+    } catch(e) {
+      content.innerHTML = '<p style="color:red">Failed to load details</p>';
+    }
+  }
+
+  async function viewReview(bookingId) {
+    document.getElementById('viewReviewModal').classList.add('active');
+    const content = document.getElementById('viewReviewContent');
+    content.innerHTML = '<div class="loader"></div>';
+    try {
+      const res = await fetchApi(`/vendor/bookings/${bookingId}/review`);
+      if (!res.data) {
+        content.innerHTML = '<p>No review left yet.</p>';
+        return;
+      }
+      const r = res.data;
+      content.innerHTML = `
+        <p><strong>Rating:</strong> ${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</p>
+        <p><strong>Review:</strong> ${r.text || 'No comment'}</p>
+        ${r.reply ? `<div class="vendor-reply"><strong>Your Reply:</strong><br>${r.reply}</div>` : ''}
+      `;
+    } catch(e) {
+      content.innerHTML = '<p>Could not load review or no review exists.</p>';
+    }
+  }
+
+  // ==== AVAILABILITY (Schedule) ====
+  const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  
+  async function loadSchedule() {
+    const container = document.getElementById('scheduleContainer');
+    let slots = [];
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const me = await fetchApi('/auth/me'); // Get vendor_id
+      if(me && me.data && me.data.id) {
+        const res = await fetchApi(`/vendor/availability/${me.data.id}?date=${today}`);
+        slots = res.data || [];
+      }
+    } catch(e) {}
+
+    let html = '';
+    for(let i=0; i<7; i++) {
+      const slot = slots.find(s => s.day_of_week === i) || null;
+      // Default: Mon-Fri ON
+      const isDefaultOn = (i >= 1 && i <= 5);
+      const isOn = slot ? true : (slots.length === 0 ? isDefaultOn : false);
+      const start = slot ? slot.start_time : '09:00';
+      const end = slot ? slot.end_time : '18:00';
+      const max = slot ? slot.max_bookings : 3;
+
+      html += `
+        <div class="schedule-row ${isOn ? '' : 'disabled'}" id="sch_row_${i}">
+          <div class="schedule-day">${DAYS[i]}</div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="sch_toggle_${i}" ${isOn ? 'checked' : ''} onchange="toggleDay(${i})">
+            <span class="slider"></span>
+          </label>
+          <input type="time" class="form-control" style="width: auto;" id="sch_start_${i}" value="${start}" ${isOn ? '' : 'disabled'}>
+          <span style="color: #666;">to</span>
+          <input type="time" class="form-control" style="width: auto;" id="sch_end_${i}" value="${end}" ${isOn ? '' : 'disabled'}>
+          <input type="number" class="form-control" style="width: 80px;" id="sch_max_${i}" value="${max}" min="1" max="20" ${isOn ? '' : 'disabled'} title="Max Bookings">
+        </div>
+      `;
+    }
+    container.innerHTML = html;
+  }
+
+  function toggleDay(dayIndex) {
+    const isOn = document.getElementById(`sch_toggle_${dayIndex}`).checked;
+    const row = document.getElementById(`sch_row_${dayIndex}`);
+    document.getElementById(`sch_start_${dayIndex}`).disabled = !isOn;
+    document.getElementById(`sch_end_${dayIndex}`).disabled = !isOn;
+    document.getElementById(`sch_max_${dayIndex}`).disabled = !isOn;
+    if(isOn) row.classList.remove('disabled');
+    else row.classList.add('disabled');
+  }
+
+  async function saveSchedule() {
+    const slots = [];
+    for(let i=0; i<7; i++) {
+      if(document.getElementById(`sch_toggle_${i}`).checked) {
+        slots.push({
+          day_of_week: i,
+          start_time: document.getElementById(`sch_start_${i}`).value,
+          end_time: document.getElementById(`sch_end_${i}`).value,
+          max_bookings: parseInt(document.getElementById(`sch_max_${i}`).value)
+        });
+      }
+    }
+    try {
+      await fetchApi('/vendor/availability', {
+        method: 'POST',
+        body: JSON.stringify({ slots })
+      });
+      showToast('Schedule saved!');
+    } catch(e) {
+      showToast('Failed to save schedule', 'error');
+    }
+  }
+
+  // ==== CALENDAR (Monthly) ====
+  function changeMonth(delta) {
+    currentMonthDate.setMonth(currentMonthDate.getMonth() + delta);
+    renderCalendar();
+  }
+
+  async function renderCalendar() {
+    const year = currentMonthDate.getFullYear();
+    const month = currentMonthDate.getMonth();
+    const monthStr = `${year}-${String(month+1).padStart(2, '0')}`;
+    
+    document.getElementById('calendarMonthLabel').textContent = currentMonthDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+    
+    let monthBookings = [];
+    try {
+      const res = await fetchApi(`/vendor/bookings?month=${monthStr}`);
+      monthBookings = res.data || [];
+    } catch(e) {}
+
+    // Group bookings by date (YYYY-MM-DD)
+    const bookingsByDate = {};
+    monthBookings.forEach(b => {
+      const d = b.date_time.split('T')[0];
+      if(!bookingsByDate[d]) bookingsByDate[d] = [];
+      bookingsByDate[d].push(b);
+    });
+
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    
+    const grid = document.querySelector('.calendar-grid');
+    // Keep headers, remove days
+    Array.from(grid.children).forEach((child, idx) => {
+      if (idx >= 7) child.remove();
+    });
+
+    // Empty cells before start of month
+    for(let i=0; i<firstDay; i++) {
+      const div = document.createElement('div');
+      div.className = 'calendar-day empty';
+      grid.appendChild(div);
+    }
+
+    // Days
+    for(let i=1; i<=daysInMonth; i++) {
+      const div = document.createElement('div');
+      div.className = 'calendar-day';
+      div.innerHTML = `<span>${i}</span>`;
+      
+      const dateStr = `${year}-${String(month+1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+      const dayBookings = bookingsByDate[dateStr] || [];
+      
+      let dotClass = 'gray'; // Default unavailable/no setting
+      // Simplified logic for dot color based on booking count
+      if(dayBookings.length > 0) {
+        if(dayBookings.length >= 3) dotClass = 'red'; // Fully booked (assuming 3 is max for demo)
+        else dotClass = 'yellow'; // Partial
+      } else {
+        dotClass = 'green'; // Free (assuming they set availability, simplistic check)
+      }
+
+      div.innerHTML += `<span class="dot ${dotClass}"></span>`;
+      div.onclick = () => openDayBookings(dateStr, dayBookings);
+      grid.appendChild(div);
+    }
+  }
+
+  function openDayBookings(date, bookings) {
+    document.getElementById('dayBookingsModal').classList.add('active');
+    document.getElementById('dayBookingsTitle').textContent = `Bookings for ${date}`;
+    const list = document.getElementById('dayBookingsList');
+    if(bookings.length === 0) {
+      list.innerHTML = '<p>No bookings for this day.</p>';
+      return;
+    }
+    list.innerHTML = bookings.map(b => `
+      <div style="border-bottom: 1px solid #eee; padding: 10px 0;">
+        <strong>${new Date(b.date_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</strong> - ${b.customer_name} 
+        <span class="status-badge status-${b.status==='completed'?'green':b.status==='cancelled'?'red':'yellow'}" style="float:right;">${b.status}</span>
+      </div>
+    `).join('');
+  }
+
+  // ==== PORTFOLIO ====
+  async function loadCategories() {
+    try {
+      const res = await fetchApi('/service-categories');
+      const select = document.getElementById('port_service');
+      select.innerHTML = '<option value="">Select Service Type</option>' + 
+        (res.data||[]).map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    } catch(e) {}
+  }
+
+  async function loadPortfolio() {
+    const grid = document.getElementById('portfolioGrid');
+    grid.innerHTML = '<div class="loader"></div>';
+    try {
+      const res = await fetchApi('/vendor/portfolio');
+      const items = res.data || [];
+      if(items.length === 0) {
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #666; padding: 2rem;">Add your first before/after photo to attract customers!</div>';
+        return;
+      }
+      grid.innerHTML = items.map(item => `
+        <div class="portfolio-card">
+          <button class="portfolio-delete" onclick="deletePortfolio('${item.id}')">🗑️</button>
+          <div class="portfolio-images">
+            <img src="${item.before_url}" alt="Before">
+            <img src="${item.after_url}" alt="After">
+          </div>
+          <div class="portfolio-info">
+            <span class="status-badge" style="background: #f1f5f9; color: #475569; margin-bottom: 5px; display: inline-block;">${item.service_type || 'Service'}</span>
+            <div style="font-size: 0.9rem;">${item.caption || 'No caption'}</div>
+          </div>
+        </div>
+      `).join('');
+    } catch(e) {
+      grid.innerHTML = '<div style="grid-column: 1/-1; color: red;">Failed to load portfolio</div>';
+    }
+  }
+
+  async function addPortfolio() {
+    const before_url = document.getElementById('port_before').value;
+    const after_url = document.getElementById('port_after').value;
+    const caption = document.getElementById('port_caption').value;
+    const service_type = document.getElementById('port_service').value;
+
+    if(!before_url || !after_url) return showToast('Before and After images required', 'error');
+
+    try {
+      await fetchApi('/vendor/portfolio', {
+        method: 'POST',
+        body: JSON.stringify({ before_url, after_url, caption, service_type })
+      });
+      showToast('Added to portfolio');
+      document.getElementById('port_before').value = '';
+      document.getElementById('port_after').value = '';
+      document.getElementById('port_caption').value = '';
+      loadPortfolio();
+    } catch(e) {
+      showToast(e.message, 'error');
+    }
+  }
+
+  async function deletePortfolio(id) {
+    if(!confirm("Delete this portfolio item?")) return;
+    try {
+      await fetchApi(`/vendor/portfolio/${id}`, { method: 'DELETE' });
+      showToast('Item deleted');
+      loadPortfolio();
+    } catch(e) {
+      showToast(e.message, 'error');
+    }
+  }
+
+  // ==== ANALYTICS ====
+  async function loadAnalytics() {
+    try {
+      // Load Stats for Summary
+      const resStats = await fetchApi('/vendor/service-analytics/stats');
+      const stats = resStats.data || {};
+      document.getElementById('analyticsSummary').innerHTML = `
+        <div class="summary-pill">Avg Booking Value: ₹${stats.avgBookingValue || 0}</div>
+        <div class="summary-pill">Best Day: ${stats.bestDay || 'N/A'}</div>
+        <div class="summary-pill">Most Requested: ${stats.mostRequestedService || 'N/A'}</div>
+      `;
+
+      // Load Chart Data
+      const resChart = await fetchApi('/vendor/service-analytics/bookings?range=4w');
+      const data = resChart.data || { labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'], values: [0,0,0,0] };
+      
+      renderAnalyticsChart(data.labels, data.values);
+    } catch(e) {
+      renderAnalyticsChart(['Week 1', 'Week 2', 'Week 3', 'Week 4'], [0,0,0,0]);
+    }
+  }
+
+  function renderAnalyticsChart(labels, data) {
+    const ctx = document.getElementById('bookingsChart').getContext('2d');
+    if (chartInstance) chartInstance.destroy();
+    
+    chartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Bookings',
+          data: data,
+          borderColor: '#e94560',
+          backgroundColor: 'rgba(233, 69, 96, 0.1)',
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+      }
+    });
+  }
+
+  // ==== REVIEWS ====
+  async function loadReviews() {
+    try {
+      const res = await fetchApi('/vendor/reviews');
+      const data = res.data || { reviews: [], overall: 0, total: 0, breakdown: {5:0,4:0,3:0,2:0,1:0} };
+      
+      // Render Overall
+      const bd = data.breakdown || {5:0,4:0,3:0,2:0,1:0};
+      const total = data.total || 1; // avoid div by 0
+      document.getElementById('reviewsOverall').innerHTML = `
+        <div>
+          <div class="review-big-score">${data.overall ? data.overall.toFixed(1) : '0.0'}</div>
+          <div class="review-stars">${'★'.repeat(Math.round(data.overall || 0))}${'☆'.repeat(5-Math.round(data.overall || 0))}</div>
+          <div style="font-size: 0.9rem; color: #666; margin-top: 5px;">${data.total} reviews</div>
+        </div>
+        <div class="review-bars">
+          ${[5,4,3,2,1].map(star => `
+            <div class="review-bar-row">
+              <span style="width: 20px;">${star}★</span>
+              <div class="review-bar-outer">
+                <div class="review-bar-inner" style="width: ${((bd[star]||0)/total)*100}%"></div>
+              </div>
+              <span style="width: 30px; text-align: right;">${Math.round(((bd[star]||0)/total)*100)}%</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      // Render List
+      const list = document.getElementById('reviewsList');
+      if(data.reviews.length === 0) {
+        list.innerHTML = '<p style="text-align: center; color: #666;">No reviews yet.</p>';
+        return;
+      }
+
+      list.innerHTML = data.reviews.map(r => `
+        <div class="review-card">
+          <div class="review-header">
+            <div class="review-avatar">${(r.customer_name || 'U').charAt(0).toUpperCase()}</div>
+            <div>
+              <div style="font-weight: bold;">${r.customer_name}</div>
+              <div style="font-size: 0.8rem; color: #666;">${new Date(r.date).toLocaleDateString()}</div>
+            </div>
+          </div>
+          <div class="review-stars" style="margin-bottom: 10px;">${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</div>
+          <div style="margin-bottom: 1rem;">${r.text}</div>
+          
+          ${r.reply 
+            ? `<div class="vendor-reply"><strong>Your Reply:</strong><br>${r.reply}</div>` 
+            : `<button class="btn btn-outline btn-sm" onclick="openReplyModal('${r.id}')">Reply</button>`
+          }
+        </div>
+      `).join('');
+
+    } catch(e) {
+      document.getElementById('reviewsList').innerHTML = '<p style="color:red; text-align:center;">Failed to load reviews</p>';
+    }
+  }
+
+  function openReplyModal(id) {
+    currentReplyId = id;
+    document.getElementById('replyText').value = '';
+    document.getElementById('replyModal').classList.add('active');
+  }
+
+  async function submitReply() {
+    const text = document.getElementById('replyText').value;
+    if(!text) return showToast('Reply text required', 'error');
+    try {
+      await fetchApi(`/vendor/review/${currentReplyId}/reply`, {
+        method: 'POST',
+        body: JSON.stringify({ reply_text: text })
+      });
+      showToast('Reply submitted');
+      closeModal('replyModal');
+      loadReviews();
+    } catch(e) {
+      showToast(e.message, 'error');
+    }
+  }
+
+  // ==== PROFILE ====
+  function renderSkills() {
+    const container = document.getElementById('skillsContainer');
+    // Remove existing tags
+    container.querySelectorAll('.tag').forEach(e => e.remove());
+    // Insert new tags before input
+    const input = document.getElementById('prof_skill_input');
+    skillsList.forEach((skill, index) => {
+      const tag = document.createElement('div');
+      tag.className = 'tag';
+      tag.innerHTML = `${skill} <span class="tag-remove" onclick="removeSkill(${index})">✕</span>`;
+      container.insertBefore(tag, input);
+    });
+  }
+
+  function handleSkillInput(e) {
+    if(e.key === 'Enter') {
+      e.preventDefault();
+      const val = e.target.value.trim();
+      if(val && !skillsList.includes(val)) {
+        skillsList.push(val);
+        renderSkills();
+        e.target.value = '';
+      }
+    }
+  }
+
+  function removeSkill(index) {
+    skillsList.splice(index, 1);
+    renderSkills();
+  }
+
+  async function loadProfile() {
+    try {
+      const res = await fetchApi('/vendor/profile');
+      const p = res.data || {};
+      
+      document.getElementById('prof_name').value = p.full_name || '';
+      document.getElementById('prof_bio').value = p.bio || '';
+      document.getElementById('bioCounter').innerText = (p.bio || '').length;
+      document.getElementById('prof_radius').value = p.coverage_radius || '';
+      document.getElementById('prof_pricing').value = p.base_pricing || '';
+      document.getElementById('prof_whatsapp').value = p.whatsapp || '';
+      document.getElementById('prof_exp').value = p.experience_years || '';
+      
+      skillsList = p.skills || [];
+      renderSkills();
+
+      const certs = p.certifications || [];
+      document.getElementById('prof_cert_1').value = certs[0] || '';
+      document.getElementById('prof_cert_2').value = certs[1] || '';
+      document.getElementById('prof_cert_3').value = certs[2] || '';
+
+      // Creator Mode Card Update
+      const stats = await fetchApi('/vendor/service-analytics/stats').catch(()=>({data:{bookingsCompleted:0}}));
+      const completed = (stats.data && stats.data.bookingsCompleted) ? stats.data.bookingsCompleted : 0;
+      const progressPercent = Math.min((completed / 10) * 100, 100);
+      document.getElementById('creatorProgress').style.width = `${progressPercent}%`;
+      document.getElementById('creatorText').innerText = `${completed}/10 bookings`;
+      
+      const card = document.getElementById('creatorCard');
+      const btn = card.querySelector('button');
+      if(completed >= 10) {
+        card.classList.remove('locked');
+        btn.disabled = false;
+        btn.style.background = 'var(--accent)';
+        btn.style.color = 'white';
+        btn.innerText = 'Go to Creator Studio';
+      }
+
+    } catch(e) {
+      console.error('Profile load error', e);
+    }
+  }
+
+  async function saveProfile(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnSaveProfile');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    
+    const certs = [];
+    ['prof_cert_1', 'prof_cert_2', 'prof_cert_3'].forEach(id => {
+      const val = document.getElementById(id).value;
+      if(val) certs.push(val);
+    });
+
+    const data = {
+      full_name: document.getElementById('prof_name').value,
+      bio: document.getElementById('prof_bio').value,
+      skills: skillsList,
+      coverage_radius: parseInt(document.getElementById('prof_radius').value),
+      base_pricing: document.getElementById('prof_pricing').value,
+      whatsapp: document.getElementById('prof_whatsapp').value,
+      experience_years: parseInt(document.getElementById('prof_exp').value),
+      certifications: certs
+    };
+
+    try {
+      await fetchApi('/vendor/profile', { method: 'PUT', body: JSON.stringify(data) });
+      showToast('Profile saved successfully');
+    } catch(err) {
+      showToast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save Profile';
+    }
+  }
+
+  // ==== NOTIFICATIONS ====
+  async function loadNotifications() {
+    try {
+      const res = await fetchApi('/vendor/notifications');
+      const notifs = res.data || [];
+      const list = document.getElementById('notificationsList');
+      const badge = document.getElementById('nav-bell-badge');
+      
+      let unreadCount = 0;
+      if(notifs.length === 0) {
+        list.innerHTML = '<div style="padding: 1rem; text-align: center; color: #666;">No new notifications</div>';
+      } else {
+        list.innerHTML = notifs.map(n => {
+          if(!n.read) unreadCount++;
+          return `
+            <div class="notification-item ${n.read ? '' : 'unread'}">
+              <div style="font-size:1.5rem;">${n.icon || '🔔'}</div>
+              <div>
+                <div style="font-size:0.9rem; margin-bottom:4px;">${n.message}</div>
+                <div style="font-size:0.75rem; color:#888;">${n.time_ago || 'Just now'}</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      if(unreadCount > 0) {
+        badge.style.display = 'inline-block';
+        badge.textContent = unreadCount;
+      } else {
+        badge.style.display = 'none';
+      }
+
+    } catch(e) {
+      document.getElementById('notificationsList').innerHTML = '<div style="padding: 1rem; text-align: center; color: red;">Failed to load</div>';
+    }
+  }
+
+  function toggleNotifications() {
+    const panel = document.getElementById('notificationsPanel');
+    panel.classList.toggle('active');
+    if(panel.classList.contains('active')) {
+      loadNotifications();
+    }
+  }
+
+  function markNotificationsRead() {
+    document.querySelectorAll('.notification-item').forEach(el => el.classList.remove('unread'));
+    document.getElementById('nav-bell-badge').style.display = 'none';
+  }
+
+  // ==== UTILS ====
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('active');
+  }
+
+  // Close modals on outside click
+  window.onclick = function(event) {
+    if (event.target.classList.contains('modal-overlay')) {
+      event.target.classList.remove('active');
+    }
+    const notifPanel = document.getElementById('notificationsPanel');
+    if (notifPanel && !event.target.closest('.notifications-panel') && !event.target.closest('.notification-bell')) {
+      notifPanel.classList.remove('active');
+    }
+  }
+
+  // Initialize
+  if(checkAuth()) {
+    showSection('dashboard');
+  }
+
+</script>
+</body>
+</html>

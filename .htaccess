@@ -25,6 +25,19 @@ RewriteRule ^(core|brain|config|database|logs|tests|lib)(/.*)?$ - [F,L]
     Deny from all
 </FilesMatch>
 
+<Files "database-structure.sql">
+  Order allow,deny
+  Deny from all
+</Files>
+<Files "diag.php">
+  Order allow,deny
+  Deny from all
+</Files>
+<Files "migrate.php">
+  Order allow,deny
+  Deny from all
+</Files>
+
 # Block direct PHP access except index.php and allowed subsystems
 RewriteCond %{REQUEST_URI} \.php$
 RewriteCond %{REQUEST_URI} !^/index\.php$

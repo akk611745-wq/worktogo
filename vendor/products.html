@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Products — WorkToGo Vendor</title>
+<link rel="stylesheet" href="assets/style.css"/>
+<script src="config.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script src="shared/realtime.js"></script>
+<script src="shared/analytics.js"></script>
+</head>
+<body>
+<script>
+let allProducts = [];
+let editingId   = null;
+
+document.addEventListener("DOMContentLoaded", async () => {
+  const user = initShell("Products");
+  if (!user) return;
+
+  // Guard: only shopping vendors
+  if (user.role !== CONFIG.ROLES.SHOPPING) {
+    document.getElementById("pageContent").innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🚫</div>
+        <div class="empty-text">This section is only available for Shopping Vendors.</div>
+      </div>`;
+    return;
+  }
+
+  renderPage();
+  await loadProducts();
+});
+
+function renderPage() {
+  const el = document.getElementById("pageContent");
+  el.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Products</h1>
+        <p class="page-sub">Manage your product catalogue.</p>
+      </div>
+      <button class="btn btn-primary" onclick="openAddModal()">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"/></svg>
+        Add Product
+      </button>
+    </div>
+
+    <div class="filter-bar">
+      <input type="text" class="search-input" id="searchInput" placeholder="Search products…" oninput="applyFilter()"/>
+      <span id="productCount" class="text-muted text-sm" style="margin-left:auto;"></span>
+    </div>
+
+    <div class="card">
+      <div class="card-body table-wrap" style="padding:0;">
+        <table>
+          <thead>
+            <tr>
+              <th>Image</th>
+              <th>Product Name</th>
+              <th>Price</th>
+              <th>Stock</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="productTbody">
+            <tr class="loading-row"><td colspan="5"><div class="spinner"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Add / Edit Modal -->
+    <div class="modal-backdrop" id="productModal">
+      <div class="modal">
+        <div class="modal-header">
+          <span class="modal-title" id="modalTitle">Add Product</span>
+          <button class="modal-close" onclick="closeModal('productModal')">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="field full">
+              <label for="pName">Product Name *</label>
+              <input type="text" id="pName" placeholder="e.g. Wireless Earbuds"/>
+            </div>
+            <div class="field">
+              <label for="pPrice">Price (₹) *</label>
+              <input type="number" id="pPrice" placeholder="0.00" min="0" step="0.01"/>
+            </div>
+            <div class="field">
+              <label for="pStock">Stock Quantity *</label>
+              <input type="number" id="pStock" placeholder="0" min="0" step="1"/>
+            </div>
+            <div class="field full">
+              <label for="pImageUrl">Image URL</label>
+              <input type="url" id="pImageUrl" placeholder="https://…/image.jpg"/>
+            </div>
+            <div class="field full">
+              <label for="pDesc">Description</label>
+              <textarea id="pDesc" placeholder="Brief product description…"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal('productModal')">Cancel</button>
+          <button class="btn btn-primary" id="saveProductBtn" onclick="saveProduct()">Save Product</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function loadProducts() {
+  const res = await API.Products.list();
+  if (!res.ok) {
+    showToast(res.data?.message || "Failed to load products.", "error");
+    document.getElementById("productTbody").innerHTML = `
+      <tr><td colspan="5" class="text-muted" style="text-align:center;padding:1.5rem;">Failed to load products.</td></tr>`;
+    return;
+  }
+  allProducts = res.data?.data || res.data || [];
+  renderProducts(allProducts);
+}
+
+function renderProducts(list) {
+  const tbody = document.getElementById("productTbody");
+  const countEl = document.getElementById("productCount");
+  if (countEl) countEl.textContent = `${list.length} product${list.length !== 1 ? 's' : ''}`;
+
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">📦</div><div class="empty-text">No products found. Add your first product!</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(p => {
+    const imgHtml = p.image_url
+      ? `<img src="${escHtml(p.image_url)}" class="product-img" alt="${escHtml(p.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"/>
+         <div class="product-img-placeholder" style="display:none;">🖼️</div>`
+      : `<div class="product-img-placeholder">🖼️</div>`;
+
+    return `
+    <tr>
+      <td style="padding:0.65rem 1rem;">${imgHtml}</td>
+      <td>
+        <div class="fw-bold" style="font-size:0.875rem;">${escHtml(p.name)}</div>
+        ${p.description ? `<div class="text-muted text-sm" style="margin-top:2px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(p.description)}</div>` : ''}
+      </td>
+      <td class="fw-bold">${fmtCurrency(p.price)}</td>
+      <td>
+        <span class="${(p.stock ?? p.quantity ?? 0) < 5 ? 'text-danger' : 'text-success'}" style="font-weight:600;">
+          ${p.stock ?? p.quantity ?? 0}
+        </span>
+        ${(p.stock ?? p.quantity ?? 0) < 5 ? '<span class="badge badge-pending" style="margin-left:4px;">Low</span>' : ''}
+      </td>
+      <td>
+        <div class="td-actions">
+          <button class="btn btn-ghost btn-sm" onclick="openEditModal(${JSON.stringify(p).replace(/"/g, '&quot;')})">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id || p._id}', '${escHtml(p.name)}')">Delete</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function applyFilter() {
+  const q = document.getElementById("searchInput")?.value || '';
+  const filtered = filterItems(allProducts, q, ['name', 'description']);
+  renderProducts(filtered);
+}
+
+function openAddModal() {
+  editingId = null;
+  document.getElementById("modalTitle").textContent = "Add Product";
+  document.getElementById("saveProductBtn").textContent = "Add Product";
+  ['pName','pPrice','pStock','pImageUrl','pDesc'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  openModal("productModal");
+}
+
+function openEditModal(product) {
+  editingId = product.id || product._id;
+  document.getElementById("modalTitle").textContent = "Edit Product";
+  document.getElementById("saveProductBtn").textContent = "Save Changes";
+  document.getElementById("pName").value     = product.name || '';
+  document.getElementById("pPrice").value    = product.price || '';
+  document.getElementById("pStock").value    = product.stock ?? product.quantity ?? '';
+  document.getElementById("pImageUrl").value = product.image_url || '';
+  document.getElementById("pDesc").value     = product.description || '';
+  openModal("productModal");
+}
+
+async function saveProduct() {
+  const name      = document.getElementById("pName").value.trim();
+  const price     = parseFloat(document.getElementById("pPrice").value);
+  const stock     = parseInt(document.getElementById("pStock").value, 10);
+  const image_url = document.getElementById("pImageUrl").value.trim();
+  const description = document.getElementById("pDesc").value.trim();
+
+  if (!name || isNaN(price) || isNaN(stock)) {
+    showToast("Name, price and stock are required.", "warning");
+    return;
+  }
+
+  const btn = document.getElementById("saveProductBtn");
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+
+  const payload = { name, price, stock, image_url, description };
+  const res = editingId
+    ? await API.Products.update(editingId, payload)
+    : await API.Products.create(payload);
+
+  btn.disabled = false;
+  btn.textContent = editingId ? "Save Changes" : "Add Product";
+
+  if (!res.ok) {
+    showToast(res.data?.message || "Save failed.", "error");
+    return;
+  }
+
+  showToast(editingId ? "Product updated!" : "Product added!", "success");
+  closeModal("productModal");
+  await loadProducts();
+}
+
+async function deleteProduct(id, name) {
+  if (!confirmAction(`Delete "${name}"? This cannot be undone.`)) return;
+  const res = await API.Products.delete(id);
+  if (!res.ok) {
+    showToast(res.data?.message || "Delete failed.", "error");
+    return;
+  }
+  showToast("Product deleted.", "success");
+  await loadProducts();
+}
+
+function escHtml(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

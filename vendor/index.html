@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Login — WorkToGo Vendor</title>
+<link rel="stylesheet" href="assets/style.css"/>
+<script src="config.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/api.js"></script>
+</head>
+<body class="login-page">
+
+<div class="login-card">
+  <!-- Logo -->
+  <div class="login-logo">
+    <div class="logo-mark">W</div>
+    <div>
+      <div class="logo-text">WorkToGo</div>
+      <div class="logo-sub">Vendor Portal</div>
+    </div>
+  </div>
+
+  <h1 class="login-title">Welcome back</h1>
+  <p class="login-sub">Sign in to manage your vendor account.</p>
+
+  <!-- Error message -->
+  <div class="login-error" id="loginError"></div>
+
+  <!-- Login Form -->
+  <div>
+    <div class="form-group">
+      <label class="form-label" for="email">Email address</label>
+      <input class="form-input" type="email" id="email" placeholder="you@example.com" autocomplete="email" required/>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="password">Password</label>
+      <input class="form-input" type="password" id="password" placeholder="••••••••" autocomplete="current-password" required/>
+    </div>
+
+    <button class="btn-login" id="loginBtn" onclick="handleLogin()">
+      Sign In
+    </button>
+  </div>
+
+  <p style="margin-top:1.5rem;font-size:0.75rem;color:#374151;text-align:center;">
+    Having trouble? Contact your administrator.
+  </p>
+</div>
+
+<script>
+// Redirect if already logged in
+if (Auth.isLoggedIn()) window.location.href = "dashboard.html";
+
+// Allow Enter key to submit
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter") handleLogin();
+});
+
+async function handleLogin() {
+  const email    = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const btn      = document.getElementById("loginBtn");
+  const errEl    = document.getElementById("loginError");
+
+  errEl.classList.remove("show");
+
+  if (!email || !password) {
+    showErr("Please enter your email and password.");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Signing in…";
+
+  const result = await API.Auth.login(email, password);
+
+  btn.disabled = false;
+  btn.textContent = "Sign In";
+
+  if (!result.ok) {
+    const msg = result.data?.message || result.error || "Login failed. Please check your credentials.";
+    showErr(msg);
+    return;
+  }
+
+  const { token, vendor, user } = result.data;
+  const userData = vendor || user || result.data;
+
+  if (!token) {
+    showErr("Login response missing token. Please contact support.");
+    return;
+  }
+
+  Auth.setSession(token, userData);
+
+  // Role-based redirect
+  const role = userData?.role || "";
+  if (role === CONFIG.ROLES.SERVICE) {
+    window.location.href = "bookings.html";
+  } else {
+    window.location.href = "dashboard.html";
+  }
+}
+
+function showErr(msg) {
+  const el = document.getElementById("loginError");
+  el.textContent = msg;
+  el.classList.add("show");
+}
+</script>
+</body>
+</html>

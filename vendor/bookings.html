@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Jobs — WorkToGo Vendor</title>
+<link rel="stylesheet" href="assets/style.css"/>
+<script src="config.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script src="shared/realtime.js"></script>
+<script src="shared/analytics.js"></script>
+</head>
+<body>
+<script>
+let allBookings   = [];
+let currentFilter = "all";
+
+document.addEventListener("DOMContentLoaded", async () => {
+  const user = initShell("Bookings");
+  if (!user) return;
+
+  if (user.role !== CONFIG.ROLES.SERVICE) {
+    document.getElementById("pageContent").innerHTML = `
+      <div class="empty-state"><div class="empty-icon">🚫</div>
+      <div class="empty-text">This section is only available for Service Vendors.</div></div>`;
+    return;
+  }
+
+  renderPage();
+  await loadBookings();
+
+  RealtimeEngine.start({
+    fetchFn: async () => {
+      const res = await API.Bookings.list();
+      return res.ok ? (res.data?.data || res.data || []) : [];
+    },
+    onNew: (newItems) => {
+      newItems.forEach(item => {
+        const id = String(item.id || item._id);
+        if (!allBookings.find(b => String(b.id || b._id) === id)) {
+          allBookings.unshift(item);
+        }
+      });
+      _updateAnalytics();
+      renderChips();
+      applyFilter();
+      _setRefreshLabel();
+    },
+    type: 'Booking',
+    interval: 8000,
+  });
+
+  const ri = document.getElementById('refreshIndicator');
+  if (ri) ri.style.display = 'flex';
+});
+
+function renderPage() {
+  const el = document.getElementById("pageContent");
+  el.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Jobs</h1>
+        <p class="page-sub">Accept, reject, and manage your service jobs &middot; <span id="lastRefreshLabel" class="text-muted">Loading&hellip;</span></p>
+      </div>
+    </div>
+
+    <div id="analyticsStrip"></div>
+    <div id="bookingChips" class="flex-gap" style="flex-wrap:wrap;margin-bottom:1rem;"></div>
+
+    <div class="filter-bar" style="gap:0.4rem;margin-bottom:0.75rem;">
+      <button class="btn btn-sm btn-primary"   id="tab-all"         onclick="setFilter('all')">All</button>
+      <button class="btn btn-sm btn-ghost"      id="tab-pending"     onclick="setFilter('pending')">Pending</button>
+      <button class="btn btn-sm btn-ghost"      id="tab-accepted"    onclick="setFilter('accepted')">Accepted</button>
+      <button class="btn btn-sm btn-ghost"      id="tab-in_progress" onclick="setFilter('in_progress')">In Progress</button>
+      <button class="btn btn-sm btn-ghost"      id="tab-completed"   onclick="setFilter('completed')">Completed</button>
+      <button class="btn btn-sm btn-ghost"      id="tab-rejected"    onclick="setFilter('rejected')">Rejected</button>
+      <input type="text" class="search-input" id="searchInput" placeholder="Search&hellip;" oninput="applyFilter()" style="margin-left:auto;"/>
+    </div>
+
+    <div class="card">
+      <div class="card-body table-wrap" style="padding:0;">
+        <table>
+          <thead>
+            <tr>
+              <th>Booking ID</th><th>Customer</th><th>Service</th>
+              <th>Scheduled</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="bookingTbody">
+            <tr class="loading-row"><td colspan="6"><div class="spinner"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Booking Detail Modal -->
+    <div class="modal-backdrop" id="bookingModal">
+      <div class="modal">
+        <div class="modal-header">
+          <span class="modal-title">Booking Details</span>
+          <button class="modal-close" onclick="closeModal('bookingModal')">&#x2715;</button>
+        </div>
+        <div class="modal-body" id="bookingDetailBody">&#8212;</div>
+        <div class="modal-footer" id="bookingModalActions">
+          <button class="btn btn-ghost" onclick="closeModal('bookingModal')">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Update Modal -->
+    <div class="modal-backdrop" id="statusModal">
+      <div class="modal" style="max-width:380px;">
+        <div class="modal-header">
+          <span class="modal-title">Update Status</span>
+          <button class="modal-close" onclick="closeModal('statusModal')">&#x2715;</button>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <label for="statusSelect">New Status</label>
+            <select id="statusSelect">
+              ${CONFIG.JOB_STATUSES.map(s => '<option value="' + s + '">' + cap(s.replace('_',' ')) + '</option>').join('')}
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal('statusModal')">Cancel</button>
+          <button class="btn btn-primary" onclick="submitStatusUpdate()">Update</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function loadBookings() {
+  const res = await API.Bookings.list();
+  if (!res.ok) { showToast(res.data?.message || "Failed to load bookings.", "error"); renderBookingRows([]); return; }
+  allBookings = res.data?.data || res.data || [];
+  _updateAnalytics();
+  renderChips();
+  applyFilter();
+  _setRefreshLabel();
+}
+
+function _updateAnalytics() {
+  const strip = document.getElementById('analyticsStrip');
+  if (!strip) return;
+  if (!allBookings.length) { strip.innerHTML = ''; return; }
+  const stats = Analytics.compute(allBookings, 'amount');
+  strip.innerHTML = Analytics.renderHTML(stats, true);
+}
+
+function _setRefreshLabel() {
+  const el = document.getElementById('lastRefreshLabel');
+  if (el) el.textContent = 'Updated ' + new Date().toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function renderChips() {
+  const counts = {};
+  allBookings.forEach(b => { counts[b.status] = (counts[b.status] || 0) + 1; });
+  const chipsEl = document.getElementById("bookingChips");
+  if (!chipsEl) return;
+  chipsEl.innerHTML = Object.entries(counts).map(([s, c]) =>
+    '<span class="badge badge-dot badge-' + s + '" style="font-size:0.75rem;padding:0.3rem 0.7rem;">' + cap(s.replace('_',' ')) + ' (' + c + ')</span>'
+  ).join('');
+}
+
+function setFilter(status) {
+  currentFilter = status;
+  document.querySelectorAll("[id^='tab-']").forEach(b => {
+    b.classList.toggle("btn-primary", b.id === 'tab-' + status);
+    b.classList.toggle("btn-ghost",   b.id !== 'tab-' + status);
+  });
+  applyFilter();
+}
+
+function applyFilter() {
+  const q = document.getElementById("searchInput")?.value || '';
+  let list = currentFilter === "all" ? allBookings : allBookings.filter(b => b.status === currentFilter);
+  if (q.trim()) list = filterItems(list, q, ['id', '_id', 'customer_name', 'service_name']);
+  renderBookingRows(list);
+}
+
+const BOOKING_STATUS_COLOR = { pending:'#f59e0b', accepted:'#3b82f6', in_progress:'#f97316', completed:'#10b981', rejected:'#ef4444', cancelled:'#6b7280' };
+
+function _chip(status) {
+  const c = BOOKING_STATUS_COLOR[status] || '#6b7280';
+  return '<span style="display:inline-flex;align-items:center;gap:4px;padding:0.2rem 0.6rem;border-radius:20px;font-size:0.72rem;font-weight:600;background:' + c + '1a;color:' + c + ';border:1px solid ' + c + '40;text-transform:capitalize;"><span style="width:6px;height:6px;border-radius:50%;background:' + c + ';flex-shrink:0;"></span>' + (status||'').replace('_',' ') + '</span>';
+}
+
+function renderBookingRows(list) {
+  const tbody = document.getElementById("bookingTbody");
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">&#x1F4C5;</div><div class="empty-text">No bookings found.</div></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(b => {
+    const id = b.id || b._id;
+    const actionBtns = b.status === 'pending'
+      ? '<button class="btn btn-accept btn-sm" onclick="quickAccept(\'' + id + '\')">Accept</button><button class="btn btn-reject btn-sm" onclick="quickReject(\'' + id + '\')">Reject</button>'
+      : '<button class="btn btn-ghost btn-sm" onclick="openStatusModal(\'' + id + '\')">Update</button>';
+    return '<tr>' +
+      '<td class="text-sm fw-bold" style="cursor:pointer;color:var(--accent);" onclick="viewBooking(\'' + id + '\')">#' + id + '</td>' +
+      '<td>' + escHtml(b.customer_name || b.user?.name || '—') + '</td>' +
+      '<td>' + escHtml(b.service_name || b.service?.name || '—') + '</td>' +
+      '<td class="text-sm">' + fmtDateTime(b.booking_date || b.date || b.scheduled_at) + '</td>' +
+      '<td>' + _chip(b.status) + '</td>' +
+      '<td><div class="td-actions" style="gap:0.3rem;flex-wrap:wrap;"><button class="btn btn-ghost btn-sm" onclick="viewBooking(\'' + id + '\')">View</button>' + actionBtns + '</div></td>' +
+      '</tr>';
+  }).join('');
+}
+
+async function viewBooking(id) {
+  const b = allBookings.find(x => (x.id || x._id) == id);
+  if (!b) return;
+  const body  = document.getElementById("bookingDetailBody");
+  const actEl = document.getElementById("bookingModalActions");
+
+  body.innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:1rem;">' +
+    '<div><div class="text-muted text-sm">Booking ID</div><div class="fw-bold">#' + (b.id||b._id) + '</div></div>' +
+    '<div><div class="text-muted text-sm">Status</div><div>' + _chip(b.status) + '</div></div>' +
+    '<div><div class="text-muted text-sm">Customer</div><div>' + escHtml(b.customer_name||b.user?.name||'—') + '</div></div>' +
+    '<div><div class="text-muted text-sm">Phone</div><div>' + escHtml(b.customer_phone||b.user?.phone||'—') + '</div></div>' +
+    '<div><div class="text-muted text-sm">Service</div><div>' + escHtml(b.service_name||b.service?.name||'—') + '</div></div>' +
+    '<div><div class="text-muted text-sm">Scheduled</div><div>' + fmtDateTime(b.booking_date||b.date||b.scheduled_at) + '</div></div>' +
+    '<div><div class="text-muted text-sm">Amount</div><div class="fw-bold">' + fmtCurrency(b.amount||b.price) + '</div></div>' +
+    '<div><div class="text-muted text-sm">Payment</div><div>' + (b.payment_status||'—') + '</div></div>' +
+    '</div>' +
+    (b.address ? '<div style="margin-bottom:0.75rem;"><div class="text-muted text-sm">Address</div><div class="text-sm">' + escHtml(b.address) + '</div></div>' : '') +
+    (b.notes   ? '<div><div class="text-muted text-sm">Customer Notes</div><div class="text-sm" style="background:var(--surface-2);padding:0.6rem;border-radius:6px;margin-top:4px;">' + escHtml(b.notes) + '</div></div>' : '');
+
+  const bid = b.id || b._id;
+  let footer = '<button class="btn btn-ghost" onclick="closeModal(\'bookingModal\')">Close</button>';
+  if (b.status === 'pending') {
+    footer += '<button class="btn btn-reject" onclick="quickReject(\'' + bid + '\');closeModal(\'bookingModal\')">Reject</button>' +
+              '<button class="btn btn-accept" onclick="quickAccept(\'' + bid + '\');closeModal(\'bookingModal\')">Accept Booking</button>';
+  } else if (!['completed','rejected','cancelled'].includes(b.status)) {
+    footer += '<button class="btn btn-primary" onclick="closeModal(\'bookingModal\');openStatusModal(\'' + bid + '\')">Update Status</button>';
+  }
+  actEl.innerHTML = footer;
+  openModal("bookingModal");
+}
+
+let statusTargetId = null;
+function openStatusModal(id) {
+  statusTargetId = id;
+  const b = allBookings.find(x => (x.id || x._id) == id);
+  if (b) document.getElementById("statusSelect").value = b.status;
+  openModal("statusModal");
+}
+async function submitStatusUpdate() {
+  const status = document.getElementById("statusSelect").value;
+  if (!statusTargetId || !status) return;
+  const res = await API.Bookings.updateStatus(statusTargetId, status);
+  if (!res.ok) { showToast(res.data?.message || "Update failed.", "error"); return; }
+  showToast("Booking status updated!", "success");
+  closeModal("statusModal");
+  const idx = allBookings.findIndex(x => (x.id || x._id) == statusTargetId);
+  if (idx !== -1) allBookings[idx].status = status;
+  _updateAnalytics(); renderChips(); applyFilter();
+}
+
+async function quickAccept(id) {
+  const res = await API.Bookings.accept(id);
+  if (!res.ok) { showToast(res.data?.message || "Failed to accept.", "error"); return; }
+  showToast("Booking accepted!", "success");
+  const idx = allBookings.findIndex(x => (x.id || x._id) == id);
+  if (idx !== -1) allBookings[idx].status = "accepted";
+  _updateAnalytics(); renderChips(); applyFilter();
+}
+async function quickReject(id) {
+  if (!confirmAction("Reject this booking?")) return;
+  const res = await API.Bookings.reject(id);
+  if (!res.ok) { showToast(res.data?.message || "Failed to reject.", "error"); return; }
+  showToast("Booking rejected.", "info");
+  const idx = allBookings.findIndex(x => (x.id || x._id) == id);
+  if (idx !== -1) allBookings[idx].status = "rejected";
+  _updateAnalytics(); renderChips(); applyFilter();
+}
+
+function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+function escHtml(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
