@@ -8,7 +8,7 @@
 const CONFIG = {
   // ─── API ───────────────────────────────────────
   // Set your real backend URL here — no trailing slash
-  BASE_URL: (typeof window !== "undefined" && window.WTG_BASE_URL) || "https://api.worktogo.app",
+  BASE_URL: (typeof window !== "undefined" && window.WTG_BASE_URL) || "https://worktogo.in",
 
   ENDPOINTS: {
     // Auth — OTP flow

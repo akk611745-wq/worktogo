@@ -46,8 +46,10 @@ class APIClient {
       // Handle 401 — token expired
       if (res.status === 401) {
         Auth.clearSession();
-        window.location.href = "/admin/index.html";
-        return;
+        if (!window.location.pathname.endsWith('index.html')) {
+          window.location.href = "/admin/index.html";
+          return;
+        }
       }
 
       const data = await res.json().catch(() => ({}));
