@@ -70,19 +70,21 @@ class AuthController {
             Response::error('Invalid JSON payload', 400);
         }
 
-        $email = trim($input['email'] ?? '');
+        $email = trim($input['email'] ?? $input['phone'] ?? '');
         $password = $input['password'] ?? '';
 
         if (!$email || !$password) {
-            Response::error('Email and password are required', 400);
+            Response::error('Email/Phone and password are required', 400);
         }
 
-        $stmt = $this->db->prepare("SELECT id, name, email, password, role FROM users WHERE email = ? AND auth_type = 'email'");
-        $stmt->execute([$email]);
+        $stmt = $this->db->prepare("SELECT id, name, email, phone, password, role, auth_type FROM users WHERE email = ? OR phone = ?");
+        $stmt->execute([$email, $email]);
         $userRow = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$userRow || !password_verify($password, $userRow['password'])) {
-            Response::error('Invalid email or password', 401);
+        $storedHash = (string)($userRow['password'] ?? '');
+
+        if (!$userRow || $storedHash === '' || !password_verify((string)$password, $storedHash)) {
+            Response::error('Invalid credentials', 401);
         }
 
         $user = [

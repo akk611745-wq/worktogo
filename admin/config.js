@@ -18,7 +18,7 @@ const CONFIG = {
   LOG_POLL_INTERVAL: 10000,
   DASHBOARD_REFRESH: 30000,
   ENDPOINTS: {
-    LOGIN:             "/auth/login",
+    LOGIN:             "/auth/email/login",
     LOGOUT:            "/auth/logout",
     REFRESH:           "/auth/refresh",
     ME:                "/auth/me",

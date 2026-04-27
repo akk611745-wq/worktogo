@@ -7,9 +7,13 @@
 
 $_authSegment = str_replace('/api/auth', '', $uri);
 
+if ($method === 'POST' && $uri === '/api/auth/login') {
+    header('Location: /api/auth/email/login', true, 307);
+    exit;
+}
+
 $_authRoute = match (true) {
     $method === 'POST' && $uri === '/api/auth/register'       => 'register.php',
-    $method === 'POST' && $uri === '/api/auth/login'          => 'login.php',
     $method === 'POST' && $uri === '/api/auth/logout'         => 'logout.php',
     $method === 'GET'  && $uri === '/api/auth/me'             => 'me.php',
     $method === 'POST' && $uri === '/api/auth/refresh'        => 'refresh.php',

@@ -133,7 +133,12 @@ class EngineLoader
             return self::parseResponse($name, json_encode($resp['data'] ?? $resp), 200, 0, $context);
         } catch (\Throwable $e) {
             ob_end_clean();
-            return self::parseResponse($name, false, 500, -1, $context);
+            HeartLogger::error("Engine [{$name}] internal exception", [
+                'request_id' => $context['request_id'],
+                'error'      => $e->getMessage(),
+                'trace'      => $e->getTraceAsString()
+            ]);
+            return self::parseResponse($name, json_encode(['error' => $e->getMessage()]), 500, -1, $context);
         }
     }
 
@@ -273,12 +278,11 @@ class EngineLoader
             'engine' => $name,
             'ok'     => false,
             'data'   => null,
-            'error'  => null,   // generic only — internal details go to log
+            'error'  => null,
         ];
 
-        if ($errno !== 0 || $raw === false) {
-            // v1.2.0: internal cURL error code goes to log, NOT to response
-            HeartLogger::warn("Engine [{$name}] cURL failed", [
+        if ($errno !== 0 && $errno !== -1 || $raw === false) {
+            HeartLogger::warn("Engine [{$name}] cURL/Internal failed", [
                 'request_id' => $context['request_id'],
                 'errno'      => $errno,
             ]);
@@ -286,12 +290,18 @@ class EngineLoader
             return $base;
         }
 
+        $decoded = json_decode($raw, true);
+
         if ($httpCode < 200 || $httpCode >= 300) {
             HeartLogger::warn("Engine [{$name}] HTTP error", [
                 'request_id' => $context['request_id'],
                 'http'       => $httpCode,
+                'raw'        => $raw
             ]);
-            $base['error'] = 'Engine returned an error. Please try again.';
+            
+            // Return proper error message from payload if available
+            $errorMsg = is_array($decoded) && isset($decoded['error']) ? $decoded['error'] : 'Engine returned an error. Please try again.';
+            $base['error'] = $errorMsg;
             return $base;
         }
 
@@ -305,10 +315,10 @@ class EngineLoader
             return $base;
         }
 
-        $decoded = json_decode($raw, true);
         if (!is_array($decoded)) {
             HeartLogger::warn("Engine [{$name}] non-JSON response", [
                 'request_id' => $context['request_id'],
+                'raw'        => substr($raw, 0, 500) // Log part of the invalid response
             ]);
             $base['error'] = 'Engine returned invalid data.';
             return $base;
