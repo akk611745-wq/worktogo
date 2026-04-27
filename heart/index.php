@@ -76,17 +76,15 @@ if (file_exists($envFile)) {
 }
 
 // ── 2. Load Centralized Configurations ───────────────────────
+$appConfig = require_once __DIR__ . '/bootstrap.php';
 $config = [
-    'app'      => require_once SYSTEM_ROOT . '/config/app.php',
+    'app'      => $appConfig,
     'db'       => require_once SYSTEM_ROOT . '/config/database.php',
     'engines'  => require_once SYSTEM_ROOT . '/config/engines.php',
 ];
 
 // ── 3. Load Shared Core Helpers ──────────────────────────────
-require_once SYSTEM_ROOT . '/core/helpers/Database.php';
 require_once SYSTEM_ROOT . '/core/helpers/Logger.php';
-require_once SYSTEM_ROOT . '/core/helpers/Response.php';
-require_once SYSTEM_ROOT . '/core/helpers/JWT.php';
 require_once SYSTEM_ROOT . '/core/helpers/Validator.php';
 require_once SYSTEM_ROOT . '/core/helpers/RateLimiter.php';
 
@@ -191,7 +189,6 @@ if (str_starts_with($uri, '/api/delivery')) {
 // Refund API (User & Admin)
 if (str_starts_with($uri, '/api/user/refund') || str_starts_with($uri, '/api/admin/refund')) {
     require_once SYSTEM_ROOT . '/core/controllers/RefundController.php';
-    require_once HEART_ROOT . '/middleware/AuthMiddleware.php';
     
     // Define role constants if not already defined
     if (!defined('ROLE_ADMIN')) {
@@ -234,7 +231,6 @@ if (str_starts_with($uri, '/api/user/refund') || str_starts_with($uri, '/api/adm
 
 // Vendor Analytics API
 if (str_starts_with($uri, '/api/vendor/analytics') || str_starts_with($uri, '/api/vendor/service-analytics')) {
-    require_once HEART_ROOT . '/middleware/AuthMiddleware.php';
     if (str_starts_with($uri, '/api/vendor/analytics')) {
         require_once SYSTEM_ROOT . '/body/shopping-engine/api/VendorAnalyticsController.php';
         $ctrl = new ShoppingVendorAnalyticsController();
@@ -274,7 +270,6 @@ if (str_starts_with($uri, '/api/vendor/availability') || str_starts_with($uri, '
 // Feed API
 if ($uri === '/api/feed' && $method === 'GET') {
     require_once HEART_ROOT . '/../brain/BrainCore.php';
-    require_once HEART_ROOT . '/middleware/AuthMiddleware.php';
     
     // Optional JWT
     $user_id = null;
@@ -322,7 +317,6 @@ if (str_starts_with($uri, '/api/vendor/story') || str_starts_with($uri, '/api/fe
     $storyCtrl = new StoryController();
 
     if ($method === 'POST' && $uri === '/api/vendor/story') {
-        require_once HEART_ROOT . '/middleware/AuthMiddleware.php';
         $storyCtrl->uploadStory();
         exit;
     }

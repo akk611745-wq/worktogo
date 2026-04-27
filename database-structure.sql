@@ -146,7 +146,8 @@ CREATE TABLE `booking_slot_reservations` (
   `slot_date` date NOT NULL,
   `slot_time` time NOT NULL,
   `status` enum('reserved','confirmed','cancelled','completed') DEFAULT 'reserved',
-  `created_at` timestamp NULL DEFAULT current_timestamp()
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -423,7 +424,8 @@ CREATE TABLE `deliveries` (
   `status` enum('pending','assigned','picked','delivered','cancelled') NOT NULL DEFAULT 'pending',
   `assigned_at` datetime DEFAULT NULL,
   `delivered_at` datetime DEFAULT NULL,
-  `created_at` datetime NOT NULL DEFAULT current_timestamp()
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -543,6 +545,7 @@ CREATE TABLE `orders` (
   `ledger_status` enum('pending','processed','refunded') NOT NULL DEFAULT 'pending',
   `payment_status` enum('unpaid','paid','failed','partially_paid','refunded') NOT NULL DEFAULT 'unpaid',
   `payment_method` varchar(50) DEFAULT NULL,
+  `payment_id` varchar(255) DEFAULT NULL,
   `payment_ref` varchar(200) DEFAULT NULL,
   `delivery_status` varchar(30) NOT NULL DEFAULT 'pending',
   `subtotal` decimal(12,2) NOT NULL,

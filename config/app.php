@@ -3,8 +3,15 @@
  * Global Application Configuration
  */
 
+$appEnv = getenv('APP_ENV') ?: 'production';
+$jwtSecret = getenv('JWT_SECRET');
+
+if ($appEnv === 'production' && empty($jwtSecret)) {
+    throw new Exception('JWT_SECRET environment variable is required in production environment.');
+}
+
 return [
-    'env'         => getenv('APP_ENV') ?: 'production',
+    'env'         => $appEnv,
     'version'     => '1.2.0',
     'timezone'    => getenv('APP_TIMEZONE') ?: 'Asia/Kolkata',
     'admin_key'   => getenv('ADMIN_KEY') ?: '',
@@ -12,7 +19,7 @@ return [
     'log_level'   => strtoupper(getenv('HEART_LOG_LEVEL') ?: 'WARN'),
     'debug'       => getenv('APP_DEBUG') === 'true',
     'auth' => [
-        'jwt_secret' => getenv('JWT_SECRET') ?: 'change-me-in-production',
+        'jwt_secret' => $jwtSecret ?: 'change-me-in-production',
         'jwt_expiry' => (int)(getenv('JWT_EXPIRY') ?: 3600),
         'jwt_refresh_exp' => (int)(getenv('JWT_REFRESH_EXP') ?: 86400 * 30),
     ],
