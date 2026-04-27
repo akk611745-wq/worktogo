@@ -16,18 +16,20 @@
     </div>
     <h1 class="login-title">Admin Control Panel</h1>
     <p class="login-sub">Enter your admin credentials to continue</p>
-    <div class="login-alert" id="login-error"></div>
-    <div class="form-group">
-      <label class="form-label">EMAIL ADDRESS</label>
-      <input type="email" id="email" class="form-control" placeholder="admin@worktogo.com" autocomplete="username">
-    </div>
-    <div class="form-group">
-      <label class="form-label">PASSWORD</label>
-      <input type="password" id="password" class="form-control" placeholder="••••••••" autocomplete="current-password">
-    </div>
-    <button type="button" class="btn btn-primary" style="width:100%;justify-content:center;padding:10px" id="login-btn" onclick="doLogin()">
-      Sign In →
-    </button>
+    <form id="login-form" novalidate>
+      <div class="login-alert" id="login-error"></div>
+      <div class="form-group">
+        <label class="form-label" for="email">EMAIL ADDRESS</label>
+        <input type="email" id="email" class="form-control" placeholder="admin@worktogo.com" autocomplete="username" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="password">PASSWORD</label>
+        <input type="password" id="password" class="form-control" placeholder="••••••••" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:10px" id="login-btn">
+        Sign In →
+      </button>
+    </form>
     <p style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:20px;">
       WorkToGo Admin v<span id="ver"></span> · Restricted Access
     </p>
@@ -41,11 +43,11 @@
 <script>
 document.getElementById('ver').textContent = CONFIG.APP_VERSION;
 
-document.getElementById('login-btn').addEventListener('click', doLogin);
-document.getElementById('password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+document.getElementById('login-form').addEventListener('submit', doLogin);
 
-async function doLogin() {
-  // prevent any default behavior (already no form, safety measure)
+async function doLogin(event) {
+  event.preventDefault();
+
   const email = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value;
   const errEl = document.getElementById('login-error');
@@ -58,6 +60,7 @@ async function doLogin() {
   errEl.style.display = 'none';
 
   try {
+    console.log('Admin login submit triggered; calling /api/auth/email/login');
     await Auth.login(email, password);
     Toast.success('Welcome back!');
     setTimeout(() => { window.location.href = 'dashboard.html'; }, 500);

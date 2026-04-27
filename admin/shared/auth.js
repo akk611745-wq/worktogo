@@ -15,13 +15,33 @@ const Auth = {
   },
 
   async login(email, password) {
-    const data = await API.post("/auth/email/login", { email: email, password });
+    console.log('Admin Auth.login fetch start', '/api/auth/email/login');
+
+    const res = await fetch('/api/auth/email/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw {
+        status: res.status,
+        message: data.message || data.error?.message || 'Invalid credentials. Please try again.',
+        data,
+      };
+    }
+
     if (data.token) {
       localStorage.setItem(CONFIG.TOKEN_KEY, data.token);
       if (data.refreshToken) localStorage.setItem(CONFIG.REFRESH_TOKEN_KEY, data.refreshToken);
       const expiry = Date.now() + CONFIG.SESSION_DURATION * 1000;
       localStorage.setItem("wtg_admin_expiry", expiry.toString());
-      localStorage.setItem("wtg_admin_user", JSON.stringify(data.admin || {}));
+      localStorage.setItem("wtg_admin_user", JSON.stringify(data.admin || data.user || {}));
     }
     return data;
   },
