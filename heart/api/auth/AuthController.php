@@ -77,14 +77,23 @@ class AuthController {
             Response::error('Email/Phone and password are required', 400);
         }
 
-        $stmt = $this->db->prepare("SELECT id, name, email, phone, password, role, auth_type FROM users WHERE email = ? OR phone = ?");
-        $stmt->execute([$email, $email]);
+        $normalizedPhone = preg_replace('/\D+/', '', $email);
+
+        $stmt = $this->db->prepare("
+            SELECT id, name, email, phone, password, role, auth_type
+            FROM users
+            WHERE email = ?
+               OR phone = ?
+               OR REPLACE(REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', ''), '(', '') = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$email, $email, $normalizedPhone]);
         $userRow = $stmt->fetch(PDO::FETCH_ASSOC);
 
         $storedHash = (string)($userRow['password'] ?? '');
 
         if (!$userRow || $storedHash === '' || !password_verify((string)$password, $storedHash)) {
-            Response::error('Invalid credentials', 401);
+            Response::error('Invalid email or password', 401);
         }
 
         $user = [
