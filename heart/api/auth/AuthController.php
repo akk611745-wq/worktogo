@@ -57,9 +57,15 @@ class AuthController {
             'exp' => time() + (86400 * 30) // 30 days
         ], JWT_SECRET);
 
+        $refreshToken = bin2hex(random_bytes(32));
+        $refreshHash = hash('sha256', $refreshToken);
+        $stmt = $this->db->prepare("INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))");
+        $stmt->execute([$userId, $refreshHash]);
+
         Response::json([
             'success' => true,
             'token' => $token,
+            'refreshToken' => $refreshToken,
             'user' => $user
         ]);
     }
@@ -110,9 +116,15 @@ class AuthController {
             'exp' => time() + (86400 * 30) // 30 days
         ], JWT_SECRET);
 
+        $refreshToken = bin2hex(random_bytes(32));
+        $refreshHash = hash('sha256', $refreshToken);
+        $stmt = $this->db->prepare("INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))");
+        $stmt->execute([$userRow['id'], $refreshHash]);
+
         Response::json([
             'success' => true,
             'token' => $token,
+            'refreshToken' => $refreshToken,
             'user' => $user,
             'admin' => ($userRow['role'] === 'admin' ? $user : null)
         ]);

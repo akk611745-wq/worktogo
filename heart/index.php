@@ -127,8 +127,19 @@ if ($contentLength > 1_048_576) {   // 1 MB limit
 }
 
 // ── 4. Standard REST Dispatcher (Non-Pipeline) ───────────────
+$allowedOrigin = getenv('APP_URL') ?: 'https://yourdomain.com';
+$requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+
+if ($requestOrigin !== '' && $requestOrigin === $allowedOrigin) {
+    header('Access-Control-Allow-Origin: ' . $allowedOrigin);
+    header('Access-Control-Allow-Credentials: true');
+    header('Vary: Origin');
+} else {
+    // Always emit the configured origin (never reflect arbitrary origins)
+    header('Access-Control-Allow-Origin: ' . $allowedOrigin);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    header('Access-Control-Allow-Origin: *');
     header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
     header('Access-Control-Allow-Headers: Content-Type, Authorization, Accept');
     http_response_code(200);

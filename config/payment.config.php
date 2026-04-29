@@ -18,7 +18,7 @@ if (!function_exists('getenv_safe')) {
 }
 
 // ─── Manual .env loader ───────────────────────────────────────────────────────
-$envFile = __DIR__ . '/.env'; 
+$envFile = __DIR__ . '/../.env'; 
 if (file_exists($envFile)) {
     $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     foreach ($lines as $line) {
@@ -48,13 +48,13 @@ define('CASHFREE_API_BASE', strtoupper(CASHFREE_ENV) === 'PRODUCTION'
 define('CASHFREE_API_VERSION', '2023-08-01');
 
 // ─── App Base URL (used for return/notify URLs) ───────────────────────────────
-define('APP_BASE_URL', rtrim(getenv_safe('APP_BASE_URL', 'https://yourdomain.com'), '/'));
+define('APP_URL', rtrim(getenv_safe('APP_URL', 'https://yourdomain.com'), '/'));
 
 // Payment return URL after Cashfree hosted page
-define('PAYMENT_RETURN_URL', APP_BASE_URL . '/payment/return');
+define('PAYMENT_RETURN_URL', APP_URL . '/api/payment/return');
 
 // Webhook URL (must be publicly accessible)
-define('PAYMENT_WEBHOOK_URL', APP_BASE_URL . '/api/payment/webhook');
+define('PAYMENT_WEBHOOK_URL', APP_URL . '/api/payment/webhook');
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 if (empty(CASHFREE_APP_ID) || empty(CASHFREE_SECRET_KEY)) {

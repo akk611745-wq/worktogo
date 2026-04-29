@@ -61,7 +61,7 @@ class OrderService
     }
 
     // ─────────────────────────────────────────────
-    //  POST /api/order/create  — COD checkout
+    //  POST /api/orders  — COD checkout
     // ─────────────────────────────────────────────
     public function create(int $userId, array $payload): array
     {
@@ -188,11 +188,25 @@ class OrderService
             // ── Online Payment Initialization ───────────────
             $paymentData = null;
             if ($paymentMethod === 'online') {
-                require_once SYSTEM_ROOT . '/core/helpers/Payment.php';
-                $paymentData = Payment::createOrder('razorpay', $cartSubtotal, $parentOrderNumber);
+                require_once SYSTEM_ROOT . '/lib/PaymentService.php';
+                $paymentSvc = new PaymentService($this->db);
                 
-                $this->db->prepare("UPDATE orders SET payment_id = ? WHERE id = ?")
-                   ->execute([$paymentData['payment_id'], $parentOrderId]);
+                $uStmt = $this->db->prepare("SELECT id, name, email, phone FROM users WHERE id = ? LIMIT 1");
+                $uStmt->execute([$userId]);
+                $uRow = $uStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+                
+                $user = [
+                    'id'    => $userId,
+                    'name'  => $uRow['name'] ?? 'Customer',
+                    'email' => $uRow['email'] ?? 'customer@worktogo.in',
+                    'phone' => $uRow['phone'] ?? '0000000000',
+                ];
+                
+                $paymentData = $paymentSvc->createOnlinePaymentOrder($parentOrderId, $cartSubtotal, $user);
+                
+                if (!$paymentData['success']) {
+                    throw new \RuntimeException('Payment initialization failed: ' . $paymentData['error']);
+                }
             }
 
             $vendorOrders  = [];
@@ -301,7 +315,7 @@ class OrderService
                 'vendor_orders'  => $vendorOrders,
                 'payment_status' => 'unpaid',
                 'payment_method' => $paymentMethod,
-                'payment_ref'    => $paymentData['payment_id'] ?? null,
+                'payment_ref'    => $paymentData['cashfree_order_id'] ?? null,
                 'payment_data'   => $paymentData,
             ];
 

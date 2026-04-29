@@ -99,11 +99,17 @@ try {
         'phone'   => $data['phone'],
     ], JWT_SECRET, JWT_EXPIRY);
 
+    $refreshToken = bin2hex(random_bytes(32));
+    $refreshHash = hash('sha256', $refreshToken);
+    $stmt = $db->prepare("INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))");
+    $stmt->execute([$userId, $refreshHash]);
+
     Response::success([
-        'token'      => $token,
-        'expires_in' => JWT_EXPIRY,
-        'is_new'     => $isNew,
-        'user'       => [
+        'token'        => $token,
+        'refreshToken' => $refreshToken,
+        'expires_in'   => JWT_EXPIRY,
+        'is_new'       => $isNew,
+        'user'         => [
             'id'    => $userId,
             'phone' => $data['phone'],
             'role'  => $role,

@@ -23,7 +23,7 @@ class OrderController
         $this->service = new OrderService($db, $cart);
     }
 
-    // ── POST /api/order/create ────────────────────────────────
+    // ── POST /api/orders ──────────────────────────────────────
     public function create(): void
     {
         $auth   = AuthMiddleware::requireRole(ROLE_CUSTOMER, ROLE_ADMIN);

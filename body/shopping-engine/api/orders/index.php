@@ -6,8 +6,8 @@ require_once __DIR__ . '/OrderController.php';
 
 $ctrl = new OrderController($db);
 
-// POST /api/order/create
-if ($method === 'POST' && $uri === '/api/order/create') {
+// POST /api/orders  OR  /api/order/create
+if ($method === 'POST' && ($uri === '/api/orders' || $uri === '/api/order/create')) {
     $ctrl->create(); exit;
 }
 

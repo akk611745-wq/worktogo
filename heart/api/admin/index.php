@@ -21,7 +21,7 @@ try {
         $stmt = $db->prepare("
             SELECT 
                 COUNT(*) as total_orders_today,
-                SUM(CASE WHEN status IN ('delivered', 'completed') THEN 1 ELSE 0 END) as completed_orders_today,
+                SUM(CASE WHEN status IN ('delivered') THEN 1 ELSE 0 END) as completed_orders_today,
                 SUM(CASE WHEN status IN ('cancelled', 'failed') THEN 1 ELSE 0 END) as failed_orders_today
             FROM orders 
             WHERE created_at >= :today
@@ -87,7 +87,7 @@ try {
         $stmt = $db->prepare("
             SELECT id, order_number, status, updated_at 
             FROM orders 
-            WHERE status NOT IN ('delivered', 'completed', 'cancelled', 'refunded') 
+            WHERE status NOT IN ('delivered', 'cancelled', 'refunded') 
               AND updated_at < DATE_SUB(NOW(), INTERVAL 60 MINUTE)
         ");
         $stmt->execute();
@@ -118,7 +118,7 @@ try {
             SELECT v.id, v.business_name, SUM(o.total) as total_sales
             FROM vendors v
             JOIN orders o ON v.id = o.vendor_id
-            WHERE o.status IN ('delivered', 'completed')
+            WHERE o.status IN ('delivered')
             GROUP BY v.id
             ORDER BY total_sales DESC
             LIMIT 5
@@ -353,7 +353,7 @@ try {
 
         $v = Validator::make($input, [
             'status' => 'nullable|in:active,suspended,banned',
-            'role'   => 'nullable|in:customer,vendor,admin',
+            'role'   => 'nullable|in:customer,vendor_service,vendor_shopping,admin',
         ]);
 
         if ($v->fails()) {
@@ -448,6 +448,56 @@ try {
 
         Logger::info('Admin purged logs', ['admin_id' => $auth['user_id'], 'files_deleted' => $deleted]);
         Response::success(['files_deleted' => $deleted], 200, "Deleted {$deleted} log file(s)");
+    }
+
+    // ── POST /api/admin/users/{id}/block ──────────────────────────
+    if ($method === 'POST' && preg_match('#^/api/admin/users/(\d+)/block$#', $uri, $m)) {
+        $userId = (int) $m[1];
+        $db->prepare("UPDATE users SET status = 'suspended', updated_at = NOW() WHERE id = ?")
+           ->execute([$userId]);
+        Logger::info('Admin blocked user', ['admin_id' => $auth['user_id'], 'target_user' => $userId]);
+        Response::success(null, 200, 'User blocked');
+    }
+
+    // ── POST /api/admin/users/{id}/unblock ────────────────────────
+    if ($method === 'POST' && preg_match('#^/api/admin/users/(\d+)/unblock$#', $uri, $m)) {
+        $userId = (int) $m[1];
+        $db->prepare("UPDATE users SET status = 'active', updated_at = NOW() WHERE id = ?")
+           ->execute([$userId]);
+        Logger::info('Admin unblocked user', ['admin_id' => $auth['user_id'], 'target_user' => $userId]);
+        Response::success(null, 200, 'User unblocked');
+    }
+
+    // ── DELETE /api/admin/products/{id} ───────────────────────────
+    if ($method === 'DELETE' && preg_match('#^/api/admin/products/(\d+)$#', $uri, $m)) {
+        $productId = (int) $m[1];
+        $db->prepare("UPDATE products SET status = 'archived', deleted_at = NOW() WHERE id = ?")
+           ->execute([$productId]);
+        Logger::info('Admin deleted product', ['admin_id' => $auth['user_id'], 'product_id' => $productId]);
+        Response::success(null, 200, 'Product deleted');
+    }
+
+    // ── PUT /api/admin/orders/{id}/status ─────────────────────────
+    if (in_array($method, ['PUT', 'PATCH']) && preg_match('#^/api/admin/orders/(\d+)/status$#', $uri, $m)) {
+        $orderId = (int) $m[1];
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        $status = $input['status'] ?? null;
+        if (!$status) {
+            Response::validation('Status is required');
+        }
+        $db->prepare("UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?")
+           ->execute([$status, $orderId]);
+        Logger::info('Admin updated order status', ['admin_id' => $auth['user_id'], 'order_id' => $orderId, 'new_status' => $status]);
+        Response::success(null, 200, 'Order status updated');
+    }
+
+    // ── POST /api/admin/orders/{id}/cancel ────────────────────────
+    if ($method === 'POST' && preg_match('#^/api/admin/orders/(\d+)/cancel$#', $uri, $m)) {
+        $orderId = (int) $m[1];
+        $db->prepare("UPDATE orders SET status = 'cancelled', updated_at = NOW() WHERE id = ?")
+           ->execute([$orderId]);
+        Logger::info('Admin cancelled order', ['admin_id' => $auth['user_id'], 'order_id' => $orderId]);
+        Response::success(null, 200, 'Order cancelled');
     }
 
 } catch (PDOException $e) {

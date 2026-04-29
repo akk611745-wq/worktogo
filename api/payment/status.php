@@ -9,6 +9,14 @@ header('Content-Type: application/json');
 header('X-Content-Type-Options: nosniff');
 
 require_once __DIR__ . '/../../core/helpers/Database.php';
+require_once __DIR__ . '/../../heart/middleware/AuthMiddleware.php';
+
+$currentUser = AuthMiddleware::require();
+
+if (!isset($currentUser) || empty($currentUser['user_id'])) {
+    http_response_code(401);
+    die(json_encode(['status' => 'error', 'message' => 'Unauthorized']));
+}
 
 $orderId = isset($_GET['order_id']) ? (int)$_GET['order_id'] : 0;
 

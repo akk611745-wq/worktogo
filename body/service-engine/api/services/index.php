@@ -11,10 +11,12 @@
  */
 
 // ── Centralized Boot ──────────────────────────────────────────
-require_once dirname(dirname(dirname(__DIR__))) . '/core/helpers/Database.php';
-require_once dirname(dirname(dirname(__DIR__))) . '/core/helpers/Response.php';
-require_once dirname(dirname(dirname(__DIR__))) . '/core/helpers/JWT.php';
-require_once dirname(dirname(dirname(__DIR__))) . '/heart/middleware/AuthMiddleware.php';
+// Incorrect path: dirname(dirname(dirname(__DIR__))) . '/core/...' -> body/core/...
+// Corrected path: dirname(dirname(dirname(dirname(__DIR__)))) . '/core/...' -> /core/...
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Database.php';
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Response.php';
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/JWT.php';
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/heart/middleware/AuthMiddleware.php';
 
 $db = getDB();
 
@@ -67,6 +69,48 @@ if ($method === 'GET' && $uri === '/api/services') {
     Response::success(['services' => $services, 'total' => count($services)]);
 }
 
+// ── POST /api/services ─────────────────────────────────────────────────────────
+if ($method === 'POST' && $uri === '/api/services') {
+    $auth  = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE);
+    $input = defined('HEART_INTERNAL_INC') 
+        ? json_decode($GLOBALS['HEART_PAYLOAD'] ?? '{}', true) 
+        : (json_decode(file_get_contents('php://input'), true) ?? []);
+
+    $vendorId = resolveVendorId($db, (int)$auth['user_id']);
+
+    $name            = trim($input['name'] ?? '');
+    $basePrice       = isset($input['base_price']) ? (float)$input['base_price'] : 0;
+    $categoryId      = isset($input['category_id']) ? (int)$input['category_id'] : 0;
+    $durationMinutes = isset($input['duration_minutes']) ? (int)$input['duration_minutes'] : 0;
+    $description     = trim($input['description'] ?? '');
+
+    if (!$name || !$basePrice || !$categoryId || !$durationMinutes) {
+        Response::validation('name, base_price, category_id, and duration_minutes are required');
+    }
+
+    $stmt = $db->prepare(
+        "INSERT INTO services (vendor_id, category_id, name, description, base_price, duration_minutes, status, created_at, updated_at)
+         VALUES (:vid, :cid, :name, :desc, :price, :duration, 'active', NOW(), NOW())"
+    );
+    
+    $stmt->execute([
+        ':vid'      => $vendorId,
+        ':cid'      => $categoryId,
+        ':name'     => $name,
+        ':desc'     => $description ?: null,
+        ':price'    => $basePrice,
+        ':duration' => $durationMinutes
+    ]);
+
+    $serviceId = (int)$db->lastInsertId();
+
+    $stmt = $db->prepare("SELECT * FROM services WHERE id = ?");
+    $stmt->execute([$serviceId]);
+    $service = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    Response::success(['service' => $service], 201);
+}
+
 // ── GET /api/services/{id} ────────────────────────────────────────────────────
 if ($method === 'GET' && preg_match('#^/api/services/(\d+)$#', $uri, $m)) {
     $stmt = $db->prepare(
@@ -83,6 +127,78 @@ if ($method === 'GET' && preg_match('#^/api/services/(\d+)$#', $uri, $m)) {
     if (!$service) Response::notFound('Service');
 
     Response::success(['service' => $service]);
+}
+
+// ── PUT /api/services/{id} ────────────────────────────────────────────────────
+if ($method === 'PUT' && preg_match('#^/api/services/(\d+)$#', $uri, $m)) {
+    $auth  = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE);
+    $input = defined('HEART_INTERNAL_INC') 
+        ? json_decode($GLOBALS['HEART_PAYLOAD'] ?? '{}', true) 
+        : (json_decode(file_get_contents('php://input'), true) ?? []);
+
+    $vendorId = resolveVendorId($db, (int)$auth['user_id']);
+    $serviceId = (int)$m[1];
+
+    $stmt = $db->prepare("SELECT id FROM services WHERE id = ? AND vendor_id = ? AND deleted_at IS NULL LIMIT 1");
+    $stmt->execute([$serviceId, $vendorId]);
+    if (!$stmt->fetch()) {
+        Response::notFound('Service not found or you do not have permission to edit it');
+    }
+
+    $updates = [];
+    $bind = [':id' => $serviceId];
+
+    if (isset($input['name'])) {
+        $updates[] = 'name = :name';
+        $bind[':name'] = trim($input['name']);
+    }
+    if (isset($input['base_price'])) {
+        $updates[] = 'base_price = :price';
+        $bind[':price'] = (float)$input['base_price'];
+    }
+    if (isset($input['category_id'])) {
+        $updates[] = 'category_id = :cid';
+        $bind[':cid'] = (int)$input['category_id'];
+    }
+    if (isset($input['duration_minutes'])) {
+        $updates[] = 'duration_minutes = :duration';
+        $bind[':duration'] = (int)$input['duration_minutes'];
+    }
+    if (isset($input['description'])) {
+        $updates[] = 'description = :desc';
+        $bind[':desc'] = trim($input['description']) ?: null;
+    }
+
+    if (empty($updates)) {
+        Response::validation('No valid fields provided for update');
+    }
+
+    $updates[] = 'updated_at = NOW()';
+
+    $db->prepare("UPDATE services SET " . implode(', ', $updates) . " WHERE id = :id")->execute($bind);
+
+    $stmt = $db->prepare("SELECT * FROM services WHERE id = ?");
+    $stmt->execute([$serviceId]);
+    $service = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    Response::success(['service' => $service]);
+}
+
+// ── DELETE /api/services/{id} ─────────────────────────────────────────────────
+if ($method === 'DELETE' && preg_match('#^/api/services/(\d+)$#', $uri, $m)) {
+    $auth  = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE);
+    $vendorId = resolveVendorId($db, (int)$auth['user_id']);
+    $serviceId = (int)$m[1];
+
+    $stmt = $db->prepare("SELECT id FROM services WHERE id = ? AND vendor_id = ? AND deleted_at IS NULL LIMIT 1");
+    $stmt->execute([$serviceId, $vendorId]);
+    if (!$stmt->fetch()) {
+        Response::notFound('Service not found or you do not have permission to delete it');
+    }
+
+    $db->prepare("UPDATE services SET deleted_at = NOW(), updated_at = NOW() WHERE id = ?")->execute([$serviceId]);
+
+    Response::success(['message' => 'Service deleted successfully']);
 }
 
 // ── POST /api/service/request (create booking + auto-create job) ──────────────
@@ -217,7 +333,7 @@ if ($method === 'GET' && $uri === '/api/service/bookings') {
     if ($auth['role'] === ROLE_ADMIN) {
         $where = [];
         $bind  = [];
-    } elseif ($auth['role'] === ROLE_VENDOR) {
+    } elseif ($auth['role'] === ROLE_VENDOR_SERVICE) {
         $vendorId = resolveVendorId($db, (int)$auth['user_id']);
         $where    = ['b.vendor_id = :vid'];
         $bind     = [':vid' => $vendorId];
@@ -271,7 +387,7 @@ if ($method === 'GET' && preg_match('#^/api/service/bookings/(\d+)$#', $uri, $m)
     // Ownership enforcement
     if ($auth['role'] === ROLE_ADMIN) {
         // Admin may view any booking — no restriction
-    } elseif ($auth['role'] === ROLE_VENDOR) {
+    } elseif ($auth['role'] === ROLE_VENDOR_SERVICE) {
         $vendorId = resolveVendorId($db, (int)$auth['user_id']);
         if ((int)$booking['vendor_id'] !== $vendorId) {
             Response::forbidden('Access denied to this booking');
@@ -293,7 +409,7 @@ if ($method === 'GET' && preg_match('#^/api/service/bookings/(\d+)$#', $uri, $m)
 // ── PATCH /api/jobs/{id}/status ───────────────────────────────────────────────
 // FIX: Vendor ownership validated via vendors table (not raw user_id comparison).
 if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
-    $auth      = AuthMiddleware::requireRole(ROLE_VENDOR, ROLE_ADMIN);
+    $auth      = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_ADMIN);
     $input     = json_decode(file_get_contents('php://input'), true) ?? [];
     $jobId     = (int)$m[1];
     $newStatus = trim($input['status'] ?? '');
@@ -309,7 +425,7 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
     if (!$jobRow) Response::notFound('Job');
 
     // FIX: vendor ownership — compare against vendors.id, not users.id
-    if ($auth['role'] === ROLE_VENDOR) {
+    if ($auth['role'] === ROLE_VENDOR_SERVICE) {
         $vendorId = resolveVendorId($db, (int)$auth['user_id']);
         if ((int)$jobRow['vendor_id'] !== $vendorId) {
             Response::forbidden('You do not have permission to update this job');

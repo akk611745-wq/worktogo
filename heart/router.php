@@ -40,7 +40,7 @@ header('X-Heart-Version: ' . HEART_VERSION);
 header('X-Powered-By: WorkToGo-Heart');
 
 // ── CORS headers — FIX 5: lock to env-configured origin, no wildcard ──
-$allowedOrigin = getenv('CORS_ORIGIN') ?: 'https://yourdomain.com';
+$allowedOrigin = getenv('APP_URL') ?: 'https://yourdomain.com';
 $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
 
 if ($requestOrigin !== '' && $requestOrigin === $allowedOrigin) {
@@ -197,6 +197,7 @@ class AppRouter
         // ── SHOPPING APP ──────────────────────────────────────
         'shopping:search_products'     => ['engines' => ['shopping'],             'brain' => true,  'cache_ttl' => 120],
         'shopping:list_products'       => ['engines' => ['shopping'],             'brain' => false, 'cache_ttl' => 300],
+        'shopping:list_orders'         => ['engines' => ['shopping'],             'brain' => false, 'cache_ttl' => 0],
         'shopping:view_product'        => ['engines' => ['shopping'],             'brain' => true,  'cache_ttl' => 180],
         'shopping:add_to_cart'         => ['engines' => ['shopping'],             'brain' => false, 'cache_ttl' => 0],
         'shopping:checkout'            => ['engines' => ['shopping', 'delivery'], 'brain' => true,  'cache_ttl' => 0],
@@ -208,9 +209,18 @@ class AppRouter
 
         // ── SERVICE APP ───────────────────────────────────────
         'service:book_service'         => ['engines' => ['service'],              'brain' => true,  'cache_ttl' => 0],
+        'service:create_booking'       => ['engines' => ['service'],              'brain' => true,  'cache_ttl' => 0],
+        'service:list_bookings'        => ['engines' => ['service'],              'brain' => false, 'cache_ttl' => 0],
         'service:list_services'        => ['engines' => ['service'],              'brain' => false, 'cache_ttl' => 300],
         'service:service_status'       => ['engines' => ['service'],              'brain' => false, 'cache_ttl' => 15],
         'service:get_recommendations'  => ['engines' => ['service'],              'brain' => true,  'cache_ttl' => 90],
+
+        // ── VENDOR APP ────────────────────────────────────────
+        'vendor:get_summary'           => ['engines' => ['shopping', 'service'],  'brain' => false, 'cache_ttl' => 0],
+        'vendor:list_products'         => ['engines' => ['shopping'],             'brain' => false, 'cache_ttl' => 0],
+        'vendor:create_product'        => ['engines' => ['shopping'],             'brain' => false, 'cache_ttl' => 0],
+        'vendor:list_orders'           => ['engines' => ['shopping'],             'brain' => false, 'cache_ttl' => 0],
+        'vendor:list_jobs'             => ['engines' => ['service'],              'brain' => false, 'cache_ttl' => 0],
 
         // ── DELIVERY APP ──────────────────────────────────────
         'delivery:track_delivery'      => ['engines' => ['delivery'],             'brain' => false, 'cache_ttl' => 10],

@@ -13,28 +13,45 @@ if (empty($input['refresh_token'])) {
 $refreshToken = trim($input['refresh_token']);
 
 try {
-    // Decode and verify the refresh token
-    $payload = JWT::decode($refreshToken, JWT_SECRET);
+    // Check if it's a JWT (legacy) or a hex token
+    $userId = null;
 
-    if (!$payload || ($payload['type'] ?? '') !== 'refresh') {
-        Response::error('Invalid or expired refresh token', 401, 'INVALID_REFRESH_TOKEN');
-    }
+    if (strpos($refreshToken, '.') !== false) {
+        $payload = JWT::decode($refreshToken, JWT_SECRET);
+        if (!$payload || ($payload['type'] ?? '') !== 'refresh') {
+            Response::error('Invalid or expired refresh token', 401, 'INVALID_REFRESH_TOKEN');
+        }
+        $userId = (int) $payload['user_id'];
 
-    // Check it exists in DB (not revoked)
-    $stmt = $db->prepare(
-        "SELECT id FROM refresh_tokens
-         WHERE user_id = ? AND token_hash = ? AND expires_at > NOW()
-         LIMIT 1"
-    );
-    $stmt->execute([(int) $payload['user_id'], hash('sha256', $refreshToken)]);
+        $stmt = $db->prepare(
+            "SELECT id FROM refresh_tokens
+             WHERE user_id = ? AND token_hash = ? AND expires_at > NOW()
+             LIMIT 1"
+        );
+        $stmt->execute([$userId, hash('sha256', $refreshToken)]);
 
-    if (!$stmt->fetch()) {
-        Response::error('Refresh token has been revoked or expired', 401, 'REFRESH_TOKEN_REVOKED');
+        if (!$stmt->fetch()) {
+            Response::error('Refresh token has been revoked or expired', 401, 'REFRESH_TOKEN_REVOKED');
+        }
+    } else {
+        // Hex token
+        $stmt = $db->prepare(
+            "SELECT id, user_id FROM refresh_tokens
+             WHERE token_hash = ? AND expires_at > NOW()
+             LIMIT 1"
+        );
+        $stmt->execute([hash('sha256', $refreshToken)]);
+        $rt = $stmt->fetch();
+
+        if (!$rt) {
+            Response::error('Refresh token has been revoked or expired', 401, 'REFRESH_TOKEN_REVOKED');
+        }
+        $userId = (int) $rt['user_id'];
     }
 
     // Load user
     $user = $db->prepare("SELECT id, phone, role, status FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1");
-    $user->execute([(int) $payload['user_id']]);
+    $user->execute([$userId]);
     $user = $user->fetch();
 
     if (!$user || $user['status'] !== 'active') {

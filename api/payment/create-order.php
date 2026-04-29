@@ -34,7 +34,7 @@ require_once __DIR__ . '/../../core/helpers/Database.php';
 // ── Authentication ──────────────────────────────────────────────────────────
 $currentUser = AuthMiddleware::require();
 
-if (!isset($currentUser) || empty($currentUser['id'])) {
+if (!isset($currentUser) || empty($currentUser['user_id'])) {
     http_response_code(401);
     die(json_encode(['status' => 'error', 'message' => 'Unauthorized']));
 }
@@ -97,7 +97,7 @@ if ($paymentMethod === 'cod') {
 // We only use $input to get order_id and payment_method
 
 // Fetch the order's verified amount from DB for passing to service
-$stmt = $db->prepare('SELECT total FROM orders WHERE id = :id LIMIT 1');
+$stmt = $db->prepare('SELECT total, user_id FROM orders WHERE id = :id LIMIT 1');
 $stmt->execute([':id' => $orderId]);
 $orderRow = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -106,13 +106,18 @@ if (!$orderRow) {
     die(json_encode(['status' => 'error', 'message' => 'Order not found']));
 }
 
+if ((string)$orderRow['user_id'] !== (string)$currentUser['user_id']) {
+    http_response_code(403);
+    die(json_encode(['status' => 'error', 'message' => 'Forbidden: You do not own this order']));
+}
+
 $amount = (float)$orderRow['total'];
 
 $result = $paymentService->createOnlinePaymentOrder(
     $orderId,
     $amount,
     [
-        'id'    => $currentUser['id'],
+        'id'    => $currentUser['user_id'],
         'name'  => $currentUser['name']  ?? 'Customer',
         'email' => $currentUser['email'] ?? '',
         'phone' => $currentUser['phone'] ?? '9999999999',

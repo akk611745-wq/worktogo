@@ -9,10 +9,12 @@
  */
 
 // ── Centralized Boot ──────────────────────────────────────────
-require_once dirname(dirname(dirname(__DIR__))) . '/core/helpers/Database.php';
-require_once dirname(dirname(dirname(__DIR__))) . '/core/helpers/Response.php';
-require_once dirname(dirname(dirname(__DIR__))) . '/core/helpers/JWT.php';
-require_once dirname(dirname(dirname(__DIR__))) . '/heart/middleware/AuthMiddleware.php';
+// Incorrect path: dirname(dirname(dirname(__DIR__))) . '/core/...' -> body/core/...
+// Corrected path: dirname(dirname(dirname(dirname(__DIR__)))) . '/core/...' -> /core/...
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Database.php';
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Response.php';
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/JWT.php';
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/heart/middleware/AuthMiddleware.php';
 
 $db = getDB();
 
@@ -34,6 +36,66 @@ function resolveVendorId(PDO $db, int $userId): int
         Response::forbidden('No vendor profile found for your account');
     }
     return (int)$row['id'];
+}
+
+// ── POST /api/vendors ─────────────────────────────────────────────────────────
+if ($method === 'POST' && $uri === '/api/vendors') {
+    $auth  = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_ADMIN);
+    $input = json_decode(file_get_contents('php://input'), true) ?? [];
+
+    $businessName = trim($input['business_name'] ?? '');
+    $phone        = trim($input['phone'] ?? '');
+    $type         = trim($input['type'] ?? $input['category'] ?? '');
+
+    if ($businessName === '' || $phone === '' || $type === '') {
+        Response::error('business_name, phone, and type/category are required', 400);
+    }
+
+    if (!in_array($type, ['service', 'shopping'])) {
+        Response::error('type must be either service or shopping', 400);
+    }
+
+    $userId = (int)$auth['user_id'];
+
+    // Check if vendor already exists
+    $stmt = $db->prepare("SELECT id FROM vendors WHERE user_id = ? LIMIT 1");
+    $stmt->execute([$userId]);
+    if ($stmt->fetch()) {
+        Response::error('Vendor profile already exists for this user', 409);
+    }
+
+    $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $businessName), '-'));
+    
+    // Ensure slug uniqueness
+    $stmt = $db->prepare("SELECT COUNT(*) FROM vendors WHERE slug = ?");
+    $stmt->execute([$slug]);
+    if ($stmt->fetchColumn() > 0) {
+        $slug .= '-' . time();
+    }
+
+    $db->beginTransaction();
+    try {
+        $stmt = $db->prepare(
+            "INSERT INTO vendors (user_id, business_name, slug, type, status)
+             VALUES (?, ?, ?, ?, 'pending')"
+        );
+        $stmt->execute([$userId, $businessName, $slug, $type]);
+        $vendorId = $db->lastInsertId();
+
+        $stmt = $db->prepare("UPDATE users SET phone = ? WHERE id = ?");
+        $stmt->execute([$phone, $userId]);
+
+        $db->commit();
+
+        $stmt = $db->prepare("SELECT * FROM vendors WHERE id = ?");
+        $stmt->execute([$vendorId]);
+        $vendor = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        Response::created(['vendor' => $vendor]);
+    } catch (Exception $e) {
+        $db->rollBack();
+        Response::error('Failed to create vendor profile: ' . $e->getMessage(), 500);
+    }
 }
 
 // ── GET /api/vendors ──────────────────────────────────────────────────────────
@@ -160,7 +222,7 @@ if ($method === 'GET' && $uri === '/api/vendor/jobs') {
 // ── GET /api/vendor/jobs/{id} ─────────────────────────────────────────────────
 // FIX: ownership check uses resolved vendors.id, not raw JWT user_id.
 if ($method === 'GET' && preg_match('#^/api/vendor/jobs/(\d+)$#', $uri, $m)) {
-    $auth  = AuthMiddleware::requireRole(ROLE_VENDOR, ROLE_ADMIN);
+    $auth  = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_ADMIN);
     $jobId = (int)$m[1];
 
     $stmt = $db->prepare(
@@ -181,7 +243,7 @@ if ($method === 'GET' && preg_match('#^/api/vendor/jobs/(\d+)$#', $uri, $m)) {
     if (!$job) Response::notFound('Job');
 
     // Enforce vendor ownership via vendors table
-    if ($auth['role'] === ROLE_VENDOR) {
+    if ($auth['role'] === ROLE_VENDOR_SERVICE) {
         $vendorId = resolveVendorId($db, (int)$auth['user_id']);
         if ((int)$job['vendor_id'] !== $vendorId) {
             Response::forbidden('Job not assigned to your account');

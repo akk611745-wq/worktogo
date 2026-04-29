@@ -104,7 +104,7 @@ The core system must define `CORE_PATH` and `$db` (PDO) before including any sho
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/api/order/create` | User | Checkout — COD only |
+| POST | `/api/orders` | User | Checkout — COD only |
 | GET | `/api/orders` | User | Order history |
 | GET | `/api/orders/{id}` | User | Order detail |
 | POST | `/api/orders/{id}/cancel` | User | Cancel pending/confirmed order |

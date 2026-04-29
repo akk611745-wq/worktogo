@@ -54,8 +54,8 @@ const AUTH = (() => {
 
   async function verifyAndLogin(phone, otp) {
     const result = await API.verifyOtp(phone, otp);
-    if (result.ok && result.data?.token) {
-      const { token, user } = result.data;
+    if (result.ok && result.data?.data?.token) {
+      const { token, user } = result.data.data;
       saveSession(token, user);
       return { ok: true, user };
     }

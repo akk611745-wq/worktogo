@@ -132,7 +132,7 @@ Implemented but currently unreachable due missing middleware bootstrap: `/api/ad
 
 - Product router `body/shopping-engine/api/products/index.php:9`: `/api/products/categories`, `/api/vendor/products`, `/api/products`, `/api/products/{id}`, `/api/vendor/product/variation/{id}/stock`, `/api/product/{id}`. Category route is schema-broken.
 - Cart router `body/shopping-engine/api/cart/index.php:9`: `/api/cart`, `/api/cart/add`, `/api/cart/remove`, `/api/cart/update`. Backend exists; customer frontend lacks cart calls.
-- Order router `body/shopping-engine/api/orders/index.php:9`: `/api/order/create`, `/api/orders/{id}/cancel`, `/api/vendor/orders/{id}/status`, `/api/vendor/orders`, `/api/orders`, `/api/orders/{id}`. Backend exists; payment and frontend intent mismatches remain.
+- Order router `body/shopping-engine/api/orders/index.php:9`: `/api/orders` (POST), `/api/orders/{id}/cancel`, `/api/vendor/orders/{id}/status`, `/api/vendor/orders`, `/api/orders` (GET), `/api/orders/{id}`. Backend exists; payment and frontend intent mismatches remain.
 
 ### Service endpoints
 

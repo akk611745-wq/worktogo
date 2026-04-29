@@ -24,8 +24,14 @@ try {
     // ── Search Services (only if service engine exists) ───────
     if (in_array($type, ['all', 'services'], true)) {
         try {
-            $svcStmt = $db->prepare(
-                "SELECT s.id, s.name, s.slug, s.short_desc, s.base_price, s.rating,
+            $hasPhase2A = false;
+            $checkStmt = $db->query("SHOW COLUMNS FROM services LIKE 'deleted_at'");
+            if ($checkStmt && $checkStmt->rowCount() > 0) {
+                $hasPhase2A = true;
+            }
+
+            if ($hasPhase2A) {
+                $svcQuery = "SELECT s.id, s.name, s.slug, s.short_desc, s.base_price, s.rating,
                         'service' AS result_type,
                         v.business_name AS vendor_name
                  FROM services s
@@ -33,8 +39,20 @@ try {
                  WHERE s.status = 'active' AND s.deleted_at IS NULL
                    AND (s.name LIKE :q OR s.description LIKE :q OR s.short_desc LIKE :q)
                  ORDER BY s.is_featured DESC, s.rating DESC
-                 LIMIT :limit OFFSET :offset"
-            );
+                 LIMIT :limit OFFSET :offset";
+            } else {
+                $svcQuery = "SELECT s.id, s.name, '' AS slug, '' AS short_desc, s.base_price, 0.00 AS rating,
+                        'service' AS result_type,
+                        v.business_name AS vendor_name
+                 FROM services s
+                 LEFT JOIN vendors v ON v.id = s.vendor_id
+                 WHERE s.status = 'active'
+                   AND (s.name LIKE :q)
+                 ORDER BY s.id DESC
+                 LIMIT :limit OFFSET :offset";
+            }
+
+            $svcStmt = $db->prepare($svcQuery);
             $svcStmt->bindValue(':q',      $searchTerm);
             $svcStmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
             $svcStmt->bindValue(':offset', $offset, PDO::PARAM_INT);
@@ -50,7 +68,7 @@ try {
     if (in_array($type, ['all', 'products'], true)) {
         try {
             $prdStmt = $db->prepare(
-                "SELECT p.id, p.name, p.slug, p.short_description AS short_desc,
+                "SELECT p.id, p.name, p.slug, p.short_desc AS short_desc,
                         p.sale_price AS base_price, p.rating,
                         'product' AS result_type,
                         v.business_name AS vendor_name

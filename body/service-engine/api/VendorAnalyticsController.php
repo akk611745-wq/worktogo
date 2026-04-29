@@ -7,20 +7,43 @@ require_once HEART_ROOT . '/middleware/AuthMiddleware.php';
 class ServiceVendorAnalyticsController
 {
     private PDO $db;
-    private AuthMiddleware $auth;
 
     public function __construct()
     {
         $this->db = getDB();
-        $this->auth = new AuthMiddleware();
+    }
+
+    private function requireVendorAndGetId(): int
+    {
+        $auth = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_ADMIN);
+
+        if (($auth['role'] ?? '') === ROLE_ADMIN) {
+            $vendorId = isset($_GET['vendor_id']) ? (int)$_GET['vendor_id'] : 0;
+            if ($vendorId > 0) {
+                return $vendorId;
+            }
+            Response::validation('vendor_id is required for admin analytics access');
+        }
+
+        $userId = (int)($auth['user_id'] ?? 0);
+        if ($userId <= 0) {
+            Response::unauthorized('Valid authentication token required');
+        }
+
+        $stmt = $this->db->prepare("SELECT id FROM vendors WHERE user_id = ? AND status = 'active' LIMIT 1");
+        $stmt->execute([$userId]);
+        $vendorId = (int)$stmt->fetchColumn();
+
+        if ($vendorId <= 0) {
+            Response::forbidden('Vendor profile not found or inactive');
+        }
+
+        return $vendorId;
     }
 
     public function getBookingStats()
     {
-        $vendor_id = $this->auth->getVendorId();
-        if (!$vendor_id) {
-            Response::error('Unauthorized', 401);
-        }
+        $vendor_id = $this->requireVendorAndGetId();
 
         // 1. bookings_today
         $stmt = $this->db->prepare("SELECT COUNT(*) FROM bookings WHERE vendor_id=? AND DATE(created_at)=CURDATE() AND status != 'cancelled'");
@@ -73,10 +96,7 @@ class ServiceVendorAnalyticsController
 
     public function getBookingChart()
     {
-        $vendor_id = $this->auth->getVendorId();
-        if (!$vendor_id) {
-            Response::error('Unauthorized', 401);
-        }
+        $vendor_id = $this->requireVendorAndGetId();
 
         $range = $_GET['range'] ?? '4w';
         if (!in_array($range, ['4w', '30d'])) {

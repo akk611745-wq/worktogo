@@ -33,7 +33,8 @@ try {
         if (!$orderId) Response::validation('Order ID required');
 
         // Logic to send to external Railway-based system
-        $swiftKey = $_ENV['SWIFTDELIVER_API_KEY'] ?? getenv('SWIFTDELIVER_API_KEY');
+        $swiftKey = $_ENV['SWIFTDELIVER_SECRET'] ?? getenv('SWIFTDELIVER_SECRET');
+        $swiftUrl = rtrim($_ENV['SWIFTDELIVER_URL'] ?? getenv('SWIFTDELIVER_URL'), '/');
         
         $db->prepare("UPDATE orders SET status = 'processing' WHERE id = ?")
            ->execute([$orderId]);
@@ -52,7 +53,7 @@ try {
         }
 
         // Real external system API call
-        $ch = curl_init('https://swiftdeliver-production.up.railway.app/api/dispatch');
+        $ch = curl_init($swiftUrl . '/api/dispatch');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
