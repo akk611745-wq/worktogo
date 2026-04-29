@@ -43,8 +43,8 @@ class APIClient {
 
       clearTimeout(timer);
 
-      // Handle 401 — token expired
-      if (res.status === 401) {
+      // Handle 401/403 — token expired or access denied
+      if (res.status === 401 || res.status === 403) {
         Auth.clearSession();
         if (!window.IS_LOGIN_PAGE) {
           window.location.href = "/admin/index.html";

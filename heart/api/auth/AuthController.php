@@ -86,7 +86,7 @@ class AuthController {
         $normalizedPhone = preg_replace('/\D+/', '', $email);
 
         $stmt = $this->db->prepare("
-            SELECT id, name, email, phone, password, role, auth_type
+            SELECT id, name, email, phone, password, role, auth_type, status
             FROM users
             WHERE email = ?
                OR phone = ?
@@ -100,6 +100,10 @@ class AuthController {
 
         if (!$userRow || $storedHash === '' || !password_verify((string)$password, $storedHash)) {
             Response::error('Invalid email or password', 401);
+        }
+
+        if (($userRow['status'] ?? '') !== 'active') {
+            Response::error('Account is inactive', 403);
         }
 
         $user = [
@@ -116,6 +120,9 @@ class AuthController {
             'exp' => time() + (86400 * 30) // 30 days
         ], JWT_SECRET);
 
+        $stmt = $this->db->prepare("UPDATE users SET last_login_at = NOW() WHERE id = ?");
+        $stmt->execute([$userRow['id']]);
+
         $refreshToken = bin2hex(random_bytes(32));
         $refreshHash = hash('sha256', $refreshToken);
         $stmt = $this->db->prepare("INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))");
@@ -125,6 +132,7 @@ class AuthController {
             'success' => true,
             'token' => $token,
             'refreshToken' => $refreshToken,
+            'role' => $userRow['role'],
             'user' => $user,
             'admin' => ($userRow['role'] === 'admin' ? $user : null)
         ]);

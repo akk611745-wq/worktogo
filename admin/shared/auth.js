@@ -15,8 +15,6 @@ const Auth = {
   },
 
   async login(email, password) {
-    console.log('Admin Auth.login fetch start', '/api/auth/email/login');
-
     const res = await fetch('/api/auth/email/login', {
       method: 'POST',
       headers: {
@@ -36,12 +34,18 @@ const Auth = {
       };
     }
 
+    if (data.role !== 'admin') {
+      throw { status: 403, message: 'Access denied', data };
+    }
+
     if (data.token) {
       localStorage.setItem(CONFIG.TOKEN_KEY, data.token);
       if (data.refreshToken) localStorage.setItem(CONFIG.REFRESH_TOKEN_KEY, data.refreshToken);
       const expiry = Date.now() + CONFIG.SESSION_DURATION * 1000;
       localStorage.setItem("wtg_admin_expiry", expiry.toString());
+      localStorage.setItem("wtg_admin_role", data.role);
       localStorage.setItem("wtg_admin_user", JSON.stringify(data.admin || data.user || {}));
+      window.location.href = "dashboard.html";
     }
     return data;
   },
@@ -56,6 +60,7 @@ const Auth = {
     localStorage.removeItem(CONFIG.TOKEN_KEY);
     localStorage.removeItem(CONFIG.REFRESH_TOKEN_KEY);
     localStorage.removeItem("wtg_admin_expiry");
+    localStorage.removeItem("wtg_admin_role");
     localStorage.removeItem("wtg_admin_user");
   },
 

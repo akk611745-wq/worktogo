@@ -17,7 +17,7 @@
     <h1 class="login-title">Admin Control Panel</h1>
     <p class="login-sub">Enter your admin credentials to continue</p>
     <form id="login-form" novalidate>
-      <div class="login-alert" id="login-error"></div>
+      <div class="login-alert" id="login-error" role="alert" aria-live="polite"></div>
       <div class="form-group">
         <label class="form-label" for="email">EMAIL ADDRESS</label>
         <input type="email" id="email" class="form-control" placeholder="admin@worktogo.com" autocomplete="username" required>
@@ -56,14 +56,12 @@ async function doLogin(event) {
   if (!email || !password) { showErr('Please enter email and password.'); return; }
 
   btn.disabled = true;
-  btn.textContent = 'Signing in…';
+  btn.textContent = 'Logging in...';
   errEl.style.display = 'none';
 
   try {
-    console.log('Admin login submit triggered; calling /api/auth/email/login');
     await Auth.login(email, password);
     Toast.success('Welcome back!');
-    setTimeout(() => { window.location.href = 'dashboard.html'; }, 500);
   } catch (err) {
     showErr(err.message || 'Invalid credentials. Please try again.');
     btn.disabled = false;
