@@ -51,19 +51,19 @@ class ServiceVendorAnalyticsController
         $bookings_today = (int)$stmt->fetchColumn();
 
         // 2. revenue_week
-        $stmt = $this->db->prepare("SELECT COALESCE(SUM(t.amount),0) FROM transactions t JOIN bookings b ON t.booking_id = b.id WHERE b.vendor_id=? AND t.status='completed' AND t.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
+        $stmt = $this->db->prepare("SELECT COALESCE(SUM(t.amount),0) FROM transactions t JOIN bookings b ON t.reference_id = b.id AND t.reference_type='booking' WHERE b.vendor_id=? AND t.status='success' AND t.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
         $stmt->execute([$vendor_id]);
         $revenue_week = (float)$stmt->fetchColumn();
 
         // 3. avg_booking_value
-        $stmt = $this->db->prepare("SELECT COALESCE(AVG(t.amount),0) FROM transactions t JOIN bookings b ON t.booking_id = b.id WHERE b.vendor_id=? AND t.status='completed'");
+        $stmt = $this->db->prepare("SELECT COALESCE(AVG(t.amount),0) FROM transactions t JOIN bookings b ON t.reference_id = b.id AND t.reference_type='booking' WHERE b.vendor_id=? AND t.status='success'");
         $stmt->execute([$vendor_id]);
         $avg_booking_value = (float)$stmt->fetchColumn();
 
         // 4. rating
-        $stmt = $this->db->prepare("SELECT COALESCE(AVG(rating),0) FROM reviews WHERE vendor_id=?");
-        $stmt->execute([$vendor_id]);
-        $rating = (float)$stmt->fetchColumn();
+        // reviews table does not exist in database-structure.sql, so this query is intentionally disabled.
+        // Wrong SQL: SELECT COALESCE(AVG(rating),0) FROM reviews WHERE vendor_id=?
+        $rating = [];
 
         // 5. follower_count
         $stmt = $this->db->prepare("SELECT COUNT(*) FROM followers WHERE target_id=? AND target_type='vendor'");
@@ -86,7 +86,7 @@ class ServiceVendorAnalyticsController
                 'bookings_today' => $bookings_today,
                 'revenue_week' => $revenue_week,
                 'avg_booking_value' => $avg_booking_value,
-                'rating' => round($rating, 1),
+                'rating' => $rating,
                 'follower_count' => $follower_count,
                 'best_day' => $best_day,
                 'completed_bookings_count' => $completed_bookings_count
@@ -105,7 +105,7 @@ class ServiceVendorAnalyticsController
 
         if ($range === '4w') {
             $sql = "SELECT WEEK(b.created_at) as week_number, MIN(DATE(b.created_at)) as week_start, COUNT(b.id) as booking_count, COALESCE(SUM(t.amount),0) as revenue 
-                    FROM bookings b LEFT JOIN transactions t ON t.booking_id = b.id AND t.status='completed' 
+                    FROM bookings b LEFT JOIN transactions t ON t.reference_id = b.id AND t.reference_type='booking' AND t.status='success' 
                     WHERE b.vendor_id=? AND b.created_at >= DATE_SUB(NOW(), INTERVAL 4 WEEK) AND b.status != 'cancelled' 
                     GROUP BY WEEK(b.created_at) ORDER BY week_number ASC";
             $stmt = $this->db->prepare($sql);
@@ -147,7 +147,7 @@ class ServiceVendorAnalyticsController
         } else {
             // 30d range
             $sql = "SELECT DATE(b.created_at) as date, COUNT(b.id) as booking_count, COALESCE(SUM(t.amount),0) as revenue 
-                    FROM bookings b LEFT JOIN transactions t ON t.booking_id = b.id AND t.status='completed' 
+                    FROM bookings b LEFT JOIN transactions t ON t.reference_id = b.id AND t.reference_type='booking' AND t.status='success' 
                     WHERE b.vendor_id=? AND b.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND b.status != 'cancelled' 
                     GROUP BY DATE(b.created_at) ORDER BY date ASC";
             $stmt = $this->db->prepare($sql);

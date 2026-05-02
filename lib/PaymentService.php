@@ -173,7 +173,7 @@ class PaymentService
 
             // ── Find internal order by payment_id ───────────────────────
             $stmt = $this->db->prepare(
-                'SELECT id, total, payment_status, payment_method
+                'SELECT id, user_id, total, payment_status, payment_method
                  FROM orders
                  WHERE payment_id = :ref
                     OR payment_id LIKE :ref_prefix
@@ -227,6 +227,47 @@ class PaymentService
             if (!$updated) {
                 $this->db->rollBack();
                 return $this->fail("DB update failed for order $internalOrderId.");
+            }
+
+            // ── Create transaction record once after successful online payment ────────
+            // Cashfree can send the same webhook multiple times, so first check whether
+            // a successful order transaction already exists for this order ID.
+            if ($newStatus === 'paid') {
+                $txnCheck = $this->db->prepare(
+                    'SELECT id
+                     FROM transactions
+                     WHERE reference_id = :reference_id
+                       AND reference_type = :reference_type
+                       AND status = :status
+                     LIMIT 1
+                     FOR UPDATE'
+                );
+                $txnCheck->execute([
+                    ':reference_id'   => $internalOrderId,
+                    ':reference_type' => 'order',
+                    ':status'         => 'success',
+                ]);
+
+                // If no transaction exists, insert exactly one successful Cashfree
+                // transaction for this order. The schema stores the payment method in
+                // the `gateway` column and requires `user_id`, so both are included.
+                if (!$txnCheck->fetch(PDO::FETCH_ASSOC)) {
+                    $txnInsert = $this->db->prepare(
+                        'INSERT INTO transactions
+                            (user_id, reference_id, reference_type, amount, status, gateway, gateway_ref, created_at)
+                         VALUES
+                            (:user_id, :reference_id, :reference_type, :amount, :status, :gateway, :gateway_ref, NOW())'
+                    );
+                    $txnInsert->execute([
+                        ':user_id'        => (int)$order['user_id'],
+                        ':reference_id'   => $internalOrderId,
+                        ':reference_type' => 'order',
+                        ':amount'         => round((float)$cfAmount, 2),
+                        ':status'         => 'success',
+                        ':gateway'        => 'cashfree',
+                        ':gateway_ref'    => $txnId,
+                    ]);
+                }
             }
 
             $this->db->commit();

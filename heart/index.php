@@ -197,6 +197,36 @@ if (str_starts_with($uri, '/api/delivery')) {
     exit;
 }
 
+// Shopping Orders API
+if (str_starts_with($uri, '/api/orders') || $uri === '/api/order/create' || str_starts_with($uri, '/api/vendor/orders')) {
+    require_once SYSTEM_ROOT . '/body/shopping-engine/api/orders/index.php';
+    exit;
+}
+
+// Shopping Products API
+if (str_starts_with($uri, '/api/products') || str_starts_with($uri, '/api/product/') || $uri === '/api/vendor/products' || str_starts_with($uri, '/api/vendor/product/')) {
+    require_once SYSTEM_ROOT . '/body/shopping-engine/api/products/index.php';
+    exit;
+}
+
+// Shopping Cart API
+if (str_starts_with($uri, '/api/cart')) {
+    require_once SYSTEM_ROOT . '/body/shopping-engine/api/cart/index.php';
+    exit;
+}
+
+// Services & Bookings API
+if (str_starts_with($uri, '/api/services') || $uri === '/api/service/request' || str_starts_with($uri, '/api/service/bookings') || str_starts_with($uri, '/api/jobs/')) {
+    require_once SYSTEM_ROOT . '/body/service-engine/api/services/index.php';
+    exit;
+}
+
+// Service Vendors & Jobs API
+if (str_starts_with($uri, '/api/vendors') || str_starts_with($uri, '/api/vendor/jobs')) {
+    require_once SYSTEM_ROOT . '/body/service-engine/api/vendors/index.php';
+    exit;
+}
+
 // Refund API (User & Admin)
 if (str_starts_with($uri, '/api/user/refund') || str_starts_with($uri, '/api/admin/refund')) {
     require_once SYSTEM_ROOT . '/core/controllers/RefundController.php';

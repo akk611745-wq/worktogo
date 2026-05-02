@@ -140,10 +140,15 @@ class AuthController {
 
     public function loginGoogle() {
         $input = json_decode(file_get_contents('php://input'), true);
-        $googleToken = $input['google_token'] ?? '';
+        $googleToken = trim((string)($input['google_token'] ?? ''));
 
         if (!$googleToken) {
             Response::error('Google token is required', 400);
+        }
+
+        $allowedClientIds = $this->getAllowedGoogleClientIds();
+        if (empty($allowedClientIds)) {
+            Response::error('Google login is not configured', 500);
         }
 
         // Verify token via external HTTP call
@@ -160,6 +165,25 @@ class AuthController {
 
         if ($httpCode !== 200 || isset($googleData['error'])) {
             Response::error('Invalid Google token', 401);
+        }
+
+        $audience = trim((string)($googleData['aud'] ?? ''));
+        if ($audience === '' || !in_array($audience, $allowedClientIds, true)) {
+            Response::error('Invalid Google client', 401);
+        }
+
+        $issuer = (string)($googleData['iss'] ?? '');
+        if (!in_array($issuer, ['accounts.google.com', 'https://accounts.google.com'], true)) {
+            Response::error('Invalid Google token issuer', 401);
+        }
+
+        if (isset($googleData['exp']) && (int)$googleData['exp'] < time()) {
+            Response::error('Expired Google token', 401);
+        }
+
+        $emailVerified = $googleData['email_verified'] ?? false;
+        if ($emailVerified !== true && $emailVerified !== 'true') {
+            Response::error('Google email is not verified', 401);
         }
 
         $email = $googleData['email'] ?? '';
@@ -219,6 +243,15 @@ class AuthController {
             'token' => $token,
             'user' => $userResponse
         ]);
+    }
+
+    private function getAllowedGoogleClientIds(): array {
+        $rawClientIds = getenv('GOOGLE_CLIENT_IDS') ?: getenv('GOOGLE_CLIENT_ID') ?: '';
+        $clientIds = array_map('trim', explode(',', $rawClientIds));
+
+        return array_values(array_filter($clientIds, static function ($clientId) {
+            return $clientId !== '';
+        }));
     }
 
     public function guestLogin() {

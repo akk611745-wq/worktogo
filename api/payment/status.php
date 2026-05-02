@@ -32,13 +32,18 @@ if (!$db) {
     die(json_encode(['status' => 'error', 'message' => 'Database connection failed']));
 }
 
-$stmt = $db->prepare('SELECT payment_status FROM orders WHERE id = :id LIMIT 1');
+$stmt = $db->prepare('SELECT payment_status, user_id FROM orders WHERE id = :id LIMIT 1');
 $stmt->execute([':id' => $orderId]);
 $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$row) {
     http_response_code(404);
     die(json_encode(['status' => 'error', 'message' => 'Order not found']));
+}
+
+if ((string)$row['user_id'] !== (string)$currentUser['user_id']) {
+    http_response_code(403);
+    die(json_encode(['status' => 'error', 'message' => 'Forbidden: You do not own this order']));
 }
 
 // Map internal 'unpaid' to requirement's 'pending'

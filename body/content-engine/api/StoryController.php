@@ -8,8 +8,8 @@ class StoryController {
     }
 
     public function uploadStory() {
-        $auth = AuthMiddleware::requireRole(['vendor_service', 'vendor_shopping', 'admin']);
-        $vendorId = $auth['sub']; // Assuming sub is the vendor_id or user_id mapped to vendor
+        $auth = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_VENDOR_SHOPPING, ROLE_ADMIN);
+        $vendorId = $auth['user_id'];
         
         // Ensure upload directory exists
         $uploadDir = SYSTEM_ROOT . '/uploads/stories/';
@@ -82,7 +82,7 @@ class StoryController {
             try {
                 $decoded = JWT::decode($token);
                 if ($decoded && empty($decoded['is_guest'])) {
-                    $userId = $decoded['sub'];
+                    $userId = $decoded['user_id'];
                     $isGuest = false;
                 }
             } catch (Exception $e) {
@@ -95,11 +95,11 @@ class StoryController {
         if (!$isGuest && $userId) {
             // Logged in user: prioritize followed vendors
             $stmt = $this->db->prepare("
-                SELECT s.id as story_id, s.vendor_id, v.business_name as vendor_name, v.avatar as vendor_avatar,
+                SELECT s.id as story_id, s.vendor_id, v.business_name as vendor_name, v.logo_url as vendor_avatar,
                        s.media_url, s.media_type, s.caption, s.expires_at, s.views_count
                 FROM stories s
                 JOIN vendors v ON s.vendor_id = v.id
-                LEFT JOIN followers f ON f.vendor_id = v.id AND f.user_id = ?
+                LEFT JOIN followers f ON f.target_id = v.id AND f.target_type = 'vendor' AND f.follower_user_id = ?
                 WHERE s.expires_at > NOW()
                 ORDER BY f.id IS NOT NULL DESC, s.created_at DESC
                 LIMIT 20
@@ -109,7 +109,7 @@ class StoryController {
         } else {
             // Guest or no JWT: top-rated vendors
             $stmt = $this->db->prepare("
-                SELECT s.id as story_id, s.vendor_id, v.business_name as vendor_name, v.avatar as vendor_avatar,
+                SELECT s.id as story_id, s.vendor_id, v.business_name as vendor_name, v.logo_url as vendor_avatar,
                        s.media_url, s.media_type, s.caption, s.expires_at, s.views_count
                 FROM stories s
                 JOIN vendors v ON s.vendor_id = v.id

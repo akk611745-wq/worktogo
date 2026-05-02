@@ -51,12 +51,12 @@ class ShoppingVendorAnalyticsController
         $orders_today = (int)$stmt->fetchColumn();
 
         // 2. revenue_today
-        $stmt = $this->db->prepare("SELECT COALESCE(SUM(t.amount),0) FROM transactions t JOIN orders o ON t.order_id = o.id WHERE o.vendor_id=? AND DATE(t.created_at)=CURDATE() AND t.status='completed'");
+        $stmt = $this->db->prepare("SELECT COALESCE(SUM(t.amount),0) FROM transactions t JOIN orders o ON t.reference_id = o.id AND t.reference_type='order' WHERE o.vendor_id=? AND DATE(t.created_at)=CURDATE() AND t.status='success'");
         $stmt->execute([$vendor_id]);
         $revenue_today = (float)$stmt->fetchColumn();
 
         // 3. active_products
-        $stmt = $this->db->prepare("SELECT COUNT(*) FROM products WHERE vendor_id=? AND status='published' AND is_active=1");
+        $stmt = $this->db->prepare("SELECT COUNT(*) FROM products WHERE vendor_id=? AND status='active'");
         $stmt->execute([$vendor_id]);
         $active_products = (int)$stmt->fetchColumn();
 
@@ -66,12 +66,12 @@ class ShoppingVendorAnalyticsController
         $profile_views_today = (int)$stmt->fetchColumn();
 
         // 5. revenue_this_week
-        $stmt = $this->db->prepare("SELECT COALESCE(SUM(t.amount),0) FROM transactions t JOIN orders o ON t.order_id = o.id WHERE o.vendor_id=? AND DATE(t.created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND t.status='completed'");
+        $stmt = $this->db->prepare("SELECT COALESCE(SUM(t.amount),0) FROM transactions t JOIN orders o ON t.reference_id = o.id AND t.reference_type='order' WHERE o.vendor_id=? AND DATE(t.created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND t.status='success'");
         $stmt->execute([$vendor_id]);
         $revenue_this_week = (float)$stmt->fetchColumn();
 
         // 6. revenue_this_month
-        $stmt = $this->db->prepare("SELECT COALESCE(SUM(t.amount),0) FROM transactions t JOIN orders o ON t.order_id = o.id WHERE o.vendor_id=? AND MONTH(t.created_at)=MONTH(CURDATE()) AND YEAR(t.created_at)=YEAR(CURDATE()) AND t.status='completed'");
+        $stmt = $this->db->prepare("SELECT COALESCE(SUM(t.amount),0) FROM transactions t JOIN orders o ON t.reference_id = o.id AND t.reference_type='order' WHERE o.vendor_id=? AND MONTH(t.created_at)=MONTH(CURDATE()) AND YEAR(t.created_at)=YEAR(CURDATE()) AND t.status='success'");
         $stmt->execute([$vendor_id]);
         $revenue_this_month = (float)$stmt->fetchColumn();
 
@@ -105,14 +105,14 @@ class ShoppingVendorAnalyticsController
 
         if ($range === '1d') {
             $sql = "SELECT DATE_FORMAT(t.created_at, '%Y-%m-%d %H:00:00') as date, COALESCE(SUM(t.amount),0) as revenue, COUNT(o.id) as order_count 
-                    FROM transactions t JOIN orders o ON t.order_id = o.id 
-                    WHERE o.vendor_id = ? AND t.status = 'completed' AND t.created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY) 
+                    FROM transactions t JOIN orders o ON t.reference_id = o.id AND t.reference_type='order' 
+                    WHERE o.vendor_id = ? AND t.status = 'success' AND t.created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY) 
                     GROUP BY DATE_FORMAT(t.created_at, '%Y-%m-%d %H:00:00') ORDER BY date ASC";
         } else {
             $days = $range === '30d' ? 30 : 7;
             $sql = "SELECT DATE(t.created_at) as date, COALESCE(SUM(t.amount),0) as revenue, COUNT(o.id) as order_count 
-                    FROM transactions t JOIN orders o ON t.order_id = o.id 
-                    WHERE o.vendor_id = ? AND t.status = 'completed' AND t.created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY) 
+                    FROM transactions t JOIN orders o ON t.reference_id = o.id AND t.reference_type='order' 
+                    WHERE o.vendor_id = ? AND t.status = 'success' AND t.created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY) 
                     GROUP BY DATE(t.created_at) ORDER BY date ASC";
         }
 

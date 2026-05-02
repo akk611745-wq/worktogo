@@ -7,4 +7,4 @@
  * Do NOT commit your real URL to version control.
  * In CI/CD, replace this file or inject the URL via build tooling.
  */
-window.WTG_BASE_URL = "/heart/api";  // ← CHANGE THIS
+window.WTG_BASE_URL = "";  // Use same-origin API paths from config.js
