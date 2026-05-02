@@ -2,7 +2,6 @@ window.VendorApplyModal = (() => {
   const MODAL_ID = "vendor-apply-modal";
 
   function show() {
-    const user = AUTH.getUser?.() || {};
     let modal = document.getElementById(MODAL_ID);
 
     if (!modal) {
@@ -20,18 +19,6 @@ window.VendorApplyModal = (() => {
         </div>
 
         <div class="vendor-apply-form">
-          <label for="va-name">Full Name</label>
-          <input id="va-name" type="text" value="${_escapeAttr(user.name || "")}" autocomplete="name" />
-
-          <label for="va-email">Email</label>
-          <input id="va-email" type="email" value="${_escapeAttr(user.email || "")}" autocomplete="email" />
-
-          <label for="va-phone">Phone</label>
-          <input id="va-phone" type="tel" value="${_escapeAttr(user.phone || "")}" autocomplete="tel" />
-
-          <label for="va-password">Password</label>
-          <input id="va-password" type="password" autocomplete="new-password" />
-
           <label for="va-business">Business Name</label>
           <input id="va-business" type="text" autocomplete="organization" />
 
@@ -56,14 +43,11 @@ window.VendorApplyModal = (() => {
   }
 
   async function submit() {
-    const name = _value("va-name");
-    const email = _value("va-email");
-    const phone = _value("va-phone");
-    const password = _value("va-password");
     const business_name = _value("va-business");
-    const role = _value("va-type");
+    const selectedVendorType = _value("va-type");
+    const type = selectedVendorType === "vendor_shopping" ? "shopping" : "service";
 
-    if (!name || !email || !phone || !password || !business_name || !role) {
+    if (!business_name || !selectedVendorType) {
       UI.toast("Please fill all fields", "error");
       return;
     }
@@ -72,10 +56,13 @@ window.VendorApplyModal = (() => {
     if (submitBtn) submitBtn.disabled = true;
 
     try {
-      const res = await fetch(`${CONFIG.BASE_URL}/api/auth/register`, {
+      const res = await fetch(`${CONFIG.BASE_URL}/api/vendors`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, phone, email, password, role, business_name }),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${AUTH.getToken()}`,
+        },
+        body: JSON.stringify({ business_name, type }),
       });
 
       const data = await _parseJSON(res);

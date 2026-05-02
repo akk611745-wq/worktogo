@@ -6,7 +6,7 @@
 
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
 
-if (!RateLimiter::check('register', 3, 3600)) {
+if (!RateLimiter::check('register', 3, 300)) {
     Response::tooManyRequests('Too many registration attempts. Please try again later.');
 }
 

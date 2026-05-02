@@ -40,14 +40,14 @@ function resolveVendorId(PDO $db, int $userId): int
 
 // ── POST /api/vendors ─────────────────────────────────────────────────────────
 if ($method === 'POST' && $uri === '/api/vendors') {
-    $auth  = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_ADMIN);
+    $auth  = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_ADMIN, ROLE_CUSTOMER);
     $input = json_decode(file_get_contents('php://input'), true) ?? [];
 
     $businessName = trim($input['business_name'] ?? '');
     $phone        = trim($input['phone'] ?? '');
     $type         = trim($input['type'] ?? $input['category'] ?? '');
 
-    if ($businessName === '' || $phone === '' || $type === '') {
+    if ($businessName === '' || $type === '') {
         Response::error('business_name, phone, and type/category are required', 400);
     }
 
@@ -56,6 +56,9 @@ if ($method === 'POST' && $uri === '/api/vendors') {
     }
 
     $userId = (int)$auth['user_id'];
+    $stmtPhone = $db->prepare("SELECT phone FROM users WHERE id = ? LIMIT 1");
+    $stmtPhone->execute([$userId]);
+    $phone = $stmtPhone->fetchColumn() ?: '';
 
     // Check if vendor already exists
     $stmt = $db->prepare("SELECT id FROM vendors WHERE user_id = ? LIMIT 1");
