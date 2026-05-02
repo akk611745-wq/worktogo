@@ -17,7 +17,7 @@ class AuthController {
         $name = trim($input['name'] ?? '');
         $email = trim($input['email'] ?? '');
         $password = $input['password'] ?? '';
-        $phone = trim($input['phone'] ?? '');
+        $phone = !empty($input['phone']) ? trim($input['phone']) : null;
 
         if (!$name || !$email || !$password) {
             Response::error('Name, email, and password are required', 400);
