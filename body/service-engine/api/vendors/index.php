@@ -85,8 +85,10 @@ if ($method === 'POST' && $uri === '/api/vendors') {
         $stmt->execute([$userId, $businessName, $slug, $type]);
         $vendorId = $db->lastInsertId();
 
-        $stmt = $db->prepare("UPDATE users SET phone = ? WHERE id = ?");
-        $stmt->execute([$phone, $userId]);
+        if ($phone !== '' && $phone !== null) {
+            $stmt = $db->prepare("UPDATE users SET phone = ? WHERE id = ?");
+            $stmt->execute([$phone, $userId]);
+        }
 
         $db->commit();
 
