@@ -116,7 +116,7 @@ window.AccountPage = {
     UI.toast("Profile editing coming in Phase 2", "info");
   },
   promptUpgrade(role) {
-    UI.toast(`${role === "vendor" ? "Vendor" : "Creator"} mode coming soon!`, "info");
+    VendorApplyModal.show();
   },
 };
 
