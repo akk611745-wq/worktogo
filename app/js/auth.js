@@ -38,6 +38,25 @@ const AUTH = (() => {
     return getRole() === role;
   }
 
+  function _sessionFromResult(result) {
+    const data = result?.data?.data || result?.data || {};
+    return {
+      token: data.token || data.access_token || data.jwt || "",
+      user: data.user || data.profile || null,
+    };
+  }
+
+  function _saveAuthResult(result, fallbackError) {
+    if (result.ok) {
+      const { token, user } = _sessionFromResult(result);
+      if (token && user) {
+        saveSession(token, user);
+        return { ok: true, user };
+      }
+    }
+    return { ok: false, error: result.error || result.data?.message || fallbackError };
+  }
+
   function requireAuth() {
     if (!isLoggedIn()) {
       ROUTER.go("login");
@@ -62,8 +81,26 @@ const AUTH = (() => {
     return { ok: false, error: result.error || result.data?.message || "Login failed" };
   }
 
+  // ── Email / Google Login Flow ──────────────────────────────────────────
+
+  async function emailLogin(email, password) {
+    const result = await API.emailLogin(email, password);
+    return _saveAuthResult(result, "Email login failed");
+  }
+
+  async function emailRegister(payload) {
+    const result = await API.emailRegister(payload);
+    return _saveAuthResult(result, "Email registration failed");
+  }
+
+  async function googleLogin(credential) {
+    const result = await API.googleAuth(credential);
+    return _saveAuthResult(result, "Google login failed");
+  }
+
   return {
     sendOtp, verifyAndLogin,
+    emailLogin, emailRegister, googleLogin,
     logout, getUser, getToken, isLoggedIn, requireAuth, getRole, hasRole,
   };
 })();

@@ -93,6 +93,19 @@ const API = (() => {
       return _request("POST", CONFIG.ENDPOINTS.OTP_VERIFY, { phone, otp });
     },
 
+    // ── Auth: Email / Google Flow (REST - Direct) ───────────────────────
+    async emailLogin(email, password) {
+      return _request("POST", "/api/auth/email/login", { email, password });
+    },
+
+    async emailRegister(payload) {
+      return _request("POST", "/api/auth/email/register", payload);
+    },
+
+    async googleAuth(credential) {
+      return _request("POST", "/api/auth/google", { credential });
+    },
+
     // ── Catalog (Intent Pipeline) ───────────────────────────────────────
     async getProducts() {
       return _intent("shopping:list_products");

@@ -21,6 +21,15 @@ export async function render(container) {
       </header>
 
       <div class="login-card">
+        <div class="login-tabs" role="tablist" aria-label="Login options">
+          <button id="tab-phone" class="login-tab active" type="button" role="tab" aria-selected="true" onclick="LoginPage.switchAuthTab('phone')">
+            Mobile OTP
+          </button>
+          <button id="tab-email" class="login-tab" type="button" role="tab" aria-selected="false" onclick="LoginPage.switchAuthTab('email')">
+            Email
+          </button>
+        </div>
+
         <div id="step-phone" class="login-step active">
           <h2>Welcome back</h2>
           <p class="step-hint">Enter your mobile number to continue</p>
@@ -40,6 +49,31 @@ export async function render(container) {
             <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
           <p class="login-note">We'll send a 6-digit OTP to your number</p>
+        </div>
+
+        <div id="step-email" class="login-step">
+          <h2>Login with email</h2>
+          <p class="step-hint">Use your email and password to continue</p>
+          <div class="auth-field">
+            <label for="inp-email">Email</label>
+            <input id="inp-email" type="email" placeholder="you@example.com" autocomplete="email" />
+          </div>
+          <div class="auth-field">
+            <label for="inp-password">Password</label>
+            <input id="inp-password" type="password" placeholder="Your password" autocomplete="current-password" />
+          </div>
+          <button id="btn-email-login" class="btn-primary" onclick="LoginPage.emailLogin()">
+            <span class="btn-label">Login with Email</span>
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+          <button id="btn-email-register" class="btn-text" onclick="LoginPage.emailRegister()">
+            Create a new account
+          </button>
+          <div class="auth-divider"><span>or</span></div>
+          <button id="btn-google-login" class="btn-google" onclick="LoginPage.googleLogin()">
+            <span class="google-mark">G</span>
+            Continue with Google
+          </button>
         </div>
 
         <div id="step-otp" class="login-step">
@@ -92,6 +126,12 @@ window.LoginPage = (() => {
       phoneInput.addEventListener("focus", () => phoneInput.select());
     }
 
+    const emailInput = document.getElementById("inp-email");
+    const passwordInput = document.getElementById("inp-password");
+    [emailInput, passwordInput].forEach(inp => {
+      inp?.addEventListener("keydown", e => { if (e.key === "Enter") emailLogin(); });
+    });
+
     const otpInputs = [...document.querySelectorAll(".otp-digit")];
 
     otpInputs.forEach((inp, i) => {
@@ -119,6 +159,106 @@ window.LoginPage = (() => {
         if (pasted.length === 6) verifyOtp();
       });
     });
+  }
+
+  function switchAuthTab(tab) {
+    const showEmail = tab === "email";
+
+    document.getElementById("tab-phone")?.classList.toggle("active", !showEmail);
+    document.getElementById("tab-email")?.classList.toggle("active", showEmail);
+    document.getElementById("tab-phone")?.setAttribute("aria-selected", String(!showEmail));
+    document.getElementById("tab-email")?.setAttribute("aria-selected", String(showEmail));
+
+    document.getElementById("step-otp")?.classList.remove("active");
+    document.getElementById("step-phone")?.classList.toggle("active", !showEmail);
+    document.getElementById("step-email")?.classList.toggle("active", showEmail);
+
+    if (_resendInterval) { clearInterval(_resendInterval); _resendInterval = null; }
+    document.getElementById(showEmail ? "inp-email" : "inp-phone")?.focus();
+  }
+
+  function _getEmailCredentials() {
+    const email = document.getElementById("inp-email")?.value?.trim() || "";
+    const password = document.getElementById("inp-password")?.value || "";
+
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      UI.toast("Enter a valid email address", "error");
+      return null;
+    }
+    if (!password || password.length < 6) {
+      UI.toast("Password must be at least 6 characters", "error");
+      return null;
+    }
+    return { email, password };
+  }
+
+  async function emailLogin() {
+    const credentials = _getEmailCredentials();
+    if (!credentials) return;
+
+    _setLoading("btn-email-login", true);
+    const result = await AUTH.emailLogin(credentials.email, credentials.password);
+    _setLoading("btn-email-login", false);
+
+    if (result.ok) {
+      UI.toast("Login successful!", "success");
+      ROUTER.go("home");
+    } else {
+      UI.toast(result.error || "Email login failed. Try again.", "error");
+    }
+  }
+
+  async function emailRegister() {
+    const credentials = _getEmailCredentials();
+    if (!credentials) return;
+
+    _setLoading("btn-email-register", true);
+    const result = await AUTH.emailRegister(credentials);
+    _setLoading("btn-email-register", false);
+
+    if (result.ok) {
+      UI.toast("Account created!", "success");
+      ROUTER.go("home");
+    } else {
+      UI.toast(result.error || "Registration failed. Try again.", "error");
+    }
+  }
+
+  function _handleGoogleCredential(response) {
+    const credential = response?.credential;
+    if (!credential) {
+      UI.toast("Google login was cancelled", "error");
+      return;
+    }
+    _completeGoogleLogin(credential);
+  }
+
+  async function _completeGoogleLogin(credential) {
+    _setLoading("btn-google-login", true);
+    const result = await AUTH.googleLogin(credential);
+    _setLoading("btn-google-login", false);
+
+    if (result.ok) {
+      UI.toast("Login successful!", "success");
+      ROUTER.go("home");
+    } else {
+      UI.toast(result.error || "Google login failed. Try again.", "error");
+    }
+  }
+
+  function googleLogin() {
+    const googleClientId = window.WTG_GOOGLE_CLIENT_ID || CONFIG.GOOGLE_CLIENT_ID || "";
+
+    if (!window.google?.accounts?.id || !googleClientId) {
+      UI.toast("Google Sign-In is not configured", "error");
+      return;
+    }
+
+    window.google.accounts.id.initialize({
+      client_id: googleClientId,
+      callback: _handleGoogleCredential,
+    });
+    window.google.accounts.id.prompt();
   }
 
   function _startResendTimer(seconds = 30) {
@@ -229,8 +369,13 @@ window.LoginPage = (() => {
   function goBack() {
     document.getElementById("step-otp")?.classList.remove("active");
     document.getElementById("step-phone")?.classList.add("active");
+    document.getElementById("step-email")?.classList.remove("active");
+    document.getElementById("tab-phone")?.classList.add("active");
+    document.getElementById("tab-email")?.classList.remove("active");
+    document.getElementById("tab-phone")?.setAttribute("aria-selected", "true");
+    document.getElementById("tab-email")?.setAttribute("aria-selected", "false");
     if (_resendInterval) { clearInterval(_resendInterval); _resendInterval = null; }
   }
 
-  return { sendOtp, verifyOtp, resendOtp, goBack, _init };
+  return { sendOtp, verifyOtp, resendOtp, goBack, switchAuthTab, emailLogin, emailRegister, googleLogin, _init };
 })();
