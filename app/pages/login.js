@@ -66,13 +66,34 @@ export async function render(container) {
             <span class="btn-label">Login with Email</span>
             <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
-          <button id="btn-email-register" class="btn-text" onclick="LoginPage.emailRegister()">
+          <button id="btn-email-register" class="btn-text" onclick="LoginPage.showRegister()">
             Create a new account
           </button>
           <div class="auth-divider"><span>or</span></div>
           <button id="btn-google-login" class="btn-google" onclick="LoginPage.googleLogin()">
             <span class="google-mark">G</span>
             Continue with Google
+          </button>
+        </div>
+
+        <div id="step-register" class="login-step">
+          <h2>Create account</h2>
+          <p class="step-hint">Enter your details to register</p>
+          <div class="auth-field">
+            <label for="inp-reg-name">Name</label>
+            <input id="inp-reg-name" type="text" placeholder="Full name" autocomplete="name" />
+          </div>
+          <div class="auth-field">
+            <label for="inp-reg-email">Email</label>
+            <input id="inp-reg-email" type="email" placeholder="your@email.com" autocomplete="email" />
+          </div>
+          <div class="auth-field">
+            <label for="inp-reg-password">Password</label>
+            <input id="inp-reg-password" type="password" placeholder="Password" autocomplete="new-password" />
+          </div>
+          <button id="btn-email-register-submit" class="btn-primary" onclick="LoginPage.emailRegister()">
+            <span class="btn-label">Create Account</span>
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
         </div>
 
@@ -132,6 +153,13 @@ window.LoginPage = (() => {
       inp?.addEventListener("keydown", e => { if (e.key === "Enter") emailLogin(); });
     });
 
+    const regNameInput = document.getElementById("inp-reg-name");
+    const regEmailInput = document.getElementById("inp-reg-email");
+    const regPasswordInput = document.getElementById("inp-reg-password");
+    [regNameInput, regEmailInput, regPasswordInput].forEach(inp => {
+      inp?.addEventListener("keydown", e => { if (e.key === "Enter") emailRegister(); });
+    });
+
     const otpInputs = [...document.querySelectorAll(".otp-digit")];
 
     otpInputs.forEach((inp, i) => {
@@ -170,11 +198,18 @@ window.LoginPage = (() => {
     document.getElementById("tab-email")?.setAttribute("aria-selected", String(showEmail));
 
     document.getElementById("step-otp")?.classList.remove("active");
+    document.getElementById("step-register")?.classList.remove("active");
     document.getElementById("step-phone")?.classList.toggle("active", !showEmail);
     document.getElementById("step-email")?.classList.toggle("active", showEmail);
 
     if (_resendInterval) { clearInterval(_resendInterval); _resendInterval = null; }
     document.getElementById(showEmail ? "inp-email" : "inp-phone")?.focus();
+  }
+
+  function showRegister() {
+    document.getElementById("step-email")?.classList.remove("active");
+    document.getElementById("step-register")?.classList.add("active");
+    document.getElementById("inp-reg-name")?.focus();
   }
 
   function _getEmailCredentials() {
@@ -190,6 +225,26 @@ window.LoginPage = (() => {
       return null;
     }
     return { email, password };
+  }
+
+  function _getRegisterCredentials() {
+    const name = document.getElementById("inp-reg-name")?.value?.trim() || "";
+    const email = document.getElementById("inp-reg-email")?.value?.trim() || "";
+    const password = document.getElementById("inp-reg-password")?.value || "";
+
+    if (!name) {
+      UI.toast("Enter your full name", "error");
+      return null;
+    }
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      UI.toast("Enter a valid email address", "error");
+      return null;
+    }
+    if (!password || password.length < 6) {
+      UI.toast("Password must be at least 6 characters", "error");
+      return null;
+    }
+    return { name, email, password };
   }
 
   async function emailLogin() {
@@ -209,12 +264,12 @@ window.LoginPage = (() => {
   }
 
   async function emailRegister() {
-    const credentials = _getEmailCredentials();
+    const credentials = _getRegisterCredentials();
     if (!credentials) return;
 
-    _setLoading("btn-email-register", true);
+    _setLoading("btn-email-register-submit", true);
     const result = await AUTH.emailRegister(credentials);
-    _setLoading("btn-email-register", false);
+    _setLoading("btn-email-register-submit", false);
 
     if (result.ok) {
       UI.toast("Account created!", "success");
@@ -368,6 +423,7 @@ window.LoginPage = (() => {
 
   function goBack() {
     document.getElementById("step-otp")?.classList.remove("active");
+    document.getElementById("step-register")?.classList.remove("active");
     document.getElementById("step-phone")?.classList.add("active");
     document.getElementById("step-email")?.classList.remove("active");
     document.getElementById("tab-phone")?.classList.add("active");
@@ -377,5 +433,5 @@ window.LoginPage = (() => {
     if (_resendInterval) { clearInterval(_resendInterval); _resendInterval = null; }
   }
 
-  return { sendOtp, verifyOtp, resendOtp, goBack, switchAuthTab, emailLogin, emailRegister, googleLogin, _init };
+  return { sendOtp, verifyOtp, resendOtp, goBack, switchAuthTab, showRegister, emailLogin, emailRegister, googleLogin, _init };
 })();
