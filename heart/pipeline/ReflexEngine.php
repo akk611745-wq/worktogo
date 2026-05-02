@@ -97,9 +97,9 @@ class ReflexEngine
     private static function pickDriver(): ReflexCacheDriver
     {
         // Try Redis first
-        if (extension_loaded('redis') && !empty(REDIS_HOST)) {
+        if (extension_loaded('redis') && !empty(getenv('REDIS_HOST'))) {
             try {
-                return new RedisReflexDriver(REDIS_HOST, REDIS_PORT, REDIS_PASS, REDIS_DB);
+                return new RedisReflexDriver(getenv('REDIS_HOST'), getenv('REDIS_PORT'), getenv('REDIS_PASS'), getenv('REDIS_DB'));
             } catch (\Throwable $e) {
                 HeartLogger::warn('Redis unavailable — falling back to APCu', ['error' => $e->getMessage()]);
             }
