@@ -25,10 +25,14 @@ class APIClient {
       ? "?" + new URLSearchParams(params).toString()
       : "";
 
-    // Intelligently apply admin prefix
-    // If endpoint starts with /auth, don't use admin prefix
-    const isAuth = endpoint.startsWith('/auth');
-    const url = this.baseURL + (isAuth ? '' : this.adminPrefix) + endpoint + qs;
+    // Intelligently apply admin prefix.
+    // Skip prefix when:
+    //   - endpoint starts with /auth  (auth routes have no admin prefix)
+    //   - endpoint starts with /api/  (already fully-qualified path — adding
+    //     adminPrefix would produce /heart/api/admin/api/admin/... double-prefix)
+    const isAuth    = endpoint.startsWith('/auth');
+    const isFullApi = endpoint.startsWith('/api/');
+    const url = this.baseURL + (isAuth || isFullApi ? '' : this.adminPrefix) + endpoint + qs;
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
