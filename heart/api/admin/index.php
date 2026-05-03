@@ -16,58 +16,66 @@ try {
     // ── GET /api/admin/dashboard ──────────────────────────────
     if ($method === 'GET' && $uri === '/api/admin/dashboard') {
         $todayStart = date('Y-m-d 00:00:00');
-        
+
         // --- ORDERS ---
+        // FIX: fetch() returns false when no rows match; guard with ?: [] so array
+        //      access never runs on a boolean false value.
         $stmt = $db->prepare("
-            SELECT 
+            SELECT
                 COUNT(*) as total_orders_today,
                 SUM(CASE WHEN status IN ('delivered') THEN 1 ELSE 0 END) as completed_orders_today,
                 SUM(CASE WHEN status IN ('cancelled', 'failed') THEN 1 ELSE 0 END) as failed_orders_today
-            FROM orders 
+            FROM orders
             WHERE created_at >= :today
         ");
         $stmt->execute([':today' => $todayStart]);
-        $orders = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+        $orders = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
         $stmt = $db->prepare("SELECT COUNT(*) FROM orders WHERE status IN ('pending', 'confirmed', 'processing', 'shipped')");
         $stmt->execute();
+        // FIX: fetchColumn() returns false on empty result; cast safely via (int)
         $pending_orders = $stmt->fetchColumn();
-        
-        $orders['pending_orders'] = (int)$pending_orders;
-        $orders['total_orders_today'] = (int)$orders['total_orders_today'];
-        $orders['completed_orders_today'] = (int)$orders['completed_orders_today'];
-        $orders['failed_orders_today'] = (int)$orders['failed_orders_today'];
+
+        $orders['pending_orders']            = (int)($pending_orders ?: 0);
+        $orders['total_orders_today']        = (int)($orders['total_orders_today'] ?? 0);
+        $orders['completed_orders_today']    = (int)($orders['completed_orders_today'] ?? 0);
+        $orders['failed_orders_today']       = (int)($orders['failed_orders_today'] ?? 0);
 
         // --- FINANCE ---
+        // FIX: same fetch() false-guard; SUM on empty set returns NULL → coerce to 0.0
         $stmt = $db->prepare("
-            SELECT 
+            SELECT
                 SUM(CASE WHEN status != 'cancelled' THEN total ELSE 0 END) as total_revenue_today,
                 SUM(CASE WHEN status = 'refunded' THEN total ELSE 0 END) as total_refunds_today
             FROM orders
             WHERE created_at >= :today
         ");
         $stmt->execute([':today' => $todayStart]);
-        $finance = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+        $finance = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
         $stmt = $db->prepare("
-            SELECT SUM(amount) FROM wallet_transactions 
+            SELECT SUM(amount) FROM wallet_transactions
             WHERE entity_type = 'platform' AND type = 'credit' AND created_at >= :today AND status = 'settled'
         ");
         $stmt->execute([':today' => $todayStart]);
+        // FIX: fetchColumn() returns false (no rows) or NULL (SUM of empty set); both → 0.0
         $platform_earnings = $stmt->fetchColumn();
-        
+
         $stmt = $db->prepare("SELECT SUM(pending_balance) FROM vendor_wallets");
         $stmt->execute();
         $pending_vendor_payout = $stmt->fetchColumn();
-        
-        $finance['total_revenue_today'] = (float)$finance['total_revenue_today'];
-        $finance['platform_earnings_today'] = (float)$platform_earnings;
-        $finance['pending_vendor_payout'] = (float)$pending_vendor_payout;
-        $finance['total_refunds_today'] = (float)$finance['total_refunds_today'];
+
+        $finance['total_revenue_today']     = (float)($finance['total_revenue_today'] ?? 0);
+        $finance['platform_earnings_today'] = (float)($platform_earnings ?: 0);
+        $finance['pending_vendor_payout']   = (float)($pending_vendor_payout ?: 0);
+        $finance['total_refunds_today']     = (float)($finance['total_refunds_today'] ?? 0);
 
         // --- DRIVER STATUS ---
+        // FIX: When no active drivers exist the JOIN returns zero rows, so fetch()
+        //      returns false — not an array row of NULLs.  Guard with ?: [] so the
+        //      subsequent array-key accesses never run on a boolean.
         $stmt = $db->prepare("
-            SELECT 
+            SELECT
                 COUNT(u.id) as total_drivers_active,
                 SUM(CASE WHEN dw.cash_in_hand >= dw.collection_limit THEN 1 ELSE 0 END) as drivers_blocked,
                 SUM(dw.cash_in_hand) as total_cash_in_hand
@@ -76,41 +84,56 @@ try {
             WHERE u.role = 'delivery' AND u.status = 'active'
         ");
         $stmt->execute();
-        $driver_stats = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        $driver_stats['total_drivers_active'] = (int)$driver_stats['total_drivers_active'];
-        $driver_stats['drivers_blocked'] = (int)$driver_stats['drivers_blocked'];
-        $driver_stats['total_cash_in_hand'] = (float)$driver_stats['total_cash_in_hand'];
+        $driver_stats = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        $driver_stats['total_drivers_active'] = (int)($driver_stats['total_drivers_active'] ?? 0);
+        $driver_stats['drivers_blocked']      = (int)($driver_stats['drivers_blocked'] ?? 0);
+        $driver_stats['total_cash_in_hand']   = (float)($driver_stats['total_cash_in_hand'] ?? 0);
 
         // --- SYSTEM HEALTH ---
         // Stuck orders (no update for > 60 mins and not in a final state)
         $stmt = $db->prepare("
-            SELECT id, order_number, status, updated_at 
-            FROM orders 
-            WHERE status NOT IN ('delivered', 'cancelled', 'refunded') 
+            SELECT id, order_number, status, updated_at
+            FROM orders
+            WHERE status NOT IN ('delivered', 'cancelled', 'refunded')
               AND updated_at < DATE_SUB(NOW(), INTERVAL 60 MINUTE)
         ");
         $stmt->execute();
+        // FIX: fetchAll() returns [] on no rows — already safe; keep as-is.
         $stuck_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        $stmt = $db->prepare("SELECT COUNT(*) FROM transactions WHERE status = 'failed' AND created_at >= :today");
-        $stmt->execute([':today' => $todayStart]);
-        $failed_payments_today = $stmt->fetchColumn();
-        
-        $stmt = $db->prepare("SELECT COUNT(*) FROM wallet_transactions WHERE status = 'pending' AND type = 'credit' AND entity_type IN ('vendor', 'driver') AND description LIKE '%refund%'");
-        $stmt->execute();
-        $refund_pending = $stmt->fetchColumn();
-        
-        // Alternative refund pending count based on orders table ledger_status or payment_status if wallet_transactions isn't perfectly capturing it
-        $stmt = $db->prepare("SELECT COUNT(*) FROM orders WHERE payment_status = 'refunded' AND ledger_status = 'pending'");
-        $stmt->execute();
-        $refund_pending_orders = $stmt->fetchColumn();
+
+        // FIX: wrap optional-table queries in try/catch so a missing table
+        //      (fresh install / partial migration) returns 0 instead of a 500.
+        try {
+            $stmt = $db->prepare("SELECT COUNT(*) FROM transactions WHERE status = 'failed' AND created_at >= :today");
+            $stmt->execute([':today' => $todayStart]);
+            $failed_payments_today = $stmt->fetchColumn();
+        } catch (PDOException $e) {
+            $failed_payments_today = 0;
+        }
+
+        try {
+            $stmt = $db->prepare("SELECT COUNT(*) FROM wallet_transactions WHERE status = 'pending' AND type = 'credit' AND entity_type IN ('vendor', 'driver') AND description LIKE '%refund%'");
+            $stmt->execute();
+            $refund_pending = $stmt->fetchColumn();
+        } catch (PDOException $e) {
+            $refund_pending = 0;
+        }
+
+        // Alternative refund pending count based on orders table ledger_status or payment_status
+        try {
+            $stmt = $db->prepare("SELECT COUNT(*) FROM orders WHERE payment_status = 'refunded' AND ledger_status = 'pending'");
+            $stmt->execute();
+            $refund_pending_orders = $stmt->fetchColumn();
+        } catch (PDOException $e) {
+            $refund_pending_orders = 0;
+        }
 
         $system_health = [
-            'stuck_orders_count' => count($stuck_orders),
-            'stuck_orders_list' => $stuck_orders, // for UI click
-            'failed_payments_today' => (int)$failed_payments_today,
-            'refund_pending' => (int)$refund_pending + (int)$refund_pending_orders
+            'stuck_orders_count'    => count($stuck_orders),
+            'stuck_orders_list'     => $stuck_orders, // for UI click
+            'failed_payments_today' => (int)($failed_payments_today ?: 0),
+            'refund_pending'        => (int)($refund_pending ?: 0) + (int)($refund_pending_orders ?: 0),
         ];
 
         // --- SMART INSIGHTS ---
@@ -124,6 +147,7 @@ try {
             LIMIT 5
         ");
         $stmt->execute();
+        // FIX: fetchAll() already returns [] on no rows — safe.
         $top_vendors = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $stmt = $db->prepare("
@@ -137,16 +161,17 @@ try {
         ");
         $stmt->execute();
         $most_cancelled_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
+
         $stmt = $db->prepare("SELECT SUM(total) FROM orders WHERE payment_method = 'cod' AND status = 'delivered'");
         $stmt->execute();
+        // FIX: fetchColumn() returns false or NULL on empty set → coerce to 0.0
         $expected_cod = $stmt->fetchColumn();
-        
+
         $cash_flow = [
-            'expected_cash_from_cod' => (float)$expected_cod,
-            'actual_cash_collected' => (float)$driver_stats['total_cash_in_hand'] // simplified logic
+            'expected_cash_from_cod' => (float)($expected_cod ?: 0),
+            'actual_cash_collected'  => $driver_stats['total_cash_in_hand'], // already safe float above
         ];
-        
+
         $cash_flow['deviation'] = $cash_flow['expected_cash_from_cod'] - $cash_flow['actual_cash_collected'];
 
         // --- ALERTS SYSTEM ---
@@ -157,24 +182,24 @@ try {
         if ($driver_stats['drivers_blocked'] > 0) {
             $alerts[] = ['type' => 'danger', 'message' => "{$driver_stats['drivers_blocked']} drivers are blocked due to cash limits."];
         }
-        if ($finance['total_refunds_today'] > 1000) { // arbitrary spike threshold for demo
+        if ($finance['total_refunds_today'] > 1000) {
             $alerts[] = ['type' => 'warning', 'message' => "Abnormal refund spike detected: {$finance['total_refunds_today']} refunded today."];
         }
-        if (abs($cash_flow['deviation']) > 1000) { // smart threshold
+        if (abs($cash_flow['deviation']) > 1000) {
             $alerts[] = ['type' => 'critical', 'message' => "Cash collection mismatch! Deviation of {$cash_flow['deviation']} detected."];
         }
 
         Response::success([
-            'orders' => $orders,
-            'finance' => $finance,
+            'orders'       => $orders,
+            'finance'      => $finance,
             'driver_status' => $driver_stats,
             'system_health' => $system_health,
-            'insights' => [
-                'top_vendors' => $top_vendors,
-                'most_cancelled_items' => $most_cancelled_items,
-                'cash_flow' => $cash_flow
+            'insights'     => [
+                'top_vendors'           => $top_vendors,
+                'most_cancelled_items'  => $most_cancelled_items,
+                'cash_flow'             => $cash_flow,
             ],
-            'alerts' => $alerts
+            'alerts' => $alerts,
         ]);
     }
 
