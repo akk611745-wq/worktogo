@@ -38,6 +38,18 @@ class PaymentService
      */
     public function createOnlinePaymentOrder(int $orderId, float $amount, array $user): array
     {
+        // ── F15: ENV guard — return 503 if Cashfree not configured ───────────
+        $cashfreeId = (string)(getenv('CASHFREE_APP_ID') ?: '');
+        if (
+            empty($cashfreeId) ||
+            strpos($cashfreeId, 'placeholder') !== false ||
+            strpos($cashfreeId, 'your_') !== false
+        ) {
+            http_response_code(503);
+            return ['success' => false, 'error' => 'Payment gateway not configured. Contact support.'];
+        }
+        // ── End F15 ──────────────────────────────────────────────────────────
+
         // ── 1. Validate order exists and is in correct state ─────────────────
         $order = $this->fetchOrder($orderId);
         if (!$order) {
@@ -271,7 +283,63 @@ class PaymentService
             }
 
             $this->db->commit();
-            
+
+            // ── F12: Auto-dispatch to SwiftDeliver after successful payment ────────
+            if ($newStatus === 'paid') {
+                $swiftUrl = rtrim((string)(getenv('SWIFTDELIVER_URL') ?: ''), '/');
+                $swiftSecret = (string)(getenv('SWIFTDELIVER_SECRET') ?: '');
+
+                // Skip if URL not configured or looks like a placeholder
+                if (
+                    empty($swiftUrl) ||
+                    strpos($swiftUrl, 'placeholder') !== false ||
+                    strpos($swiftUrl, 'your-railway') !== false ||
+                    strpos($swiftUrl, 'your_') !== false
+                ) {
+                    error_log("[PaymentService][Dispatch] SwiftDeliver not configured, skipping dispatch for order $internalOrderId.");
+                } else {
+                    // Fetch delivery_id for this order
+                    $deliveryStmt = $this->db->prepare(
+                        "SELECT id FROM deliveries WHERE order_id = :order_id AND status != 'delivered' LIMIT 1"
+                    );
+                    $deliveryStmt->execute([':order_id' => $internalOrderId]);
+                    $deliveryRow = $deliveryStmt->fetch(PDO::FETCH_ASSOC);
+
+                    if (!$deliveryRow) {
+                        error_log("[PaymentService][Dispatch] No delivery row found for order $internalOrderId, skipping dispatch.");
+                    } else {
+                        $deliveryId = (int)$deliveryRow['id'];
+                        $dispatchPayload = json_encode([
+                            'order_id'    => $internalOrderId,
+                            'delivery_id' => $deliveryId,
+                        ]);
+
+                        $ch = curl_init($swiftUrl . '/api/dispatch');
+                        curl_setopt_array($ch, [
+                            CURLOPT_RETURNTRANSFER => true,
+                            CURLOPT_POST           => true,
+                            CURLOPT_POSTFIELDS     => $dispatchPayload,
+                            CURLOPT_TIMEOUT        => 5,
+                            CURLOPT_HTTPHEADER     => [
+                                'Content-Type: application/json',
+                                'X-SwiftDeliver-Secret: ' . $swiftSecret,
+                            ],
+                        ]);
+                        $dispatchResponse = curl_exec($ch);
+                        $dispatchCode     = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                        curl_close($ch);
+
+                        if ($dispatchCode >= 200 && $dispatchCode < 300) {
+                            error_log("[PaymentService][Dispatch] Order $internalOrderId dispatched to SwiftDeliver (delivery_id=$deliveryId).");
+                        } else {
+                            // Log but do NOT fail — order is already paid
+                            error_log("[PaymentService][Dispatch] SwiftDeliver dispatch failed for order $internalOrderId. HTTP=$dispatchCode response=$dispatchResponse");
+                        }
+                    }
+                }
+            }
+            // ── End F12 ───────────────────────────────────────────────────────────
+
             if ($newStatus === 'failed') {
                 $this->db->prepare("INSERT INTO alerts (type, title, message, ref_type) VALUES ('payment_failure', 'Payment Failed', ?, 'none')")
                    ->execute(["Payment failed for Order #$internalOrderId."]);

@@ -57,12 +57,8 @@ define('PAYMENT_RETURN_URL', APP_URL . '/api/payment/return');
 define('PAYMENT_WEBHOOK_URL', APP_URL . '/api/payment/webhook');
 
 // ─── Validation ───────────────────────────────────────────────────────────────
+// F15: Log missing keys but do NOT die() here — individual payment functions
+// return 503 gracefully. Crashing at include-time breaks non-payment routes.
 if (empty(CASHFREE_APP_ID) || empty(CASHFREE_SECRET_KEY)) {
-    // Only throw in non-CLI contexts where payment is actually being used
-    if (php_sapi_name() !== 'cli') {
-        error_log('[PaymentConfig] CRITICAL: CASHFREE_APP_ID or CASHFREE_SECRET_KEY not set.');
-        // Don't expose config errors to end users — die silently and log
-        http_response_code(500);
-        die(json_encode(['status' => 'error', 'message' => 'Payment gateway not configured.']));
-    }
+    error_log('[PaymentConfig] WARNING: CASHFREE_APP_ID or CASHFREE_SECRET_KEY not set. Payment calls will return 503.');
 }

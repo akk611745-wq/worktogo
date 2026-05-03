@@ -60,10 +60,15 @@ class ShoppingVendorAnalyticsController
         $stmt->execute([$vendor_id]);
         $active_products = (int)$stmt->fetchColumn();
 
-        // 4. profile_views_today
-        $stmt = $this->db->prepare("SELECT COUNT(*) FROM brain_events WHERE target_id=? AND target_type='vendor' AND event_type='view' AND DATE(created_at)=CURDATE()");
-        $stmt->execute([$vendor_id]);
-        $profile_views_today = (int)$stmt->fetchColumn();
+        // 4. profile_views_today — brain_events.target_id/target_type not yet migrated; safe fallback
+        try {
+            $stmt = $this->db->prepare("SELECT COUNT(*) FROM brain_events WHERE target_id=? AND target_type='vendor' AND event_type='view' AND DATE(created_at)=CURDATE()");
+            $stmt->execute([$vendor_id]);
+            $profile_views_today = (int)$stmt->fetchColumn();
+        } catch (Exception $e) {
+            error_log("[ShoppingAnalytics] brain_events.target_id column not yet migrated: " . $e->getMessage());
+            $profile_views_today = 0;
+        }
 
         // 5. revenue_this_week
         $stmt = $this->db->prepare("SELECT COALESCE(SUM(t.amount),0) FROM transactions t JOIN orders o ON t.reference_id = o.id AND t.reference_type='order' WHERE o.vendor_id=? AND DATE(t.created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND t.status='success'");
@@ -171,17 +176,33 @@ class ShoppingVendorAnalyticsController
     {
         $vendor_id = $this->requireVendorAndGetId();
 
-        $stmt = $this->db->prepare("SELECT COUNT(*) FROM brain_events WHERE target_type='product' AND event_type='view' AND target_id IN (SELECT id FROM products WHERE vendor_id=?) AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
-        $stmt->execute([$vendor_id]);
-        $product_views = (int)$stmt->fetchColumn();
+        // brain_events.target_id/target_type not yet migrated — safe fallback
+        try {
+            $stmt = $this->db->prepare("SELECT COUNT(*) FROM brain_events WHERE target_type='product' AND event_type='view' AND target_id IN (SELECT id FROM products WHERE vendor_id=?) AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
+            $stmt->execute([$vendor_id]);
+            $product_views = (int)$stmt->fetchColumn();
+        } catch (Exception $e) {
+            error_log("[ShoppingAnalytics] brain_events funnel (views) column not yet migrated: " . $e->getMessage());
+            $product_views = 0;
+        }
 
-        $stmt = $this->db->prepare("SELECT COUNT(*) FROM brain_events WHERE target_type='product' AND event_type='add_to_cart' AND target_id IN (SELECT id FROM products WHERE vendor_id=?) AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
-        $stmt->execute([$vendor_id]);
-        $add_to_cart = (int)$stmt->fetchColumn();
+        try {
+            $stmt = $this->db->prepare("SELECT COUNT(*) FROM brain_events WHERE target_type='product' AND event_type='add_to_cart' AND target_id IN (SELECT id FROM products WHERE vendor_id=?) AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
+            $stmt->execute([$vendor_id]);
+            $add_to_cart = (int)$stmt->fetchColumn();
+        } catch (Exception $e) {
+            error_log("[ShoppingAnalytics] brain_events funnel (add_to_cart) column not yet migrated: " . $e->getMessage());
+            $add_to_cart = 0;
+        }
 
-        $stmt = $this->db->prepare("SELECT COUNT(*) FROM brain_events WHERE target_type='product' AND event_type='checkout' AND target_id IN (SELECT id FROM products WHERE vendor_id=?) AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
-        $stmt->execute([$vendor_id]);
-        $checkout = (int)$stmt->fetchColumn();
+        try {
+            $stmt = $this->db->prepare("SELECT COUNT(*) FROM brain_events WHERE target_type='product' AND event_type='checkout' AND target_id IN (SELECT id FROM products WHERE vendor_id=?) AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
+            $stmt->execute([$vendor_id]);
+            $checkout = (int)$stmt->fetchColumn();
+        } catch (Exception $e) {
+            error_log("[ShoppingAnalytics] brain_events funnel (checkout) column not yet migrated: " . $e->getMessage());
+            $checkout = 0;
+        }
 
         $stmt = $this->db->prepare("SELECT COUNT(*) FROM orders WHERE vendor_id=? AND status != 'cancelled' AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
         $stmt->execute([$vendor_id]);
@@ -205,7 +226,19 @@ class ShoppingVendorAnalyticsController
     {
         $vendor_id = $this->requireVendorAndGetId();
 
-        $sql = "SELECT p.id, p.title, p.price, p.stock_quantity,
+        // brain_events.target_id/target_type not yet migrated — use safe fallback SQL without brain_events subquery
+        $sqlSafe = "SELECT p.id, p.title, p.price, p.stock_quantity,
+                       COUNT(oi.id) as total_sales,
+                       COALESCE(SUM(oi.price * oi.quantity),0) as revenue,
+                       0 as views
+                FROM products p
+                LEFT JOIN order_items oi ON oi.product_id = p.id
+                LEFT JOIN orders o ON oi.order_id = o.id AND o.status != 'cancelled' AND MONTH(o.created_at) = MONTH(CURDATE())
+                WHERE p.vendor_id = ?
+                GROUP BY p.id
+                ORDER BY total_sales DESC
+                LIMIT 5";
+        $sqlFull = "SELECT p.id, p.title, p.price, p.stock_quantity,
                        COUNT(oi.id) as total_sales,
                        COALESCE(SUM(oi.price * oi.quantity),0) as revenue,
                        (SELECT COUNT(*) FROM brain_events WHERE target_id=p.id AND target_type='product' AND event_type='view') as views
@@ -216,9 +249,16 @@ class ShoppingVendorAnalyticsController
                 GROUP BY p.id
                 ORDER BY total_sales DESC
                 LIMIT 5";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([$vendor_id]);
-        $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $stmt = $this->db->prepare($sqlFull);
+            $stmt->execute([$vendor_id]);
+            $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log("[ShoppingAnalytics] brain_events top_products column not yet migrated, using safe query: " . $e->getMessage());
+            $stmt = $this->db->prepare($sqlSafe);
+            $stmt->execute([$vendor_id]);
+            $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
 
         $data = [];
         foreach ($products as $p) {

@@ -9,7 +9,17 @@ class StoryController {
 
     public function uploadStory() {
         $auth = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_VENDOR_SHOPPING, ROLE_ADMIN);
-        $vendorId = $auth['user_id'];
+
+        // F14: Resolve actual vendor_id from vendors table using user_id.
+        // stories.vendor_id is a FK to vendors.id — storing user_id directly causes FK violation.
+        $userId = (int)($auth['user_id'] ?? 0);
+        $vendorStmt = $this->db->prepare("SELECT id FROM vendors WHERE user_id = ? AND status = 'active' LIMIT 1");
+        $vendorStmt->execute([$userId]);
+        $vendorId = (int)$vendorStmt->fetchColumn();
+
+        if ($vendorId <= 0) {
+            Response::error('Only active vendors can upload stories', 403);
+        }
         
         // Ensure upload directory exists
         $uploadDir = SYSTEM_ROOT . '/uploads/stories/';

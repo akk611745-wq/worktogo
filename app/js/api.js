@@ -103,7 +103,7 @@ const API = (() => {
     },
 
     async googleAuth(credential) {
-      return _request("POST", "/api/auth/google", { credential });
+      return _request("POST", "/api/auth/google", { google_token: credential });
     },
 
     // ── Catalog (Intent Pipeline) ───────────────────────────────────────
