@@ -22,7 +22,7 @@ const CONFIG = {
     LOGOUT:            "/auth/logout",
     REFRESH:           "/auth/refresh",
     ME:                "/auth/me",
-    DASHBOARD_STATS:   "/stats",
+    DASHBOARD_STATS:   "/dashboard",
     USERS:             "/users",
     USER_BLOCK:        (id) => `/users/${id}/block`,
     USER_UNBLOCK:      (id) => `/users/${id}/unblock`,
