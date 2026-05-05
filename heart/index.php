@@ -231,15 +231,6 @@ if (str_starts_with($uri, '/api/vendors') || str_starts_with($uri, '/api/vendor/
 if (str_starts_with($uri, '/api/user/refund') || str_starts_with($uri, '/api/admin/refund')) {
     require_once SYSTEM_ROOT . '/core/controllers/RefundController.php';
     
-    // Define role constants if not already defined
-    if (!defined('ROLE_ADMIN')) {
-        define('ROLE_ADMIN', 'admin');
-        define('ROLE_CUSTOMER', 'customer');
-        define('ROLE_VENDOR_SERVICE', 'vendor_service');
-        define('ROLE_VENDOR_SHOPPING', 'vendor_shopping');
-        define('ROLE_DELIVERY', 'delivery');
-    }
-    
     // User refund routes
     if ($method === 'POST' && $uri === '/api/user/refund/request') {
         RefundController::requestRefund();

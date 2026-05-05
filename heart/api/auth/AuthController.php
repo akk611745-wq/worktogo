@@ -35,11 +35,13 @@ class AuthController {
 
         $hash = password_hash($password, PASSWORD_BCRYPT);
         
+        // phone is NOT NULL in DB — use empty string as placeholder for email-only accounts
+        $phoneVal = $phone ?: '';
         $stmt = $this->db->prepare("
-            INSERT INTO users (uuid, name, email, password, phone, auth_type, role, created_at)
-            VALUES (UUID(), ?, ?, ?, ?, 'email', 'customer', NOW())
+            INSERT INTO users (uuid, name, email, password, phone, auth_type, role, status, created_at, updated_at)
+            VALUES (UUID(), ?, ?, ?, ?, 'email', 'customer', 'active', NOW(), NOW())
         ");
-        $stmt->execute([$name, $email, $hash, $phone]);
+        $stmt->execute([$name, $email, $hash, $phoneVal]);
         $userId = $this->db->lastInsertId();
 
         $user = [

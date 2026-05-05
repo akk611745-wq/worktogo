@@ -416,8 +416,70 @@ try {
         $db->prepare("UPDATE vendors SET status = 'active', updated_at = NOW() WHERE id = ?")
            ->execute([$vendorId]);
         
+        // Also update the user's role to match vendor type
+        $vendorRow = $db->prepare("SELECT vendor_type, user_id FROM vendors WHERE id = ? LIMIT 1");
+        $vendorRow->execute([$vendorId]);
+        $vData = $vendorRow->fetch(PDO::FETCH_ASSOC);
+        if ($vData) {
+            $newRole = ($vData['vendor_type'] === 'service') ? 'vendor_service' : 'vendor_shopping';
+            $db->prepare("UPDATE users SET role = ?, updated_at = NOW() WHERE id = ?")
+               ->execute([$newRole, $vData['user_id']]);
+        }
+        
         Logger::info('Admin approved vendor', ['admin_id' => $auth['user_id'], 'vendor_id' => $vendorId]);
-        Response::success(null, 200, 'Vendor approved');
+        Response::success([
+            'require_relogin' => true,
+            'message' => 'Please logout and login again to access vendor panel'
+        ], 200, 'Vendor approved');
+    }
+
+    // ── POST /api/admin/vendors/{id}/reject ────────────────────
+    if ($method === 'POST' && preg_match('#^/api/admin/vendors/(\d+)/reject$#', $uri, $m)) {
+        $vendorId = (int) $m[1];
+        $input    = json_decode(file_get_contents('php://input'), true) ?? [];
+        $db->prepare("UPDATE vendors SET status = 'rejected', updated_at = NOW() WHERE id = ?")
+           ->execute([$vendorId]);
+        Logger::info('Admin rejected vendor', ['admin_id' => $auth['user_id'], 'vendor_id' => $vendorId, 'reason' => $input['reason'] ?? '']);
+        Response::success(null, 200, 'Vendor rejected');
+    }
+
+    // ── PATCH /api/admin/vendors/{id}/status ───────────────────
+    if ($method === 'PATCH' && preg_match('#^/api/admin/vendors/(\d+)/status$#', $uri, $m)) {
+        $vendorId = (int) $m[1];
+        $input    = json_decode(file_get_contents('php://input'), true) ?? [];
+        $status   = $input['status'] ?? '';
+        // Map frontend 'enabled'/'disabled' to DB values 'active'/'inactive'
+        $dbStatus = match ($status) {
+            'enabled'  => 'active',
+            'disabled' => 'inactive',
+            'active'   => 'active',
+            'inactive' => 'inactive',
+            default    => null,
+        };
+        if (!$dbStatus) {
+            Response::validation('Invalid status value');
+        }
+        $db->prepare("UPDATE vendors SET status = ?, updated_at = NOW() WHERE id = ?")
+           ->execute([$dbStatus, $vendorId]);
+        Logger::info('Admin updated vendor status', ['admin_id' => $auth['user_id'], 'vendor_id' => $vendorId, 'status' => $dbStatus]);
+        Response::success(null, 200, 'Vendor status updated');
+    }
+
+    // ── GET /api/admin/vendors/{id} ────────────────────────────
+    if ($method === 'GET' && preg_match('#^/api/admin/vendors/(\d+)$#', $uri, $m)) {
+        $vendorId = (int) $m[1];
+        $stmt = $db->prepare(
+            "SELECT v.*, u.name AS owner_name, u.email AS owner_email, u.phone AS owner_phone
+             FROM vendors v
+             LEFT JOIN users u ON u.id = v.user_id
+             WHERE v.id = ? LIMIT 1"
+        );
+        $stmt->execute([$vendorId]);
+        $vendor = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$vendor) {
+            Response::notFound('Vendor');
+        }
+        Response::success(['vendor' => $vendor]);
     }
 
     // ── POST /api/admin/deliveries/assign ──────────────────────

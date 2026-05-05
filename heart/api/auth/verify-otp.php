@@ -92,12 +92,12 @@ try {
            ->execute([$userId]);
     }
 
-    // Issue JWT
+    // Issue JWT with 30-day expiry (matching AuthController)
     $token = JWT::encode([
         'user_id' => $userId,
         'role'    => $role,
         'phone'   => $data['phone'],
-    ], JWT_SECRET, JWT_EXPIRY);
+    ], JWT_SECRET, time() + (86400 * 30));
 
     $refreshToken = bin2hex(random_bytes(32));
     $refreshHash = hash('sha256', $refreshToken);
@@ -107,7 +107,7 @@ try {
     Response::success([
         'token'        => $token,
         'refreshToken' => $refreshToken,
-        'expires_in'   => JWT_EXPIRY,
+        'expires_in'   => 86400 * 30, // 30 days in seconds
         'is_new'       => $isNew,
         'user'         => [
             'id'    => $userId,

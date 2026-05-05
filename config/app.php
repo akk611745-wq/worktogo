@@ -21,7 +21,11 @@ if (!defined('ROLE_ADMIN')) {
 }
 
 if (!defined('JWT_SECRET')) {
-    define('JWT_SECRET', $jwtSecret ?: 'change-me-in-production');
+    if (empty($jwtSecret)) {
+        error_log('CRITICAL: JWT_SECRET is not set in environment variables. This is a security risk.');
+        throw new Exception('JWT_SECRET must be set in environment variables for security.');
+    }
+    define('JWT_SECRET', $jwtSecret);
 }
 if (!defined('JWT_EXPIRY')) {
     define('JWT_EXPIRY', (int)(getenv('JWT_EXPIRY') ?: 3600));
@@ -52,7 +56,7 @@ return [
     'log_level'   => strtoupper(getenv('HEART_LOG_LEVEL') ?: 'WARN'),
     'debug'       => getenv('APP_DEBUG') === 'true',
     'auth' => [
-        'jwt_secret' => $jwtSecret ?: 'change-me-in-production',
+        'jwt_secret' => $jwtSecret,
         'jwt_expiry' => (int)(getenv('JWT_EXPIRY') ?: 3600),
         'jwt_refresh_exp' => (int)(getenv('JWT_REFRESH_EXP') ?: 86400 * 30),
     ],

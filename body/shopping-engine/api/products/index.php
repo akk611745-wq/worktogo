@@ -9,11 +9,13 @@ $ctrl = new ProductController($db);
 // GET /api/products/categories
 if ($method === 'GET' && $uri === '/api/products/categories') {
     try {
+        // FIX: categories table only has: id, uuid, parent_id, name, slug, type, status, created_at, updated_at
+        // No image_url, module, is_active, sort_order columns exist
         $stmt = $db->prepare(
-            "SELECT id, name, slug, parent_id, image_url, module
+            "SELECT id, name, slug, parent_id, type
              FROM categories
-             WHERE is_active = 1
-             ORDER BY sort_order, name"
+             WHERE status = 'active'
+             ORDER BY name"
         );
         $stmt->execute();
         se_ok(['categories' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);

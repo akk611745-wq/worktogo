@@ -45,7 +45,8 @@ class OrderService
     // To add Razorpay/UPI in future: implement full payment
     // verification (signature check + webhook) BEFORE adding
     // methods here.
-    private const ALLOWED_PAYMENT_METHODS = ['cod', 'online'];
+    // BUG FIX: Removed 'online' until Cashfree is fully configured
+    private const ALLOWED_PAYMENT_METHODS = ['cod'];
 
     // v3.0: Rate limit — max parent orders per user per window
     private const ORDER_RATE_LIMIT        = 5;

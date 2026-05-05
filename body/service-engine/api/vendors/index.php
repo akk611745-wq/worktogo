@@ -27,8 +27,9 @@ $uri    = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
  */
 function resolveVendorId(PDO $db, int $userId): int
 {
+    // FIX: vendors table has no deleted_at column; filter by status instead
     $stmt = $db->prepare(
-        "SELECT id FROM vendors WHERE user_id = ? AND deleted_at IS NULL LIMIT 1"
+        "SELECT id FROM vendors WHERE user_id = ? AND status != 'rejected' LIMIT 1"
     );
     $stmt->execute([$userId]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -79,7 +80,7 @@ if ($method === 'POST' && $uri === '/api/vendors') {
     $db->beginTransaction();
     try {
         $stmt = $db->prepare(
-            "INSERT INTO vendors (user_id, business_name, slug, type, status)
+            "INSERT INTO vendors (user_id, business_name, slug, vendor_type, status)
              VALUES (?, ?, ?, ?, 'pending')"
         );
         $stmt->execute([$userId, $businessName, $slug, $type]);
@@ -111,16 +112,17 @@ if ($method === 'GET' && $uri === '/api/vendors') {
     $limit  = min(50, (int)($_GET['limit'] ?? 20));
     $offset = ($page - 1) * $limit;
 
-    $where = ["v.status = 'active'", "v.deleted_at IS NULL"];
+    // FIX: vendors table has vendor_type (not type), no deleted_at, no description, no logo_url, no address_id
+    $where = ["v.status = 'active'"];
     $bind  = [];
 
     if ($type) {
-        $where[]       = 'v.type = :type';
-        $bind[':type'] = $type;
+        $where[]              = 'v.vendor_type = :type';
+        $bind[':type']        = $type;
     }
     if ($search) {
-        $where[]         = '(v.business_name LIKE :search OR v.description LIKE :search)';
-        $bind[':search'] = '%' . $search . '%';
+        $where[]              = 'v.business_name LIKE :search';
+        $bind[':search']      = '%' . $search . '%';
     }
 
     $whereSQL = 'WHERE ' . implode(' AND ', $where);
@@ -130,15 +132,13 @@ if ($method === 'GET' && $uri === '/api/vendors') {
     $countStmt->execute($bind);
     $total = (int)$countStmt->fetchColumn();
 
-    // Fetch paginated rows
-    $sql = "SELECT v.id, v.business_name, v.slug, v.description, v.logo_url,
-                   v.type, v.status, v.rating, v.total_reviews, v.commission_rate,
-                   v.created_at,
-                   u.name AS owner_name,
-                   a.city, a.state
+    // FIX: Only select columns that actually exist in the vendors table
+    $sql = "SELECT v.id, v.business_name, v.slug, v.vendor_type,
+                   v.status, v.rating, v.commission_rate, v.is_online,
+                   v.lat, v.lng, v.created_at,
+                   u.name AS owner_name, u.phone AS owner_phone, u.email AS owner_email
             FROM vendors v
             LEFT JOIN users u ON u.id = v.user_id
-            LEFT JOIN addresses a ON a.id = v.address_id
             $whereSQL
             ORDER BY v.rating DESC, v.created_at DESC
             LIMIT :limit OFFSET :offset";
@@ -166,16 +166,15 @@ if ($method === 'GET' && $uri === '/api/vendors') {
 
 // ── GET /api/vendors/{id} ─────────────────────────────────────────────────────
 if ($method === 'GET' && preg_match('#^/api/vendors/(\d+)$#', $uri, $m)) {
+    // FIX: Only select columns that actually exist in the vendors table
     $stmt = $db->prepare(
-        "SELECT v.id, v.business_name, v.slug, v.description, v.logo_url,
-                v.type, v.status, v.rating, v.total_reviews, v.commission_rate,
-                v.created_at, v.updated_at,
-                u.name AS owner_name,
-                a.line1, a.line2, a.city, a.state, a.postal_code, a.lat, a.lng
+        "SELECT v.id, v.business_name, v.slug, v.vendor_type,
+                v.status, v.rating, v.commission_rate, v.is_online,
+                v.lat, v.lng, v.created_at, v.updated_at,
+                u.name AS owner_name, u.phone AS owner_phone, u.email AS owner_email
          FROM vendors v
          LEFT JOIN users u ON u.id = v.user_id
-         LEFT JOIN addresses a ON a.id = v.address_id
-         WHERE v.id = ? AND v.deleted_at IS NULL
+         WHERE v.id = ?
          LIMIT 1"
     );
     $stmt->execute([(int)$m[1]]);

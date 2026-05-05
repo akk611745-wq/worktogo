@@ -63,7 +63,26 @@ const Auth = (() => {
       window.location.href = "index.html";
       return null;
     }
-    return getUser();
+    
+    const user = getUser();
+    const role = user?.role;
+    
+    // BUG FIX: Check if user has vendor role
+    if (role === 'customer') {
+      // User is logged in but role is still customer (vendor application approved but not relogged in)
+      alert('Your vendor application is approved. Please logout and login again.');
+      logout();
+      return null;
+    }
+    
+    // BUG FIX: Ensure user has vendor role (vendor_service or vendor_shopping)
+    if (role !== CONFIG.ROLES.SERVICE && role !== CONFIG.ROLES.SHOPPING) {
+      alert('Access denied. Please logout and login again to access vendor panel.');
+      logout();
+      return null;
+    }
+    
+    return user;
   }
 
   /** Auth header for API requests */
