@@ -54,9 +54,11 @@ const CONFIG = {
 
   // ─── ROLES ─────────────────────────────────────
   ROLES: {
-    USER:    "user",
-    VENDOR:  "vendor",
-    CREATOR: "creator",
+    USER:             "customer",
+    VENDOR_SERVICE:   "vendor_service",
+    VENDOR_SHOPPING:  "vendor_shopping",
+    ADMIN:            "admin",
+    DELIVERY:         "delivery",
   },
 
   // ─── FEATURE FLAGS ─────────────────────────────
@@ -64,7 +66,7 @@ const CONFIG = {
     VIDEO_SYSTEM:    false,
     FOLLOW_SYSTEM:   false,
     BRAIN_LAYOUT:    false,
-    PAYMENT_LAYER:   false,
+    PAYMENT_LAYER:   true,
     REALTIME_WS:     false,
     NOTIFICATIONS:   false,
   },
