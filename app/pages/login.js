@@ -247,6 +247,10 @@ window.LoginPage = (() => {
     return { name, email, password };
   }
 
+  function redirectAfterLogin(user) {
+    ROUTER.go('home');
+  }
+
   async function emailLogin() {
     const credentials = _getEmailCredentials();
     if (!credentials) return;
@@ -257,7 +261,7 @@ window.LoginPage = (() => {
 
     if (result.ok) {
       UI.toast("Login successful!", "success");
-      ROUTER.go("home");
+      redirectAfterLogin(result.user);
     } else {
       UI.toast(result.error || "Email login failed. Try again.", "error");
     }
@@ -273,7 +277,7 @@ window.LoginPage = (() => {
 
     if (result.ok) {
       UI.toast("Account created!", "success");
-      ROUTER.go("home");
+      redirectAfterLogin(result.user);
     } else {
       UI.toast(result.error || "Registration failed. Try again.", "error");
     }
@@ -295,7 +299,7 @@ window.LoginPage = (() => {
 
     if (result.ok) {
       UI.toast("Login successful!", "success");
-      ROUTER.go("home");
+      redirectAfterLogin(result.user);
     } else {
       UI.toast(result.error || "Google login failed. Try again.", "error");
     }
@@ -388,7 +392,7 @@ window.LoginPage = (() => {
 
     if (result.ok) {
       UI.toast("Login successful!", "success");
-      ROUTER.go("home");
+      redirectAfterLogin(result.user);
     } else {
       UI.toast(result.error || "Invalid OTP. Try again.", "error");
       document.querySelectorAll(".otp-digit").forEach(i => { i.value = ""; });
