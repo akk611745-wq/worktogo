@@ -266,6 +266,40 @@ try {
         ]);
     }
 
+    // ── GET /api/admin/services ───────────────────────────────
+    if ($method === 'GET' && $uri === '/api/admin/services') {
+        $page   = max(1, (int) ($_GET['page']  ?? 1));
+        $limit  = min(100, (int) ($_GET['limit'] ?? 20));
+        $offset = ($page - 1) * $limit;
+
+        $where = ['1=1'];
+        $bind  = [];
+
+        if (!empty($_GET['status'])) {
+            $where[] = 'status = :status';
+            $bind[':status'] = $_GET['status'];
+        }
+
+        $whereSQL = 'WHERE ' . implode(' AND ', $where);
+
+        $countStmt = $db->prepare("SELECT COUNT(*) FROM services {$whereSQL}");
+        $countStmt->execute($bind);
+        $total = (int) $countStmt->fetchColumn();
+
+        $stmt = $db->prepare("SELECT * FROM services {$whereSQL} ORDER BY created_at DESC LIMIT :limit OFFSET :offset");
+        $stmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        foreach ($bind as $k => $v) $stmt->bindValue($k, $v);
+        $stmt->execute();
+
+        Response::success([
+            'services' => $stmt->fetchAll(),
+            'total'    => $total,
+            'page'     => $page,
+            'limit'    => $limit
+        ]);
+    }
+
     // ── GET /api/admin/orders ─────────────────────────────────
     if ($method === 'GET' && $uri === '/api/admin/orders') {
         $page   = max(1, (int) ($_GET['page']  ?? 1));
