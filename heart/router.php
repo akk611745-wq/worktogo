@@ -40,7 +40,7 @@ header('X-Heart-Version: ' . HEART_VERSION);
 header('X-Powered-By: WorkToGo-Heart');
 
 // ── CORS headers — FIX 5: lock to env-configured origin, no wildcard ──
-$allowedOrigin = getenv('APP_URL') ?: 'https://yourdomain.com';
+$allowedOrigin = $_ENV['APP_URL'] ?? $_SERVER['HTTP_HOST'] ?? '';
 $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
 
 if ($requestOrigin !== '' && $requestOrigin === $allowedOrigin) {

@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Login — WorkToGo Vendor</title>
 <link rel="stylesheet" href="assets/style.css"/>
+<script>
+  window.WTG_BASE_URL = "<?php echo rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?? 'https://worktogo.in', '/'); ?>";
+</script>
 <script src="config.js"></script>
 <script src="shared/auth.js"></script>
 <script src="shared/api.js"></script>
@@ -51,7 +54,7 @@
 
 <script>
 // Redirect if already logged in
-if (Auth.isLoggedIn()) window.location.href = "dashboard.html";
+if (Auth.isLoggedIn()) window.location.href = "dashboard.php";
 
 // Allow Enter key to submit
 document.addEventListener("keydown", e => {
@@ -98,9 +101,9 @@ async function handleLogin() {
   // Role-based redirect
   const role = userData?.role || "";
   if (role === CONFIG.ROLES.SERVICE) {
-    window.location.href = "bookings.html";
+    window.location.href = "bookings.php";
   } else {
-    window.location.href = "dashboard.html";
+    window.location.href = "dashboard.php";
   }
 }
 

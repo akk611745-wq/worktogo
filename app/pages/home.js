@@ -130,6 +130,10 @@ window.HomeModals = (() => {
         <label for="order-notes">Notes (optional)</label>
         <textarea id="order-notes" class="modal-textarea" placeholder="Any special instructions…" rows="2"></textarea>
       </div>
+      <div class="modal-field">
+        <label for="order-address-input">Delivery Address</label>
+        <textarea id="order-address-input" class="modal-textarea" placeholder="Enter full delivery address" required></textarea>
+      </div>
     `;
     document.getElementById("order-modal").classList.remove("hidden");
   }
@@ -149,26 +153,38 @@ window.HomeModals = (() => {
       return;
     }
     if (!_currentProduct) return;
-    const qty   = parseInt(document.getElementById("order-qty-val")?.textContent) || 1;
+    const qty = parseInt(document.getElementById("order-qty-val")?.textContent) || 1;
     const notes = document.getElementById("order-notes")?.value?.trim() || "";
+    const address = document.getElementById('order-address-input').value.trim();
+    if (!address) { UI.toast("Please enter delivery address", "error"); return; }
 
     const btn = document.getElementById("btn-confirm-order");
     if (btn) { btn.disabled = true; btn.classList.add("loading"); }
 
-    const res = await API.createOrder({
+    const cartResult = await API.addToCart({
       product_id: _currentProduct.id,
-      quantity:   qty,
-      ...(notes ? { notes } : {}),
+      quantity: qty
+    });
+    if (!cartResult.ok) {
+      if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
+      UI.toast(cartResult.error || "Failed to add to cart. Try again.", "error");
+      return;
+    }
+
+    const orderResult = await API.createOrder({
+      shipping_address: address,
+      payment_method: 'cod',
+      notes: notes || ''
     });
 
     if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
 
-    if (res.ok) {
+    if (orderResult.ok) {
       close();
       UI.toast("Order placed successfully!", "success");
       setTimeout(() => ROUTER.go("orders"), 800);
     } else {
-      UI.toast(res.error || "Failed to place order. Try again.", "error");
+      UI.toast(orderResult.error || "Failed to place order. Try again.", "error");
     }
   }
 

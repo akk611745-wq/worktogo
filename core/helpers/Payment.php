@@ -16,7 +16,9 @@ class Payment
 
         $appId = getenv('CASHFREE_APP_ID');
         $secret = getenv('CASHFREE_SECRET_KEY');
-        $baseUrl = getenv('APP_ENV') === 'production' ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg';
+        $baseUrl = getenv('APP_ENV') === 'production'
+            ? ($_ENV['CASHFREE_API_URL'] ?? 'https://api.cashfree.com/pg')
+            : ($_ENV['CASHFREE_SANDBOX_URL'] ?? 'https://sandbox.cashfree.com/pg');
 
         $ch = curl_init("{$baseUrl}/orders");
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -110,7 +112,9 @@ class Payment
     {
         $appId = getenv('CASHFREE_APP_ID');
         $secret = getenv('CASHFREE_SECRET_KEY');
-        $baseUrl = getenv('APP_ENV') === 'production' ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg';
+        $baseUrl = getenv('APP_ENV') === 'production'
+            ? ($_ENV['CASHFREE_API_URL'] ?? 'https://api.cashfree.com/pg')
+            : ($_ENV['CASHFREE_SANDBOX_URL'] ?? 'https://sandbox.cashfree.com/pg');
 
         $ch = curl_init("{$baseUrl}/orders/{$orderId}/refunds");
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -183,7 +187,9 @@ class Payment
             if ($gateway === 'cashfree') {
                 $appId = getenv('CASHFREE_APP_ID');
                 $secret = getenv('CASHFREE_SECRET_KEY');
-                $baseUrl = getenv('APP_ENV') === 'production' ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg';
+                $baseUrl = getenv('APP_ENV') === 'production'
+                    ? ($_ENV['CASHFREE_API_URL'] ?? 'https://api.cashfree.com/pg')
+                    : ($_ENV['CASHFREE_SANDBOX_URL'] ?? 'https://sandbox.cashfree.com/pg');
                 
                 // Generate unique refund ID for the request
                 $refundId = 'refund_' . uniqid();

@@ -50,7 +50,7 @@ const Auth = (() => {
   function logout() {
     localStorage.removeItem(CONFIG.TOKEN_KEY);
     localStorage.removeItem(CONFIG.USER_KEY);
-    window.location.href = "index.html";
+    window.location.href = "index.php";
   }
 
   /**
@@ -60,7 +60,7 @@ const Auth = (() => {
    */
   function guard() {
     if (!isLoggedIn()) {
-      window.location.href = "index.html";
+      window.location.href = "index.php";
       return null;
     }
     

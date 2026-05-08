@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Dashboard — WorkToGo Vendor</title>
 <link rel="stylesheet" href="assets/style.css"/>
+<script>
+  window.WTG_BASE_URL = "<?php echo rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?? 'https://worktogo.in', '/'); ?>";
+</script>
 <script src="config.js"></script>
 <script src="shared/auth.js"></script>
 <script src="shared/api.js"></script>
@@ -39,7 +42,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     '<div class="card">' +
     '<div class="card-header">' +
     '<span class="card-title" id="recentTitle">Recent Activity</span>' +
-    '<a href="' + (isService ? 'bookings.html' : 'orders.html') + '" class="btn btn-ghost btn-sm">View All &rarr;</a>' +
+    '<a href="' + (isService ? 'bookings.php' : 'orders.php') + '" class="btn btn-ghost btn-sm">View All &rarr;</a>' +
     '</div>' +
     '<div class="card-body table-wrap">' +
     '<table><thead><tr id="recentThead"></tr></thead><tbody id="recentTbody"><tr class="loading-row"><td colspan="5"><div class="spinner"></div></td></tr></tbody></table>' +

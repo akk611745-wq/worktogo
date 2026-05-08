@@ -120,7 +120,7 @@ function renderVendorInfo() {
 
 /* ── Active Nav Link ────────────────────────────── */
 function setActiveNav() {
-  const page = window.location.pathname.split("/").pop() || "dashboard.html";
+  const page = window.location.pathname.split("/").pop() || "dashboard.php";
   document.querySelectorAll(".nav-item").forEach(a => {
     if (a.getAttribute("href") === page) a.classList.add("active");
   });

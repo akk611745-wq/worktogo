@@ -6,7 +6,7 @@
  */
 const CONFIG = {
   // ✏️  Change this to your actual backend URL
-  BASE_URL: "https://worktogo.in",
+  BASE_URL: (typeof window !== "undefined" && window.WTG_BASE_URL) || "https://worktogo.in",
 
   // Token storage key
   TOKEN_KEY: "wtg_vendor_token",

@@ -127,7 +127,7 @@ if ($contentLength > 1_048_576) {   // 1 MB limit
 }
 
 // ── 4. Standard REST Dispatcher (Non-Pipeline) ───────────────
-$allowedOrigin = getenv('APP_URL') ?: 'https://yourdomain.com';
+$allowedOrigin = $_ENV['APP_URL'] ?? '';
 $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
 
 if ($requestOrigin !== '' && $requestOrigin === $allowedOrigin) {

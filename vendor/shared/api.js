@@ -48,7 +48,7 @@ const API = (() => {
   /* ────────────────────────────────────────────────
      INTENT PIPELINE
   ──────────────────────────────────────────────── */
-  const intent = (name, payload = {}) => post("", { intent: name, payload });
+  const intent = (name, payload = {}) => post("", { intent: name, data: payload });
 
   /* ────────────────────────────────────────────────
      DASHBOARD

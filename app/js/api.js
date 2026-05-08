@@ -79,7 +79,7 @@ const API = (() => {
    * All business logic calls go through this.
    */
   async function _intent(intent, payload = {}) {
-    return _request("POST", "", { intent, payload });
+    return _request("POST", "", { intent: intent, data: payload });
   }
 
   return {
@@ -120,9 +120,8 @@ const API = (() => {
       return _intent("shopping:list_orders");
     },
 
-    async createOrder(payload) {
-      return _intent("shopping:create_order", payload);
-    },
+    createOrder: (payload) => _intent('shopping:create_order', payload),
+    addToCart: (payload) => _intent('shopping:add_to_cart', payload),
 
     // ── Bookings (Intent Pipeline) ──────────────────────────────────────
     async getBookings() {

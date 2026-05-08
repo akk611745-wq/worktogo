@@ -5,7 +5,7 @@
 //  Query params: q (required), type (all|services|products), page, limit
 // ============================================================
 
-$q     = trim($_GET['q']     ?? '');
+$q     = substr(trim($_GET['q'] ?? ''), 0, 100);
 $type  = trim($_GET['type']  ?? 'all');
 $page  = max(1, (int) ($_GET['page']  ?? 1));
 $limit = min(50, max(1, (int) ($_GET['limit'] ?? 20)));

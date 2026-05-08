@@ -621,6 +621,244 @@ try {
         Response::success(null, 200, 'Order cancelled');
     }
 
+    // ══════════════════════════════════════════════════════════
+    // GET /api/admin/orders/{id} — Single order full detail
+    // ══════════════════════════════════════════════════════════
+    if ($method === 'GET' && preg_match('#^/api/admin/orders/(\d+)$#', $uri, $m)) {
+        $orderId = (int) $m[1];
+
+        $stmt = $db->prepare("
+            SELECT o.*,
+                   u.name  AS customer_name,
+                   u.phone AS customer_phone,
+                   u.email AS customer_email
+            FROM orders o
+            LEFT JOIN users u ON u.id = o.customer_id
+            WHERE o.id = ?
+        ");
+        $stmt->execute([$orderId]);
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$order) Response::notFound('Order');
+
+        // Delivery info
+        $dStmt = $db->prepare("
+            SELECT d.*, u.name AS rider_name, u.phone AS rider_phone
+            FROM deliveries d
+            LEFT JOIN users u ON u.id = d.rider_id
+            WHERE d.order_id = ?
+        ");
+        $dStmt->execute([$orderId]);
+        $order['delivery'] = $dStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        // Payment info
+        $pStmt = $db->prepare("SELECT * FROM payments WHERE order_id = ? LIMIT 1");
+        $pStmt->execute([$orderId]);
+        $order['payment'] = $pStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        Response::success($order);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // GET /api/admin/deliveries — All deliveries with status
+    // ══════════════════════════════════════════════════════════
+    if ($method === 'GET' && $uri === '/api/admin/deliveries') {
+        $allowed_delivery_statuses = ['pending','assigned','picked_up','in_transit','delivered','failed','cancelled'];
+        $raw_status = $_GET['status'] ?? null;
+        $status = ($raw_status !== null && in_array($raw_status, $allowed_delivery_statuses, true))
+            ? $raw_status : null;
+        $page   = max(1, (int) ($_GET['page'] ?? 1));
+        $limit  = 20;
+        $offset = ($page - 1) * $limit;
+
+        $where  = $status ? "WHERE d.status = " . $db->quote($status) : "";
+
+        $rows = $db->query("
+            SELECT d.*,
+                   o.order_number, o.total, o.payment_method,
+                   c.name  AS customer_name,
+                   c.phone AS customer_phone,
+                   r.name  AS rider_name,
+                   r.phone AS rider_phone
+            FROM deliveries d
+            LEFT JOIN orders  o ON o.id = d.order_id
+            LEFT JOIN users   c ON c.id = o.customer_id
+            LEFT JOIN users   r ON r.id = d.rider_id
+            {$where}
+            ORDER BY d.created_at DESC
+            LIMIT {$limit} OFFSET {$offset}
+        ")->fetchAll(PDO::FETCH_ASSOC);
+
+        $total = $db->query("SELECT COUNT(*) FROM deliveries d {$where}")->fetchColumn();
+
+        Response::success([
+            'deliveries' => $rows,
+            'pagination' => ['page' => $page, 'limit' => $limit, 'total' => (int) $total],
+        ]);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // GET /api/admin/products — Product listing with stock
+    // ══════════════════════════════════════════════════════════
+    if ($method === 'GET' && $uri === '/api/admin/products') {
+        $page   = max(1, (int) ($_GET['page'] ?? 1));
+        $limit  = 20;
+        $offset = ($page - 1) * $limit;
+        $search = substr(trim($_GET['search'] ?? ''), 0, 100);
+
+        $where = $search
+            ? "WHERE p.name LIKE " . $db->quote('%' . $search . '%')
+            : "";
+
+        $rows = $db->query("
+            SELECT p.*,
+                   m.shop_name AS merchant_name
+            FROM products p
+            LEFT JOIN merchants m ON m.id = p.merchant_id
+            {$where}
+            ORDER BY p.created_at DESC
+            LIMIT {$limit} OFFSET {$offset}
+        ")->fetchAll(PDO::FETCH_ASSOC);
+
+        $total = $db->query("SELECT COUNT(*) FROM products p {$where}")->fetchColumn();
+
+        Response::success([
+            'products'   => $rows,
+            'pagination' => ['page' => $page, 'limit' => $limit, 'total' => (int) $total],
+        ]);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // GET /api/admin/payments — Payment records
+    // ══════════════════════════════════════════════════════════
+    if ($method === 'GET' && $uri === '/api/admin/payments') {
+        $page   = max(1, (int) ($_GET['page'] ?? 1));
+        $limit  = 20;
+        $offset = ($page - 1) * $limit;
+        $allowed_payment_statuses = ['pending','paid','failed','refunded'];
+        $raw_status = $_GET['status'] ?? null;
+        $status = ($raw_status !== null && in_array($raw_status, $allowed_payment_statuses, true))
+            ? $raw_status : null;
+
+        $where = $status
+            ? "WHERE p.status = " . $db->quote($status)
+            : "";
+
+        $rows = $db->query("
+            SELECT p.*,
+                   o.order_number,
+                   u.name  AS customer_name,
+                   u.phone AS customer_phone
+            FROM payments p
+            LEFT JOIN orders o ON o.id = p.order_id
+            LEFT JOIN users  u ON u.id = o.customer_id
+            {$where}
+            ORDER BY p.created_at DESC
+            LIMIT {$limit} OFFSET {$offset}
+        ")->fetchAll(PDO::FETCH_ASSOC);
+
+        $total = $db->query("SELECT COUNT(*) FROM payments p {$where}")->fetchColumn();
+
+        $sum = $db->query("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status = 'paid'")->fetchColumn();
+
+        Response::success([
+            'payments'       => $rows,
+            'total_collected'=> (float) ($sum ?? 0),
+            'pagination'     => ['page' => $page, 'limit' => $limit, 'total' => (int) $total],
+        ]);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // GET /api/admin/riders — All riders with availability
+    // ══════════════════════════════════════════════════════════
+    if ($method === 'GET' && $uri === '/api/admin/riders') {
+        $rows = $db->query("
+            SELECT r.*,
+                   u.name, u.phone, u.email,
+                   COUNT(d.id)  AS total_deliveries,
+                   SUM(d.status = 'delivered') AS completed_deliveries
+            FROM riders r
+            LEFT JOIN users     u ON u.id = r.user_id
+            LEFT JOIN deliveries d ON d.rider_id = r.user_id
+            GROUP BY r.id
+            ORDER BY r.is_available DESC, u.name ASC
+        ")->fetchAll(PDO::FETCH_ASSOC);
+
+        Response::success(['riders' => $rows, 'total' => count($rows)]);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // GET /api/admin/merchants — All merchants with status
+    // ══════════════════════════════════════════════════════════
+    if ($method === 'GET' && $uri === '/api/admin/merchants') {
+        $page   = max(1, (int) ($_GET['page'] ?? 1));
+        $limit  = 20;
+        $offset = ($page - 1) * $limit;
+
+        $rows = $db->query("
+            SELECT m.*,
+                   u.name, u.phone, u.email,
+                   COUNT(p.id)   AS product_count,
+                   COUNT(o.id)   AS order_count
+            FROM merchants m
+            LEFT JOIN users    u ON u.id = m.user_id
+            LEFT JOIN products p ON p.merchant_id = m.id
+            LEFT JOIN orders   o ON o.merchant_id = m.id
+            GROUP BY m.id
+            ORDER BY m.created_at DESC
+            LIMIT {$limit} OFFSET {$offset}
+        ")->fetchAll(PDO::FETCH_ASSOC);
+
+        $total = $db->query("SELECT COUNT(*) FROM merchants")->fetchColumn();
+
+        Response::success([
+            'merchants'  => $rows,
+            'pagination' => ['page' => $page, 'limit' => $limit, 'total' => (int) $total],
+        ]);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // GET /api/admin/system-config — Read all config keys
+    // POST /api/admin/system-config — Write a config key
+    // ══════════════════════════════════════════════════════════
+    if ($uri === '/api/admin/system-config') {
+
+        if ($method === 'GET') {
+            $rows = $db->query("
+                SELECT id, `key`, `value`, updated_by, updated_at
+                FROM system_config
+                ORDER BY `key` ASC
+            ")->fetchAll(PDO::FETCH_ASSOC);
+
+            Response::success(['config' => $rows, 'total' => count($rows)]);
+        }
+
+        if ($method === 'POST') {
+            $input = json_decode(file_get_contents('php://input'), true) ?? [];
+            $key   = trim($input['key']   ?? '');
+            $value = trim($input['value'] ?? '');
+
+            if (!$key) Response::validation('Config key is required');
+
+            // Upsert — insert or update
+            $db->prepare("
+                INSERT INTO system_config (`key`, `value`, updated_by, updated_at)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE
+                    `value`      = VALUES(`value`),
+                    updated_by   = VALUES(updated_by),
+                    updated_at   = NOW()
+            ")->execute([$key, $value, $auth['user_id']]);
+
+            Logger::info('System config updated', [
+                'key'        => $key,
+                'updated_by' => $auth['user_id'],
+            ]);
+
+            Response::success(['key' => $key, 'value' => $value], 200, 'Config updated');
+        }
+    }
+
 } catch (PDOException $e) {
     Logger::error('Admin endpoint DB error', ['error' => $e->getMessage(), 'uri' => $uri]);
     Response::serverError();

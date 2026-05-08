@@ -1,10 +1,12 @@
 <?php
 /**
  * /api/delivery/* — Delivery endpoints
- * Requires ROLE_DELIVERY or ROLE_ADMIN.
+ * Requires ROLE_DELIVERY or ROLE_ADMIN except webhook callbacks.
  */
 
-$auth = AuthMiddleware::requireRole(ROLE_DELIVERY, ROLE_ADMIN);
+$auth = ($method === 'POST' && $uri === '/api/delivery/status-update')
+    ? null
+    : AuthMiddleware::requireRole(ROLE_DELIVERY, ROLE_ADMIN);
 
 try {
     // ── GET /api/delivery/quote ───────────────────────────────
@@ -13,6 +15,12 @@ try {
         $lon1 = floatval($_GET['pickup_lng'] ?? 0);
         $lat2 = floatval($_GET['drop_lat'] ?? 0);
         $lon2 = floatval($_GET['drop_lng'] ?? 0);
+
+        // Validate coordinate ranges
+        if ($lat1 < -90 || $lat1 > 90 || $lat2 < -90 || $lat2 > 90 ||
+            $lon1 < -180 || $lon1 > 180 || $lon2 < -180 || $lon2 > 180) {
+            Response::badRequest('Invalid coordinates');
+        }
 
         if (!$lat1 || !$lon1 || !$lat2 || !$lon2) {
             Response::validation('Missing coordinates');
@@ -103,5 +111,65 @@ try {
 } catch (PDOException $e) {
     Response::serverError();
 }
+
+    // ── POST /api/delivery/status-update (Node/Railway webhook) ──
+    if ($method === 'POST' && $uri === '/api/delivery/status-update') {
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+
+        // Verify webhook secret so only Node can call this
+        $incomingSecret = $_SERVER['HTTP_X_WEBHOOK_SECRET'] ?? '';
+        $expectedSecret = $_ENV['SWIFTDELIVER_SECRET'] ?? getenv('SWIFTDELIVER_SECRET') ?? '';
+
+        if (!$expectedSecret || !hash_equals($expectedSecret, $incomingSecret)) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Unauthorized']);
+            exit;
+        }
+
+        $deliveryId = (int) ($input['delivery_id'] ?? 0);
+        $orderId    = (int) ($input['order_id'] ?? 0);
+        $status     = $input['status'] ?? '';
+        $riderId    = (int) ($input['rider_id'] ?? 0);
+
+        $allowed = ['assigned', 'picked', 'delivered', 'cancelled', 'failed'];
+        if (!$deliveryId || !$orderId || !in_array($status, $allowed)) {
+            http_response_code(422);
+            echo json_encode(['error' => 'Invalid payload — delivery_id, order_id, status required']);
+            exit;
+        }
+
+        // Update deliveries table
+        $db->prepare(
+            "UPDATE deliveries 
+             SET status = ?, rider_id = ?, updated_at = NOW()
+             WHERE id = ? AND order_id = ?"
+        )->execute([$status, $riderId ?: null, $deliveryId, $orderId]);
+
+        // Mirror status to orders table
+        $orderStatus = match($status) {
+            'assigned' => 'processing',
+            'picked'   => 'shipped',
+            'delivered'=> 'delivered',
+            'cancelled', 'failed' => 'cancelled',
+            default    => null,
+        };
+
+        if ($orderStatus) {
+            $db->prepare(
+                "UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?"
+            )->execute([$orderStatus, $orderId]);
+        }
+
+        Logger::info('Delivery status webhook received', [
+            'delivery_id' => $deliveryId,
+            'order_id'    => $orderId,
+            'status'      => $status,
+            'rider_id'    => $riderId,
+        ]);
+
+        http_response_code(200);
+        echo json_encode(['success' => true, 'message' => 'Status updated']);
+        exit;
+    }
 
 Response::notFound('Delivery endpoint');

@@ -45,6 +45,8 @@ RewriteCond %{REQUEST_URI} !^/heart/
 RewriteCond %{REQUEST_URI} !^/body/
 RewriteCond %{REQUEST_URI} !^/brain/
 RewriteCond %{REQUEST_URI} !^/api/
+RewriteCond %{REQUEST_URI} !^/app/index\.php$
+RewriteCond %{REQUEST_URI} !^/vendor/(index|bookings|orders|dashboard|profile|products)\.php$
 RewriteRule . - [F]
 
 # Route all requests through index.php

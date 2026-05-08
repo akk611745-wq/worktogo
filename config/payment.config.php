@@ -41,14 +41,14 @@ define('CASHFREE_ENV',        getenv_safe('CASHFREE_ENV', 'TEST')); // TEST | PR
 
 // Derived: Cashfree API base URL
 define('CASHFREE_API_BASE', strtoupper(CASHFREE_ENV) === 'PRODUCTION'
-    ? 'https://api.cashfree.com/pg'
-    : 'https://sandbox.cashfree.com/pg'
+    ? ($_ENV['CASHFREE_API_URL'] ?? 'https://api.cashfree.com/pg')
+    : ($_ENV['CASHFREE_SANDBOX_URL'] ?? 'https://sandbox.cashfree.com/pg')
 );
 
 define('CASHFREE_API_VERSION', '2023-08-01');
 
 // ─── App Base URL (used for return/notify URLs) ───────────────────────────────
-define('APP_URL', rtrim(getenv_safe('APP_URL', 'https://yourdomain.com'), '/'));
+define('APP_URL', rtrim($_ENV['APP_URL'] ?? '', '/'));
 
 // Payment return URL after Cashfree hosted page
 define('PAYMENT_RETURN_URL', APP_URL . '/api/payment/return');

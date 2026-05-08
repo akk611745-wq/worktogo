@@ -305,6 +305,9 @@ class OrderService
             // ── Non-fatal event hook ───────────────────────────
             $this->emitOrderCreated($userId, $parentOrderId, $parentOrderNumber, $cartSubtotal, $cart);
 
+            // ── Auto-dispatch to delivery network ─────────────────
+            $this->dispatchToDelivery($parentOrderId);
+
             return [
                 'order_id'       => $parentOrderId,
                 'order_number'   => $parentOrderNumber,
@@ -956,6 +959,73 @@ class OrderService
         } catch (\Throwable $e) {
             error_log('[OrderService] EventEngine emit failed: ' . $e->getMessage());
             // Non-fatal — order is already committed
+        }
+    }
+
+    private function dispatchToDelivery(int $orderId): void
+    {
+        try {
+            $swiftUrl = rtrim($_ENV['SWIFTDELIVER_URL'] ?? getenv('SWIFTDELIVER_URL') ?? '', '/');
+            $swiftKey = $_ENV['SWIFTDELIVER_SECRET'] ?? getenv('SWIFTDELIVER_SECRET') ?? '';
+
+            // Skip if URL is placeholder or empty
+            if (!$swiftUrl || strpos($swiftUrl, 'your-') !== false) {
+                Logger::info('Delivery dispatch skipped — SWIFTDELIVER_URL not configured', ['order_id' => $orderId]);
+                return;
+            }
+
+            // Ensure delivery row exists in DB before calling Node
+            $stmt = $this->db->prepare(
+                "SELECT id FROM deliveries WHERE order_id = ?"
+            );
+            $stmt->execute([$orderId]);
+            $delivery = $stmt->fetch();
+
+            if (!$delivery) {
+                $this->db->prepare(
+                    "INSERT INTO deliveries (order_id, status, created_at) VALUES (?, 'pending', NOW())"
+                )->execute([$orderId]);
+                $deliveryId = $this->db->lastInsertId();
+            } else {
+                $deliveryId = $delivery['id'];
+            }
+
+            // Call Node/Railway dispatch endpoint
+            $ch = curl_init($swiftUrl . '/api/dispatch');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                "Authorization: Bearer {$swiftKey}",
+                "Content-Type: application/json"
+            ]);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+                'order_id'    => $orderId,
+                'delivery_id' => $deliveryId,
+            ]));
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode >= 200 && $httpCode < 300) {
+                Logger::info('Order auto-dispatched to delivery network', [
+                    'order_id'    => $orderId,
+                    'delivery_id' => $deliveryId,
+                ]);
+            } else {
+                Logger::error('Auto-dispatch failed — delivery network returned error', [
+                    'order_id'  => $orderId,
+                    'http_code' => $httpCode,
+                    'response'  => $response,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            // Non-fatal — order already committed, just log the failure
+            Logger::error('Auto-dispatch exception', [
+                'order_id' => $orderId,
+                'error'    => $e->getMessage(),
+            ]);
         }
     }
 }

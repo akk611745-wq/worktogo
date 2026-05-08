@@ -99,10 +99,10 @@ const RealtimeEngine = (() => {
     popup.addEventListener('click', e => {
       if (e.target.tagName === 'BUTTON') return;
       const page = window.location.pathname.split('/').pop();
-      if (page !== 'orders.html' && page !== 'bookings.html') {
+      if (page !== 'orders.php' && page !== 'bookings.php') {
         const user = Auth.getUser();
-        if (user?.role === CONFIG.ROLES.SERVICE) window.location.href = 'bookings.html';
-        else window.location.href = 'orders.html';
+        if (user?.role === CONFIG.ROLES.SERVICE) window.location.href = 'bookings.php';
+        else window.location.href = 'orders.php';
       }
       popup.remove();
     });
@@ -264,7 +264,7 @@ const RealtimeEngine = (() => {
     // Update sidebar Orders/Bookings badge
     document.querySelectorAll('.nav-item-badge').forEach(b => b.remove());
     if (pending > 0) {
-      document.querySelectorAll('.nav-item[href="orders.html"], .nav-item[href="bookings.html"]').forEach(a => {
+      document.querySelectorAll('.nav-item[href="orders.php"], .nav-item[href="bookings.php"]').forEach(a => {
         if (!a.querySelector('.nav-item-badge')) {
           const sp = document.createElement('span');
           sp.className = 'nav-item-badge';
