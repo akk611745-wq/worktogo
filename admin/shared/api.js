@@ -28,15 +28,17 @@ class APIClient {
     // Intelligently apply admin prefix.
     // Skip prefix when:
     //   - endpoint starts with /auth  (auth routes have no admin prefix)
-    //   - endpoint starts with /api/  (already fully-qualified path — adding
-    //     adminPrefix would produce /heart/api/admin/api/admin/... double-prefix)
+    //   - endpoint starts with /api/  (already fully-qualified path)
     const isAuth = endpoint.startsWith('/auth');
     const isAbsolute = endpoint.startsWith('/api/') || endpoint.startsWith('/admin/');
 
+    // Normalize endpoint to prevent double /api/ or /admin/ prefixes
     const normalizedEndpoint =
-      endpoint.startsWith('/admin/')
-        ? endpoint.replace('/admin', '')
-        : endpoint;
+      endpoint.startsWith('/api/')
+        ? endpoint.replace('/api/', '/')
+        : endpoint.startsWith('/admin/')
+          ? endpoint.replace('/admin', '')
+          : endpoint;
 
     const url =
       this.baseURL +
