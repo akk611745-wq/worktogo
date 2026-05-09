@@ -94,14 +94,26 @@ async function loadUsers(page = 1) {
 
   try {
     const data = await API.get(CONFIG.ENDPOINTS.USERS, params);
+    
+    // Handle error responses
+    if (!data || data.status >= 400 || data.error) {
+      throw new Error(data.error || data.message || 'Failed to load users');
+    }
+    
     allUsers = data.users || data.data || [];
-    const total = data.total || data.totalCount || allUsers.length;
+    // Support multiple response shapes: data.pagination.total, data.total, data.totalCount
+    const total = data.pagination?.total || data.total || data.totalCount || allUsers.length || 0;
     totalPages = Math.ceil(total / PAGE_SIZE);
-    document.getElementById('users-count').textContent = `${total.toLocaleString()} total users`;
+    
+    // Safe toLocaleString with fallback
+    const totalText = (typeof total === 'number' && !isNaN(total)) ? total.toLocaleString() : '0';
+    document.getElementById('users-count').textContent = `${totalText} total users`;
+    
     renderUsers(allUsers);
     buildPagination('users-pagination', currentPage, totalPages, loadUsers);
   } catch(e) {
-    tableEmpty('users-tbody', 7, 'Failed to load users: ' + (e.message || ''));
+    tableEmpty('users-tbody', 7, 'Failed to load users: ' + (e.message || 'Unknown error'));
+    document.getElementById('users-count').textContent = 'Error loading users';
     Toast.error('Failed to load users');
   }
 }

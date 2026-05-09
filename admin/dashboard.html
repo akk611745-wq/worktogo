@@ -221,81 +221,92 @@ let dashboardData = null;
 async function loadDashboard() {
   try {
     // Override API endpoint config for dashboard to use our new API
-    const data = await API.get('/api/admin/dashboard');
+    const response = await API.get('/api/admin/dashboard');
+    
+    // Handle error responses
+    if (!response || response.status >= 400 || response.error) {
+      throw new Error(response.error || response.message || 'Failed to load dashboard');
+    }
+    
+    // Support both direct data and nested data property
+    const data = response.data || response;
     dashboardData = data;
 
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? '—'; };
     
-    // Orders
-    set('val-total-orders', data.orders.total_orders_today);
-    set('val-completed-orders', data.orders.completed_orders_today);
-    set('val-failed-orders', data.orders.failed_orders_today);
-    set('val-pending-orders', data.orders.pending_orders);
+    // Orders - with null safety
+    set('val-total-orders', data.orders?.total_orders_today ?? 0);
+    set('val-completed-orders', data.orders?.completed_orders_today ?? 0);
+    set('val-failed-orders', data.orders?.failed_orders_today ?? 0);
+    set('val-pending-orders', data.orders?.pending_orders ?? 0);
 
-    // Finance
-    set('val-revenue', Fmt.currency(data.finance.total_revenue_today));
-    set('val-earnings', Fmt.currency(data.finance.platform_earnings_today));
-    set('val-vendor-payout', Fmt.currency(data.finance.pending_vendor_payout));
-    set('val-refunds', Fmt.currency(data.finance.total_refunds_today));
+    // Finance - with null safety
+    set('val-revenue', Fmt.currency(data.finance?.total_revenue_today ?? 0));
+    set('val-earnings', Fmt.currency(data.finance?.platform_earnings_today ?? 0));
+    set('val-vendor-payout', Fmt.currency(data.finance?.pending_vendor_payout ?? 0));
+    set('val-refunds', Fmt.currency(data.finance?.total_refunds_today ?? 0));
 
-    // Drivers
-    set('val-drivers-active', data.driver_status.total_drivers_active);
-    set('val-drivers-blocked', data.driver_status.drivers_blocked);
-    set('val-cash-in-hand', Fmt.currency(data.driver_status.total_cash_in_hand));
+    // Drivers - with null safety
+    set('val-drivers-active', data.driver_status?.total_drivers_active ?? 0);
+    set('val-drivers-blocked', data.driver_status?.drivers_blocked ?? 0);
+    set('val-cash-in-hand', Fmt.currency(data.driver_status?.total_cash_in_hand ?? 0));
 
-    // Health
-    set('val-stuck-orders', data.system_health.stuck_orders_count);
-    set('val-failed-payments', data.system_health.failed_payments_today);
-    set('val-refunds-pending', data.system_health.refund_pending);
+    // Health - with null safety
+    set('val-stuck-orders', data.system_health?.stuck_orders_count ?? 0);
+    set('val-failed-payments', data.system_health?.failed_payments_today ?? 0);
+    set('val-refunds-pending', data.system_health?.refund_pending ?? 0);
 
-    // Insights
+    // Insights - with null safety
     const topVendorsEl = document.getElementById('list-top-vendors');
-    if (data.insights.top_vendors.length === 0) {
+    const topVendors = data.insights?.top_vendors || [];
+    if (topVendors.length === 0) {
       topVendorsEl.innerHTML = '<li class="insight-item" style="color:var(--text-muted)">No data yet today</li>';
     } else {
-      topVendorsEl.innerHTML = data.insights.top_vendors.map(v => 
-        `<li class="insight-item"><span>${escHtml(v.business_name)}</span> <strong>${Fmt.currency(v.total_sales)}</strong></li>`
+      topVendorsEl.innerHTML = topVendors.map(v =>
+        `<li class="insight-item"><span>${escHtml(v.business_name || 'Unknown')}</span> <strong>${Fmt.currency(v.total_sales || 0)}</strong></li>`
       ).join('');
     }
 
     const cancelledItemsEl = document.getElementById('list-cancelled-items');
-    if (data.insights.most_cancelled_items.length === 0) {
+    const cancelledItems = data.insights?.most_cancelled_items || [];
+    if (cancelledItems.length === 0) {
       cancelledItemsEl.innerHTML = '<li class="insight-item" style="color:var(--text-muted)">No cancellations!</li>';
     } else {
-      cancelledItemsEl.innerHTML = data.insights.most_cancelled_items.map(i => 
-        `<li class="insight-item"><span>${escHtml(i.product_name)}</span> <strong>${i.cancel_count}x</strong></li>`
+      cancelledItemsEl.innerHTML = cancelledItems.map(i =>
+        `<li class="insight-item"><span>${escHtml(i.product_name || 'Unknown')}</span> <strong>${i.cancel_count || 0}x</strong></li>`
       ).join('');
     }
 
-    set('val-expected-cash', Fmt.currency(data.insights.cash_flow.expected_cash_from_cod));
-    set('val-actual-cash', Fmt.currency(data.insights.cash_flow.actual_cash_collected));
+    set('val-expected-cash', Fmt.currency(data.insights?.cash_flow?.expected_cash_from_cod ?? 0));
+    set('val-actual-cash', Fmt.currency(data.insights?.cash_flow?.actual_cash_collected ?? 0));
     
     const devEl = document.getElementById('val-cash-deviation');
-    const devAmount = data.insights.cash_flow.deviation;
+    const devAmount = data.insights?.cash_flow?.deviation ?? 0;
     devEl.textContent = Fmt.currency(devAmount);
     if (Math.abs(devAmount) > 1000) { devEl.style.color = 'var(--red)'; }
     else if (Math.abs(devAmount) > 0) { devEl.style.color = 'var(--orange)'; }
     else { devEl.style.color = 'var(--green)'; }
 
-    // Alerts
+    // Alerts - with null safety
     const alertsEl = document.getElementById('alerts-container');
-    if (data.alerts && data.alerts.length > 0) {
-      alertsEl.innerHTML = data.alerts.map(a => 
-        `<div class="alert-banner ${a.type}">
+    const alerts = data.alerts || [];
+    if (alerts.length > 0) {
+      alertsEl.innerHTML = alerts.map(a =>
+        `<div class="alert-banner ${a.type || 'info'}">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
             <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
           </svg>
-          ${escHtml(a.message)}
+          ${escHtml(a.message || 'Alert')}
         </div>`
       ).join('');
     } else {
       alertsEl.innerHTML = '';
     }
 
-  } catch(e) { 
-    Toast.error('Could not load dashboard data'); 
-    console.error(e);
+  } catch(e) {
+    Toast.error('Could not load dashboard data: ' + (e.message || 'Unknown error'));
+    console.error('Dashboard load error:', e);
   }
 }
 

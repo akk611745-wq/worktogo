@@ -146,12 +146,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-$uri    = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/') ?: '/';
+$uri    = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
 $method = $_SERVER['REQUEST_METHOD'];
 
+// Normalize URI: strip /heart prefix and ensure leading slash
 if (str_starts_with($uri, '/heart')) {
     $uri = substr($uri, 6);
 }
+// Ensure leading slash after prefix stripping
+if ($uri !== '/' && !str_starts_with($uri, '/')) {
+    $uri = '/' . $uri;
+}
+// Remove trailing slash (except for root)
+$uri = $uri === '/' ? '/' : rtrim($uri, '/');
 
 // System / DevOps API
 if ($uri === '/api/system/deploy') {
