@@ -15,7 +15,7 @@ const Auth = {
   },
 
   async login(email, password) {
-    const res = await fetch('/api/auth/email/login', {
+    const res = await fetch(CONFIG.API_BASE_URL + CONFIG.ENDPOINTS.LOGIN, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

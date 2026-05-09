@@ -30,9 +30,19 @@ class APIClient {
     //   - endpoint starts with /auth  (auth routes have no admin prefix)
     //   - endpoint starts with /api/  (already fully-qualified path — adding
     //     adminPrefix would produce /heart/api/admin/api/admin/... double-prefix)
-    const isAuth    = endpoint.startsWith('/auth');
-    const isFullApi = endpoint.startsWith('/api/');
-    const url = this.baseURL + (isAuth || isFullApi ? '' : this.adminPrefix) + endpoint + qs;
+    const isAuth = endpoint.startsWith('/auth');
+    const isAbsolute = endpoint.startsWith('/api/') || endpoint.startsWith('/admin/');
+
+    const normalizedEndpoint =
+      endpoint.startsWith('/admin/')
+        ? endpoint.replace('/admin', '')
+        : endpoint;
+
+    const url =
+      this.baseURL +
+      (isAuth || isAbsolute ? '' : this.adminPrefix) +
+      normalizedEndpoint +
+      qs;
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
