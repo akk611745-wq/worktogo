@@ -29,6 +29,7 @@ const CONFIG = {
 
   // ─── AUTH ──────────────────────────────────────
   TOKEN_KEY:   "wtg_token",
+  REFRESH_TOKEN_KEY: "wtg_refresh_token",
   USER_KEY:    "wtg_user",
   SESSION_KEY: "wtg_session",
 

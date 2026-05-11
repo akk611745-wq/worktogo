@@ -451,11 +451,11 @@ try {
            ->execute([$vendorId]);
         
         // Also update the user's role to match vendor type
-        $vendorRow = $db->prepare("SELECT vendor_type, user_id FROM vendors WHERE id = ? LIMIT 1");
+        $vendorRow = $db->prepare("SELECT type, user_id FROM vendors WHERE id = ? LIMIT 1");
         $vendorRow->execute([$vendorId]);
         $vData = $vendorRow->fetch(PDO::FETCH_ASSOC);
         if ($vData) {
-            $newRole = ($vData['vendor_type'] === 'service') ? 'vendor_service' : 'vendor_shopping';
+            $newRole = ($vData['type'] === 'service') ? 'vendor_service' : 'vendor_shopping';
             $db->prepare("UPDATE users SET role = ?, updated_at = NOW() WHERE id = ?")
                ->execute([$newRole, $vData['user_id']]);
         }

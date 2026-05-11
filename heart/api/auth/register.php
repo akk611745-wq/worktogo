@@ -24,6 +24,7 @@ if ($v->fails()) {
 }
 
 $data = $v->validated();
+$data['email'] = isset($data['email']) && trim((string)$data['email']) !== '' ? trim((string)$data['email']) : null;
 
 try {
     // Check phone uniqueness
@@ -35,7 +36,7 @@ try {
     }
 
     // Check email uniqueness (if provided)
-    if (!empty($data['email'])) {
+    if ($data['email'] !== null) {
         $emailCheck = $db->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
         $emailCheck->execute([$data['email']]);
         if ($emailCheck->fetchColumn()) {
@@ -56,7 +57,7 @@ try {
     $stmt->execute([
         ':name'     => $data['name'],
         ':phone'    => $data['phone'],
-        ':email'    => $data['email'] ?: null,
+        ':email'    => $data['email'],
         ':password' => $hash,
         ':role'     => $role,
     ]);
@@ -68,7 +69,7 @@ try {
         $type = ($role === ROLE_VENDOR_SERVICE) ? 'service' : 'shopping';
         $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $data['business_name']), '-'));
         
-        $db->prepare("INSERT INTO vendors (user_id, business_name, slug, vendor_type, status) VALUES (?, ?, ?, ?, 'pending')")
+        $db->prepare("INSERT INTO vendors (user_id, business_name, slug, type, status) VALUES (?, ?, ?, ?, 'pending')")
            ->execute([$userId, $data['business_name'], $slug . '-' . $userId, $type]);
     }
 
@@ -90,7 +91,7 @@ try {
             'id'    => $userId,
             'name'  => $data['name'],
             'phone' => $data['phone'],
-            'email' => $data['email'] ?: null,
+            'email' => $data['email'],
             'role'  => $role,
         ],
     ], 'Account created successfully');

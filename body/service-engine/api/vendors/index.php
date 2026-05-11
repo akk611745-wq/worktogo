@@ -45,7 +45,8 @@ if ($method === 'POST' && $uri === '/api/vendors') {
     $input = json_decode(file_get_contents('php://input'), true) ?? [];
 
     $businessName = trim($input['business_name'] ?? '');
-    $phone        = trim($input['phone'] ?? '');
+    $phone        = isset($input['phone']) ? trim((string)$input['phone']) : null;
+    $phone        = $phone !== '' ? $phone : null;
     $type         = trim($input['type'] ?? $input['category'] ?? '');
 
     if ($businessName === '' || $type === '') {
@@ -59,7 +60,7 @@ if ($method === 'POST' && $uri === '/api/vendors') {
     $userId = (int)$auth['user_id'];
     $stmtPhone = $db->prepare("SELECT phone FROM users WHERE id = ? LIMIT 1");
     $stmtPhone->execute([$userId]);
-    $phone = $stmtPhone->fetchColumn() ?: '';
+    $phone = $stmtPhone->fetchColumn() ?: null;
 
     // Check if vendor already exists
     $stmt = $db->prepare("SELECT id FROM vendors WHERE user_id = ? LIMIT 1");
@@ -80,7 +81,7 @@ if ($method === 'POST' && $uri === '/api/vendors') {
     $db->beginTransaction();
     try {
         $stmt = $db->prepare(
-            "INSERT INTO vendors (user_id, business_name, slug, vendor_type, status)
+            "INSERT INTO vendors (user_id, business_name, slug, type, status)
              VALUES (?, ?, ?, ?, 'pending')"
         );
         $stmt->execute([$userId, $businessName, $slug, $type]);
@@ -112,12 +113,12 @@ if ($method === 'GET' && $uri === '/api/vendors') {
     $limit  = min(50, (int)($_GET['limit'] ?? 20));
     $offset = ($page - 1) * $limit;
 
-    // FIX: vendors table has vendor_type (not type), no deleted_at, no description, no logo_url, no address_id
+    // Production schema uses vendors.type; no deleted_at, no description, no logo_url, no address_id
     $where = ["v.status = 'active'"];
     $bind  = [];
 
     if ($type) {
-        $where[]              = 'v.vendor_type = :type';
+        $where[]              = 'v.type = :type';
         $bind[':type']        = $type;
     }
     if ($search) {
@@ -133,7 +134,7 @@ if ($method === 'GET' && $uri === '/api/vendors') {
     $total = (int)$countStmt->fetchColumn();
 
     // FIX: Only select columns that actually exist in the vendors table
-    $sql = "SELECT v.id, v.business_name, v.slug, v.vendor_type,
+    $sql = "SELECT v.id, v.business_name, v.slug, v.type, v.type AS vendor_type,
                    v.status, v.rating, v.commission_rate, v.is_online,
                    v.lat, v.lng, v.created_at,
                    u.name AS owner_name, u.phone AS owner_phone, u.email AS owner_email
@@ -168,7 +169,7 @@ if ($method === 'GET' && $uri === '/api/vendors') {
 if ($method === 'GET' && preg_match('#^/api/vendors/(\d+)$#', $uri, $m)) {
     // FIX: Only select columns that actually exist in the vendors table
     $stmt = $db->prepare(
-        "SELECT v.id, v.business_name, v.slug, v.vendor_type,
+        "SELECT v.id, v.business_name, v.slug, v.type, v.type AS vendor_type,
                 v.status, v.rating, v.commission_rate, v.is_online,
                 v.lat, v.lng, v.created_at, v.updated_at,
                 u.name AS owner_name, u.phone AS owner_phone, u.email AS owner_email

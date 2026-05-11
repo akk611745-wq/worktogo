@@ -17,7 +17,8 @@ class AuthController {
         $name = trim($input['name'] ?? '');
         $email = trim($input['email'] ?? '');
         $password = $input['password'] ?? '';
-        $phone = !empty($input['phone']) ? trim($input['phone']) : null;
+        $phone = isset($input['phone']) ? trim((string)$input['phone']) : null;
+        $phone = $phone !== '' ? $phone : null;
 
         if (!$name || !$email || !$password) {
             Response::error('Name, email, and password are required', 400);
@@ -35,13 +36,11 @@ class AuthController {
 
         $hash = password_hash($password, PASSWORD_BCRYPT);
         
-        // phone is NOT NULL in DB — use empty string as placeholder for email-only accounts
-        $phoneVal = $phone ?: '';
         $stmt = $this->db->prepare("
             INSERT INTO users (uuid, name, email, password, phone, auth_type, role, status, created_at, updated_at)
             VALUES (UUID(), ?, ?, ?, ?, 'email', 'customer', 'active', NOW(), NOW())
         ");
-        $stmt->execute([$name, $email, $hash, $phoneVal]);
+        $stmt->execute([$name, $email, $hash, $phone]);
         $userId = $this->db->lastInsertId();
 
         $user = [
@@ -67,6 +66,7 @@ class AuthController {
         Response::json([
             'success' => true,
             'token' => $token,
+            'refresh_token' => $refreshToken,
             'refreshToken' => $refreshToken,
             'user' => $user
         ]);
@@ -133,6 +133,7 @@ class AuthController {
         Response::json([
             'success' => true,
             'token' => $token,
+            'refresh_token' => $refreshToken,
             'refreshToken' => $refreshToken,
             'role' => $userRow['role'],
             'user' => $user,
@@ -261,8 +262,8 @@ class AuthController {
         $name = 'Guest_' . $guestNumber;
         
         $stmt = $this->db->prepare("
-            INSERT INTO users (uuid, name, phone, auth_type, role, is_guest, guest_expires_at, created_at)
-            VALUES (UUID(), ?, '', 'guest', 'customer', 1, DATE_ADD(NOW(), INTERVAL 24 HOUR), NOW())
+            INSERT INTO users (uuid, name, phone, email, auth_type, role, is_guest, guest_expires_at, created_at)
+            VALUES (UUID(), ?, NULL, NULL, 'guest', 'customer', 1, DATE_ADD(NOW(), INTERVAL 24 HOUR), NOW())
         ");
         $stmt->execute([$name]);
         $userId = $this->db->lastInsertId();

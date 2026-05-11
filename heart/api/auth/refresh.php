@@ -6,11 +6,11 @@
 
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
 
-if (empty($input['refresh_token'])) {
+if (empty($input['refresh_token']) && empty($input['refreshToken'])) {
     Response::validation('refresh_token is required');
 }
 
-$refreshToken = trim($input['refresh_token']);
+$refreshToken = trim((string)($input['refresh_token'] ?? $input['refreshToken']));
 
 try {
     // Check if it's a JWT (legacy) or a hex token

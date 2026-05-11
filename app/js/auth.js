@@ -4,9 +4,10 @@
 
 const AUTH = (() => {
 
-  function saveSession(token, user) {
+  function saveSession(token, user, refreshToken = null) {
     localStorage.setItem(CONFIG.TOKEN_KEY, token);
     localStorage.setItem(CONFIG.USER_KEY, JSON.stringify(user));
+    if (refreshToken) localStorage.setItem(CONFIG.REFRESH_TOKEN_KEY, refreshToken);
   }
 
   function getUser() {
@@ -24,6 +25,7 @@ const AUTH = (() => {
 
   function logout() {
     localStorage.removeItem(CONFIG.TOKEN_KEY);
+    localStorage.removeItem(CONFIG.REFRESH_TOKEN_KEY);
     localStorage.removeItem(CONFIG.USER_KEY);
     localStorage.removeItem(CONFIG.SESSION_KEY);
     ROUTER.go("login");
@@ -42,15 +44,16 @@ const AUTH = (() => {
     const data = result?.data?.data || result?.data || {};
     return {
       token: data.token || data.access_token || data.jwt || "",
+      refreshToken: data.refresh_token || data.refreshToken || "",
       user: data.user || data.profile || null,
     };
   }
 
   function _saveAuthResult(result, fallbackError) {
     if (result.ok) {
-      const { token, user } = _sessionFromResult(result);
+      const { token, refreshToken, user } = _sessionFromResult(result);
       if (token && user) {
-        saveSession(token, user);
+        saveSession(token, user, refreshToken);
         return { ok: true, user };
       }
     }
@@ -74,8 +77,8 @@ const AUTH = (() => {
   async function verifyAndLogin(phone, otp) {
     const result = await API.verifyOtp(phone, otp);
     if (result.ok && result.data?.data?.token) {
-      const { token, user } = result.data.data;
-      saveSession(token, user);
+      const { token, refresh_token, refreshToken, user } = result.data.data;
+      saveSession(token, user, refresh_token || refreshToken || null);
       return { ok: true, user };
     }
     return { ok: false, error: result.error || result.data?.message || "Login failed" };

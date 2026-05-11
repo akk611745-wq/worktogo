@@ -106,6 +106,7 @@ try {
 
     Response::success([
         'token'        => $token,
+        'refresh_token'=> $refreshToken,
         'refreshToken' => $refreshToken,
         'expires_in'   => 86400 * 30, // 30 days in seconds
         'is_new'       => $isNew,

@@ -66,7 +66,7 @@ class FeedRankingEngine {
     public function getTrendingItems(int $limit, string $city): array {
         // SELECT top vendors by orders+rating in given city
         $stmt = $this->db->prepare("
-            SELECT id as vendor_id, business_name, vendor_type, rating, total_orders, city,
+            SELECT id as vendor_id, business_name, type, rating, total_orders, city,
                    ((rating * 0.4) + (total_orders * 0.3)) as base_score
             FROM vendors 
             WHERE city = ? AND status = 'active'
@@ -94,7 +94,7 @@ class FeedRankingEngine {
             $items[] = [
                 'vendor_id' => $v['vendor_id'],
                 'business_name' => $v['business_name'],
-                'type' => $v['vendor_type'] === 'service' ? 'service' : 'product',
+                'type' => $v['type'] === 'service' ? 'service' : 'product',
                 'score' => $score,
                 'city' => $v['city'],
                 // Add any other data needed by frontend
