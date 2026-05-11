@@ -63,10 +63,16 @@ if ($method === 'POST' && $uri === '/api/vendors') {
     $phone = $stmtPhone->fetchColumn() ?: null;
 
     // Check if vendor already exists
-    $stmt = $db->prepare("SELECT id FROM vendors WHERE user_id = ? LIMIT 1");
+    $stmt = $db->prepare("SELECT id, business_name, type, status, created_at, updated_at FROM vendors WHERE user_id = ? LIMIT 1");
     $stmt->execute([$userId]);
-    if ($stmt->fetch()) {
-        Response::error('Vendor profile already exists for this user', 409);
+    $existingVendor = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($existingVendor) {
+        Response::error(
+            'Vendor application already exists with status: ' . ($existingVendor['status'] ?? 'unknown'),
+            409,
+            'VENDOR_ALREADY_EXISTS',
+            ['vendor' => $existingVendor]
+        );
     }
 
     $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $businessName), '-'));

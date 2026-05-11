@@ -68,7 +68,12 @@ window.VendorApplyModal = (() => {
       const data = await _parseJSON(res);
 
       if (!res.ok) {
-        UI.toast(data?.message || data?.error || "Application failed. Please try again.", "error");
+        const existingStatus = data?.data?.error?.details?.vendor?.status || data?.error?.details?.vendor?.status || data?.data?.vendor?.status || data?.vendor?.status;
+        if (existingStatus) {
+          UI.toast(_statusMessage(existingStatus), existingStatus === "rejected" ? "error" : "info");
+        } else {
+          UI.toast(data?.message || data?.error || "Application failed. Please try again.", "error");
+        }
         return;
       }
 
@@ -88,6 +93,16 @@ window.VendorApplyModal = (() => {
   async function _parseJSON(res) {
     const text = await res.text();
     try { return JSON.parse(text); } catch { return null; }
+  }
+
+  function _statusMessage(status) {
+    const map = {
+      pending: "Your vendor application is pending admin review.",
+      active: "Your vendor account is active. Please log out and log in again to access the vendor panel.",
+      inactive: "Your vendor account is inactive. Please contact support.",
+      rejected: "Your vendor application was rejected. Please contact support for review.",
+    };
+    return map[status] || `Your vendor application status is ${status}.`;
   }
 
   function _escapeAttr(str) {

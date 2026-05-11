@@ -56,6 +56,7 @@ const CONFIG = {
   // ─── ROLES ─────────────────────────────────────
   ROLES: {
     USER:             "customer",
+    VENDOR:           "vendor",
     VENDOR_SERVICE:   "vendor_service",
     VENDOR_SHOPPING:  "vendor_shopping",
     ADMIN:            "admin",

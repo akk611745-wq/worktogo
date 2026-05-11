@@ -12,6 +12,7 @@ export async function render(container) {
   if (!AUTH.requireAuth()) return;
   const user = AUTH.getUser();
   const role = AUTH.getRole();
+  const isVendor = role === CONFIG.ROLES.VENDOR_SERVICE || role === CONFIG.ROLES.VENDOR_SHOPPING;
 
   container.innerHTML = `
     <div class="page account-page">
@@ -56,18 +57,18 @@ export async function render(container) {
           <!-- Role-Based Section — future-ready, shown based on role -->
           <div class="menu-section-title">My Roles</div>
 
-          <div class="menu-item ${role === CONFIG.ROLES.VENDOR ? "" : "menu-item-locked"}"
-               onclick="${role === CONFIG.ROLES.VENDOR
+          <div class="menu-item ${isVendor ? "" : "menu-item-locked"}"
+               onclick="${isVendor
                  ? "ROUTER.go('vendor')"
                  : "AccountPage.promptUpgrade('vendor')"}">
             <div class="menu-icon vendor-icon">🏪</div>
             <div class="menu-body">
               <span>Vendor Panel</span>
-              <p class="menu-sub">${role === CONFIG.ROLES.VENDOR
+              <p class="menu-sub">${isVendor
                 ? "Manage your store"
                 : "Apply to become a vendor"}</p>
             </div>
-            ${role === CONFIG.ROLES.VENDOR
+            ${isVendor
               ? `<svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>`
               : `<span class="lock-badge">Soon</span>`}
           </div>
@@ -130,7 +131,8 @@ function _initials(user) {
 function _roleLabel(role) {
   const map = {
     [CONFIG.ROLES.USER]:    "Customer",
-    [CONFIG.ROLES.VENDOR]:  "Vendor",
+    [CONFIG.ROLES.VENDOR_SERVICE]:  "Service Vendor",
+    [CONFIG.ROLES.VENDOR_SHOPPING]: "Shopping Vendor",
     [CONFIG.ROLES.CREATOR]: "Creator",
   };
   return map[role] || "Customer";

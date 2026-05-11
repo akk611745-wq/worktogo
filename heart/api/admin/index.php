@@ -234,6 +234,8 @@ try {
 
     // ── GET /api/admin/vendors ────────────────────────────────
     if ($method === 'GET' && $uri === '/api/admin/vendors') {
+        $type   = $_GET['type']   ?? null;
+        $search = $_GET['search'] ?? null;
         $page   = max(1, (int) ($_GET['page']  ?? 1));
         $limit  = min(100, (int) ($_GET['limit'] ?? 20));
         $offset = ($page - 1) * $limit;
@@ -242,27 +244,58 @@ try {
         $bind  = [];
 
         if (!empty($_GET['status'])) {
-            $where[] = 'status = :status';
+            $where[] = 'v.status = :status';
             $bind[':status'] = $_GET['status'];
+        }
+
+        if ($type) {
+            $where[] = 'v.type = :type';
+            $bind[':type'] = $type;
+        }
+
+        if ($search) {
+            $where[] = '(v.business_name LIKE :search OR u.name LIKE :search OR u.email LIKE :search OR u.phone LIKE :search)';
+            $bind[':search'] = '%' . $search . '%';
         }
 
         $whereSQL = 'WHERE ' . implode(' AND ', $where);
         
-        $countStmt = $db->prepare("SELECT COUNT(*) FROM vendors {$whereSQL}");
+        $countStmt = $db->prepare("SELECT COUNT(*) FROM vendors v LEFT JOIN users u ON u.id = v.user_id {$whereSQL}");
         $countStmt->execute($bind);
         $total = (int) $countStmt->fetchColumn();
+
+        $pendingStmt = $db->prepare("SELECT COUNT(*) FROM vendors WHERE status = 'pending'");
+        $pendingStmt->execute();
+        $pendingCount = (int) $pendingStmt->fetchColumn();
         
-        $stmt = $db->prepare("SELECT * FROM vendors {$whereSQL} ORDER BY created_at DESC LIMIT :limit OFFSET :offset");
+        $stmt = $db->prepare(
+            "SELECT v.id, v.user_id, v.business_name, v.slug, v.type, v.type AS vendor_type,
+                    v.status, v.commission_rate, v.rating, v.is_online, v.lat, v.lng,
+                    v.created_at, v.updated_at,
+                    u.name AS owner_name, u.phone AS owner_phone, u.email AS owner_email
+             FROM vendors v
+             LEFT JOIN users u ON u.id = v.user_id
+             {$whereSQL}
+             ORDER BY v.created_at DESC
+             LIMIT :limit OFFSET :offset"
+        );
         $stmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         foreach ($bind as $k => $v) $stmt->bindValue($k, $v);
         $stmt->execute();
 
         Response::success([
-            'vendors' => $stmt->fetchAll(),
-            'total'   => $total,
-            'page'    => $page,
-            'limit'   => $limit
+            'vendors'      => $stmt->fetchAll(PDO::FETCH_ASSOC),
+            'total'        => $total,
+            'pendingCount' => $pendingCount,
+            'page'         => $page,
+            'limit'        => $limit,
+            'pagination'   => [
+                'total'       => $total,
+                'page'        => $page,
+                'limit'       => $limit,
+                'total_pages' => (int) ceil($total / max($limit, 1)),
+            ],
         ]);
     }
 
