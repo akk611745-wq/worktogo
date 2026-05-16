@@ -30,7 +30,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   el.innerHTML =
     '<div class="page-header"><div>' +
     '<h1 class="page-title">Dashboard</h1>' +
-    '<p class="page-sub">Welcome back, ' + name + '! Service jobs are prioritized during launch.</p>' +
+    '<p class="page-sub">Welcome back, ' + name + '! Keep Jobs open, refresh often, and contact customers before visit.</p>' +
     '</div></div>' +
 
     '<div class="stat-grid" id="statGrid">' +
@@ -111,7 +111,7 @@ function loadRecentBookings(items) {
   const tbody = document.getElementById("recentTbody");
   thead.innerHTML = '<th>ID</th><th>Customer</th><th>Service</th><th>Date</th><th>Status</th>';
   if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">&#x1F4C5;</div><div class="empty-text">No bookings yet</div></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">&#x1F4C5;</div><div class="empty-text">No bookings yet. WorkToGo will coordinate pilot jobs manually.</div></div></td></tr>';
     return;
   }
   tbody.innerHTML = items.slice(0,5).map(b =>

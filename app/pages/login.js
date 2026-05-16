@@ -129,6 +129,7 @@ export async function render(container) {
       </div>
 
       <p class="login-footer">By continuing you agree to be contacted for booking confirmation and support.</p>
+      <button class="continue-browsing-btn" onclick="ROUTER.go('home')">Continue browsing services</button>
     </div>
   `;
 

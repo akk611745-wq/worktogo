@@ -119,6 +119,33 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   font-size: 0.78rem;
 }
 
+.btn-whatsapp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: var(--r-full);
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.84rem;
+  box-shadow: 0 12px 28px rgba(34,197,94,0.22);
+}
+
+.btn-whatsapp.compact { min-height: 36px; padding: 0 14px; }
+
+.btn-ghost-inline {
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--clr-border-2);
+  color: var(--clr-text);
+  font-weight: 700;
+  font-size: 0.84rem;
+  background: rgba(255,255,255,0.05);
+}
+
 .booking-trust-panel { margin-bottom: var(--sp-md); }
 
 .btn-text-inline {
@@ -901,6 +928,13 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .icon-btn svg { width: 20px; height: 20px; }
 .icon-btn:active { background: var(--clr-surface-2); }
 
+.whatsapp-icon-btn {
+  background: rgba(34,197,94,0.16);
+  border-color: rgba(34,197,94,0.35);
+  color: var(--clr-success);
+  font-size: 1.15rem;
+}
+
 .home-content { flex: 1; }
 
 .service-hero {
@@ -953,6 +987,55 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   background: rgba(255,255,255,0.04);
 }
 
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-sm);
+  margin-top: var(--sp-md);
+}
+
+.section-header.compact { padding-bottom: var(--sp-xs); }
+.section-note { color: var(--clr-text-2); font-size: 0.72rem; }
+
+.category-chips {
+  display: flex;
+  gap: var(--sp-sm);
+  overflow-x: auto;
+  padding: 0 var(--sp-md) var(--sp-xs);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.category-chips::-webkit-scrollbar { display: none; }
+.category-chips button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--clr-border);
+  background: var(--clr-surface);
+  color: var(--clr-text);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.local-proof-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--sp-sm);
+  margin: 0 var(--sp-md) var(--sp-lg);
+}
+.local-proof-grid div {
+  padding: var(--sp-md);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--r-md);
+  background: rgba(255,255,255,0.04);
+}
+.local-proof-grid strong { display: block; font-size: 0.86rem; margin-bottom: 3px; }
+.local-proof-grid span { display: block; color: var(--clr-text-2); font-size: 0.74rem; }
+
 .home-section { margin-bottom: var(--sp-lg); }
 
 .section-header {
@@ -998,6 +1081,10 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 .cards-grid.horizontal-scroll::-webkit-scrollbar { display: none; }
 
+.fallback-services-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 /* ── Card ────────────────────────────────────────────────────────────────── */
 
 .card {
@@ -1018,6 +1105,12 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .service-card {
   width: 160px;
   flex-shrink: 0;
+}
+
+.fallback-services-grid .service-card,
+.fallback-service-card {
+  width: auto;
+  min-height: 148px;
 }
 
 .card-icon {
@@ -1057,6 +1150,64 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   border-radius: var(--r-full);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.whatsapp-badge {
+  background: rgba(34,197,94,0.16);
+  color: var(--clr-success);
+}
+
+.fallback-help-card,
+.trust-story-card {
+  border: 1px solid rgba(34,197,94,0.24);
+  border-radius: var(--r-lg);
+  background: linear-gradient(145deg, rgba(34,197,94,0.10), rgba(255,255,255,0.04));
+  padding: var(--sp-md);
+}
+
+.fallback-help-card {
+  grid-column: 1 / -1;
+}
+
+.fallback-help-card h3,
+.trust-story-card h3 { font-size: 0.98rem; margin-bottom: 4px; }
+.fallback-help-card p,
+.trust-story-card p { color: var(--clr-text-2); font-size: 0.82rem; line-height: 1.45; margin-bottom: var(--sp-sm); }
+
+.trust-story-card {
+  margin: 0 var(--sp-md);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--sp-sm);
+}
+.trust-story-icon { font-size: 1.5rem; }
+
+.floating-whatsapp {
+  position: fixed;
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 18px);
+  z-index: 110;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--r-full);
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+  color: #fff;
+  box-shadow: 0 14px 34px rgba(34,197,94,0.35);
+  font-size: 1.25rem;
+}
+
+.whatsapp-menu-item {
+  border-color: rgba(34,197,94,0.22);
+}
+
+.continue-browsing-btn {
+  display: block;
+  margin: var(--sp-sm) auto 0;
+  min-height: 40px;
+  color: var(--clr-text-2);
+  font-weight: 700;
+  font-size: 0.82rem;
 }
 
 /* Product card */
@@ -1345,6 +1496,80 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
     /* FIX: ensure sidebar doesn't look broken on desktop */
     border-left: 1px solid var(--clr-border);
     border-right: 1px solid var(--clr-border);
+  }
+}
+
+@media (min-width: 760px) {
+  body {
+    max-width: 1120px;
+  }
+
+  .bottom-nav {
+    max-width: 760px;
+    border-radius: var(--r-full) var(--r-full) 0 0;
+    left: 50%;
+  }
+
+  .home-content {
+    max-width: 1080px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .top-bar {
+    max-width: 1080px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .service-hero {
+    margin: var(--sp-md) var(--sp-lg) var(--sp-lg);
+    padding: var(--sp-xl);
+    min-height: 250px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .service-hero h1 {
+    font-size: 2.3rem;
+    max-width: 620px;
+  }
+
+  .service-hero p {
+    max-width: 560px;
+    font-size: 1rem;
+  }
+
+  .local-proof-grid {
+    grid-template-columns: repeat(3, 1fr);
+    margin-left: var(--sp-lg);
+    margin-right: var(--sp-lg);
+  }
+
+  .section-header,
+  .cards-grid,
+  .cards-grid.horizontal-scroll,
+  .category-chips {
+    padding-left: var(--sp-lg);
+    padding-right: var(--sp-lg);
+  }
+
+  .cards-grid.horizontal-scroll,
+  .fallback-services-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    overflow: visible;
+  }
+
+  .service-card {
+    width: auto;
+    min-height: 160px;
+  }
+
+  .trust-story-card {
+    margin-left: var(--sp-lg);
+    margin-right: var(--sp-lg);
   }
 }
 

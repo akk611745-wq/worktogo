@@ -22,7 +22,7 @@
           <div class="page-header" style="padding:0;margin-bottom:12px">
             <div>
               <h2 class="page-title" style="font-size:16px">Service Operations Board</h2>
-              <p class="page-subtitle" id="booking-count">Loading service bookings… Manual call/WhatsApp recovery stays active.</p>
+              <p class="page-subtitle" id="booking-count">Loading service bookings… Verify customer/vendor by phone or WhatsApp before closing actions.</p>
             </div>
             <button class="btn btn-ghost btn-sm" onclick="loadServiceBookings()">Refresh</button>
           </div>
@@ -101,7 +101,7 @@ async function loadServiceBookings() {
 
 function renderServiceBookings(bookings) {
   const tbody = document.getElementById('service-bookings-tbody');
-  if (!bookings.length) { tableEmpty('service-bookings-tbody', 8, 'No service bookings found'); return; }
+  if (!bookings.length) { tableEmpty('service-bookings-tbody', 8, 'No service bookings yet. Confirm pilot services/vendors are seeded before public testing.'); return; }
   tbody.innerHTML = bookings.map(b => {
     const id = b.id || b._id;
     const jobId = b.job_id || id;

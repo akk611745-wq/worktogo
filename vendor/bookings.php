@@ -68,7 +68,7 @@ function renderPage() {
     <div class="page-header">
       <div>
         <h1 class="page-title">Jobs</h1>
-        <p class="page-sub">Accept, reject, and manage your service jobs &middot; <span id="lastRefreshLabel" class="text-muted">Loading&hellip;</span></p>
+        <p class="page-sub">Check new requests, contact customer, then update status &middot; <span id="lastRefreshLabel" class="text-muted">Loading&hellip;</span></p>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="loadBookings()">Refresh</button>
     </div>
@@ -201,7 +201,7 @@ function _chip(status) {
 function renderBookingRows(list) {
   const tbody = document.getElementById("bookingTbody");
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">&#x1F4C5;</div><div class="empty-text">No bookings found.</div></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">&#x1F4C5;</div><div class="empty-text">No jobs right now. Keep this page ready and tap Refresh after WorkToGo confirms a booking.</div></div></td></tr>';
     return;
   }
   tbody.innerHTML = list.map(b => {
@@ -233,7 +233,7 @@ async function viewBooking(id) {
     '<div><div class="text-muted text-sm">Booking ID</div><div class="fw-bold">#' + (b.id||b._id) + '</div></div>' +
     '<div><div class="text-muted text-sm">Status</div><div>' + _chip(b.status) + '</div></div>' +
     '<div><div class="text-muted text-sm">Customer</div><div>' + escHtml(b.customer_name||b.user?.name||'—') + '</div></div>' +
-    '<div><div class="text-muted text-sm">Phone</div><div>' + escHtml(b.customer_phone||b.user?.phone||'—') + '</div></div>' +
+    '<div><div class="text-muted text-sm">Phone / WhatsApp</div><div>' + escHtml(b.customer_phone||b.user?.phone||'—') + '</div></div>' +
     '<div><div class="text-muted text-sm">Service</div><div>' + escHtml(b.service_name||b.service?.name||'—') + '</div></div>' +
     '<div><div class="text-muted text-sm">Scheduled</div><div>' + fmtDateTime(b.booking_date||b.date||b.scheduled_at) + '</div></div>' +
     '<div><div class="text-muted text-sm">Amount</div><div class="fw-bold">' + fmtCurrency(b.amount||b.price) + '</div></div>' +

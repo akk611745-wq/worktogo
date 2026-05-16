@@ -55,11 +55,11 @@ export async function render(container) {
             <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
           </div>
 
-          <div class="menu-item" onclick="AccountPage.contactSupport()">
-            <div class="menu-icon">☎️</div>
+          <div class="menu-item whatsapp-menu-item" onclick="AccountPage.contactSupport()">
+            <div class="menu-icon">💬</div>
             <div class="menu-body">
-              <span>Service Support</span>
-              <p class="menu-sub">Help for Haldwani bookings</p>
+              <span>WhatsApp Support</span>
+              <p class="menu-sub">Ask before booking or get help tracking</p>
             </div>
             <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
           </div>

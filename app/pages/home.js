@@ -7,6 +7,7 @@
 export async function render(container) {
   const user = AUTH.getUser();
   const serviceOnly = Boolean(CONFIG.FEATURES?.SERVICE_ONLY_MODE);
+  const isLoggedIn = AUTH.isLoggedIn();
 
   container.innerHTML = `
     <div class="page home-page">
@@ -14,33 +15,66 @@ export async function render(container) {
         <div class="top-bar-left">
           <div class="user-avatar">${_initial(user)}</div>
           <div>
-            <p class="greeting">Good ${_timeGreeting()}</p>
-            <h2 class="user-name">${_esc(user?.name || "Guest")}</h2>
+            <p class="greeting">${isLoggedIn ? `Good ${_timeGreeting()}` : "Browse local services"}</p>
+            <h2 class="user-name">${_esc(user?.name || "Haldwani")}</h2>
           </div>
         </div>
-        <button class="icon-btn support-btn" title="Support" onclick="UI.toast('WorkToGo support is available for Haldwani service bookings.', 'info') ">
-          <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.08 4.18 2 2 0 0 1 4.06 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.62 2.61a2 2 0 0 1-.45 2.11L8 9.67a16 16 0 0 0 6.33 6.33l1.23-1.23a2 2 0 0 1 2.11-.45c.84.29 1.71.5 2.61.62A2 2 0 0 1 22 16.92z"/></svg>
+        <button class="icon-btn support-btn whatsapp-icon-btn" title="WhatsApp support" onclick="HomePage.openWhatsApp('header')">
+          <span>☘</span>
         </button>
       </header>
 
       <div class="home-content">
         <section class="service-hero">
-          <p class="service-hero-kicker">${_esc(CONFIG.SERVICE_ONLY?.CITY || "Haldwani")} service pilot</p>
-          <h1>Book trusted local services</h1>
-          <p>Choose a service, request a time, and our team will confirm before assignment.</p>
+          <p class="service-hero-kicker">${_esc(CONFIG.SERVICE_ONLY?.CITY || "Haldwani")} local services</p>
+          <h1>Explore trusted help near you</h1>
+          <p>Browse services freely. Login is needed only when you request or track a booking.</p>
           <div class="service-trust-row">
-            <span>Verified providers</span>
+            <span>WhatsApp support</span>
+            <span>Local providers</span>
             <span>Pay after service</span>
+            <span>Manual confirmation</span>
+          </div>
+          <div class="hero-actions">
+            <button class="btn-whatsapp" onclick="HomePage.openWhatsApp('hero')">Chat on WhatsApp</button>
+            <button class="btn-ghost-inline" onclick="HomePage.scrollToServices()">Explore services</button>
           </div>
         </section>
 
-        <section class="home-section">
+        <section class="home-section browse-strip-section">
+          <div class="section-header compact">
+            <h3>Popular in Haldwani</h3>
+            <span class="section-note">Browse first, book when ready</span>
+          </div>
+          <div class="category-chips">
+            ${_categoryChips().map(c => `<button onclick="HomePage.scrollToServices()"><span>${c.icon}</span>${_esc(c.label)}</button>`).join("")}
+          </div>
+        </section>
+
+        <section class="local-proof-grid">
+          <div><strong>Local coordination</strong><span>Team confirms request before visit</span></div>
+          <div><strong>No advance payment</strong><span>Pay after service during pilot</span></div>
+          <div><strong>Human help</strong><span>Ask on WhatsApp before booking</span></div>
+        </section>
+
+        <section class="home-section" id="services-section">
           <div class="section-header">
             <h3>Services near you</h3>
-            <button class="see-all" onclick="ROUTER.go('bookings')">See all</button>
+            <button class="see-all" onclick="HomePage.openWhatsApp('service-help')">Need help?</button>
           </div>
           <div id="services-grid" class="cards-grid horizontal-scroll">
             ${UI.skeleton(4, "card")}
+          </div>
+        </section>
+
+        <section class="home-section trust-story-section">
+          <div class="trust-story-card">
+            <span class="trust-story-icon">💬</span>
+            <div>
+              <h3>Not sure what to book?</h3>
+              <p>Send a WhatsApp message. WorkToGo support will guide you during the Haldwani pilot.</p>
+            </div>
+            <button class="btn-whatsapp compact" onclick="HomePage.openWhatsApp('trust-card')">Ask</button>
           </div>
         </section>
 
@@ -56,6 +90,7 @@ export async function render(container) {
       </div>
 
       ${UI.buildNav("home")}
+      <button class="floating-whatsapp" onclick="HomePage.openWhatsApp('floating')" aria-label="WhatsApp support">💬</button>
     </div>
 
     <!-- Order Modal -->
@@ -88,6 +123,20 @@ export async function render(container) {
       </div>
     </div>
   `;
+
+  window.HomePage = {
+    openWhatsApp(source = "home") {
+      const url = CONFIG.SERVICE_ONLY?.WHATSAPP_URL;
+      if (url) {
+        window.open(url + (url.includes("?") ? "%20" : "?text=") + encodeURIComponent(`Source: ${source}`), "_blank", "noopener");
+        return;
+      }
+      UI.toast(`WhatsApp support: ${CONFIG.SERVICE_ONLY?.SUPPORT_PHONE || "WorkToGo"}`, "info", 4500);
+    },
+    scrollToServices() {
+      document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
 
   window.HomeSections = {
     async reloadServices() {
@@ -324,9 +373,27 @@ function _renderServices(res) {
   const list = Array.isArray(res.data) ? res.data : (res.data?.services || res.data?.data || []);
 
   if (!list.length) {
-    el.innerHTML = UI.emptyState("🛠️", "No services yet", "Check back soon");
+    el.classList.remove("horizontal-scroll");
+    el.classList.add("fallback-services-grid");
+    el.innerHTML = _fallbackServices().map(s => `
+      <div class="service-card card fallback-service-card" onclick="HomePage.openWhatsApp('${_esc(s.slug)}')">
+        <div class="card-icon">${s.icon}</div>
+        <h4>${_esc(s.name)}</h4>
+        <p class="card-meta">${_esc(s.example)}</p>
+        <p class="card-price">${_esc(s.price)}</p>
+        <p class="local-service-copy">Popular in Haldwani</p>
+        <span class="card-badge whatsapp-badge">WhatsApp</span>
+      </div>
+    `).join("") + `
+      <div class="fallback-help-card">
+        <h3>Need another service?</h3>
+        <p>Tell us on WhatsApp. We are manually coordinating pilot requests in Haldwani.</p>
+        <button class="btn-whatsapp" onclick="HomePage.openWhatsApp('empty-state')">Ask WorkToGo</button>
+      </div>`;
     return;
   }
+  el.classList.add("horizontal-scroll");
+  el.classList.remove("fallback-services-grid");
 
   el.innerHTML = list.map(s => `
     <div class="service-card card" onclick="HomeModals.openBooking(${_jsonAttr(s)})">
@@ -396,6 +463,28 @@ function _esc(str) {
 
 function _servicePrice(service) {
   return service?.price ?? service?.base_price ?? service?.amount ?? service?.starting_price ?? 0;
+}
+
+function _categoryChips() {
+  return [
+    { icon: "⚡", label: "Electrician" },
+    { icon: "🚰", label: "Plumber" },
+    { icon: "❄️", label: "AC repair" },
+    { icon: "🧹", label: "Cleaning" },
+    { icon: "🔧", label: "Appliance" },
+    { icon: "📚", label: "Tutor" },
+  ];
+}
+
+function _fallbackServices() {
+  return [
+    { slug: "electrician", icon: "⚡", name: "Electrician", example: "Fan, switch, MCB repair", price: "From ₹199" },
+    { slug: "plumber", icon: "🚰", name: "Plumber", example: "Leakage, tap, fitting", price: "From ₹199" },
+    { slug: "ac-repair", icon: "❄️", name: "AC Repair", example: "Service and checkup", price: "From ₹299" },
+    { slug: "cleaning", icon: "🧹", name: "Cleaning", example: "Home/shop basic cleaning", price: "From ₹399" },
+    { slug: "appliance", icon: "🔧", name: "Appliance Repair", example: "Fridge, washer, RO check", price: "From ₹299" },
+    { slug: "custom", icon: "💬", name: "Other local help", example: "Ask WorkToGo support", price: "WhatsApp" },
+  ];
 }
 
 // Safe JSON embed for onclick attribute — encode as single-quoted JS object
