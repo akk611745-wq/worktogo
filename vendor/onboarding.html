@@ -239,6 +239,23 @@
     color: #64748b;
   }
   textarea.form-control { resize: vertical; min-height: 80px; }
+
+  .trust-box {
+    background: #ecfdf5;
+    border: 1px solid #bbf7d0;
+    color: #166534;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    margin-bottom: 1rem;
+  }
+
+  .helper-text {
+    color: var(--text-light);
+    font-size: 0.8rem;
+    margin-top: 6px;
+  }
   
   .photo-preview {
     width: 60px;
@@ -406,6 +423,7 @@
     <div class="step-container active" id="step1">
       <h1 class="step-title">Welcome to WorkToGo! 👋</h1>
       <p class="step-subtitle">Pehle batao — aap kya sell karte ho?</p>
+      <div class="trust-box">WorkToGo Haldwani pilot me service vendors manually verify honge. Hamari team approval ke liye call/WhatsApp karegi.</div>
 
       <div class="card-grid row">
         <div class="type-card" id="card-shopping" onclick="selectVendorType('shopping')">
@@ -455,10 +473,12 @@
       <div class="form-group">
         <label>Phone Number</label>
         <input type="text" id="f_phone" class="form-control" placeholder="10-digit mobile number" readonly>
+        <div class="helper-text">Is number par WorkToGo team approval aur job updates ke liye contact karegi.</div>
       </div>
       <div class="form-group">
         <label>City / Area *</label>
-        <input type="text" id="f_city" class="form-control" placeholder="Jaise: Haldwani, Ramnagar" oninput="validateStep2()">
+        <input type="text" id="f_city" class="form-control" placeholder="Jaise: Haldwani, Mukhani, Kusumkhera" oninput="validateStep2()">
+        <div class="helper-text">Apna main service area/landmark likhein. Example: Haldwani - Mukhani.</div>
       </div>
       <div class="form-group">
         <label>Profile Photo URL (Optional)</label>
@@ -528,11 +548,13 @@
           <div class="form-group" style="flex:1;">
             <label>Coverage Area (km)</label>
             <input type="number" id="srv_area" class="form-control" value="10">
+            <div class="helper-text">Pilot ke liye realistic area rakhein, jaise 5-10 km.</div>
           </div>
         </div>
         <div class="form-group">
           <label>Description *</label>
-          <textarea id="srv_desc" class="form-control" maxlength="200" placeholder="Apni service describe karo..." oninput="validateStep4()"></textarea>
+          <textarea id="srv_desc" class="form-control" maxlength="200" placeholder="Example: Ghar par electrical repair, fan/switch/MCB repair. Call karke time confirm karenge." oninput="validateStep4()"></textarea>
+          <div class="helper-text">Customer ko clearly batayein aap kya karte hain aur kaise confirm karenge.</div>
         </div>
         
         <h3 style="font-size:1rem; margin-top:1.5rem;">Aap kab available ho?</h3>

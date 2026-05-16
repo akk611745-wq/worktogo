@@ -31,7 +31,9 @@ const UI = (() => {
   const STATUS_MAP = {
     // Backend canonical
     pending:     { label: "Pending",     cls: "status-pending"    },
-    accepted:    { label: "Accepted",    cls: "status-confirmed"  },
+    open:        { label: "Pending",     cls: "status-pending"    },
+    assigned:    { label: "Confirmed",   cls: "status-confirmed"  },
+    accepted:    { label: "Confirmed",   cls: "status-confirmed"  },
     in_progress: { label: "In Progress", cls: "status-processing" },
     completed:   { label: "Completed",   cls: "status-success"    },
     cancelled:   { label: "Cancelled",   cls: "status-cancelled"  },
@@ -119,6 +121,7 @@ const UI = (() => {
         page: "orders",
         icon: `<svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>`,
         label: "Orders",
+        feature: "SHOPPING_UI",
       },
       {
         page: "bookings",
@@ -128,9 +131,9 @@ const UI = (() => {
       {
         page: "account",
         icon: `<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`,
-        label: "Account",
+        label: CONFIG.FEATURES?.SERVICE_ONLY_MODE ? (CONFIG.SERVICE_ONLY?.SUPPORT_LABEL || "Help") : "Account",
       },
-    ];
+    ].filter(n => !n.feature || CONFIG.FEATURES?.[n.feature]);
 
     return `<nav class="bottom-nav">
       ${navItems.map(n => `

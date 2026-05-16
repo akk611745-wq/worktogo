@@ -30,19 +30,22 @@ class APIClient {
     //   - endpoint starts with /auth  (auth routes have no admin prefix)
     //   - endpoint starts with /api/  (already fully-qualified path)
     const isAuth = endpoint.startsWith('/auth');
-    const isAbsolute = endpoint.startsWith('/api/') || endpoint.startsWith('/admin/');
+    const directApiPaths = ['/service/', '/services', '/jobs/'];
+    const isDirectApi = directApiPaths.some(prefix => endpoint === prefix.slice(0, -1) || endpoint.startsWith(prefix));
+    const isFullApi = endpoint.startsWith('/api/');
+    const isAbsolute = isFullApi || endpoint.startsWith('/admin/') || isDirectApi;
 
     // Normalize endpoint to prevent double /api/ or /admin/ prefixes
     const normalizedEndpoint =
-      endpoint.startsWith('/api/')
-        ? endpoint.replace('/api/', '/')
+      isFullApi
+        ? endpoint
         : endpoint.startsWith('/admin/')
           ? endpoint.replace('/admin', '')
           : endpoint;
 
     const url =
       this.baseURL +
-      (isAuth || isAbsolute ? '' : this.adminPrefix) +
+      (isFullApi ? '' : (isDirectApi ? '/api' : (isAuth || isAbsolute ? '' : this.adminPrefix))) +
       normalizedEndpoint +
       qs;
 

@@ -65,12 +65,24 @@ const CONFIG = {
 
   // ─── FEATURE FLAGS ─────────────────────────────
   FEATURES: {
+    SERVICE_ONLY_MODE: true,
+    SHOPPING_UI:       false,
+    DEAD_ROUTE_GUARD:  true,
     VIDEO_SYSTEM:    false,
     FOLLOW_SYSTEM:   false,
     BRAIN_LAYOUT:    false,
-    PAYMENT_LAYER:   true,
+    PAYMENT_LAYER:   false,
     REALTIME_WS:     false,
     NOTIFICATIONS:   false,
+    VENDOR_APPLY:    false,
+  },
+
+  SERVICE_ONLY: {
+    CITY: "Haldwani",
+    SUPPORT_LABEL: "Help",
+    ROUTE_MESSAGE: "This feature is hidden during the Haldwani service pilot.",
+    SUPPORT_PHONE: "+91 95285 44548",
+    WHATSAPP_URL: "https://wa.me/919528544548?text=Hi%20WorkToGo%2C%20I%20need%20help%20with%20a%20service%20booking.",
   },
 
   NOTIFICATION_TYPES: {
@@ -88,5 +100,6 @@ Object.freeze(CONFIG);
 Object.freeze(CONFIG.ENDPOINTS);
 Object.freeze(CONFIG.ROLES);
 Object.freeze(CONFIG.FEATURES);
+Object.freeze(CONFIG.SERVICE_ONLY);
 Object.freeze(CONFIG.ORDER_STATUS);
 Object.freeze(CONFIG.BOOKING_STATUS);

@@ -6,6 +6,7 @@
 
 export async function render(container) {
   const user = AUTH.getUser();
+  const serviceOnly = Boolean(CONFIG.FEATURES?.SERVICE_ONLY_MODE);
 
   container.innerHTML = `
     <div class="page home-page">
@@ -17,15 +18,25 @@ export async function render(container) {
             <h2 class="user-name">${_esc(user?.name || "Guest")}</h2>
           </div>
         </div>
-        <button class="icon-btn notif-btn" title="Notifications" onclick="UI.toast('Notifications coming soon!', 'info') ">
-          <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 1 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <button class="icon-btn support-btn" title="Support" onclick="UI.toast('WorkToGo support is available for Haldwani service bookings.', 'info') ">
+          <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.08 4.18 2 2 0 0 1 4.06 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.62 2.61a2 2 0 0 1-.45 2.11L8 9.67a16 16 0 0 0 6.33 6.33l1.23-1.23a2 2 0 0 1 2.11-.45c.84.29 1.71.5 2.61.62A2 2 0 0 1 22 16.92z"/></svg>
         </button>
       </header>
 
       <div class="home-content">
+        <section class="service-hero">
+          <p class="service-hero-kicker">${_esc(CONFIG.SERVICE_ONLY?.CITY || "Haldwani")} service pilot</p>
+          <h1>Book trusted local services</h1>
+          <p>Choose a service, request a time, and our team will confirm before assignment.</p>
+          <div class="service-trust-row">
+            <span>Verified providers</span>
+            <span>Pay after service</span>
+          </div>
+        </section>
+
         <section class="home-section">
           <div class="section-header">
-            <h3>Services</h3>
+            <h3>Services near you</h3>
             <button class="see-all" onclick="ROUTER.go('bookings')">See all</button>
           </div>
           <div id="services-grid" class="cards-grid horizontal-scroll">
@@ -33,7 +44,7 @@ export async function render(container) {
           </div>
         </section>
 
-        <section class="home-section">
+        <section class="home-section ${serviceOnly ? "feature-hidden" : ""}" data-feature="shopping-ui">
           <div class="section-header">
             <h3>Products</h3>
             <button class="see-all" onclick="ROUTER.go('orders')">See all</button>
@@ -71,7 +82,7 @@ export async function render(container) {
         <div class="modal-actions">
           <button class="btn-secondary" onclick="HomeModals.closeBooking()">Cancel</button>
           <button class="btn-primary" id="btn-confirm-booking" onclick="HomeModals.confirmBooking()">
-            <span class="btn-label">Confirm Booking</span>
+            <span class="btn-label">Request Service</span>
           </button>
         </div>
       </div>
@@ -87,6 +98,7 @@ export async function render(container) {
       _renderServices(res);
     },
     async reloadProducts() {
+      if (CONFIG.FEATURES?.SERVICE_ONLY_MODE || !CONFIG.FEATURES?.SHOPPING_UI) return;
       const el = document.getElementById("products-grid");
       if (!el) return;
       el.innerHTML = UI.skeleton(6, "card");
@@ -96,7 +108,7 @@ export async function render(container) {
   };
 
   _loadServices();
-  _loadProducts();
+  if (!serviceOnly && CONFIG.FEATURES?.SHOPPING_UI) _loadProducts();
 }
 
 // ── Modal Controller ────────────────────────────────────────────────────────
@@ -195,9 +207,15 @@ window.HomeModals = (() => {
       <div class="modal-product-info">
         <div class="modal-product-placeholder">${service.icon || "🔧"}</div>
         <div>
-          <p class="modal-price">${UI.formatCurrency(service.price || 0)}</p>
+          <p class="modal-price">${UI.formatCurrency(_servicePrice(service))}</p>
           ${service.description ? `<p class="modal-desc">${_esc(service.description)}</p>` : ""}
+          <p class="service-note">Pay after service. WorkToGo will confirm your request by phone/WhatsApp if needed.</p>
         </div>
+      </div>
+      <div class="trust-panel booking-trust-panel">
+        <span>1. Send request</span>
+        <span>2. Team/provider confirms</span>
+        <span>3. Pay after service</span>
       </div>
       <div class="modal-field">
         <label for="booking-date">Preferred Date &amp; Time</label>
@@ -206,23 +224,37 @@ window.HomeModals = (() => {
         />
       </div>
       <div class="modal-field">
-        <label for="booking-notes">Notes (optional)</label>
-        <textarea id="booking-notes" class="modal-textarea" placeholder="Address or any special instructions…" rows="2"></textarea>
+        <label for="booking-area">Area / Landmark</label>
+        <input type="text" id="booking-area" class="modal-input" placeholder="e.g. Mukhani, Kusumkhera, near canal road" autocomplete="address-level2" />
       </div>
+      <div class="modal-field">
+        <label for="booking-address">Full Address</label>
+        <textarea id="booking-address" class="modal-textarea" placeholder="House number, street, nearby landmark" rows="2" autocomplete="street-address"></textarea>
+      </div>
+      <div class="modal-field">
+        <label for="booking-notes">Notes (optional)</label>
+        <textarea id="booking-notes" class="modal-textarea" placeholder="Example: fan not working, pipe leakage, call before coming…" rows="2"></textarea>
+      </div>
+      <p class="service-note">Need help? Use Help tab or WhatsApp support after sending request.</p>
     `;
     document.getElementById("booking-modal").classList.remove("hidden");
   }
 
   async function confirmBooking() {
     if (!AUTH.isLoggedIn()) {
-      UI.toast("Please login to book a service", "error");
+      UI.toast("Login with mobile OTP to request this service", "info");
       closeBooking();
       ROUTER.go("login");
       return;
     }
     if (!_currentService) return;
     const dateVal = document.getElementById("booking-date")?.value;
+    const area    = document.getElementById("booking-area")?.value?.trim() || "";
+    const address = document.getElementById("booking-address")?.value?.trim() || "";
     const notes   = document.getElementById("booking-notes")?.value?.trim() || "";
+
+    if (!area) { UI.toast("Please enter area or landmark", "error"); return; }
+    if (!address) { UI.toast("Please enter full address", "error"); return; }
 
     const btn = document.getElementById("btn-confirm-booking");
     if (btn) { btn.disabled = true; btn.classList.add("loading"); }
@@ -230,14 +262,14 @@ window.HomeModals = (() => {
     const res = await API.createBooking({
       service_id: _currentService.id,
       ...(dateVal ? { scheduled_at: new Date(dateVal).toISOString() } : {}),
-      ...(notes   ? { notes } : {}),
+      notes: [`Area/Landmark: ${area}`, `Address: ${address}`, notes ? `Notes: ${notes}` : ""].filter(Boolean).join("\n"),
     });
 
     if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
 
     if (res.ok) {
       closeBooking();
-      UI.toast("Booking confirmed!", "success");
+      UI.toast("Request sent — we will confirm shortly.", "success");
       setTimeout(() => ROUTER.go("bookings"), 800);
     } else {
       UI.toast(res.error || "Failed to book service. Try again.", "error");
@@ -273,6 +305,7 @@ async function _loadServices() {
 }
 
 async function _loadProducts() {
+  if (CONFIG.FEATURES?.SERVICE_ONLY_MODE || !CONFIG.FEATURES?.SHOPPING_UI) return;
   const res = await API.getProducts();
   _renderProducts(res);
 }
@@ -300,8 +333,9 @@ function _renderServices(res) {
       <div class="card-icon">${s.icon || "🔧"}</div>
       <h4>${_esc(s.name || "")}</h4>
       <p class="card-meta">${_esc(s.category || "")}</p>
-      <p class="card-price">${UI.formatCurrency(s.price || 0)}</p>
-      <span class="card-badge">Book</span>
+      <p class="card-price">${UI.formatCurrency(_servicePrice(s))}</p>
+      <p class="local-service-copy">Haldwani local</p>
+      <span class="card-badge">Request</span>
     </div>
   `).join("");
 }
@@ -358,6 +392,10 @@ function _esc(str) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function _servicePrice(service) {
+  return service?.price ?? service?.base_price ?? service?.amount ?? service?.starting_price ?? 0;
 }
 
 // Safe JSON embed for onclick attribute — encode as single-quoted JS object

@@ -27,8 +27,9 @@ const ROUTER = (() => {
     // Phase 3: creator: () => import('../pages/creator.js'),
   };
 
-  const PUBLIC_PAGES = ["login", "home", "register", "services", "products", "search"];
+  const PUBLIC_PAGES = ["login", "home"];
   const POLLABLE_PAGES = ["orders", "bookings"];
+  const SERVICE_ONLY_HIDDEN_PAGES = ["orders", "products", "search", "services", "register", "vendor", "creator"];
 
   let _currentPage = null;
   let _pollTimer   = null;
@@ -37,6 +38,11 @@ const ROUTER = (() => {
   // ── Navigate ─────────────────────────────────────────────────────────
 
   function go(page, replace = false) {
+    if (_isHiddenByServiceOnly(page)) {
+      _notifyHiddenRoute();
+      page = "home";
+      replace = true;
+    }
     const hash = `#${page}`;
     if (replace) {
       history.replaceState(null, "", hash);
@@ -58,6 +64,11 @@ const ROUTER = (() => {
     _isRendering = true;
 
     _stopPolling();
+
+    if (_isHiddenByServiceOnly(page)) {
+      _notifyHiddenRoute();
+      page = "home";
+    }
 
     const target = PAGES[page] ? page : "home";
 
@@ -105,9 +116,20 @@ const ROUTER = (() => {
     }
   }
 
+  function _isHiddenByServiceOnly(page) {
+    return Boolean(CONFIG.FEATURES?.SERVICE_ONLY_MODE && SERVICE_ONLY_HIDDEN_PAGES.includes(page));
+  }
+
+  function _notifyHiddenRoute() {
+    if (window.UI?.toast) {
+      UI.toast(CONFIG.SERVICE_ONLY?.ROUTE_MESSAGE || "This feature is hidden during service-only mode.", "info");
+    }
+  }
+
   // ── Auto-Refresh Polling ──────────────────────────────────────────────
 
   function _startPolling(page) {
+    if (CONFIG.FEATURES?.SERVICE_ONLY_MODE && page === "orders") return;
     if (!POLLABLE_PAGES.includes(page)) return;
 
     _pollTimer = setInterval(async () => {

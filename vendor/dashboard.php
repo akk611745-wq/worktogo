@@ -30,7 +30,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   el.innerHTML =
     '<div class="page-header"><div>' +
     '<h1 class="page-title">Dashboard</h1>' +
-    '<p class="page-sub">Welcome back, ' + name + '! Here\'s your live overview.</p>' +
+    '<p class="page-sub">Welcome back, ' + name + '! Service jobs are prioritized during launch.</p>' +
     '</div></div>' +
 
     '<div class="stat-grid" id="statGrid">' +
@@ -68,27 +68,24 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // Analytics section
-  if (recentItems.length) {
+  if (CONFIG.FEATURES?.VENDOR_ANALYTICS && recentItems.length) {
     const stats = Analytics.compute(recentItems, isService ? 'amount' : 'total_amount');
     document.getElementById('analyticsSection').innerHTML = Analytics.renderHTML(stats, isService);
   }
 
-  // Start realtime (bell + badge on sidebar)
-  RealtimeEngine.start({
-    fetchFn: async () => {
-      const res = isService ? await API.Bookings.list() : await API.Orders.list();
-      return res.ok ? (res.data?.data || res.data || []) : [];
-    },
-    onNew: (newItems) => {
-      // Refresh dashboard on new items
-      location.reload();
-    },
-    type: isService ? 'Booking' : 'Order',
-    interval: 10000,
-  });
-
-  const ri = document.getElementById('refreshIndicator');
-  if (ri) ri.style.display = 'flex';
+  if (CONFIG.FEATURES?.VENDOR_REALTIME_LABEL) {
+    RealtimeEngine.start({
+      fetchFn: async () => {
+        const res = isService ? await API.Bookings.list() : await API.Orders.list();
+        return res.ok ? (res.data?.data || res.data || []) : [];
+      },
+      onNew: () => location.reload(),
+      type: isService ? 'Booking' : 'Order',
+      interval: 10000,
+    });
+    const ri = document.getElementById('refreshIndicator');
+    if (ri) ri.style.display = 'flex';
+  }
 });
 
 function renderServiceDash(s) {

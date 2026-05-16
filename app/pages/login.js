@@ -17,7 +17,7 @@ export async function render(container) {
           </svg>
         </div>
         <h1 class="app-title">WorkToGo</h1>
-        <p class="app-tagline">Your digital marketplace</p>
+        <p class="app-tagline">Trusted local services in Haldwani</p>
       </header>
 
       <div class="login-card">
@@ -32,7 +32,7 @@ export async function render(container) {
 
         <div id="step-phone" class="login-step active">
           <h2>Welcome back</h2>
-          <p class="step-hint">Enter your mobile number to continue</p>
+          <p class="step-hint">Enter your mobile number to book and track local services</p>
           <div class="input-group">
             <span class="input-prefix">+91</span>
             <input
@@ -48,12 +48,17 @@ export async function render(container) {
             <span class="btn-label">Send OTP</span>
             <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
-          <p class="login-note">We'll send a 6-digit OTP to your number</p>
+          <p class="login-note">We'll send a 6-digit OTP. No password needed.</p>
+          <div class="trust-panel">
+            <span>✅ Haldwani service pilot</span>
+            <span>🛠️ Verified local providers</span>
+            <span>💬 Human support available</span>
+          </div>
         </div>
 
         <div id="step-email" class="login-step">
           <h2>Login with email</h2>
-          <p class="step-hint">Use your email and password to continue</p>
+          <p class="step-hint">Email login is secondary. Mobile OTP is recommended for faster support.</p>
           <div class="auth-field">
             <label for="inp-email">Email</label>
             <input id="inp-email" type="email" placeholder="you@example.com" autocomplete="email" />
@@ -69,8 +74,8 @@ export async function render(container) {
           <button id="btn-email-register" class="btn-text" onclick="LoginPage.showRegister()">
             Create a new account
           </button>
-          <div class="auth-divider"><span>or</span></div>
-          <button id="btn-google-login" class="btn-google" onclick="LoginPage.googleLogin()">
+          <div class="auth-divider ${CONFIG.FEATURES?.SERVICE_ONLY_MODE ? "feature-hidden" : ""}"><span>or</span></div>
+          <button id="btn-google-login" class="btn-google ${CONFIG.FEATURES?.SERVICE_ONLY_MODE ? "feature-hidden" : ""}" onclick="LoginPage.googleLogin()">
             <span class="google-mark">G</span>
             Continue with Google
           </button>
@@ -104,6 +109,7 @@ export async function render(container) {
           </button>
           <h2>Enter OTP</h2>
           <p class="step-hint" id="otp-sent-to">Sent to your number</p>
+          <p class="login-note">Enter OTP to continue. If OTP is delayed, use resend or contact support.</p>
           <div class="otp-inputs">
             <input class="otp-digit" type="tel" maxlength="1" inputmode="numeric"/>
             <input class="otp-digit" type="tel" maxlength="1" inputmode="numeric"/>
@@ -122,7 +128,7 @@ export async function render(container) {
         </div>
       </div>
 
-      <p class="login-footer">By continuing you agree to our Terms of Service</p>
+      <p class="login-footer">By continuing you agree to be contacted for booking confirmation and support.</p>
     </div>
   `;
 
@@ -306,6 +312,10 @@ window.LoginPage = (() => {
   }
 
   function googleLogin() {
+    if (CONFIG.FEATURES?.SERVICE_ONLY_MODE) {
+      UI.toast("Use Mobile OTP during the Haldwani service pilot.", "info");
+      return;
+    }
     const googleClientId = window.WTG_GOOGLE_CLIENT_ID || CONFIG.GOOGLE_CLIENT_ID || "";
 
     if (!window.google?.accounts?.id || !googleClientId) {

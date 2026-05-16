@@ -62,7 +62,7 @@ window.BookingsPage = (() => {
       return;
     }
 
-    _all = Array.isArray(res.data) ? res.data : (res.data?.bookings || res.data?.data || []);
+    _all = (Array.isArray(res.data) ? res.data : (res.data?.bookings || res.data?.data || [])).map(_normalizeBooking);
     _render();
     if (silent) UI.pulseRefreshDot();
   }
@@ -95,6 +95,7 @@ window.BookingsPage = (() => {
             <span class="item-title">${_esc(b.service_name || b.name || "Service")}</span>
             ${UI.statusBadge(b.status || "pending")}
           </div>
+          ${b.status === "pending" ? `<div class="item-row muted small"><span>Request sent — WorkToGo will confirm shortly.</span></div>` : ""}
           ${b.vendor_name ? `
           <div class="item-row vendor-row">
             <svg viewBox="0 0 24 24" class="vendor-icon"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
@@ -107,8 +108,18 @@ window.BookingsPage = (() => {
             }</span>
             ${b.amount ? `<span class="item-amount">${UI.formatCurrency(b.amount)}</span>` : ""}
           </div>
+          ${b.notes ? `<div class="item-row muted small"><span>${_esc(_shortNotes(b.notes))}</span></div>` : ""}
+          <div class="item-row muted small">
+            <span>Payment: ${_esc(_paymentLabel(b.payment_method || "cod"))}</span>
+          </div>
           <div class="item-row muted small">
             <span>ID: ${_esc(String(b.id || "—"))}</span>
+          </div>
+          <div class="item-row muted small">
+            <span>Support available with this booking ID</span>
+          </div>
+          <div class="item-row muted small">
+            <button class="btn-text-inline" onclick="BookingsPage.openSupport('${_esc(String(b.id || ""))}')">WhatsApp support</button>
           </div>
         </div>
       </div>
@@ -122,6 +133,15 @@ window.BookingsPage = (() => {
     _render();
   }
 
+  function openSupport(id) {
+    const base = CONFIG.SERVICE_ONLY?.WHATSAPP_URL || "";
+    if (base) {
+      window.open(base + encodeURIComponent(` Booking ID: ${id}`), "_blank", "noopener");
+      return;
+    }
+    UI.toast("Contact WorkToGo support with your booking ID.", "info");
+  }
+
   function _esc(str) {
     return String(str)
       .replace(/&/g, "&amp;")
@@ -130,5 +150,36 @@ window.BookingsPage = (() => {
       .replace(/"/g, "&quot;");
   }
 
-  return { _load, setFilter };
+  function _normalizeBooking(b) {
+    const status = String(b.status || b.job_status || "pending").toLowerCase();
+    const map = {
+      open: "pending",
+      assigned: "confirmed",
+      accepted: "confirmed",
+      confirmed: "confirmed",
+      started: "in_progress",
+      ongoing: "in_progress",
+      in_progress: "in_progress",
+      completed: "completed",
+      delivered: "completed",
+      rejected: "cancelled",
+      cancelled: "cancelled",
+    };
+    return {
+      ...b,
+      status: map[status] || status,
+      amount: b.amount ?? b.total ?? b.price,
+      payment_method: b.payment_method || "cod",
+    };
+  }
+
+  function _paymentLabel(method) {
+    return String(method).toLowerCase() === "online" ? "Online pending" : "Pay after service";
+  }
+
+  function _shortNotes(notes) {
+    return String(notes || "").split("\n").slice(0, 2).join(" · ").slice(0, 140);
+  }
+
+  return { _load, setFilter, openSupport };
 })();

@@ -54,7 +54,7 @@
 /* ── Reset ──────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 15px; }
-body { font-family: var(--font-body); background: var(--bg); color: var(--text); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+body { font-family: var(--font-body); background: var(--bg); color: var(--text); line-height: 1.6; -webkit-font-smoothing: antialiased; overscroll-behavior-y: contain; touch-action: manipulation; }
 a { color: inherit; text-decoration: none; }
 button { cursor: pointer; border: none; background: none; font-family: inherit; font-size: inherit; }
 input, select, textarea { font-family: inherit; font-size: inherit; }
@@ -680,7 +680,7 @@ tbody tr:hover { background: var(--surface-2); }
   .main { margin-left: 0; }
   .menu-toggle { display: flex; }
 
-  .page-content { padding: 1.25rem 1rem; }
+  .page-content { padding: 1rem 0.75rem 1.5rem; }
   .stat-grid { grid-template-columns: 1fr 1fr; }
   .form-grid { grid-template-columns: 1fr; }
   .form-grid .full { grid-column: 1; }
@@ -689,7 +689,11 @@ tbody tr:hover { background: var(--surface-2); }
   .filter-bar { gap: 0.5rem; }
   .search-input { min-width: 150px; }
 
-  .modal { max-width: 100%; border-radius: var(--radius); }
+  .modal { max-width: 100%; max-height: 90dvh; overflow-y: auto; border-radius: var(--radius); }
+  .table-wrap { margin: 0 -0.75rem; padding: 0 0.75rem; -webkit-overflow-scrolling: touch; }
+  table { min-width: 720px; }
+  .td-actions { gap: 0.5rem; }
+  .td-actions .btn { min-height: 38px; }
 
   /* overlay when sidebar open */
   .sidebar-overlay {
@@ -700,6 +704,11 @@ tbody tr:hover { background: var(--surface-2); }
 }
 @media (max-width: 480px) {
   .stat-grid { grid-template-columns: 1fr; }
+  .topbar { padding: 0 0.75rem; }
+  .topbar-logout { padding: 0.45rem 0.55rem; }
+  .filter-bar { flex-direction: column; align-items: stretch; }
+  .search-input { width: 100%; min-width: 0; }
+  .btn { min-height: 40px; justify-content: center; }
 }
 
 /* Sidebar overlay (JS adds this) */

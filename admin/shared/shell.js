@@ -4,6 +4,7 @@
  * Usage: Shell.init({ title: 'Page Title', active: 'page.html' });
  */
 const Shell = {
+  SERVICE_ONLY_MODE: true,
   NAV: [
     { group: 'Overview' },
     { href: 'dashboard.html', icon: 'grid', label: 'Dashboard' },
@@ -11,15 +12,15 @@ const Shell = {
     { href: 'users.html',    icon: 'users', label: 'Users' },
     { href: 'vendors.html',  icon: 'store', label: 'Vendors' },
     { group: 'Catalogue' },
-    { href: 'products.html', icon: 'box',   label: 'Products' },
+    { href: 'products.html', icon: 'box',   label: 'Products', hiddenInServiceOnly: true },
     { href: 'services.html', icon: 'tool',  label: 'Services' },
     { group: 'Operations' },
-    { href: 'orders.html',   icon: 'list',  label: 'Orders' },
-    { href: 'delivery.html', icon: 'truck', label: 'Delivery' },
-    { href: 'payments.html', icon: 'credit-card', label: 'Payments' },
+    { href: 'orders.html',   icon: 'list',  label: 'Orders', hiddenInServiceOnly: true },
+    { href: 'delivery.html', icon: 'truck', label: 'Delivery', hiddenInServiceOnly: true },
+    { href: 'payments.html', icon: 'credit-card', label: 'Payments', hiddenInServiceOnly: true },
     { group: 'System' },
-    { href: 'system.html',   icon: 'settings', label: 'System Control' },
-    { href: 'logs.html',     icon: 'terminal', label: 'Logs & Activity' },
+    { href: 'system.html',   icon: 'settings', label: 'System Control', hiddenInServiceOnly: true },
+    { href: 'logs.html',     icon: 'terminal', label: 'Logs & Activity', hiddenInServiceOnly: true },
   ],
 
   ICONS: {
@@ -41,6 +42,7 @@ const Shell = {
     // Build nav HTML
     let navHTML = '';
     this.NAV.forEach(item => {
+      if (item.hiddenInServiceOnly && this.SERVICE_ONLY_MODE) return;
       if (item.group) {
         navHTML += `<div class="nav-group-label">${item.group}</div>`;
       } else {

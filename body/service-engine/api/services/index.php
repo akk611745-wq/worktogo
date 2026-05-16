@@ -45,9 +45,61 @@ function resolveVendorId(PDO $db, int $userId): int
     return (int)$row['id'];
 }
 
+function serviceTableHasColumn(PDO $db, string $table, string $column): bool
+{
+    static $cache = [];
+    $key = $table . '.' . $column;
+    if (array_key_exists($key, $cache)) return $cache[$key];
+
+    $stmt = $db->prepare(
+        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
+    );
+    $stmt->execute([$table, $column]);
+    $cache[$key] = ((int)$stmt->fetchColumn()) > 0;
+    return $cache[$key];
+}
+
+function normalizeServiceJobStatus(string $status): string
+{
+    $status = strtolower(trim($status));
+    $map = [
+        'open' => 'pending',
+        'pending' => 'pending',
+        'assigned' => 'confirmed',
+        'accepted' => 'confirmed',
+        'confirmed' => 'confirmed',
+        'started' => 'in_progress',
+        'ongoing' => 'in_progress',
+        'in_progress' => 'in_progress',
+        'completed' => 'completed',
+        'delivered' => 'completed',
+        'rejected' => 'cancelled',
+        'cancelled' => 'cancelled',
+    ];
+    return $map[$status] ?? $status;
+}
+
+function canonicalJobStatusForBooking(string $status): string
+{
+    return match (normalizeServiceJobStatus($status)) {
+        'pending' => 'open',
+        'confirmed' => 'assigned',
+        'in_progress' => 'in_progress',
+        'completed' => 'completed',
+        'cancelled' => 'cancelled',
+        default => 'open',
+    };
+}
+
 // ── GET /api/services ──────────────────────────────────────────────────────────
 if ($method === 'GET' && $uri === '/api/services') {
     $category = $_GET['category'] ?? null;
+
+    $orderParts = [];
+    if (serviceTableHasColumn($db, 'services', 'is_featured')) $orderParts[] = 's.is_featured DESC';
+    if (serviceTableHasColumn($db, 'services', 'rating')) $orderParts[] = 's.rating DESC';
+    $orderParts[] = 's.name ASC';
 
     $sql  = "SELECT s.*, v.business_name AS vendor_name
              FROM services s
@@ -60,7 +112,7 @@ if ($method === 'GET' && $uri === '/api/services') {
         $bind[':cat'] = $category;
     }
 
-    $sql .= " ORDER BY s.is_featured DESC, s.rating DESC";
+    $sql .= " ORDER BY " . implode(', ', $orderParts);
 
     $stmt = $db->prepare($sql);
     $stmt->execute($bind);
@@ -351,16 +403,27 @@ if ($method === 'GET' && $uri === '/api/service/bookings') {
     $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
     $stmt = $db->prepare(
-        "SELECT b.*, s.name AS service_name, v.business_name AS vendor_name
+        "SELECT b.*, s.name AS service_name, v.business_name AS vendor_name,
+                 j.id AS job_id, j.job_number, j.status AS job_status
          FROM bookings b
          LEFT JOIN services s ON s.id = b.service_id
          LEFT JOIN vendors v ON v.id = b.vendor_id
+         LEFT JOIN jobs j ON j.booking_id = b.id
          $whereSQL
          ORDER BY b.created_at DESC
          LIMIT 50"
     );
     $stmt->execute($bind);
     $bookings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($bookings as &$booking) {
+        $booking['status'] = normalizeServiceJobStatus((string)($booking['status'] ?? 'pending'));
+        $booking['job_status'] = normalizeServiceJobStatus((string)($booking['job_status'] ?? $booking['status']));
+        $booking['amount'] = $booking['total'] ?? $booking['amount'] ?? null;
+        $booking['payment_method'] = $booking['payment_method'] ?: 'cod';
+        $booking['support_hint'] = 'WorkToGo support can help with this booking ID.';
+    }
+    unset($booking);
 
     Response::success(['bookings' => $bookings, 'total' => count($bookings)]);
 }
@@ -373,10 +436,12 @@ if ($method === 'GET' && preg_match('#^/api/service/bookings/(\d+)$#', $uri, $m)
     $id   = (int)$m[1];
 
     $stmt = $db->prepare(
-        "SELECT b.*, s.name AS service_name, v.business_name AS vendor_name
+        "SELECT b.*, s.name AS service_name, v.business_name AS vendor_name,
+                 j.id AS job_id, j.job_number, j.status AS job_status
          FROM bookings b
          LEFT JOIN services s ON s.id = b.service_id
          LEFT JOIN vendors v ON v.id = b.vendor_id
+         LEFT JOIN jobs j ON j.booking_id = b.id
          WHERE b.id = ?
          LIMIT 1"
     );
@@ -398,6 +463,12 @@ if ($method === 'GET' && preg_match('#^/api/service/bookings/(\d+)$#', $uri, $m)
         }
     }
 
+    $booking['status'] = normalizeServiceJobStatus((string)($booking['status'] ?? 'pending'));
+    $booking['job_status'] = normalizeServiceJobStatus((string)($booking['job_status'] ?? $booking['status']));
+    $booking['amount'] = $booking['total'] ?? $booking['amount'] ?? null;
+    $booking['payment_method'] = $booking['payment_method'] ?: 'cod';
+    $booking['support_hint'] = 'WorkToGo support can help with this booking ID.';
+
     // Attach linked job
     $jobStmt = $db->prepare("SELECT * FROM jobs WHERE booking_id = ? LIMIT 1");
     $jobStmt->execute([$id]);
@@ -410,11 +481,13 @@ if ($method === 'GET' && preg_match('#^/api/service/bookings/(\d+)$#', $uri, $m)
 // FIX: Vendor ownership validated via vendors table (not raw user_id comparison).
 if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
     $auth      = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_ADMIN);
-    $input     = json_decode(file_get_contents('php://input'), true) ?? [];
+    $input     = defined('HEART_INTERNAL_INC')
+        ? (json_decode($GLOBALS['HEART_PAYLOAD'] ?? '{}', true)['data'] ?? [])
+        : (json_decode(file_get_contents('php://input'), true) ?? []);
     $jobId     = (int)$m[1];
-    $newStatus = trim($input['status'] ?? '');
+    $newStatus = canonicalJobStatusForBooking((string)($input['status'] ?? ''));
 
-    $allowed = ['assigned', 'in_progress', 'completed', 'cancelled'];
+    $allowed = ['open', 'assigned', 'in_progress', 'completed', 'cancelled'];
     if (!in_array($newStatus, $allowed, true)) {
         Response::validation('status must be one of: ' . implode(', ', $allowed));
     }
@@ -447,6 +520,7 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
 
     // Mirror status onto the linked booking
     $bookingStatus = match ($newStatus) {
+        'open'        => 'pending',
         'assigned'    => 'confirmed',
         'in_progress' => 'in_progress',
         'completed'   => 'completed',
@@ -461,6 +535,7 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
     Response::success([
         'message' => "Job status updated to '{$newStatus}'",
         'job_id'  => $jobId,
+        'status'  => $bookingStatus ?: normalizeServiceJobStatus($newStatus),
     ]);
 }
 

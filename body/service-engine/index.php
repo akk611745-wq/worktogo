@@ -50,6 +50,7 @@ if (defined('HEART_INTERNAL_INC')) {
             break;
 
         // ── List bookings scoped by role ───────────────────────────────────────
+        case 'service:list_bookings':
         case 'service:vendor_bookings':
             $_SERVER['REQUEST_URI']    = '/api/service/bookings';
             $_SERVER['REQUEST_METHOD'] = 'GET';
@@ -57,6 +58,19 @@ if (defined('HEART_INTERNAL_INC')) {
             break;
 
         // ── Update job status (mirrors onto booking) ───────────────────────────
+        case 'vendor:list_jobs':
+            $_SERVER['REQUEST_URI']    = '/api/service/bookings';
+            $_SERVER['REQUEST_METHOD'] = 'GET';
+            require_once __DIR__ . '/api/services/index.php';
+            break;
+
+        case 'vendor:get_job':
+            $_SERVER['REQUEST_URI']    = '/api/service/bookings/' . (int)($data['id'] ?? 0);
+            $_SERVER['REQUEST_METHOD'] = 'GET';
+            require_once __DIR__ . '/api/services/index.php';
+            break;
+
+        case 'vendor:update_job_status':
         case 'service:vendor_update_booking':
             $_SERVER['REQUEST_URI']    = '/api/jobs/' . (int)($data['id'] ?? 0) . '/status';
             $_SERVER['REQUEST_METHOD'] = 'PATCH';

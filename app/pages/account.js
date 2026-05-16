@@ -13,11 +13,12 @@ export async function render(container) {
   const user = AUTH.getUser();
   const role = AUTH.getRole();
   const isVendor = role === CONFIG.ROLES.VENDOR_SERVICE || role === CONFIG.ROLES.VENDOR_SHOPPING;
+  const serviceOnly = Boolean(CONFIG.FEATURES?.SERVICE_ONLY_MODE);
 
   container.innerHTML = `
     <div class="page account-page">
       <header class="page-header no-back">
-        <h2>Account</h2>
+        <h2>${serviceOnly ? "Help & Account" : "Account"}</h2>
       </header>
 
       <div class="account-content">
@@ -36,7 +37,7 @@ export async function render(container) {
           <div class="menu-section-title">My Activity</div>
 
           <!-- FIX: Use onclick ROUTER.go() for consistent routing -->
-          <div class="menu-item" onclick="ROUTER.go('orders')">
+          <div class="menu-item ${serviceOnly ? "feature-hidden" : ""}" onclick="ROUTER.go('orders')">
             <div class="menu-icon orders-icon">📦</div>
             <div class="menu-body">
               <span>My Orders</span>
@@ -54,12 +55,21 @@ export async function render(container) {
             <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
           </div>
 
-          <!-- Role-Based Section — future-ready, shown based on role -->
-          <div class="menu-section-title">My Roles</div>
+          <div class="menu-item" onclick="AccountPage.contactSupport()">
+            <div class="menu-icon">☎️</div>
+            <div class="menu-body">
+              <span>Service Support</span>
+              <p class="menu-sub">Help for Haldwani bookings</p>
+            </div>
+            <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
 
-          <div class="menu-item ${isVendor ? "" : "menu-item-locked"}"
+          <!-- Role-Based Section — future-ready, shown based on role -->
+          <div class="menu-section-title ${serviceOnly && !isVendor ? "feature-hidden" : ""}">My Roles</div>
+
+          <div class="menu-item ${isVendor ? "" : "menu-item-locked"} ${serviceOnly && !isVendor ? "feature-hidden" : ""}"
                onclick="${isVendor
-                 ? "ROUTER.go('vendor')"
+                 ? "AccountPage.openVendorPanel()"
                  : "AccountPage.promptUpgrade('vendor')"}">
             <div class="menu-icon vendor-icon">🏪</div>
             <div class="menu-body">
@@ -73,7 +83,7 @@ export async function render(container) {
               : `<span class="lock-badge">Soon</span>`}
           </div>
 
-          <div class="menu-item menu-item-locked" onclick="AccountPage.promptUpgrade('creator')">
+          <div class="menu-item menu-item-locked ${serviceOnly ? "feature-hidden" : ""}" onclick="AccountPage.promptUpgrade('creator')">
             <div class="menu-icon creator-icon">🎬</div>
             <div class="menu-body">
               <span>Creator Studio</span>
@@ -114,9 +124,23 @@ window.AccountPage = {
     if (confirm("Log out of WorkToGo?")) AUTH.logout();
   },
   editProfile() {
-    UI.toast("Profile editing coming in Phase 2", "info");
+    UI.toast("Profile editing is temporarily manual during service launch", "info");
+  },
+  contactSupport() {
+    if (CONFIG.SERVICE_ONLY?.WHATSAPP_URL) {
+      window.open(CONFIG.SERVICE_ONLY.WHATSAPP_URL, "_blank", "noopener");
+      return;
+    }
+    UI.toast(`For urgent service help, contact WorkToGo support ${CONFIG.SERVICE_ONLY?.SUPPORT_PHONE || ""} with your booking ID.`, "info", 4500);
+  },
+  openVendorPanel() {
+    window.location.href = "/vendor/dashboard.php";
   },
   promptUpgrade(role) {
+    if (CONFIG.FEATURES?.SERVICE_ONLY_MODE || !CONFIG.FEATURES?.VENDOR_APPLY) {
+      UI.toast("Vendor applications are manually handled during service launch.", "info");
+      return;
+    }
     VendorApplyModal.show();
   },
 };

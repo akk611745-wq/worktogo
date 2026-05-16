@@ -3,6 +3,7 @@
  * Injected into every page via initShell().
  */
 function getSidebarHTML() {
+  const serviceOnly = Boolean(CONFIG.FEATURES?.SERVICE_ONLY_MODE);
   return `
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-header">
@@ -45,7 +46,7 @@ function getSidebarHTML() {
     </div>
 
     <!-- SHOPPING VENDOR -->
-    <div data-role="vendor_shopping">
+    <div data-role="vendor_shopping" data-feature="shopping-vendor-ui" ${serviceOnly ? 'style="display:none"' : ''}>
       <div class="nav-section">Shop</div>
       <a href="products.php" class="nav-item">
         <svg viewBox="0 0 20 20" fill="currentColor"><path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm0 2h12v10H4V5zm2 2v2h8V7H6zm0 4v2h5v-2H6z"/></svg>
@@ -94,7 +95,7 @@ function initShell(pageTitle, contentId = "pageContent") {
     <!-- Notification bell injected here by RealtimeEngine -->
     <div class="refresh-indicator" id="refreshIndicator" style="display:none;">
       <span class="refresh-dot"></span>
-      <span>Live</span>
+      <span>${CONFIG.FEATURES?.VENDOR_REALTIME_LABEL ? 'Live' : 'Refresh'}</span>
     </div>
     <button class="topbar-logout" onclick="Auth.logout()">
       <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z"/></svg>

@@ -19,6 +19,14 @@ const CONFIG = {
   APP_NAME: "WorkToGo Vendor",
   VERSION:  "1.0.0",
 
+  FEATURES: {
+    SERVICE_ONLY_MODE: true,
+    SHOPPING_VENDOR_UI: false,
+    VENDOR_ANALYTICS: false,
+    VENDOR_REALTIME_LABEL: false,
+    VENDOR_ONBOARDING: false,
+  },
+
   // Role constants
   ROLES: {
     SERVICE:  "vendor_service",
@@ -29,9 +37,10 @@ const CONFIG = {
   ORDER_STATUSES: ["pending", "confirmed", "in_progress", "delivered", "cancelled"],
 
   // Job status options (service)
-  JOB_STATUSES: ["pending", "confirmed", "in_progress", "delivered", "cancelled"],
+  JOB_STATUSES: ["pending", "confirmed", "in_progress", "completed", "cancelled"],
 };
 
 // Freeze so nothing accidentally mutates config
 Object.freeze(CONFIG);
 Object.freeze(CONFIG.ROLES);
+Object.freeze(CONFIG.FEATURES);

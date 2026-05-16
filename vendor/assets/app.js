@@ -106,7 +106,8 @@ function renderVendorInfo() {
   // Show/hide role-specific nav items
   document.querySelectorAll("[data-role]").forEach(el => {
     const required = el.getAttribute("data-role");
-    el.style.display = (user.role === required) ? "" : "none";
+    const shoppingHidden = CONFIG.FEATURES?.SERVICE_ONLY_MODE && required === CONFIG.ROLES.SHOPPING && !CONFIG.FEATURES?.SHOPPING_VENDOR_UI;
+    el.style.display = (!shoppingHidden && user.role === required) ? "" : "none";
   });
   // Role badge
   const roleBadgeEl = document.getElementById("roleBadge");

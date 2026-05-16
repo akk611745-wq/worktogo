@@ -221,6 +221,8 @@ class AppRouter
         'vendor:create_product'        => ['engines' => ['shopping'],             'brain' => false, 'cache_ttl' => 0],
         'vendor:list_orders'           => ['engines' => ['shopping'],             'brain' => false, 'cache_ttl' => 0],
         'vendor:list_jobs'             => ['engines' => ['service'],              'brain' => false, 'cache_ttl' => 0],
+        'vendor:get_job'               => ['engines' => ['service'],              'brain' => false, 'cache_ttl' => 0],
+        'vendor:update_job_status'     => ['engines' => ['service'],              'brain' => false, 'cache_ttl' => 0],
 
         // ── DELIVERY APP ──────────────────────────────────────
         'delivery:track_delivery'      => ['engines' => ['delivery'],             'brain' => false, 'cache_ttl' => 10],
