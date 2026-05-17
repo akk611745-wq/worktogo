@@ -344,9 +344,31 @@ if ($uri === '/api/search' && $method === 'GET') {
 
 // Public Settings API
 if ($uri === '/api/settings' && $method === 'GET') {
-    require_once SYSTEM_ROOT . '/core/controllers/SettingsController.php';
-    $ctrl = new SettingsController($db);
-    $ctrl->getPublicSettings();
+    $fallbackPilotConfig = [
+        'city' => 'Haldwani',
+        'hero_title' => 'Book trusted local services in Haldwani',
+        'hero_subtitle' => 'Browse local services first. Login only when you request or track a booking.',
+        'trust_badges' => ['Local providers', 'Pay after service', 'Manual confirmation'],
+        'support_label' => 'Need help?',
+        'support_phone' => '+91 95285 44548',
+        'whatsapp_url' => 'https://wa.me/919528544548?text=Hi%20WorkToGo%2C%20I%20need%20help%20with%20a%20service%20booking.',
+        'featured_services_label' => 'Services near you',
+        'fallback_title' => 'Need another service?',
+        'fallback_text' => 'Tell us on WhatsApp. We are manually coordinating pilot requests in Haldwani.',
+        'manual_fallback_label' => 'Manual assistance',
+    ];
+    $flat = ['pilot_public_config' => $fallbackPilotConfig];
+    try {
+        $stmt = $db->query("SELECT setting_key, setting_value, value_type FROM app_settings WHERE is_public = 1");
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $val = $row['setting_value'];
+            if ($row['value_type'] === 'number') $val = (float)$val;
+            if ($row['value_type'] === 'boolean') $val = (bool)$val;
+            if ($row['value_type'] === 'json') $val = json_decode((string)$val, true) ?: $val;
+            $flat[$row['setting_key']] = $val;
+        }
+    } catch (Throwable $ignored) {}
+    Response::success($flat);
     exit;
 }
 
