@@ -141,11 +141,10 @@ class SettingsController
     public function getPublicSettings(): void
     {
         try {
-            $this->ensurePilotDefaults();
             $stmt = $this->db->query("SELECT setting_key, setting_value, value_type FROM app_settings WHERE is_public = 1");
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $flat = [];
+            $flat = $this->publicFallbackSettings();
             foreach ($rows as $row) {
                 $val = $row['setting_value'];
                 if ($row['value_type'] === 'number') {
@@ -160,8 +159,17 @@ class SettingsController
 
             Response::success($flat);
         } catch (\Exception $e) {
-            Response::serverError('Failed to load public settings');
+            Response::success($this->publicFallbackSettings());
         }
+    }
+
+    private function publicFallbackSettings(): array
+    {
+        $out = [];
+        foreach ($this->pilotDefaults as $key => $meta) {
+            $out[$key] = $meta['value'];
+        }
+        return $out;
     }
 
     private function ensurePilotDefaults(): void
