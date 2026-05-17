@@ -63,7 +63,7 @@ class SettingsController
             }
 
             Response::success($grouped);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Response::serverError('Failed to load settings');
         }
     }
@@ -133,7 +133,7 @@ class SettingsController
                 'new_value' => $value,
                 'updated_at' => $updatedAt
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Response::serverError('Failed to update setting');
         }
     }
@@ -158,7 +158,7 @@ class SettingsController
             }
 
             Response::success($flat);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Response::success($this->publicFallbackSettings());
         }
     }
