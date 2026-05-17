@@ -62,9 +62,9 @@ class SettingsController
                 }
             }
 
-            \Core\Helpers\Response::success($grouped);
+            Response::success($grouped);
         } catch (\Exception $e) {
-            \Core\Helpers\Response::serverError('Failed to load settings');
+            Response::serverError('Failed to load settings');
         }
     }
 
@@ -72,7 +72,7 @@ class SettingsController
     {
         $input = json_decode(file_get_contents('php://input'), true) ?? [];
         if (!array_key_exists('value', $input)) {
-            \Core\Helpers\Response::validation('Value is required');
+            Response::validation('Value is required');
         }
         $value = $input['value'];
 
@@ -92,11 +92,11 @@ class SettingsController
             // Validation
             if ($type === 'number') {
                 if (!is_numeric($value)) {
-                    \Core\Helpers\Response::validation('Value must be numeric');
+                    Response::validation('Value must be numeric');
                 }
             } elseif ($type === 'boolean') {
                 if ($value !== 0 && $value !== 1 && $value !== '0' && $value !== '1' && $value !== true && $value !== false) {
-                    \Core\Helpers\Response::validation('Value must be 0 or 1');
+                    Response::validation('Value must be 0 or 1');
                 }
                 $value = (int)$value;
             } elseif ($type === 'json') {
@@ -104,17 +104,17 @@ class SettingsController
                     $value = json_encode($value);
                 } else if (is_string($value)) {
                     if (json_decode($value) === null && json_last_error() !== JSON_ERROR_NONE) {
-                        \Core\Helpers\Response::validation('Value must be valid JSON string');
+                        Response::validation('Value must be valid JSON string');
                     }
                 } else {
-                    \Core\Helpers\Response::validation('Value must be valid JSON');
+                    Response::validation('Value must be valid JSON');
                 }
             } elseif ($type === 'text') {
                 if (!is_string($value)) {
                     $value = (string)$value;
                 }
                 if (strlen($value) > 1000) {
-                    \Core\Helpers\Response::validation('Value cannot exceed 1000 characters');
+                    Response::validation('Value cannot exceed 1000 characters');
                 }
             }
 
@@ -127,14 +127,14 @@ class SettingsController
             $stmt2->execute([$key]);
             $updatedAt = $stmt2->fetchColumn();
 
-            \Core\Helpers\Response::success([
+            Response::success([
                 'success' => true,
                 'setting_key' => $key,
                 'new_value' => $value,
                 'updated_at' => $updatedAt
             ]);
         } catch (\Exception $e) {
-            \Core\Helpers\Response::serverError('Failed to update setting');
+            Response::serverError('Failed to update setting');
         }
     }
 
@@ -158,9 +158,9 @@ class SettingsController
                 $flat[$row['setting_key']] = $val;
             }
 
-            \Core\Helpers\Response::success($flat);
+            Response::success($flat);
         } catch (\Exception $e) {
-            \Core\Helpers\Response::serverError('Failed to load public settings');
+            Response::serverError('Failed to load public settings');
         }
     }
 
