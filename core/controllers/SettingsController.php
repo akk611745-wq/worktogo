@@ -166,13 +166,26 @@ class SettingsController
 
     private function ensurePilotDefaults(): void
     {
+        $hasCreatedAt = $this->hasColumn('app_settings', 'created_at');
         foreach ($this->pilotDefaults as $key => $meta) {
             $stmt = $this->db->prepare("SELECT COUNT(*) FROM app_settings WHERE setting_key = ?");
             $stmt->execute([$key]);
             if ((int)$stmt->fetchColumn() > 0) continue;
             $value = $meta['value_type'] === 'json' ? json_encode($meta['value'], JSON_UNESCAPED_UNICODE) : (string)$meta['value'];
-            $this->db->prepare("INSERT INTO app_settings (setting_key, setting_value, value_type, label, is_public, created_at, updated_at) VALUES (?, ?, ?, ?, 1, NOW(), NOW())")
-                ->execute([$key, $value, $meta['value_type'], $meta['label']]);
+            if ($hasCreatedAt) {
+                $this->db->prepare("INSERT INTO app_settings (setting_key, setting_value, value_type, label, is_public, created_at, updated_at) VALUES (?, ?, ?, ?, 1, NOW(), NOW())")
+                    ->execute([$key, $value, $meta['value_type'], $meta['label']]);
+            } else {
+                $this->db->prepare("INSERT INTO app_settings (setting_key, setting_value, value_type, label, is_public, updated_at) VALUES (?, ?, ?, ?, 1, NOW())")
+                    ->execute([$key, $value, $meta['value_type'], $meta['label']]);
+            }
         }
+    }
+
+    private function hasColumn(string $table, string $column): bool
+    {
+        $stmt = $this->db->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?");
+        $stmt->execute([$table, $column]);
+        return (int)$stmt->fetchColumn() > 0;
     }
 }
