@@ -115,6 +115,10 @@ const API = (() => {
       return _intent("service:list_services");
     },
 
+    async getPublicSettings() {
+      return _request("GET", "/api/settings");
+    },
+
     // ── Orders (Intent Pipeline) ────────────────────────────────────────
     async getOrders() {
       return _intent("shopping:list_orders");

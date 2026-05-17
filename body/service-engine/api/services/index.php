@@ -60,6 +60,43 @@ function serviceTableHasColumn(PDO $db, string $table, string $column): bool
     return $cache[$key];
 }
 
+function servicePublicSetting(PDO $db, string $key, mixed $fallback): mixed
+{
+    try {
+        $stmt = $db->prepare("SELECT setting_value, value_type FROM app_settings WHERE setting_key = ? AND is_public = 1 LIMIT 1");
+        $stmt->execute([$key]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) return $fallback;
+        return match ($row['value_type'] ?? 'text') {
+            'number' => (float)$row['setting_value'],
+            'boolean' => (bool)$row['setting_value'],
+            'json' => json_decode((string)$row['setting_value'], true) ?: $fallback,
+            default => (string)$row['setting_value'],
+        };
+    } catch (Throwable) {
+        return $fallback;
+    }
+}
+
+function servicePilotConfig(PDO $db): array
+{
+    $fallback = [
+        'city' => 'Haldwani',
+        'hero_title' => 'Book trusted local services in Haldwani',
+        'hero_subtitle' => 'Browse first. Login is needed only when you send a booking request or track it.',
+        'trust_badges' => ['Local providers', 'Pay after service', 'Manual confirmation'],
+        'support_label' => 'Need help?',
+        'support_phone' => '+91 95285 44548',
+        'whatsapp_url' => 'https://wa.me/919528544548?text=Hi%20WorkToGo%2C%20I%20need%20help%20with%20a%20service%20booking.',
+        'featured_services_label' => 'Services near you',
+        'fallback_title' => 'Need another service?',
+        'fallback_text' => 'Tell us on WhatsApp. We are manually coordinating pilot requests in Haldwani.',
+        'manual_fallback_label' => 'Manual assistance',
+    ];
+    $stored = servicePublicSetting($db, 'pilot_public_config', []);
+    return array_replace($fallback, is_array($stored) ? $stored : []);
+}
+
 function normalizeServiceJobStatus(string $status): string
 {
     $status = strtolower(trim($status));
@@ -94,6 +131,7 @@ function canonicalJobStatusForBooking(string $status): string
 
 // ── GET /api/services ──────────────────────────────────────────────────────────
 if ($method === 'GET' && $uri === '/api/services') {
+    header('Cache-Control: no-store, max-age=0');
     $category = $_GET['category'] ?? null;
 
     $orderParts = [];
@@ -101,14 +139,18 @@ if ($method === 'GET' && $uri === '/api/services') {
     if (serviceTableHasColumn($db, 'services', 'rating')) $orderParts[] = 's.rating DESC';
     $orderParts[] = 's.name ASC';
 
-    $sql  = "SELECT s.*, v.business_name AS vendor_name
+    $categorySelect = serviceTableHasColumn($db, 'categories', 'icon') ? ', c.icon AS category_icon' : ", NULL AS category_icon";
+    $categorySelect .= serviceTableHasColumn($db, 'categories', 'image_url') ? ', c.image_url AS category_image' : ", NULL AS category_image";
+
+    $sql  = "SELECT s.*, v.business_name AS vendor_name, c.name AS category_name, c.slug AS category_slug {$categorySelect}
              FROM services s
              LEFT JOIN vendors v ON v.id = s.vendor_id
+             LEFT JOIN categories c ON c.id = s.category_id
              WHERE s.status = 'active' AND s.deleted_at IS NULL";
     $bind = [];
 
     if ($category) {
-        $sql .= " AND s.category_id = (SELECT id FROM categories WHERE slug = :cat LIMIT 1)";
+        $sql .= " AND c.slug = :cat";
         $bind[':cat'] = $category;
     }
 
@@ -118,7 +160,35 @@ if ($method === 'GET' && $uri === '/api/services') {
     $stmt->execute($bind);
     $services = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    Response::success(['services' => $services, 'total' => count($services)]);
+    $categories = [];
+    foreach ($services as $service) {
+        $slug = $service['category_slug'] ?? '';
+        if ($slug && !isset($categories[$slug])) {
+            $categories[$slug] = [
+                'slug' => $slug,
+                'name' => $service['category_name'] ?? $slug,
+                'icon' => $service['category_icon'] ?: '🔧',
+                'image' => $service['category_image'] ?? null,
+            ];
+        }
+    }
+
+    Response::success([
+        'services' => $services,
+        'categories' => array_values($categories),
+        'pilot_config' => servicePilotConfig($db),
+        'total' => count($services)
+    ]);
+}
+
+// ── GET /api/service/categories ───────────────────────────────────────────────
+if ($method === 'GET' && $uri === '/api/service/categories') {
+    header('Cache-Control: no-store, max-age=0');
+    $iconSelect = serviceTableHasColumn($db, 'categories', 'icon') ? 'icon' : "NULL AS icon";
+    $imageSelect = serviceTableHasColumn($db, 'categories', 'image_url') ? 'image_url' : "NULL AS image_url";
+    $sortSelect = serviceTableHasColumn($db, 'categories', 'sort_order') ? 'sort_order' : "0 AS sort_order";
+    $stmt = $db->query("SELECT id, name, slug, status, {$iconSelect}, {$imageSelect}, {$sortSelect} FROM categories WHERE type IN ('service','services') OR type IS NULL ORDER BY sort_order ASC, name ASC");
+    Response::success(['categories' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
 }
 
 // ── POST /api/services ─────────────────────────────────────────────────────────
@@ -297,6 +367,10 @@ if ($method === 'POST' && $uri === '/api/service/request') {
     if (!$service) Response::notFound('Service');
 
     $paymentMethod = strtolower(trim($input['payment_method'] ?? 'cod'));
+    if ($paymentMethod === 'online') {
+        Response::validation('Online service payment is disabled during the pilot. Please use pay after service.');
+    }
+    $paymentMethod = 'cod';
 
     // Generate collision-resistant unique reference numbers
     $bookingNum = 'WTG-BKG-' . strtoupper(bin2hex(random_bytes(4)));
@@ -378,6 +452,7 @@ if ($method === 'POST' && $uri === '/api/service/request') {
 
 // ── GET /api/service/bookings ─────────────────────────────────────────────────
 if ($method === 'GET' && $uri === '/api/service/bookings') {
+    header('Cache-Control: no-store, max-age=0');
     $auth   = AuthMiddleware::require();
     $status = $_GET['status'] ?? null;
 
@@ -396,18 +471,34 @@ if ($method === 'GET' && $uri === '/api/service/bookings') {
     }
 
     if ($status) {
-        $where[]         = 'b.status = :status';
-        $bind[':status'] = $status;
+        $where[]         = '(b.status = :status OR j.status = :job_status)';
+        $bind[':status'] = normalizeServiceJobStatus($status);
+        $bind[':job_status'] = canonicalJobStatusForBooking($status);
+    }
+
+    if (!empty($_GET['vendor_id']) && $auth['role'] === ROLE_ADMIN) {
+        $where[] = 'b.vendor_id = :filter_vid';
+        $bind[':filter_vid'] = (int)$_GET['vendor_id'];
+    }
+    if (!empty($_GET['phone'])) {
+        $where[] = 'u.phone LIKE :phone';
+        $bind[':phone'] = '%' . trim($_GET['phone']) . '%';
+    }
+    if (!empty($_GET['q'])) {
+        $where[] = '(b.booking_number LIKE :q OR s.name LIKE :q OR v.business_name LIKE :q OR u.name LIKE :q OR u.phone LIKE :q)';
+        $bind[':q'] = '%' . trim($_GET['q']) . '%';
     }
 
     $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
     $stmt = $db->prepare(
         "SELECT b.*, s.name AS service_name, v.business_name AS vendor_name,
+                 u.name AS customer_name, u.phone AS customer_phone,
                  j.id AS job_id, j.job_number, j.status AS job_status
          FROM bookings b
          LEFT JOIN services s ON s.id = b.service_id
          LEFT JOIN vendors v ON v.id = b.vendor_id
+         LEFT JOIN users u ON u.id = b.user_id
          LEFT JOIN jobs j ON j.booking_id = b.id
          $whereSQL
          ORDER BY b.created_at DESC

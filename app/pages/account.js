@@ -34,7 +34,7 @@ export async function render(container) {
 
         <!-- Menu Items -->
         <div class="menu-list">
-          <div class="menu-section-title">My Activity</div>
+          <div class="menu-section-title">Service Account</div>
 
           <!-- FIX: Use onclick ROUTER.go() for consistent routing -->
           <div class="menu-item ${serviceOnly ? "feature-hidden" : ""}" onclick="ROUTER.go('orders')">
@@ -50,7 +50,7 @@ export async function render(container) {
             <div class="menu-icon bookings-icon">📅</div>
             <div class="menu-body">
               <span>My Bookings</span>
-              <p class="menu-sub">View service bookings</p>
+              <p class="menu-sub">Track requests and booking status</p>
             </div>
             <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
           </div>
@@ -58,8 +58,17 @@ export async function render(container) {
           <div class="menu-item whatsapp-menu-item" onclick="AccountPage.contactSupport()">
             <div class="menu-icon">💬</div>
             <div class="menu-body">
-              <span>WhatsApp Support</span>
-              <p class="menu-sub">Ask before booking or get help tracking</p>
+              <span>Support</span>
+              <p class="menu-sub">Get help with booking ID or service questions</p>
+            </div>
+            <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+
+          <div class="menu-item" onclick="AccountPage.joinPartner()">
+            <div class="menu-icon vendor-icon">🤝</div>
+            <div class="menu-body">
+              <span>Join Partner</span>
+              <p class="menu-sub">For local service providers</p>
             </div>
             <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
           </div>
@@ -98,8 +107,8 @@ export async function render(container) {
           <div class="menu-item" onclick="AccountPage.editProfile()">
             <div class="menu-icon">⚙️</div>
             <div class="menu-body">
-              <span>Edit Profile</span>
-              <p class="menu-sub">Name, preferences</p>
+              <span>Profile</span>
+              <p class="menu-sub">Name and basic details</p>
             </div>
             <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
           </div>
@@ -132,6 +141,15 @@ window.AccountPage = {
       return;
     }
     UI.toast(`For urgent service help, contact WorkToGo support ${CONFIG.SERVICE_ONLY?.SUPPORT_PHONE || ""} with your booking ID.`, "info", 4500);
+  },
+  joinPartner() {
+    const text = "Hi WorkToGo, I want to join as a local service partner in Haldwani.";
+    const base = CONFIG.SERVICE_ONLY?.WHATSAPP_URL;
+    if (base) {
+      window.open(base + encodeURIComponent(` ${text}`), "_blank", "noopener");
+      return;
+    }
+    UI.toast("Partner onboarding is handled manually during the Haldwani pilot.", "info", 4500);
   },
   openVendorPanel() {
     window.location.href = "/vendor/dashboard.php";

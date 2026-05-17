@@ -7,6 +7,25 @@ require_once __DIR__ . '/../helpers/Response.php';
 class SettingsController
 {
     private PDO $db;
+    private array $pilotDefaults = [
+        'pilot_public_config' => [
+            'value_type' => 'json',
+            'label' => 'Service Pilot Public Config',
+            'value' => [
+                'city' => 'Haldwani',
+                'hero_title' => 'Book trusted local services in Haldwani',
+                'hero_subtitle' => 'Browse local services first. Login only when you request or track a booking.',
+                'trust_badges' => ['Local providers', 'Pay after service', 'Manual confirmation'],
+                'support_label' => 'Need help?',
+                'support_phone' => '+91 95285 44548',
+                'whatsapp_url' => 'https://wa.me/919528544548?text=Hi%20WorkToGo%2C%20I%20need%20help%20with%20a%20service%20booking.',
+                'featured_services_label' => 'Services near you',
+                'fallback_title' => 'Need another service?',
+                'fallback_text' => 'Tell us on WhatsApp. We are manually coordinating pilot requests in Haldwani.',
+                'manual_fallback_label' => 'Manual assistance',
+            ],
+        ],
+    ];
 
     public function __construct(PDO $db)
     {
@@ -16,6 +35,7 @@ class SettingsController
     public function getAllSettings(): void
     {
         try {
+            $this->ensurePilotDefaults();
             $stmt = $this->db->query("SELECT setting_key, setting_value, value_type, label, is_public FROM app_settings");
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -57,12 +77,16 @@ class SettingsController
         $value = $input['value'];
 
         try {
+            $this->ensurePilotDefaults();
             $stmt = $this->db->prepare("SELECT value_type FROM app_settings WHERE setting_key = ? LIMIT 1");
             $stmt->execute([$key]);
             $type = $stmt->fetchColumn();
 
             if (!$type) {
-                \Core\Helpers\Response::json(['error' => 'Setting not found'], 404);
+                $type = is_array($value) || is_object($value) ? 'json' : 'text';
+                $label = ucwords(str_replace('_', ' ', $key));
+                $this->db->prepare("INSERT INTO app_settings (setting_key, setting_value, value_type, label, is_public, created_at, updated_at) VALUES (?, '', ?, ?, 1, NOW(), NOW())")
+                    ->execute([$key, $type, $label]);
             }
 
             // Validation
@@ -117,6 +141,7 @@ class SettingsController
     public function getPublicSettings(): void
     {
         try {
+            $this->ensurePilotDefaults();
             $stmt = $this->db->query("SELECT setting_key, setting_value, value_type FROM app_settings WHERE is_public = 1");
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -136,6 +161,18 @@ class SettingsController
             \Core\Helpers\Response::success($flat);
         } catch (\Exception $e) {
             \Core\Helpers\Response::serverError('Failed to load public settings');
+        }
+    }
+
+    private function ensurePilotDefaults(): void
+    {
+        foreach ($this->pilotDefaults as $key => $meta) {
+            $stmt = $this->db->prepare("SELECT COUNT(*) FROM app_settings WHERE setting_key = ?");
+            $stmt->execute([$key]);
+            if ((int)$stmt->fetchColumn() > 0) continue;
+            $value = $meta['value_type'] === 'json' ? json_encode($meta['value'], JSON_UNESCAPED_UNICODE) : (string)$meta['value'];
+            $this->db->prepare("INSERT INTO app_settings (setting_key, setting_value, value_type, label, is_public, created_at, updated_at) VALUES (?, ?, ?, ?, 1, NOW(), NOW())")
+                ->execute([$key, $value, $meta['value_type'], $meta['label']]);
         }
     }
 }

@@ -333,6 +333,56 @@ try {
         ]);
     }
 
+    // ── PATCH /api/admin/services/{id}/status ──────────────────
+    if ($method === 'PATCH' && preg_match('#^/api/admin/services/(\d+)/status$#', $uri, $m)) {
+        $serviceId = (int)$m[1];
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        $rawStatus = strtolower(trim((string)($input['status'] ?? '')));
+        $status = match ($rawStatus) {
+            'enabled', 'active' => 'active',
+            'disabled', 'inactive' => 'inactive',
+            default => null,
+        };
+        if (!$status) Response::validation('Invalid service status');
+        $db->prepare("UPDATE services SET status = ?, updated_at = NOW() WHERE id = ?")->execute([$status, $serviceId]);
+        Logger::info('Admin updated service status', ['admin_id' => $auth['user_id'], 'service_id' => $serviceId, 'status' => $status]);
+        Response::success(['id' => $serviceId, 'status' => $status], 200, 'Service status updated');
+    }
+
+    // ── GET /api/admin/categories ──────────────────────────────
+    if ($method === 'GET' && $uri === '/api/admin/categories') {
+        $type = $_GET['type'] ?? 'service';
+        $cols = "id, name, slug, type, status, parent_id, created_at, updated_at";
+        foreach (['icon','image_url','sort_order'] as $col) {
+            $chk = $db->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categories' AND COLUMN_NAME = ?");
+            $chk->execute([$col]);
+            $cols .= ((int)$chk->fetchColumn() > 0) ? ", {$col}" : ", NULL AS {$col}";
+        }
+        $stmt = $db->prepare("SELECT {$cols} FROM categories WHERE type = ? OR type IS NULL ORDER BY COALESCE(sort_order,0) ASC, name ASC");
+        $stmt->execute([$type]);
+        Response::success(['categories' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+    }
+
+    // ── PATCH /api/admin/categories/{id} ───────────────────────
+    if ($method === 'PATCH' && preg_match('#^/api/admin/categories/(\d+)$#', $uri, $m)) {
+        $categoryId = (int)$m[1];
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        $updates = [];
+        $bind = [':id' => $categoryId];
+        foreach (['name','slug','status','icon','image_url','sort_order'] as $col) {
+            if (!array_key_exists($col, $input)) continue;
+            $chk = $db->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categories' AND COLUMN_NAME = ?");
+            $chk->execute([$col]);
+            if ((int)$chk->fetchColumn() === 0) continue;
+            $updates[] = "{$col} = :{$col}";
+            $bind[":{$col}"] = $col === 'sort_order' ? (int)$input[$col] : trim((string)$input[$col]);
+        }
+        if (!$updates) Response::validation('No supported category fields to update');
+        $db->prepare("UPDATE categories SET " . implode(', ', $updates) . ", updated_at = NOW() WHERE id = :id")->execute($bind);
+        Logger::info('Admin updated category', ['admin_id' => $auth['user_id'], 'category_id' => $categoryId]);
+        Response::success(['id' => $categoryId], 200, 'Category updated');
+    }
+
     // ── GET /api/admin/orders ─────────────────────────────────
     if ($method === 'GET' && $uri === '/api/admin/orders') {
         $page   = max(1, (int) ($_GET['page']  ?? 1));

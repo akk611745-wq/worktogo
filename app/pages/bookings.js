@@ -96,6 +96,8 @@ window.BookingsPage = (() => {
             ${UI.statusBadge(b.status || "pending")}
           </div>
           ${b.status === "pending" ? `<div class="item-row muted small"><span>Request sent — WorkToGo will confirm shortly.</span></div>` : ""}
+          ${b.status === "confirmed" ? `<div class="item-row muted small"><span>Provider/admin confirmed. Please keep your phone available.</span></div>` : ""}
+          ${b.status === "in_progress" ? `<div class="item-row muted small"><span>Service is in progress. Pay after service only.</span></div>` : ""}
           ${b.vendor_name ? `
           <div class="item-row vendor-row">
             <svg viewBox="0 0 24 24" class="vendor-icon"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>

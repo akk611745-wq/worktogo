@@ -26,6 +26,16 @@
             </div>
             <button class="btn btn-ghost btn-sm" onclick="loadServiceBookings()">Refresh</button>
           </div>
+          <div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:10px">
+            <input class="form-control" id="booking-search" placeholder="Booking ID, name, vendor…" style="max-width:220px">
+            <input class="form-control" id="booking-phone" placeholder="Customer phone" style="max-width:160px">
+            <input class="form-control" id="booking-vendor" placeholder="Vendor ID" style="max-width:110px">
+            <select class="form-control" id="booking-status" style="max-width:150px">
+              <option value="">All Status</option><option value="pending">Pending</option><option value="confirmed">Confirmed</option><option value="in_progress">In Progress</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option>
+            </select>
+            <button class="btn btn-primary btn-sm" onclick="loadServiceBookings()">Apply</button>
+            <button class="btn btn-ghost btn-sm" onclick="resetBookingFilters()">Reset</button>
+          </div>
         </div>
         <div class="table-wrap">
           <table>
@@ -90,13 +100,27 @@ function normalizeServiceStatus(status) {
 async function loadServiceBookings() {
   tableLoading('service-bookings-tbody', 8);
   try {
-    const data = await API.get(CONFIG.ENDPOINTS.SERVICE_BOOKINGS);
+    const params = {};
+    const q = document.getElementById('booking-search')?.value.trim();
+    const phone = document.getElementById('booking-phone')?.value.trim();
+    const vendor = document.getElementById('booking-vendor')?.value.trim();
+    const status = document.getElementById('booking-status')?.value;
+    if (q) params.q = q;
+    if (phone) params.phone = phone;
+    if (vendor) params.vendor_id = vendor;
+    if (status) params.status = status;
+    const data = await API.get(CONFIG.ENDPOINTS.SERVICE_BOOKINGS, params);
     const bookings = (data.bookings || data.data || []).map(b => ({ ...b, status: normalizeServiceStatus(b.status || b.job_status), amount: b.amount ?? b.total ?? b.price }));
     document.getElementById('booking-count').textContent = `${bookings.length.toLocaleString()} recent service bookings`;
     renderServiceBookings(bookings);
   } catch(e) {
     tableEmpty('service-bookings-tbody', 8, 'Failed to load service bookings: ' + (e.message || ''));
   }
+}
+
+function resetBookingFilters() {
+  ['booking-search','booking-phone','booking-vendor','booking-status'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  loadServiceBookings();
 }
 
 function renderServiceBookings(bookings) {
@@ -107,8 +131,12 @@ function renderServiceBookings(bookings) {
     const jobId = b.job_id || id;
     const status = normalizeServiceStatus(b.status);
     const canAdvance = !['completed','cancelled'].includes(status);
+    const createdAt = new Date(b.created_at || Date.now()).getTime();
+    const pendingTooLong = status === 'pending' && (Date.now() - createdAt) > 30 * 60 * 1000;
+    const phone = b.customer_phone || '';
+    const wa = phone ? 'https://wa.me/91' + String(phone).replace(/\D/g,'').replace(/^91/,'') + '?text=' + encodeURIComponent('Hi, this is WorkToGo support about booking #' + id) : '';
     return `<tr>
-      <td><div style="font-size:12px;color:var(--text-primary)">#${escHtml(String(id))}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(b.booking_number||'')}</div></td>
+      <td><div style="font-size:12px;color:var(--text-primary)">#${escHtml(String(id))}</div><div style="font-size:10px;color:${pendingTooLong?'var(--red)':'var(--text-muted)'}">${pendingTooLong?'⚠ Pending >30m':escHtml(b.booking_number||'')}</div></td>
       <td><div>${escHtml(b.customer_name||b.user_name||'—')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(b.customer_phone||'')}</div></td>
       <td>${escHtml(b.service_name||'Service')}</td>
       <td>${Fmt.date(b.scheduled_at||b.created_at)}</td>
@@ -116,6 +144,7 @@ function renderServiceBookings(bookings) {
       <td>${statusBadge(status)}</td>
       <td><div>${escHtml(b.payment_method||'cod')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(b.payment_status||'unpaid')}</div></td>
       <td><div class="td-actions">
+        ${phone ? `<a class="btn btn-sm btn-ghost" href="tel:${escHtml(phone)}">Call</a><a class="btn btn-sm btn-ghost" href="${wa}" target="_blank" rel="noopener">WA</a>` : ''}
         ${canAdvance ? `<button class="btn btn-sm btn-ghost" onclick="adminSetJobStatus('${jobId}','confirmed')">Confirm</button>
         <button class="btn btn-sm btn-ghost" onclick="adminSetJobStatus('${jobId}','in_progress')">Progress</button>
         <button class="btn btn-sm btn-success" onclick="adminSetJobStatus('${jobId}','completed')">Complete</button>
@@ -180,9 +209,7 @@ function renderServices(services) {
       <td>${statusBadge(status)}</td>
       <td>
         <div class="td-actions">
-          ${status==='enabled'||status==='active'
-            ? `<button class="btn btn-warn btn-sm"    onclick="toggleService('${id}','disabled')">Disable</button>`
-            : `<button class="btn btn-success btn-sm" onclick="toggleService('${id}','enabled')">Enable</button>`}
+          <button class="btn btn-sm ${status === 'active' ? 'btn-warn' : 'btn-success'}" onclick="toggleService('${id}','${status === 'active' ? 'inactive' : 'active'}')">${status === 'active' ? 'Disable' : 'Enable'}</button>
         </div>
       </td>
     </tr>`;

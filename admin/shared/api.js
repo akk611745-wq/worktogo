@@ -34,6 +34,7 @@ class APIClient {
     const isDirectApi = directApiPaths.some(prefix => endpoint === prefix.slice(0, -1) || endpoint.startsWith(prefix));
     const isFullApi = endpoint.startsWith('/api/');
     const isAbsolute = isFullApi || endpoint.startsWith('/admin/') || isDirectApi;
+    const baseHasApiSuffix = this.baseURL.replace(/\/$/, '').endsWith('/api');
 
     // Normalize endpoint to prevent double /api/ or /admin/ prefixes
     const normalizedEndpoint =
@@ -45,7 +46,7 @@ class APIClient {
 
     const url =
       this.baseURL +
-      (isFullApi ? '' : (isDirectApi ? '/api' : (isAuth || isAbsolute ? '' : this.adminPrefix))) +
+      (isFullApi ? '' : (isDirectApi ? (baseHasApiSuffix ? '' : '/api') : (isAuth || isAbsolute ? '' : this.adminPrefix))) +
       normalizedEndpoint +
       qs;
 

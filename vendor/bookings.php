@@ -88,6 +88,7 @@ function renderPage() {
 
     <div class="card">
       <div class="card-body table-wrap" style="padding:0;">
+        <div id="bookingCards" class="vendor-job-cards" style="display:none;padding:0.75rem;gap:0.75rem;flex-direction:column;"></div>
         <table>
           <thead>
             <tr>
@@ -200,17 +201,31 @@ function _chip(status) {
 
 function renderBookingRows(list) {
   const tbody = document.getElementById("bookingTbody");
+  const cards = document.getElementById("bookingCards");
   if (!list.length) {
     tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">&#x1F4C5;</div><div class="empty-text">No jobs right now. Keep this page ready and tap Refresh after WorkToGo confirms a booking.</div></div></td></tr>';
+    if (cards) cards.innerHTML = '';
     return;
   }
+  if (cards) cards.innerHTML = list.map(b => {
+    const id = b.id || b._id;
+    const status = normalizeStatus(b.status);
+    const jobId = b.job_id || id;
+    return '<div class="card" style="border:1px solid var(--border);"><div class="card-body" style="display:grid;gap:0.45rem;">' +
+      '<div style="display:flex;justify-content:space-between;gap:0.5rem;align-items:flex-start"><div><div class="fw-bold">#' + id + ' · ' + escHtml(b.service_name || b.service?.name || 'Service') + '</div><div class="text-muted text-sm">' + fmtDateTime(b.booking_date || b.date || b.scheduled_at) + '</div></div>' + _chip(status) + '</div>' +
+      '<div class="text-sm"><strong>Customer:</strong> ' + escHtml(b.customer_name || b.user?.name || '—') + ' · ' + escHtml(b.customer_phone || b.user?.phone || '—') + '</div>' +
+      (b.notes ? '<div class="text-sm" style="background:var(--surface-2);padding:0.5rem;border-radius:6px;white-space:pre-wrap;">' + escHtml(b.notes).slice(0,220) + '</div>' : '') +
+      '<div class="td-actions" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.3rem;"><button class="btn btn-ghost btn-sm" onclick="viewBooking(\'' + id + '\')">View</button>' +
+      (status === 'pending' ? '<button class="btn btn-accept btn-sm" onclick="quickAccept(\'' + id + '\',\'' + jobId + '\')">Accept</button><button class="btn btn-reject btn-sm" onclick="quickReject(\'' + id + '\',\'' + jobId + '\')">Reject</button>' : '<button class="btn btn-primary btn-sm" onclick="openStatusModal(\'' + id + '\',\'' + jobId + '\')">Update</button>') +
+      '</div></div></div>';
+  }).join('');
   tbody.innerHTML = list.map(b => {
     const id = b.id || b._id;
     const status = normalizeStatus(b.status);
     const jobId = b.job_id || b.id || b._id;
     const actionBtns = status === 'pending'
-      ? '<button class="btn btn-accept btn-sm" onclick="quickAccept(\'' + id + '\')">Accept</button><button class="btn btn-reject btn-sm" onclick="quickReject(\'' + id + '\')">Reject</button>'
-      : '<button class="btn btn-ghost btn-sm" onclick="openStatusModal(\'' + id + '\')">Update</button>';
+      ? '<button class="btn btn-accept btn-sm" onclick="quickAccept(\'' + id + '\',\'' + jobId + '\')">Accept</button><button class="btn btn-reject btn-sm" onclick="quickReject(\'' + id + '\',\'' + jobId + '\')">Reject</button>'
+      : '<button class="btn btn-ghost btn-sm" onclick="openStatusModal(\'' + id + '\',\'' + jobId + '\')">Update</button>';
     return '<tr>' +
       '<td class="text-sm fw-bold" style="cursor:pointer;color:var(--accent);" onclick="viewBooking(\'' + id + '\')">#' + id + '</td>' +
       '<td>' + escHtml(b.customer_name || b.user?.name || '—') + '</td>' +
@@ -246,18 +261,22 @@ async function viewBooking(id) {
   let footer = '<button class="btn btn-ghost" onclick="closeModal(\'bookingModal\')">Close</button>';
   const status = normalizeStatus(b.status);
   if (status === 'pending') {
-    footer += '<button class="btn btn-reject" onclick="quickReject(\'' + bid + '\');closeModal(\'bookingModal\')">Reject</button>' +
-              '<button class="btn btn-accept" onclick="quickAccept(\'' + bid + '\');closeModal(\'bookingModal\')">Accept Booking</button>';
+    const jid = b.job_id || bid;
+    footer += '<button class="btn btn-reject" onclick="quickReject(\'' + bid + '\',\'' + jid + '\');closeModal(\'bookingModal\')">Reject</button>' +
+              '<button class="btn btn-accept" onclick="quickAccept(\'' + bid + '\',\'' + jid + '\');closeModal(\'bookingModal\')">Accept Booking</button>';
   } else if (!['completed','cancelled'].includes(status)) {
-    footer += '<button class="btn btn-primary" onclick="closeModal(\'bookingModal\');openStatusModal(\'' + bid + '\')">Update Status</button>';
+    const jid = b.job_id || bid;
+    footer += '<button class="btn btn-primary" onclick="closeModal(\'bookingModal\');openStatusModal(\'' + bid + '\',\'' + jid + '\')">Update Status</button>';
   }
   actEl.innerHTML = footer;
   openModal("bookingModal");
 }
 
 let statusTargetId = null;
-function openStatusModal(id) {
-  statusTargetId = id;
+let statusTargetBookingId = null;
+function openStatusModal(id, jobId = null) {
+  statusTargetBookingId = id;
+  statusTargetId = jobId || id;
   const b = allBookings.find(x => (x.id || x._id) == id);
   if (b) document.getElementById("statusSelect").value = normalizeStatus(b.status);
   openModal("statusModal");
@@ -269,22 +288,22 @@ async function submitStatusUpdate() {
   if (!res.ok) { showToast(res.data?.message || "Update failed.", "error"); return; }
   showToast("Booking status updated!", "success");
   closeModal("statusModal");
-  const idx = allBookings.findIndex(x => (x.id || x._id) == statusTargetId);
+  const idx = allBookings.findIndex(x => (x.id || x._id) == (statusTargetBookingId || statusTargetId));
   if (idx !== -1) allBookings[idx].status = normalizeStatus(res.data?.status || status);
   _updateAnalytics(); renderChips(); applyFilter();
 }
 
-async function quickAccept(id) {
-  const res = await API.Bookings.accept(id);
+async function quickAccept(id, jobId = null) {
+  const res = await API.Bookings.accept(jobId || id);
   if (!res.ok) { showToast(res.data?.message || "Failed to accept.", "error"); return; }
   showToast("Booking accepted!", "success");
   const idx = allBookings.findIndex(x => (x.id || x._id) == id);
   if (idx !== -1) allBookings[idx].status = "confirmed";
   _updateAnalytics(); renderChips(); applyFilter();
 }
-async function quickReject(id) {
+async function quickReject(id, jobId = null) {
   if (!confirmAction("Reject this booking?")) return;
-  const res = await API.Bookings.reject(id);
+  const res = await API.Bookings.reject(jobId || id);
   if (!res.ok) { showToast(res.data?.message || "Failed to reject.", "error"); return; }
   showToast("Booking rejected.", "info");
   const idx = allBookings.findIndex(x => (x.id || x._id) == id);

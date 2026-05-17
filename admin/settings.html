@@ -135,25 +135,16 @@
       <div class="settings-grid">
         <!-- CARD 1: Brain Intelligence -->
         <div class="settings-card">
-          <h2>🧠 Brain Intelligence</h2>
+          <h2>🛠 Service Pilot Controls</h2>
           
           <div class="form-group">
-            <label>Discovery Mix %</label>
-            <div class="range-wrapper">
-              <input type="range" id="brain_discovery_percent" min="0" max="100" oninput="document.getElementById('bdp-val').textContent = this.value">
-              <span class="range-val" id="bdp-val">0</span>
-            </div>
-            <div class="helper-text">Higher = more new discoveries shown to users. Lower = more personalized.</div>
-          </div>
-          
-          <div class="form-group">
-            <label>Cold Start Threshold</label>
-            <input type="number" id="cold_start_threshold" min="1" max="100">
-            <div class="helper-text">Number of user actions needed before personalization starts</div>
+            <label>Pilot Public Config JSON</label>
+            <textarea id="pilot_public_config" rows="12" style="width:100%;font-family:monospace;padding:8px;border:1px solid #ddd;border-radius:4px"></textarea>
+            <div class="helper-text">Controls city, hero copy, trust badges, WhatsApp, support text, and fallback service messaging.</div>
           </div>
 
           <div class="card-actions">
-            <button class="btn-accent" id="btn-save-brain" onclick="saveCard('brain')">Save Brain Settings</button>
+            <button class="btn-accent" id="btn-save-pilot" onclick="saveCard('pilot')">Save Pilot Config</button>
           </div>
         </div>
 
@@ -223,11 +214,11 @@
 <script src="shared/shell.js"></script>
 
 <script>
-  const API_BASE = (typeof window.API_BASE !== 'undefined') ? window.API_BASE : '/api';
+  const API_BASE = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL) ? CONFIG.API_BASE_URL : '/heart/api';
 
   // Auth Check
   function checkAuth() {
-    const token = localStorage.getItem('admin_token');
+    const token = localStorage.getItem(CONFIG.TOKEN_KEY);
     if (!token) {
       window.location.href = 'login.html';
       return null;
@@ -278,7 +269,7 @@
       const data = res.data || res || {};
       
       const fields = [
-        'brain_discovery_percent', 'cold_start_threshold',
+        'pilot_public_config',
         'default_commission_rate', 'quickbook_radius_km',
         'story_expiry_hours', 'max_file_upload_mb',
         'platform_name', 'platform_city'
@@ -287,10 +278,7 @@
       fields.forEach(key => {
         const el = document.getElementById(key);
         if (el && data[key] !== undefined && data[key] !== null) {
-          el.value = data[key];
-          if (key === 'brain_discovery_percent') {
-            document.getElementById('bdp-val').textContent = data[key];
-          }
+          el.value = typeof data[key] === 'object' ? JSON.stringify(data[key], null, 2) : data[key];
         }
       });
       document.getElementById('loader').style.display = 'none';
@@ -303,7 +291,7 @@
 
   // Save Card logic
   const cardFields = {
-    brain: ['brain_discovery_percent', 'cold_start_threshold'],
+    pilot: ['pilot_public_config'],
     business: ['default_commission_rate', 'quickbook_radius_km', 'story_expiry_hours', 'max_file_upload_mb'],
     platform: ['platform_name', 'platform_city']
   };
@@ -320,7 +308,8 @@
     let errKey = '';
 
     for (const key of keys) {
-      const val = document.getElementById(key).value;
+      let val = document.getElementById(key).value;
+      if (key === 'pilot_public_config') val = JSON.parse(val);
       try {
         await fetchApi(`/admin/settings/${key}`, {
           method: 'PUT',

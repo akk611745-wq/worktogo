@@ -888,3 +888,8 @@ tr.rt-new-row { animation: rtRowPulse 1.5s ease both; }
   .analytics-row { grid-template-columns: 1fr; }
   .order-timeline { overflow-x: auto; flex-wrap: nowrap; }
 }
+@media (max-width: 720px) {
+  .vendor-job-cards { display: flex !important; }
+  .vendor-job-cards + table { display: none; }
+  .td-actions .btn, .vendor-job-cards .btn { min-height: 38px; padding: 0.55rem 0.75rem; }
+}

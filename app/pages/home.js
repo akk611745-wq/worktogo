@@ -8,6 +8,7 @@ export async function render(container) {
   const user = AUTH.getUser();
   const serviceOnly = Boolean(CONFIG.FEATURES?.SERVICE_ONLY_MODE);
   const isLoggedIn = AUTH.isLoggedIn();
+  await _loadPilotConfig();
 
   container.innerHTML = `
     <div class="page home-page">
@@ -26,41 +27,37 @@ export async function render(container) {
 
       <div class="home-content">
         <section class="service-hero">
-          <p class="service-hero-kicker">${_esc(CONFIG.SERVICE_ONLY?.CITY || "Haldwani")} local services</p>
-          <h1>Explore trusted help near you</h1>
-          <p>Browse services freely. Login is needed only when you request or track a booking.</p>
+          <p class="service-hero-kicker">${_esc(_pilotConfig.city)} local services</p>
+          <h1>${_esc(_pilotConfig.hero_title)}</h1>
+          <p>${_esc(_pilotConfig.hero_subtitle)}</p>
           <div class="service-trust-row">
-            <span>WhatsApp support</span>
-            <span>Local providers</span>
-            <span>Pay after service</span>
-            <span>Manual confirmation</span>
+            ${(_pilotConfig.trust_badges || []).slice(0, 3).map(t => `<span>${_esc(t)}</span>`).join("")}
           </div>
           <div class="hero-actions">
-            <button class="btn-whatsapp" onclick="HomePage.openWhatsApp('hero')">Chat on WhatsApp</button>
-            <button class="btn-ghost-inline" onclick="HomePage.scrollToServices()">Explore services</button>
+            <button class="btn-whatsapp" onclick="HomePage.scrollToServices()">Explore services</button>
           </div>
         </section>
 
         <section class="home-section browse-strip-section">
           <div class="section-header compact">
-            <h3>Popular in Haldwani</h3>
+            <h3>Popular in ${_esc(_pilotConfig.city)}</h3>
             <span class="section-note">Browse first, book when ready</span>
           </div>
-          <div class="category-chips">
-            ${_categoryChips().map(c => `<button onclick="HomePage.scrollToServices()"><span>${c.icon}</span>${_esc(c.label)}</button>`).join("")}
+          <div class="category-chips" id="category-chips">
+            ${_categoryChips().map(c => `<button onclick="HomePage.setCategory('${_esc(c.slug || '')}')"><span>${c.icon}</span>${_esc(c.label)}</button>`).join("")}
           </div>
         </section>
 
         <section class="local-proof-grid">
           <div><strong>Local coordination</strong><span>Team confirms request before visit</span></div>
           <div><strong>No advance payment</strong><span>Pay after service during pilot</span></div>
-          <div><strong>Human help</strong><span>Ask on WhatsApp before booking</span></div>
+          <div><strong>Human help</strong><span>Support available when needed</span></div>
         </section>
 
         <section class="home-section" id="services-section">
           <div class="section-header">
-            <h3>Services near you</h3>
-            <button class="see-all" onclick="HomePage.openWhatsApp('service-help')">Need help?</button>
+            <h3>${_esc(_pilotConfig.featured_services_label)}</h3>
+            <button class="see-all" onclick="HomePage.setCategory('')">All</button>
           </div>
           <div id="services-grid" class="cards-grid horizontal-scroll">
             ${UI.skeleton(4, "card")}
@@ -71,8 +68,8 @@ export async function render(container) {
           <div class="trust-story-card">
             <span class="trust-story-icon">💬</span>
             <div>
-              <h3>Not sure what to book?</h3>
-              <p>Send a WhatsApp message. WorkToGo support will guide you during the Haldwani pilot.</p>
+              <h3>${_esc(_pilotConfig.support_label)}</h3>
+              <p>${_esc(_pilotConfig.fallback_text)}</p>
             </div>
             <button class="btn-whatsapp compact" onclick="HomePage.openWhatsApp('trust-card')">Ask</button>
           </div>
@@ -126,15 +123,25 @@ export async function render(container) {
 
   window.HomePage = {
     openWhatsApp(source = "home") {
-      const url = CONFIG.SERVICE_ONLY?.WHATSAPP_URL;
+      const url = _pilotConfig.whatsapp_url || CONFIG.SERVICE_ONLY?.WHATSAPP_URL;
       if (url) {
+        if (source && !['floating','header','booking-support'].includes(source)) {
+          const proceed = window.confirm('Open WhatsApp support for this service question?');
+          if (!proceed) return;
+        }
         window.open(url + (url.includes("?") ? "%20" : "?text=") + encodeURIComponent(`Source: ${source}`), "_blank", "noopener");
         return;
       }
-      UI.toast(`WhatsApp support: ${CONFIG.SERVICE_ONLY?.SUPPORT_PHONE || "WorkToGo"}`, "info", 4500);
+      UI.toast(`Support: ${_pilotConfig.support_phone || CONFIG.SERVICE_ONLY?.SUPPORT_PHONE || "WorkToGo"}`, "info", 4500);
     },
     scrollToServices() {
       document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    },
+    setCategory(slug = "") {
+      _activeCategory = slug;
+      document.querySelectorAll('#category-chips button').forEach(btn => btn.classList.remove('active'));
+      _renderServices({ ok: true, data: { services: _allServices } });
+      HomePage.scrollToServices();
     }
   };
 
@@ -302,6 +309,11 @@ window.HomeModals = (() => {
     const address = document.getElementById("booking-address")?.value?.trim() || "";
     const notes   = document.getElementById("booking-notes")?.value?.trim() || "";
 
+    if (!dateVal) { UI.toast("Please choose preferred date and time", "error"); return; }
+    if (Number.isNaN(new Date(dateVal).getTime()) || new Date(dateVal).getTime() <= Date.now()) {
+      UI.toast("Please choose a future date and time", "error");
+      return;
+    }
     if (!area) { UI.toast("Please enter area or landmark", "error"); return; }
     if (!address) { UI.toast("Please enter full address", "error"); return; }
 
@@ -370,7 +382,15 @@ function _renderServices(res) {
     return;
   }
 
-  const list = Array.isArray(res.data) ? res.data : (res.data?.services || res.data?.data || []);
+  const payload = _unwrapData(res.data);
+  let list = Array.isArray(payload) ? payload : (payload?.services || payload?.data || []);
+  if (payload?.pilot_config) _pilotConfig = { ..._pilotConfig, ...payload.pilot_config };
+  if (Array.isArray(payload?.categories) && payload.categories.length) {
+    _serviceCategories = payload.categories.map(c => ({ slug: c.slug, label: c.name, icon: c.icon || "🔧" }));
+    _renderCategoryChips();
+  }
+  if (list.length) _allServices = list;
+  if (_activeCategory) list = list.filter(s => (s.category_slug || s.category || "") === _activeCategory);
 
   if (!list.length) {
     el.classList.remove("horizontal-scroll");
@@ -381,13 +401,13 @@ function _renderServices(res) {
         <h4>${_esc(s.name)}</h4>
         <p class="card-meta">${_esc(s.example)}</p>
         <p class="card-price">${_esc(s.price)}</p>
-        <p class="local-service-copy">Popular in Haldwani</p>
-        <span class="card-badge whatsapp-badge">WhatsApp</span>
+        <p class="local-service-copy">${_esc(_pilotConfig.manual_fallback_label)}</p>
+        <span class="card-badge whatsapp-badge">Ask support</span>
       </div>
     `).join("") + `
       <div class="fallback-help-card">
-        <h3>Need another service?</h3>
-        <p>Tell us on WhatsApp. We are manually coordinating pilot requests in Haldwani.</p>
+        <h3>${_esc(_pilotConfig.fallback_title)}</h3>
+        <p>${_esc(_pilotConfig.fallback_text)}</p>
         <button class="btn-whatsapp" onclick="HomePage.openWhatsApp('empty-state')">Ask WorkToGo</button>
       </div>`;
     return;
@@ -399,12 +419,27 @@ function _renderServices(res) {
     <div class="service-card card" onclick="HomeModals.openBooking(${_jsonAttr(s)})">
       <div class="card-icon">${s.icon || "🔧"}</div>
       <h4>${_esc(s.name || "")}</h4>
-      <p class="card-meta">${_esc(s.category || "")}</p>
+      <p class="card-meta">${_esc(s.category_name || s.category || "")}</p>
       <p class="card-price">${UI.formatCurrency(_servicePrice(s))}</p>
-      <p class="local-service-copy">Haldwani local</p>
+      <p class="local-service-copy">${_esc(_pilotConfig.city)} local · Verified pilot service</p>
       <span class="card-badge">Request</span>
     </div>
   `).join("");
+}
+
+async function _loadPilotConfig() {
+  if (_pilotLoaded) return;
+  _pilotLoaded = true;
+  const res = await API.getPublicSettings().catch(() => null);
+  const data = res?.ok ? _unwrapData(res.data) : null;
+  if (data?.pilot_public_config) _pilotConfig = { ..._pilotConfig, ...data.pilot_public_config };
+}
+
+function _renderCategoryChips() {
+  const el = document.getElementById("category-chips");
+  if (!el) return;
+  el.innerHTML = `<button class="${_activeCategory ? '' : 'active'}" onclick="HomePage.setCategory('')"><span>🧰</span>All</button>` +
+    _categoryChips().map(c => `<button class="${_activeCategory === c.slug ? 'active' : ''}" onclick="HomePage.setCategory('${_esc(c.slug || '')}')"><span>${c.icon}</span>${_esc(c.label)}</button>`).join("");
 }
 
 function _renderProducts(res) {
@@ -461,18 +496,23 @@ function _esc(str) {
     .replace(/"/g, "&quot;");
 }
 
+function _unwrapData(data) {
+  return data?.data && typeof data.data === "object" && !Array.isArray(data.data) ? data.data : data;
+}
+
 function _servicePrice(service) {
   return service?.price ?? service?.base_price ?? service?.amount ?? service?.starting_price ?? 0;
 }
 
 function _categoryChips() {
+  if (_serviceCategories.length) return _serviceCategories;
   return [
-    { icon: "⚡", label: "Electrician" },
-    { icon: "🚰", label: "Plumber" },
-    { icon: "❄️", label: "AC repair" },
-    { icon: "🧹", label: "Cleaning" },
-    { icon: "🔧", label: "Appliance" },
-    { icon: "📚", label: "Tutor" },
+    { slug: "electrician", icon: "⚡", label: "Electrician" },
+    { slug: "plumber", icon: "🚰", label: "Plumber" },
+    { slug: "ac-repair", icon: "❄️", label: "AC repair" },
+    { slug: "cleaning", icon: "🧹", label: "Cleaning" },
+    { slug: "appliance", icon: "🔧", label: "Appliance" },
+    { slug: "tutor", icon: "📚", label: "Tutor" },
   ];
 }
 
@@ -491,3 +531,21 @@ function _fallbackServices() {
 function _jsonAttr(obj) {
   return "JSON.parse(decodeURIComponent('" + encodeURIComponent(JSON.stringify(obj)) + "'))";
 }
+
+let _pilotLoaded = false;
+let _activeCategory = "";
+let _allServices = [];
+let _serviceCategories = [];
+let _pilotConfig = {
+  city: CONFIG.SERVICE_ONLY?.CITY || "Haldwani",
+  hero_title: "Book trusted local services in Haldwani",
+  hero_subtitle: "Browse local services first. Login only when you request or track a booking.",
+  trust_badges: ["Local providers", "Pay after service", "Manual confirmation"],
+  support_label: "Need help?",
+  support_phone: CONFIG.SERVICE_ONLY?.SUPPORT_PHONE || "",
+  whatsapp_url: CONFIG.SERVICE_ONLY?.WHATSAPP_URL || "",
+  featured_services_label: "Services near you",
+  fallback_title: "Need another service?",
+  fallback_text: "Tell us on WhatsApp. We are manually coordinating pilot requests.",
+  manual_fallback_label: "Manual assistance",
+};
