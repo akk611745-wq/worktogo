@@ -119,6 +119,11 @@ const API = (() => {
       return _request("GET", "/api/settings");
     },
 
+    async search(query, type = "services", limit = 20) {
+      const params = new URLSearchParams({ q: query, type, limit: String(limit) });
+      return _request("GET", `/api/search?${params.toString()}`);
+    },
+
     // ── Orders (Intent Pipeline) ────────────────────────────────────────
     async getOrders() {
       return _intent("shopping:list_orders");

@@ -108,6 +108,68 @@ const UI = (() => {
     }
   }
 
+  // ── Smart Support Selector ─────────────────────────────────────────────
+
+  function openSupport(defaultIntent = "selector", context = {}) {
+    let overlay = document.getElementById("support-selector-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "support-selector-overlay";
+      overlay.className = "support-selector-overlay hidden";
+      overlay.innerHTML = `
+        <div class="support-selector-card" role="dialog" aria-modal="true" aria-label="WorkToGo support options">
+          <div class="support-selector-header">
+            <div>
+              <p class="support-kicker">WorkToGo support</p>
+              <h3>How can we help?</h3>
+            </div>
+            <button class="support-close" onclick="UI.closeSupport()" aria-label="Close support">×</button>
+          </div>
+          <div class="support-options">
+            <button onclick="UI.sendSupport('service')"><strong>Service help</strong><span>Questions before booking a local service</span></button>
+            <button onclick="UI.sendSupport('booking')"><strong>Booking help</strong><span>Help with an existing booking ID</span></button>
+            <button onclick="UI.sendSupport('vendor')"><strong>Vendor join</strong><span>For local providers who want to join</span></button>
+            <button onclick="UI.sendSupport('issue')"><strong>Support issue</strong><span>Payment, account, OTP, or other issue</span></button>
+          </div>
+        </div>`;
+      overlay.addEventListener("click", e => { if (e.target === overlay) closeSupport(); });
+      document.body.appendChild(overlay);
+    }
+    overlay.dataset.context = JSON.stringify(context || {});
+    overlay.classList.remove("hidden");
+    if (defaultIntent && defaultIntent !== "selector") sendSupport(defaultIntent, context);
+  }
+
+  function closeSupport() {
+    document.getElementById("support-selector-overlay")?.classList.add("hidden");
+  }
+
+  function sendSupport(intent = "service", directContext = null) {
+    const overlay = document.getElementById("support-selector-overlay");
+    const context = directContext || _safeJSON(overlay?.dataset.context) || {};
+    const labels = {
+      service: "I need help choosing or booking a local service.",
+      booking: `I need help with my booking${context.bookingId ? ` ID ${context.bookingId}` : ""}.`,
+      vendor: "I want to join WorkToGo as a local service partner.",
+      issue: "I need support with my WorkToGo account, OTP, payment, or service issue.",
+    };
+    const category = context.category ? ` Category: ${context.category}.` : "";
+    const service = context.service ? ` Service: ${context.service}.` : "";
+    const message = `Hi WorkToGo, ${labels[intent] || labels.service}${category}${service}`;
+    const base = CONFIG.SERVICE_ONLY?.WHATSAPP_URL || "";
+    closeSupport();
+    if (base) {
+      const cleanBase = base.split("?text=")[0];
+      window.open(`${cleanBase}?text=${encodeURIComponent(message)}`, "_blank", "noopener");
+      return;
+    }
+    toast(`Support: ${CONFIG.SERVICE_ONLY?.SUPPORT_PHONE || "WorkToGo"}`, "info", 4500);
+  }
+
+  function _safeJSON(str) {
+    try { return str ? JSON.parse(str) : {}; } catch { return {}; }
+  }
+
   // ── Navbar ─────────────────────────────────────────────────────────────
 
   function buildNav(activePage) {
@@ -173,5 +235,6 @@ const UI = (() => {
     statusBadge, skeleton, emptyState, errorState,
     formatCurrency, formatDate,
     pulseRefreshDot, buildNav,
+    openSupport, closeSupport, sendSupport,
   };
 })();

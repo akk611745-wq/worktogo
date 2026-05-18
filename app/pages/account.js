@@ -136,20 +136,10 @@ window.AccountPage = {
     UI.toast("Profile editing is temporarily manual during service launch", "info");
   },
   contactSupport() {
-    if (CONFIG.SERVICE_ONLY?.WHATSAPP_URL) {
-      window.open(CONFIG.SERVICE_ONLY.WHATSAPP_URL, "_blank", "noopener");
-      return;
-    }
-    UI.toast(`For urgent service help, contact WorkToGo support ${CONFIG.SERVICE_ONLY?.SUPPORT_PHONE || ""} with your booking ID.`, "info", 4500);
+    UI.openSupport("selector");
   },
   joinPartner() {
-    const text = "Hi WorkToGo, I want to join as a local service partner in Haldwani.";
-    const base = CONFIG.SERVICE_ONLY?.WHATSAPP_URL;
-    if (base) {
-      window.open(base + encodeURIComponent(` ${text}`), "_blank", "noopener");
-      return;
-    }
-    UI.toast("Partner onboarding is handled manually during the Haldwani pilot.", "info", 4500);
+    UI.openSupport("vendor");
   },
   openVendorPanel() {
     window.location.href = "/vendor/dashboard.php";

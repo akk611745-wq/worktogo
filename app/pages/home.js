@@ -20,32 +20,46 @@ export async function render(container) {
             <h2 class="user-name">${_esc(user?.name || "Haldwani")}</h2>
           </div>
         </div>
-        <button class="icon-btn support-btn whatsapp-icon-btn" title="WhatsApp support" onclick="HomePage.openWhatsApp('header')">
-          <span>☘</span>
-        </button>
+        <button class="icon-btn support-btn" title="Support" onclick="UI.openSupport('selector')"><span>?</span></button>
       </header>
 
       <div class="home-content">
         <section class="service-hero">
-          <p class="service-hero-kicker">${_esc(_pilotConfig.city)} local services</p>
-          <h1>${_esc(_pilotConfig.hero_title)}</h1>
-          <p>${_esc(_pilotConfig.hero_subtitle)}</p>
+          <p class="service-hero-kicker" id="category-kicker">${_esc(_pilotConfig.city)} local services</p>
+          <h1 id="category-hero-title">${_esc(_pilotConfig.hero_title)}</h1>
+          <p id="category-hero-subtitle">${_esc(_pilotConfig.hero_subtitle)}</p>
           <div class="service-trust-row">
             ${(_pilotConfig.trust_badges || []).slice(0, 3).map(t => `<span>${_esc(t)}</span>`).join("")}
           </div>
           <div class="hero-actions">
-            <button class="btn-whatsapp" onclick="HomePage.scrollToServices()">Explore services</button>
+            <button class="btn-primary hero-primary" onclick="HomePage.scrollToServices()">Explore services</button>
+            <button class="btn-ghost-inline" onclick="HomePage.setCategory('inspection')">Premium inspection</button>
           </div>
+        </section>
+
+        <section class="market-search-section">
+          <label for="service-search">Find local service</label>
+          <div class="market-search-box">
+            <span>⌕</span>
+            <input id="service-search" type="search" placeholder="Search electrician, painting, cleaning…" autocomplete="off" oninput="HomePage.searchServices(this.value)" />
+            <button onclick="HomePage.clearSearch()" aria-label="Clear search">×</button>
+          </div>
+          <p id="search-hint" class="section-note">Search works with selected category for faster discovery.</p>
         </section>
 
         <section class="home-section browse-strip-section">
           <div class="section-header compact">
-            <h3>Popular in ${_esc(_pilotConfig.city)}</h3>
-            <span class="section-note">Browse first, book when ready</span>
+            <h3>Service categories</h3>
+            <button class="see-all" onclick="HomePage.toggleMoreCategories()" id="more-categories-btn">More</button>
           </div>
           <div class="category-chips" id="category-chips">
-            ${_categoryChips().map(c => `<button onclick="HomePage.setCategory('${_esc(c.slug || '')}')"><span>${c.icon}</span>${_esc(c.label)}</button>`).join("")}
+            <button class="active" onclick="HomePage.setCategory('')"><span>🧰</span>All</button>
+            ${_categoryChips().slice(0, 7).map(c => `<button onclick="HomePage.setCategory('${_esc(c.slug || '')}')"><span>${c.icon}</span>${_esc(c.label)}</button>`).join("")}
           </div>
+        </section>
+
+        <section class="category-ecosystem" id="category-ecosystem">
+          ${_categoryEcosystemHTML("")}
         </section>
 
         <section class="local-proof-grid">
@@ -64,17 +78,6 @@ export async function render(container) {
           </div>
         </section>
 
-        <section class="home-section trust-story-section">
-          <div class="trust-story-card">
-            <span class="trust-story-icon">💬</span>
-            <div>
-              <h3>${_esc(_pilotConfig.support_label)}</h3>
-              <p>${_esc(_pilotConfig.fallback_text)}</p>
-            </div>
-            <button class="btn-whatsapp compact" onclick="HomePage.openWhatsApp('trust-card')">Ask</button>
-          </div>
-        </section>
-
         <section class="home-section ${serviceOnly ? "feature-hidden" : ""}" data-feature="shopping-ui">
           <div class="section-header">
             <h3>Products</h3>
@@ -87,7 +90,7 @@ export async function render(container) {
       </div>
 
       ${UI.buildNav("home")}
-      <button class="floating-whatsapp" onclick="HomePage.openWhatsApp('floating')" aria-label="WhatsApp support">💬</button>
+      <button class="floating-support" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })" aria-label="Support">?</button>
     </div>
 
     <!-- Order Modal -->
@@ -122,26 +125,51 @@ export async function render(container) {
   `;
 
   window.HomePage = {
-    openWhatsApp(source = "home") {
-      const url = _pilotConfig.whatsapp_url || CONFIG.SERVICE_ONLY?.WHATSAPP_URL;
-      if (url) {
-        if (source && !['floating','header','booking-support'].includes(source)) {
-          const proceed = window.confirm('Open WhatsApp support for this service question?');
-          if (!proceed) return;
-        }
-        window.open(url + (url.includes("?") ? "%20" : "?text=") + encodeURIComponent(`Source: ${source}`), "_blank", "noopener");
-        return;
-      }
-      UI.toast(`Support: ${_pilotConfig.support_phone || CONFIG.SERVICE_ONLY?.SUPPORT_PHONE || "WorkToGo"}`, "info", 4500);
-    },
     scrollToServices() {
       document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
     },
     setCategory(slug = "") {
       _activeCategory = slug;
-      document.querySelectorAll('#category-chips button').forEach(btn => btn.classList.remove('active'));
+      _searchQuery = document.getElementById("service-search")?.value?.trim() || "";
+      _renderCategoryChips();
+      _renderCategoryEcosystem();
+      _renderHeroForCategory();
       _renderServices({ ok: true, data: { services: _allServices } });
       HomePage.scrollToServices();
+    },
+    async searchServices(query = "") {
+      _searchQuery = query.trim().toLowerCase();
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(async () => {
+        if (_searchQuery.length < 2) {
+          _searchRemoteServices = [];
+          _renderServices({ ok: true, data: { services: _allServices } });
+          return;
+        }
+        const res = await API.search(_searchQuery, "services", 20).catch(() => null);
+        if (res?.ok) {
+          const payload = _unwrapData(res.data);
+          _searchRemoteServices = (payload?.results?.services || []).map(_normalizeSearchService);
+          _renderServices({ ok: true, data: { services: _allServices } });
+        }
+      }, 260);
+      _renderServices({ ok: true, data: { services: _allServices } });
+      const hint = document.getElementById("search-hint");
+      if (hint) hint.textContent = _searchQuery ? `Showing matches for “${_esc(_searchQuery)}”` : "Search works with selected category for faster discovery.";
+    },
+    clearSearch() {
+      const inp = document.getElementById("service-search");
+      if (inp) inp.value = "";
+      _searchQuery = "";
+      _searchRemoteServices = [];
+      _renderServices({ ok: true, data: { services: _allServices } });
+    },
+    toggleMoreCategories() {
+      _showAllCategories = !_showAllCategories;
+      _renderCategoryChips();
+    },
+    activeCategoryLabel() {
+      return _categoryMeta(_activeCategory).label;
     }
   };
 
@@ -258,6 +286,7 @@ window.HomeModals = (() => {
 
   function openBooking(service) {
     _currentService = service;
+    const category = _categoryMeta(service.category_slug || service.category || _activeCategory);
     document.getElementById("booking-modal-title").textContent = _esc(service.name || "Book Service");
     document.getElementById("booking-modal-body").innerHTML = `
       <div class="modal-product-info">
@@ -265,13 +294,14 @@ window.HomeModals = (() => {
         <div>
           <p class="modal-price">${UI.formatCurrency(_servicePrice(service))}</p>
           ${service.description ? `<p class="modal-desc">${_esc(service.description)}</p>` : ""}
-          <p class="service-note">Pay after service. WorkToGo will confirm your request by phone/WhatsApp if needed.</p>
+          <p class="service-note">${_esc(category.label)} request · Pay after service. WorkToGo confirms before visit.</p>
         </div>
       </div>
+      ${_premiumInspectionPanel(category)}
       <div class="trust-panel booking-trust-panel">
         <span>1. Send request</span>
-        <span>2. Team/provider confirms</span>
-        <span>3. Pay after service</span>
+        <span>2. WorkToGo/provider confirms time and scope</span>
+        <span>3. Provider visits · Pay after service unless inspection is selected</span>
       </div>
       <div class="modal-field">
         <label for="booking-date">Preferred Date &amp; Time</label>
@@ -291,7 +321,7 @@ window.HomeModals = (() => {
         <label for="booking-notes">Notes (optional)</label>
         <textarea id="booking-notes" class="modal-textarea" placeholder="Example: fan not working, pipe leakage, call before coming…" rows="2"></textarea>
       </div>
-      <p class="service-note">Need help? Use Help tab or WhatsApp support after sending request.</p>
+      <p class="service-note">After submission you can track status in Bookings. Keep your phone available for confirmation.</p>
     `;
     document.getElementById("booking-modal").classList.remove("hidden");
   }
@@ -299,6 +329,7 @@ window.HomeModals = (() => {
   async function confirmBooking() {
     if (!AUTH.isLoggedIn()) {
       UI.toast("Login with mobile OTP to request this service", "info");
+      _savePendingBookingIntent(_currentService);
       closeBooking();
       ROUTER.go("login");
       return;
@@ -348,7 +379,9 @@ window.HomeModals = (() => {
   }
 
   function closeOnOverlay(e) {
-    if (e.target === e.currentTarget) close();
+    if (e.target !== e.currentTarget) return;
+    if (e.currentTarget?.id === "booking-modal") closeBooking();
+    else close();
   }
 
   function _isoNow() {
@@ -363,6 +396,7 @@ window.HomeModals = (() => {
 async function _loadServices() {
   const res = await API.getServices();
   _renderServices(res);
+  _resumePendingBooking();
 }
 
 async function _loadProducts() {
@@ -390,27 +424,30 @@ function _renderServices(res) {
     _renderCategoryChips();
   }
   if (list.length) _allServices = list;
-  if (_activeCategory) list = list.filter(s => (s.category_slug || s.category || "") === _activeCategory);
+  if (_searchQuery && _searchRemoteServices.length) list = _searchRemoteServices;
+    if (_activeCategory) list = list.filter(s => _matchesCategory(s, _activeCategory));
+    if (_searchQuery) list = list.filter(s => _searchText(s).includes(_searchQuery));
 
-  if (!list.length) {
-    el.classList.remove("horizontal-scroll");
-    el.classList.add("fallback-services-grid");
-    el.innerHTML = _fallbackServices().map(s => `
-      <div class="service-card card fallback-service-card" onclick="HomePage.openWhatsApp('${_esc(s.slug)}')">
+    if (!list.length) {
+      el.classList.remove("horizontal-scroll");
+      el.classList.add("fallback-services-grid");
+      const fallbackList = _activeCategory ? _categoryFallbackServices(_activeCategory) : _fallbackServices();
+      el.innerHTML = fallbackList.map(s => `
+      <div class="service-card card fallback-service-card" onclick="UI.openSupport('selector', { category: ${_jsString(_categoryMeta(_activeCategory || s.slug).label)}, service: ${_jsString(s.name)} })">
         <div class="card-icon">${s.icon}</div>
         <h4>${_esc(s.name)}</h4>
         <p class="card-meta">${_esc(s.example)}</p>
         <p class="card-price">${_esc(s.price)}</p>
-        <p class="local-service-copy">${_esc(_pilotConfig.manual_fallback_label)}</p>
-        <span class="card-badge whatsapp-badge">Ask support</span>
+        <p class="local-service-copy">${_esc(_pilotConfig.city)} request assistance</p>
+        <span class="card-badge">Help</span>
       </div>
     `).join("") + `
       <div class="fallback-help-card">
-        <h3>${_esc(_pilotConfig.fallback_title)}</h3>
-        <p>${_esc(_pilotConfig.fallback_text)}</p>
-        <button class="btn-whatsapp" onclick="HomePage.openWhatsApp('empty-state')">Ask WorkToGo</button>
+        <h3>${_esc(_activeCategory ? `${_categoryMeta(_activeCategory).label} help` : _pilotConfig.fallback_title)}</h3>
+        <p>${_esc(_searchQuery ? "No exact match found yet. WorkToGo can still help route your request." : _pilotConfig.fallback_text)}</p>
+        <button class="btn-ghost-inline" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })">Get guided help</button>
       </div>`;
-    return;
+      return;
   }
   el.classList.add("horizontal-scroll");
   el.classList.remove("fallback-services-grid");
@@ -438,8 +475,27 @@ async function _loadPilotConfig() {
 function _renderCategoryChips() {
   const el = document.getElementById("category-chips");
   if (!el) return;
+  const categories = _categoryChips();
+  const visible = _showAllCategories ? categories : categories.slice(0, 7);
+  const moreBtn = document.getElementById("more-categories-btn");
+  if (moreBtn) moreBtn.textContent = _showAllCategories ? "Less" : "More";
   el.innerHTML = `<button class="${_activeCategory ? '' : 'active'}" onclick="HomePage.setCategory('')"><span>🧰</span>All</button>` +
-    _categoryChips().map(c => `<button class="${_activeCategory === c.slug ? 'active' : ''}" onclick="HomePage.setCategory('${_esc(c.slug || '')}')"><span>${c.icon}</span>${_esc(c.label)}</button>`).join("");
+    visible.map(c => `<button class="${_activeCategory === c.slug ? 'active' : ''}" onclick="HomePage.setCategory('${_esc(c.slug || '')}')"><span>${c.icon}</span>${_esc(c.label)}</button>`).join("");
+}
+
+function _renderCategoryEcosystem() {
+  const el = document.getElementById("category-ecosystem");
+  if (el) el.innerHTML = _categoryEcosystemHTML(_activeCategory);
+}
+
+function _renderHeroForCategory() {
+  const meta = _categoryMeta(_activeCategory);
+  const title = document.getElementById("category-hero-title");
+  const subtitle = document.getElementById("category-hero-subtitle");
+  const kicker = document.getElementById("category-kicker");
+  if (title) title.textContent = meta.hero || _pilotConfig.hero_title;
+  if (subtitle) subtitle.textContent = meta.subtitle || _pilotConfig.hero_subtitle;
+  if (kicker) kicker.textContent = _activeCategory ? `${_pilotConfig.city} ${meta.label} ecosystem` : `${_pilotConfig.city} local services`;
 }
 
 function _renderProducts(res) {
@@ -505,16 +561,121 @@ function _servicePrice(service) {
 }
 
 function _categoryChips() {
-  if (_serviceCategories.length) return _serviceCategories;
-  return [
+  const dynamic = _serviceCategories.length ? _serviceCategories : [];
+  const base = [
     { slug: "electrician", icon: "⚡", label: "Electrician" },
     { slug: "plumber", icon: "🚰", label: "Plumber" },
+    { slug: "painting", icon: "🎨", label: "Painting" },
+    { slug: "waterproofing", icon: "💧", label: "Waterproofing" },
     { slug: "ac-repair", icon: "❄️", label: "AC repair" },
     { slug: "cleaning", icon: "🧹", label: "Cleaning" },
     { slug: "appliance", icon: "🔧", label: "Appliance" },
     { slug: "tutor", icon: "📚", label: "Tutor" },
+    { slug: "inspection", icon: "🛡️", label: "Inspection" },
   ];
+  return _mergeCategories(dynamic, base);
 }
+
+function _mergeCategories(dynamic, base) {
+  const map = new Map();
+  [...dynamic, ...base].forEach(c => {
+    const slug = _slug(c.slug || c.label || c.name);
+    if (!slug || map.has(slug)) return;
+    const meta = CATEGORY_META[slug] || {};
+    map.set(slug, { slug, icon: c.icon || meta.icon || "🔧", label: c.label || c.name || meta.label || slug });
+  });
+  return [...map.values()];
+}
+
+function _categoryMeta(slug = "") {
+  const key = _slug(slug);
+  if (!key) return CATEGORY_META.all;
+  return CATEGORY_META[key] || { slug: key, icon: "🔧", label: _title(key), hero: `${_title(key)} services in ${_pilotConfig.city}`, subtitle: "Choose a local service and WorkToGo will confirm before visit.", examples: ["Inspection", "Repair", "Installation"], trust: "Verified local support", vendors: "Local provider assignment", inspection: true };
+}
+
+function _categoryEcosystemHTML(slug = "") {
+  const meta = _categoryMeta(slug);
+  return `
+    <div class="ecosystem-card">
+      <div class="ecosystem-banner">
+        <span class="ecosystem-icon">${meta.icon}</span>
+        <div>
+          <p class="service-hero-kicker">${_esc(meta.label)} marketplace</p>
+          <h3>${_esc(meta.ecosystemTitle || `${meta.label} in ${_pilotConfig.city}`)}</h3>
+          <p>${_esc(meta.trust || "Verified local providers · pay after service · human confirmation")}</p>
+        </div>
+      </div>
+      <div class="ecosystem-grid">
+        ${(meta.examples || []).slice(0, 4).map(x => `<div><strong>${_esc(x)}</strong><span>Local availability</span></div>`).join("")}
+      </div>
+      <div class="ecosystem-proof-row">
+        <span>${_esc(meta.vendors || "Provider assigned after confirmation")}</span>
+        <span>${meta.inspection ? "Premium inspection available" : "Simple request flow"}</span>
+      </div>
+    </div>`;
+}
+
+function _matchesCategory(service, slug) {
+  const wanted = _slug(slug);
+  const values = [service.category_slug, service.category, service.category_name, service.name].map(_slug);
+  return values.some(v => v === wanted || v.includes(wanted) || wanted.includes(v));
+}
+
+function _searchText(service) {
+  return [service.name, service.description, service.category, service.category_name, service.short_desc].filter(Boolean).join(" ").toLowerCase();
+}
+
+function _normalizeSearchService(s) {
+  return {
+    ...s,
+    id: s.id,
+    name: s.name || "Service",
+    description: s.short_desc || s.description || "",
+    base_price: s.base_price || s.price || 0,
+    category_name: s.category_name || s.result_type || "Service",
+    category_slug: s.category_slug || _slug(s.category_name || s.result_type || ""),
+    icon: s.icon || _categoryMeta(s.category_slug || s.category_name).icon,
+  };
+}
+
+function _premiumInspectionPanel(category) {
+  if (!category.inspection) return "";
+  return `<div class="premium-inspection-panel">
+    <div><strong>Premium inspection available</strong><p>Best for ${_esc(category.label.toLowerCase())} jobs where scope, estimate, or site condition must be checked first.</p></div>
+    <span>From ₹99</span>
+  </div>`;
+}
+
+function _savePendingBookingIntent(service) {
+  try { sessionStorage.setItem("wtg_pending_booking", JSON.stringify({ service, category: _activeCategory, ts: Date.now() })); } catch {}
+}
+
+function _resumePendingBooking() {
+  if (!AUTH.isLoggedIn()) return;
+  try {
+    const raw = sessionStorage.getItem("wtg_pending_booking");
+    if (!raw) return;
+    const pending = JSON.parse(raw);
+    sessionStorage.removeItem("wtg_pending_booking");
+    if (!pending?.service || Date.now() - Number(pending.ts || 0) > 30 * 60 * 1000) return;
+    if (pending.category) {
+      _activeCategory = pending.category;
+      _renderCategoryChips();
+      _renderCategoryEcosystem();
+      _renderHeroForCategory();
+    }
+    setTimeout(() => HomeModals.openBooking(pending.service), 350);
+  } catch {}
+}
+
+function _categoryFallbackServices(slug) {
+  const meta = _categoryMeta(slug);
+  return (meta.examples || []).slice(0, 4).map((name, i) => ({ slug, icon: meta.icon, name, example: `${meta.label} local request`, price: i === 0 && meta.inspection ? "Inspection from ₹99" : "Request quote" }));
+}
+
+function _slug(v = "") { return String(v || "").toLowerCase().trim().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
+function _title(v = "") { return String(v || "service").replace(/-/g, " ").replace(/\b\w/g, m => m.toUpperCase()); }
+function _jsString(v = "") { return JSON.stringify(String(v || "")); }
 
 function _fallbackServices() {
   return [
@@ -534,6 +695,10 @@ function _jsonAttr(obj) {
 
 let _pilotLoaded = false;
 let _activeCategory = "";
+let _searchQuery = "";
+let _searchTimer = null;
+let _searchRemoteServices = [];
+let _showAllCategories = false;
 let _allServices = [];
 let _serviceCategories = [];
 let _pilotConfig = {
@@ -548,4 +713,17 @@ let _pilotConfig = {
   fallback_title: "Need another service?",
   fallback_text: "Tell us on WhatsApp. We are manually coordinating pilot requests.",
   manual_fallback_label: "Manual assistance",
+};
+
+const CATEGORY_META = {
+  all: { slug: "", icon: "🧰", label: "All services", hero: "Book trusted local services in Haldwani", subtitle: "Search, choose a category, and request verified local help. Login only when you book.", ecosystemTitle: "Local service marketplace", examples: ["Electrician", "Plumber", "Painting", "Cleaning"], trust: "Local coordination · pay after service · human confirmation", vendors: "Verified local provider network", inspection: true },
+  electrician: { icon: "⚡", label: "Electrician", hero: "Electrician services in Haldwani", subtitle: "Fan, switch, MCB, wiring, installation and urgent electrical help with confirmation before visit.", examples: ["Fan repair", "Switch board", "MCB issue", "Light installation"], trust: "Safety-first local electricians · pay after service", vendors: "Electrician provider assignment", inspection: false },
+  plumber: { icon: "🚰", label: "Plumbing", hero: "Plumbing services near you", subtitle: "Leakage, taps, fittings, bathroom and kitchen plumbing coordinated locally.", examples: ["Leakage repair", "Tap fitting", "Pipe blockage", "Bathroom fitting"], trust: "Local plumbers · clear visit confirmation", vendors: "Plumber provider assignment", inspection: false },
+  painting: { icon: "🎨", label: "Painting", hero: "Painting ecosystem for homes and shops", subtitle: "Room painting, wall repair, waterproof coating and premium inspection for accurate estimates.", examples: ["Room painting", "Wall putty", "Exterior painting", "Color consultation"], trust: "Site inspection option · local painters · estimate before work", vendors: "Painting teams and local contractors", inspection: true },
+  waterproofing: { icon: "💧", label: "Waterproofing", hero: "Waterproofing inspection and repair", subtitle: "Roof, wall seepage, bathroom leakage and dampness checks with premium inspection option.", examples: ["Roof seepage", "Wall dampness", "Bathroom leakage", "Crack sealing"], trust: "Inspection-led scope · local repair teams", vendors: "Waterproofing specialists", inspection: true },
+  cleaning: { icon: "🧹", label: "Cleaning", hero: "Cleaning services in Haldwani", subtitle: "Home, shop, kitchen and deep cleaning requests with local coordination.", examples: ["Home cleaning", "Kitchen cleaning", "Shop cleaning", "Move-in cleaning"], trust: "Clear scope confirmation · pay after service", vendors: "Cleaning partners", inspection: false },
+  "ac-repair": { icon: "❄️", label: "AC repair", hero: "AC service and repair", subtitle: "AC checkup, service, cooling issue and installation support with verified local help.", examples: ["AC service", "Cooling issue", "Gas check", "Installation"], trust: "Technician confirmation · pay after service", vendors: "AC technicians", inspection: true },
+  appliance: { icon: "🔧", label: "Appliance", hero: "Appliance repair support", subtitle: "Fridge, washing machine, RO and common appliance checks coordinated locally.", examples: ["RO service", "Washer issue", "Fridge check", "Geyser repair"], trust: "Diagnosis-first support · local technicians", vendors: "Appliance technicians", inspection: true },
+  tutor: { icon: "📚", label: "Tutor", hero: "Local tutor requests", subtitle: "Tell WorkToGo your class, subject and area. Team will help connect locally.", examples: ["Math tutor", "Science tutor", "Home tuition", "Spoken English"], trust: "Manual matching during pilot", vendors: "Local tutor coordination", inspection: false },
+  inspection: { icon: "🛡️", label: "Inspection", hero: "Premium inspection before big work", subtitle: "For painting, waterproofing, AC, appliance and complex jobs where a site check builds trust.", examples: ["Site visit", "Problem diagnosis", "Estimate support", "Scope clarity"], trust: "Clear visit · clear scope · better estimate", vendors: "Specialist inspection coordination", inspection: true },
 };

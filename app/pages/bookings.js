@@ -121,7 +121,7 @@ window.BookingsPage = (() => {
             <span>Support available with this booking ID</span>
           </div>
           <div class="item-row muted small">
-            <button class="btn-text-inline" onclick="BookingsPage.openSupport('${_esc(String(b.id || ""))}')">WhatsApp support</button>
+            <button class="btn-text-inline" onclick="BookingsPage.openSupport('${_esc(String(b.id || ""))}')">Get booking help</button>
           </div>
         </div>
       </div>
@@ -136,12 +136,7 @@ window.BookingsPage = (() => {
   }
 
   function openSupport(id) {
-    const base = CONFIG.SERVICE_ONLY?.WHATSAPP_URL || "";
-    if (base) {
-      window.open(base + encodeURIComponent(` Booking ID: ${id}`), "_blank", "noopener");
-      return;
-    }
-    UI.toast("Contact WorkToGo support with your booking ID.", "info");
+    UI.openSupport("selector", { bookingId: id });
   }
 
   function _esc(str) {
