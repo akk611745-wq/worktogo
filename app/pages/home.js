@@ -25,7 +25,7 @@ export async function render(container) {
         <section class="market-search-section">
           <div class="market-search-box">
             <span>⌕</span>
-            <input id="service-search" type="search" placeholder="Search painter, leakage, fan, CCTV…" autocomplete="off" oninput="HomePage.searchServices(this.value)" />
+            <input id="service-search" type="search" placeholder="Search painter, leakage, fan, CCTV…" autocomplete="off" onfocus="HomePage.openSearch()" oninput="HomePage.searchServices(this.value)" />
             <button onclick="HomePage.clearSearch()" aria-label="Clear search">×</button>
           </div>
           <div id="search-results-panel" class="instant-search-panel hidden"></div>
@@ -144,18 +144,39 @@ export async function render(container) {
     },
     setCategory(slug = "") {
       _activeCategory = slug;
-      _searchQuery = document.getElementById("service-search")?.value?.trim() || "";
+      _activeChipFilter = "";
+      _searchQuery = "";
+      _searchRemoteServices = [];
+      const inp = document.getElementById("service-search");
+      if (inp) inp.value = "";
+      _renderInstantSearch();
       _renderCategoryChips();
       _renderCategoryEcosystem();
       _renderVisualProof();
       _renderHeroForCategory();
       _renderServices({ ok: true, data: { services: _allServices } });
     },
+    filterEcosystem(term = "") {
+      _activeChipFilter = String(term || "").trim().toLowerCase();
+      _searchQuery = "";
+      _searchRemoteServices = [];
+      const inp = document.getElementById("service-search");
+      if (inp) inp.value = "";
+      _renderInstantSearch();
+      _renderCategoryEcosystem();
+      _renderVisualProof();
+      _renderServices({ ok: true, data: { services: _allServices } });
+      document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    },
+    openSearch() {
+      _searchActive = true;
+      _renderInstantSearch();
+    },
     async searchServices(query = "") {
+      _searchActive = true;
       _searchQuery = query.trim().toLowerCase();
       const inp = document.getElementById("service-search");
       if (inp && inp.value !== query) inp.value = query;
-      _syncCategoryFromSearch();
       clearTimeout(_searchTimer);
       _searchTimer = setTimeout(async () => {
         if (_searchQuery.length < 2) {
@@ -178,6 +199,7 @@ export async function render(container) {
       if (inp) inp.value = "";
       _searchQuery = "";
       _searchRemoteServices = [];
+      _searchActive = false;
       _renderInstantSearch();
       _renderServices({ ok: true, data: { services: _allServices } });
     },
@@ -187,6 +209,15 @@ export async function render(container) {
     },
     activeCategoryLabel() {
       return _categoryMeta(_activeCategory).label;
+    },
+    bookCategoryCta(slug = "") {
+      const meta = _categoryMeta(slug || _activeCategory);
+      const service = _allServices.find(s => _matchesCategory(s, meta.slug));
+      if (service?.id) {
+        HomeModals.openBooking({ ...service, category_slug: service.category_slug || meta.slug, icon: service.icon || meta.icon });
+        return;
+      }
+      UI.openSupport('selector', { category: meta.label, service: meta.examples?.[0] || meta.label });
     }
   };
 
@@ -303,6 +334,7 @@ window.HomeModals = (() => {
 
   function openBooking(service) {
     _currentService = service;
+    const user = AUTH.getUser?.() || {};
     const category = _categoryMeta(service.category_slug || service.category || _activeCategory);
     document.getElementById("booking-modal-title").textContent = _esc(service.name || "Book Service");
     document.getElementById("booking-modal-body").innerHTML = `
@@ -315,10 +347,23 @@ window.HomeModals = (() => {
         </div>
       </div>
       ${_premiumInspectionPanel(category)}
+      <div class="booking-context-strip">
+        <span>${category.icon}</span>
+        <strong>${_esc(category.label)} lead</strong>
+        <small>Auto-routed to the right WorkToGo pipeline</small>
+      </div>
       <div class="trust-panel booking-trust-panel">
         <span>1. Send request</span>
         <span>2. WorkToGo/provider confirms time and scope</span>
         <span>3. Provider visits · Pay after service unless inspection is selected</span>
+      </div>
+      <div class="modal-field">
+        <label for="booking-name">Name</label>
+        <input type="text" id="booking-name" class="modal-input" placeholder="Your name" autocomplete="name" value="${_esc(user?.name || "")}" />
+      </div>
+      <div class="modal-field">
+        <label for="booking-mobile">Mobile</label>
+        <input type="tel" id="booking-mobile" class="modal-input" placeholder="Mobile number for confirmation" autocomplete="tel" value="${_esc(user?.phone || user?.mobile || "")}" />
       </div>
       <div class="modal-field">
         <label for="booking-date">Preferred Date &amp; Time</label>
@@ -336,7 +381,12 @@ window.HomeModals = (() => {
       </div>
       <div class="modal-field">
         <label for="booking-notes">Notes (optional)</label>
-        <textarea id="booking-notes" class="modal-textarea" placeholder="Example: fan not working, pipe leakage, call before coming…" rows="2"></textarea>
+        <textarea id="booking-notes" class="modal-textarea" placeholder="Example: ${_esc(category.examples?.[0] || "problem details")}, call before coming…" rows="2"></textarea>
+      </div>
+      <div class="modal-field upload-readiness-field">
+        <label for="booking-proof-image">Problem photo (optional-ready)</label>
+        <input type="file" id="booking-proof-image" class="modal-input" accept="image/*" />
+        <small>Photo upload is prepared for field proof; current request will still submit without uploading.</small>
       </div>
       <p class="service-note">After submission you can track status in Bookings. Keep your phone available for confirmation.</p>
     `;
@@ -353,15 +403,20 @@ window.HomeModals = (() => {
     }
     if (!_currentService) return;
     const dateVal = document.getElementById("booking-date")?.value;
+    const name    = document.getElementById("booking-name")?.value?.trim() || "";
+    const mobile  = document.getElementById("booking-mobile")?.value?.trim() || "";
     const area    = document.getElementById("booking-area")?.value?.trim() || "";
     const address = document.getElementById("booking-address")?.value?.trim() || "";
     const notes   = document.getElementById("booking-notes")?.value?.trim() || "";
+    const category = _categoryMeta(_currentService.category_slug || _currentService.category || _activeCategory);
 
     if (!dateVal) { UI.toast("Please choose preferred date and time", "error"); return; }
     if (Number.isNaN(new Date(dateVal).getTime()) || new Date(dateVal).getTime() <= Date.now()) {
       UI.toast("Please choose a future date and time", "error");
       return;
     }
+    if (!name) { UI.toast("Please enter your name", "error"); return; }
+    if (!mobile) { UI.toast("Please enter mobile number", "error"); return; }
     if (!area) { UI.toast("Please enter area or landmark", "error"); return; }
     if (!address) { UI.toast("Please enter full address", "error"); return; }
 
@@ -371,7 +426,11 @@ window.HomeModals = (() => {
     const res = await API.createBooking({
       service_id: _currentService.id,
       ...(dateVal ? { scheduled_at: new Date(dateVal).toISOString() } : {}),
-      notes: [`Area/Landmark: ${area}`, `Address: ${address}`, notes ? `Notes: ${notes}` : ""].filter(Boolean).join("\n"),
+      category_slug: category.slug || _activeCategory,
+      category_label: category.label,
+      customer_name: name,
+      customer_mobile: mobile,
+      notes: [`Category: ${category.label}`, `Customer: ${name}`, `Mobile: ${mobile}`, `Area/Landmark: ${area}`, `Address: ${address}`, _activeChipFilter ? `Selected issue: ${_activeChipFilter}` : "", notes ? `Notes: ${notes}` : ""].filter(Boolean).join("\n"),
     });
 
     if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
@@ -457,6 +516,7 @@ function _renderServices(res) {
   if (list.length) _allServices = list;
   if (_searchQuery && _searchRemoteServices.length) list = _searchRemoteServices;
     if (_activeCategory) list = list.filter(s => _matchesCategory(s, _activeCategory));
+    if (_activeChipFilter) list = list.filter(s => _searchText(s).includes(_activeChipFilter) || _categoryMeta(_activeCategory).examples?.join(" ").toLowerCase().includes(_activeChipFilter) || _categoryMeta(_activeCategory).tags?.join(" ").toLowerCase().includes(_activeChipFilter));
     if (_searchQuery) list = list.filter(s => _searchText(s).includes(_searchQuery));
 
     if (!list.length) {
@@ -467,7 +527,7 @@ function _renderServices(res) {
     `).join("") + `
       <div class="fallback-help-card">
         <h3>${_esc(_activeCategory ? `${_categoryMeta(_activeCategory).label} help` : _pilotConfig.fallback_title)}</h3>
-        <p>${_esc(_searchQuery ? "No exact match found yet. WorkToGo can still help route your request." : _pilotConfig.fallback_text)}</p>
+        <p>${_esc(_searchQuery || _activeChipFilter ? "No exact match found yet. WorkToGo can still route this category request." : _pilotConfig.fallback_text)}</p>
         <button class="btn-ghost-inline" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })">Get guided help</button>
       </div>`;
       return;
@@ -610,13 +670,18 @@ function _mergeCategories(dynamic, base) {
 function _categoryMeta(slug = "") {
   const key = _slug(slug);
   if (!key) return CATEGORY_META.all;
-  return CATEGORY_META[key] || { slug: key, icon: "🔧", label: _title(key), hero: `${_title(key)} services in ${_pilotConfig.city}`, subtitle: "Choose a local service and WorkToGo will confirm before visit.", examples: ["Inspection", "Repair", "Installation"], trust: "Verified local support", vendors: "Local provider assignment", inspection: true };
+  const meta = CATEGORY_META[key] || { icon: "🔧", label: _title(key), hero: `${_title(key)} services in ${_pilotConfig.city}`, subtitle: "Choose a local service and WorkToGo will confirm before visit.", examples: ["Inspection", "Repair", "Installation"], trust: "Verified local support", vendors: "Local provider assignment", inspection: true };
+  return { slug: key, ...meta };
 }
 
 function _categoryEcosystemHTML(slug = "") {
   const meta = _categoryMeta(slug);
   const visuals = meta.visuals || CATEGORY_META.all.visuals || [];
   const tags = meta.tags || meta.examples || [];
+  const dealers = meta.dealers || CATEGORY_META.all.dealers || [];
+  const materials = meta.materials || CATEGORY_META.all.materials || [];
+  const brands = meta.brands || CATEGORY_META.all.brands || [];
+  const locality = meta.locality || CATEGORY_META.all.locality || [];
   return `
     <div class="ecosystem-card ecosystem-world">
       <div class="ecosystem-banner">
@@ -628,11 +693,18 @@ function _categoryEcosystemHTML(slug = "") {
         </div>
       </div>
       <div class="ecosystem-visual-rail">
-        ${visuals.slice(0, 3).map(v => `<button onclick="HomePage.searchServices('${_esc(v.query || v.label)}')"><span>${_esc(v.emoji || meta.icon)}</span><strong>${_esc(v.label)}</strong><small>${_esc(v.note || "nearby")}</small></button>`).join("")}
+        ${visuals.slice(0, 3).map(v => `<button class="${_activeChipFilter === String(v.query || v.label).toLowerCase() ? "active" : ""}" onclick="HomePage.filterEcosystem('${_esc(v.query || v.label)}')"><span>${_esc(v.emoji || meta.icon)}</span><strong>${_esc(v.label)}</strong><small>${_esc(v.note || "nearby")}</small></button>`).join("")}
       </div>
       <div class="ecosystem-tag-row">
-        ${tags.slice(0, 6).map(x => `<button onclick="HomePage.searchServices('${_esc(x)}')">${_esc(x)}</button>`).join("")}
+        ${tags.slice(0, 8).map(x => `<button class="${_activeChipFilter === String(x).toLowerCase() ? "active" : ""}" onclick="HomePage.filterEcosystem('${_esc(x)}')">${_esc(x)}</button>`).join("")}
       </div>
+      <div class="ecosystem-local-grid">
+        <div><strong>Nearby dealers</strong><span>${_esc(dealers.join(" · "))}</span></div>
+        <div><strong>Materials</strong><span>${_esc(materials.join(" · "))}</span></div>
+        <div><strong>Brands ready</strong><span>${_esc(brands.join(" · "))}</span></div>
+        <div><strong>Locality active</strong><span>${_esc(locality.join(" · "))}</span></div>
+      </div>
+      <button class="ecosystem-inspection-cta" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}')">${meta.inspection ? "Book inspection" : "Book now"} · ${_esc(meta.label)}</button>
     </div>`;
 }
 
@@ -653,6 +725,7 @@ function _visualProofHTML(slug = "") {
             <span>Before</span>
             <span>After</span>
           </div>
+          <em>${_esc(meta.label)} proof</em>
           <strong>${_esc(item.title)}</strong>
           <p>${_esc(item.note)}</p>
         </div>
@@ -717,18 +790,6 @@ function _renderInstantSearch() {
     </div>`;
 }
 
-function _syncCategoryFromSearch() {
-  if (_searchQuery.length < 2) return;
-  const inferred = _inferSearchMeta(_searchQuery);
-  const inferredSlug = inferred.slug || "";
-  if (!inferredSlug || inferredSlug === _activeCategory) return;
-  _activeCategory = inferredSlug;
-  _renderCategoryChips();
-  _renderCategoryEcosystem();
-  _renderVisualProof();
-  _renderHeroForCategory();
-}
-
 function _inferSearchMeta(query) {
   const q = _slug(query);
   if (q.includes("paint") || q.includes("wall")) return _categoryMeta("painting");
@@ -742,8 +803,11 @@ function _inferSearchMeta(query) {
 
 function _matchesCategory(service, slug) {
   const wanted = _slug(slug);
-  const values = [service.category_slug, service.category, service.category_name, service.name].map(_slug).filter(Boolean);
-  return values.some(v => v === wanted || v.includes(wanted) || wanted.includes(v));
+  const meta = _categoryMeta(wanted);
+  const aliases = (meta.aliases || []).map(_slug);
+  const values = [service.category_slug, service.category, service.category_name, service.name, service.description, service.short_desc, service.example].map(_slug).filter(Boolean);
+  return values.some(v => v === wanted || v.includes(wanted) || wanted.includes(v))
+    || aliases.some(a => values.some(v => v === a || v.includes(a) || a.includes(v)));
 }
 
 function _searchText(service) {
@@ -830,6 +894,8 @@ function _jsonAttr(obj) {
 let _pilotLoaded = false;
 let _activeCategory = "";
 let _searchQuery = "";
+let _searchActive = false;
+let _activeChipFilter = "";
 let _searchTimer = null;
 let _searchRemoteServices = [];
 let _showAllCategories = false;
@@ -850,11 +916,11 @@ let _pilotConfig = {
 };
 
 const CATEGORY_META = {
-  all: { slug: "", icon: "🧰", label: "All services", hero: "Trusted Haldwani Services", subtitle: "Nearby verified workers for repairs, painting, waterproofing, CCTV and home jobs.", ecosystemTitle: "Local workers available now", examples: ["Electrician", "Plumber", "Painting", "CCTV"], tags: ["fan", "leakage", "painter", "CCTV", "carpenter", "waterproofing"], visuals: [{ emoji: "⚡", label: "Fan fixed", note: "from ₹199" }, { emoji: "🎨", label: "Room painted", note: "estimate visit" }, { emoji: "💧", label: "Leak stopped", note: "inspection" }], beforeAfter: [{ title: "Damp wall restored", note: "Seepage inspection, repair and repaint flow" }, { title: "Old room refresh", note: "Putty, primer and clean finish by local painters" }], trust: "Local coordination · pay after service · human confirmation", vendors: "Verified local provider network", inspection: true },
-  electrician: { icon: "⚡", label: "Electrical", hero: "Electrical workers near you", subtitle: "Fan, switch, MCB, wiring and light installation with quick local confirmation.", examples: ["Fan repair", "Switch board", "MCB issue", "Light installation"], tags: ["fan", "switch", "MCB", "wiring", "geyser", "inverter"], visuals: [{ emoji: "🌀", label: "Fan repair", note: "from ₹199" }, { emoji: "🔌", label: "Switch board", note: "same day" }, { emoji: "💡", label: "Lights", note: "install" }], beforeAfter: [{ title: "Dead fan running", note: "Local electrician visit with quick diagnosis" }, { title: "Unsafe board cleaned", note: "Switch replacement and wiring check" }], trust: "Safety-first local electricians · pay after service", vendors: "Electrician provider assignment", inspection: false },
-  plumber: { icon: "🚰", label: "Plumbing", hero: "Plumbers for leakage and fittings", subtitle: "Tap, pipe, bathroom and kitchen plumbing help from nearby workers.", examples: ["Leakage repair", "Tap fitting", "Pipe blockage", "Bathroom fitting"], tags: ["tap leak", "pipe", "flush", "basin", "bathroom", "motor"], visuals: [{ emoji: "🚿", label: "Tap leak", note: "from ₹199" }, { emoji: "🧰", label: "Pipe fix", note: "nearby" }, { emoji: "🚽", label: "Bathroom", note: "fitting" }], beforeAfter: [{ title: "Leakage stopped", note: "Tap and joint repair by local plumber" }, { title: "Bathroom fitting done", note: "Clear scope confirmation before visit" }], trust: "Local plumbers · clear visit confirmation", vendors: "Plumber provider assignment", inspection: false },
-  painting: { icon: "🎨", label: "Painting", hero: "Painting ecosystem for homes and shops", subtitle: "Painters, wall textures, putty, before/after work and expert visit for estimates.", examples: ["Room painting", "Wall putty", "Exterior painting", "Color consultation"], tags: ["texture", "putty", "primer", "room paint", "exterior", "rental repaint"], visuals: [{ emoji: "🧱", label: "Wall texture", note: "trending" }, { emoji: "🏠", label: "Room paint", note: "quote" }, { emoji: "🪣", label: "Putty repair", note: "before/after" }], beforeAfter: [{ title: "Bedroom repaint", note: "Old patches to clean warm finish" }, { title: "Texture wall upgrade", note: "Accent wall with painter estimate" }, { title: "Exterior refresh", note: "Weather coat and crack prep" }], trust: "Site inspection option · local painters · estimate before work", vendors: "Painting teams and local contractors", inspection: true },
-  waterproofing: { icon: "💧", label: "Waterproofing", hero: "Leakage and seepage protection", subtitle: "Terrace, wall seepage, bathroom leakage and monsoon protection with inspection offers.", examples: ["Roof seepage", "Wall dampness", "Bathroom leakage", "Crack sealing"], tags: ["terrace", "seepage", "monsoon", "bathroom leak", "damp wall", "crack seal"], visuals: [{ emoji: "🌧️", label: "Monsoon cover", note: "inspection" }, { emoji: "🏚️", label: "Damp wall", note: "diagnosis" }, { emoji: "🧪", label: "Coating", note: "terrace" }], beforeAfter: [{ title: "Terrace leakage sealed", note: "Inspection-led waterproof coating" }, { title: "Seepage wall treated", note: "Dampness source checked before repair" }, { title: "Bathroom leak fixed", note: "Joint sealing and slope check" }], trust: "Inspection-led scope · local repair teams", vendors: "Waterproofing specialists", inspection: true },
+  all: { slug: "", icon: "🧰", label: "All services", hero: "Trusted Haldwani Services", subtitle: "Nearby verified workers for repairs, painting, waterproofing, CCTV and home jobs.", ecosystemTitle: "Local workers available now", examples: ["Electrician", "Plumber", "Painting", "CCTV"], tags: ["fan", "leakage", "painter", "CCTV", "carpenter", "waterproofing"], visuals: [{ emoji: "⚡", label: "Fan fixed", note: "from ₹199" }, { emoji: "🎨", label: "Room painted", note: "estimate visit" }, { emoji: "💧", label: "Leak stopped", note: "inspection" }], beforeAfter: [{ title: "Damp wall restored", note: "Seepage inspection, repair and repaint flow" }, { title: "Old room refresh", note: "Putty, primer and clean finish by local painters" }], dealers: ["Mukhani", "Kusumkhera", "Kaladhungi Road"], materials: ["repair parts", "paint", "pipes"], brands: ["Asian", "Dr Fixit", "Havells"], locality: ["Mukhani", "Dahariya", "Lalpur Nayak"], trust: "Local coordination · pay after service · human confirmation", vendors: "Verified local provider network", inspection: true },
+  electrician: { icon: "⚡", label: "Electrical", aliases: ["electrical", "electrician", "wiring"], hero: "Electrical workers near you", subtitle: "Fan, switch, MCB, wiring and light installation with quick local confirmation.", examples: ["Fan repair", "Switch board", "MCB issue", "Light installation"], tags: ["fan", "switch", "MCB", "wiring", "geyser", "inverter"], visuals: [{ emoji: "🌀", label: "Fan repair", note: "from ₹199" }, { emoji: "🔌", label: "Switch board", note: "same day" }, { emoji: "💡", label: "Lights", note: "install" }], beforeAfter: [{ title: "Dead fan running", note: "Local electrician visit with quick diagnosis" }, { title: "Unsafe board cleaned", note: "Switch replacement and wiring check" }], dealers: ["Havells point", "Kaladhungi Road electrical", "Mukhani hardware"], materials: ["switch", "MCB", "wire", "fan capacitor"], brands: ["Havells", "Anchor", "Polycab", "Syska"], locality: ["Mukhani", "Kusumkhera", "Nainital Road"], trust: "Safety-first local electricians · pay after service", vendors: "Electrician provider assignment", inspection: false },
+  plumber: { icon: "🚰", label: "Plumbing", aliases: ["plumber", "plumbing", "pipe", "tap"], hero: "Plumbers for leakage and fittings", subtitle: "Tap, pipe, bathroom and kitchen plumbing help from nearby workers.", examples: ["Leakage repair", "Tap fitting", "Pipe blockage", "Bathroom fitting"], tags: ["tap leak", "pipe", "flush", "basin", "bathroom", "motor"], visuals: [{ emoji: "🚿", label: "Tap leak", note: "from ₹199" }, { emoji: "🧰", label: "Pipe fix", note: "nearby" }, { emoji: "🚽", label: "Bathroom", note: "fitting" }], beforeAfter: [{ title: "Leakage stopped", note: "Tap and joint repair by local plumber" }, { title: "Bathroom fitting done", note: "Clear scope confirmation before visit" }], dealers: ["Sanitary market", "Mukhani hardware", "Rampur Road pipes"], materials: ["CPVC pipe", "flush kit", "tap", "basin waste"], brands: ["Jaquar", "Astral", "Ashirvad", "Supreme"], locality: ["Kusumkhera", "Dahariya", "Mukhani"], trust: "Local plumbers · clear visit confirmation", vendors: "Plumber provider assignment", inspection: false },
+  painting: { icon: "🎨", label: "Painting", aliases: ["paint", "painter", "painting"], hero: "Painting ecosystem for homes and shops", subtitle: "Painters, wall textures, putty, before/after work and expert visit for estimates.", examples: ["Room painting", "Wall putty", "Exterior painting", "Color consultation"], tags: ["texture", "putty", "primer", "room paint", "exterior", "rental repaint"], visuals: [{ emoji: "🧱", label: "Wall texture", note: "trending" }, { emoji: "🏠", label: "Room paint", note: "quote" }, { emoji: "🪣", label: "Putty repair", note: "before/after" }], beforeAfter: [{ title: "Bedroom repaint", note: "Old patches to clean warm finish" }, { title: "Texture wall upgrade", note: "Accent wall with painter estimate" }, { title: "Exterior refresh", note: "Weather coat and crack prep" }], dealers: ["Paint shop Mukhani", "Kusumkhera colors", "Nainital Road paint"], materials: ["putty", "primer", "emulsion", "texture"], brands: ["Asian Paints", "Nerolac", "Berger", "Dulux"], locality: ["Mukhani", "Lalpur Nayak", "Kaladhungi Road"], trust: "Site inspection option · local painters · estimate before work", vendors: "Painting teams and local contractors", inspection: true },
+  waterproofing: { icon: "💧", label: "Waterproofing", aliases: ["waterproofing", "leakage", "seepage", "damp"], hero: "Leakage and seepage protection", subtitle: "Terrace, wall seepage, bathroom leakage and monsoon protection with inspection offers.", examples: ["Roof seepage", "Wall dampness", "Bathroom leakage", "Crack sealing"], tags: ["terrace", "seepage", "monsoon", "bathroom leak", "damp wall", "crack seal"], visuals: [{ emoji: "🌧️", label: "Monsoon cover", note: "inspection" }, { emoji: "🏚️", label: "Damp wall", note: "diagnosis" }, { emoji: "🧪", label: "Coating", note: "terrace" }], beforeAfter: [{ title: "Terrace leakage sealed", note: "Inspection-led waterproof coating" }, { title: "Seepage wall treated", note: "Dampness source checked before repair" }, { title: "Bathroom leak fixed", note: "Joint sealing and slope check" }], dealers: ["Waterproofing dealer Mukhani", "Paint chemical shop", "Hardware Kaladhungi Road"], materials: ["roof coat", "crack filler", "membrane", "sealant"], brands: ["Dr Fixit", "Sika", "Asian SmartCare", "Nerolac"], locality: ["Dahariya", "Kusumkhera", "Mukhani"], trust: "Inspection-led scope · local repair teams", vendors: "Waterproofing specialists", inspection: true },
   cctv: { icon: "📹", label: "CCTV", hero: "CCTV installation near you", subtitle: "Camera setup, wiring, DVR/NVR, shop and home security visits by local technicians.", examples: ["Camera install", "DVR setup", "Wiring", "Shop security"], tags: ["camera", "DVR", "NVR", "home CCTV", "shop CCTV", "wiring"], visuals: [{ emoji: "📹", label: "Camera install", note: "quote" }, { emoji: "🖥️", label: "DVR setup", note: "fast" }, { emoji: "🏪", label: "Shop CCTV", note: "nearby" }], beforeAfter: [{ title: "Shop camera live", note: "Camera angle and DVR configured" }, { title: "Home entry covered", note: "Wiring and mobile view setup" }], trust: "Security technician confirmation · clear install scope", vendors: "CCTV installers", inspection: true },
   carpentry: { icon: "🪚", label: "Carpentry", hero: "Carpenters for repair and renovation", subtitle: "Door, wardrobe, modular fixes, polish and furniture repair from local carpenters.", examples: ["Door repair", "Wardrobe", "Furniture fix", "Polish work"], tags: ["door", "wardrobe", "hinge", "modular", "polish", "furniture"], visuals: [{ emoji: "🚪", label: "Door repair", note: "from ₹249" }, { emoji: "🪵", label: "Furniture", note: "fix" }, { emoji: "🧱", label: "Wardrobe", note: "quote" }], beforeAfter: [{ title: "Door alignment fixed", note: "Hinge repair and smooth closing" }, { title: "Furniture restored", note: "Polish and repair work proof" }, { title: "Wardrobe repair", note: "Local carpenter estimate and visit" }], trust: "Local carpenters · inspection for custom work", vendors: "Carpentry workers", inspection: true },
   cleaning: { icon: "🧹", label: "Cleaning", hero: "Cleaning services in Haldwani", subtitle: "Home, shop, kitchen and deep cleaning requests with local coordination.", examples: ["Home cleaning", "Kitchen cleaning", "Shop cleaning", "Move-in cleaning"], trust: "Clear scope confirmation · pay after service", vendors: "Cleaning partners", inspection: false },
