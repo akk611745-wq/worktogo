@@ -74,11 +74,21 @@ const UI = (() => {
   }
 
   function errorState(msg = "Something went wrong.", retryFn = null) {
+    const safeMsg = _friendlyErrorMessage(msg);
     return `<div class="error-state">
-      <div class="empty-icon">⚠️</div>
-      <p>${msg}</p>
+      <div class="empty-icon">🛠️</div>
+      <h3>We could not refresh this right now</h3>
+      <p>${safeMsg}</p>
       ${retryFn ? `<button class="btn-retry" onclick="${retryFn}()">Try Again</button>` : ""}
     </div>`;
+  }
+
+  function _friendlyErrorMessage(msg = "") {
+    const text = String(msg || "");
+    const lower = text.toLowerCase();
+    if (lower.includes("internal server") || lower.includes("500")) return "Live data is temporarily unavailable. Please retry in a moment.";
+    if (lower.includes("failed") || lower.includes("network")) return "Please check your connection and retry.";
+    return text || "Please retry in a moment.";
   }
 
   // ── Format Helpers ─────────────────────────────────────────────────────

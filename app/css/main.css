@@ -65,10 +65,12 @@ html {
 
 body {
   font-family: var(--font-body);
-  background: var(--clr-bg);
+  background:
+    radial-gradient(circle at 12% -10%, rgba(34,197,94,0.10), transparent 28%),
+    radial-gradient(circle at 88% 0%, rgba(108,99,255,0.12), transparent 30%),
+    var(--clr-bg);
   color: var(--clr-text);
   min-height: 100dvh;
-  max-width: 480px;
   margin: 0 auto;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
@@ -888,7 +890,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--sp-lg) var(--sp-md) var(--sp-md);
+  padding: var(--sp-lg) var(--sp-md) var(--sp-lg);
+  gap: var(--sp-md);
 }
 
 .top-bar-left {
@@ -939,15 +942,31 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 .support-btn { font-weight: 900; color: var(--clr-primary-2); }
 
-.home-content { flex: 1; }
+.support-entry {
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: var(--r-full);
+  border: 1px solid rgba(34,197,94,0.28);
+  background: rgba(34,197,94,0.10);
+  color: #7ee39f;
+  font-size: 0.8rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.home-content { flex: 1; width: 100%; }
 
 .service-hero {
   margin: 0 var(--sp-md) var(--sp-lg);
-  padding: var(--sp-lg);
-  border: 1px solid rgba(34,197,94,0.22);
-  border-radius: var(--r-lg);
-  background: linear-gradient(145deg, rgba(34,197,94,0.12), rgba(108,99,255,0.1));
+  padding: 22px 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  display: grid;
+  gap: var(--sp-lg);
 }
+
+.service-hero-copy { max-width: 620px; }
 
 .service-hero-kicker {
   color: var(--clr-success);
@@ -959,16 +978,31 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 
 .service-hero h1 {
-  font-size: 1.45rem;
+  font-size: clamp(2rem, 9vw, 3.9rem);
   line-height: 1.12;
   margin-bottom: var(--sp-sm);
+  letter-spacing: -0.055em;
 }
 
 .service-hero p {
   color: var(--clr-text-2);
-  font-size: 0.88rem;
-  line-height: 1.45;
+  font-size: 0.98rem;
+  line-height: 1.55;
 }
+
+.service-hero-market {
+  display: grid;
+  gap: var(--sp-sm);
+}
+
+.hero-market-card {
+  padding: 14px 0;
+  border-top: 1px solid var(--clr-border);
+}
+
+.hero-market-card strong { display: block; font-size: 0.9rem; margin-bottom: 3px; }
+.hero-market-card span { color: var(--clr-text-2); font-size: 0.78rem; }
+.hero-market-card.primary strong { color: #86efac; }
 
 .service-trust-row {
   display: flex;
@@ -1000,10 +1034,10 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 .market-search-section {
   margin: 0 var(--sp-md) var(--sp-lg);
-  padding: var(--sp-md);
-  border: 1px solid var(--clr-border);
-  border-radius: var(--r-lg);
-  background: rgba(255,255,255,0.04);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .market-search-section label {
@@ -1022,8 +1056,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   min-height: 50px;
   padding: 0 12px;
   border: 1px solid var(--clr-border-2);
-  border-radius: var(--r-md);
-  background: var(--clr-surface);
+  border-radius: var(--r-lg);
+  background: rgba(255,255,255,0.055);
 }
 
 .market-search-box input {
@@ -1041,30 +1075,36 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 .section-header.compact { padding-bottom: var(--sp-xs); }
 .section-note { color: var(--clr-text-2); font-size: 0.72rem; }
+.section-eyebrow { color: var(--clr-text-3); font-size: 0.68rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 3px; }
 
 .category-chips {
   display: flex;
-  gap: var(--sp-sm);
+  gap: 10px;
   overflow-x: auto;
-  padding: 0 var(--sp-md) var(--sp-xs);
+  padding: 0 var(--sp-md) var(--sp-sm);
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
 }
 .category-chips::-webkit-scrollbar { display: none; }
 .category-chips button {
   flex: 0 0 auto;
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  min-height: 40px;
-  padding: 0 12px;
-  border-radius: var(--r-full);
+  justify-content: center;
+  gap: 7px;
+  min-width: 94px;
+  min-height: 82px;
+  padding: 12px 14px;
+  border-radius: 22px;
   border: 1px solid var(--clr-border);
-  background: var(--clr-surface);
+  background: rgba(255,255,255,0.045);
   color: var(--clr-text);
-  font-size: 0.8rem;
-  font-weight: 700;
+  font-size: 0.78rem;
+  font-weight: 800;
 }
+
+.category-chips button span { font-size: 1.35rem; line-height: 1; }
 
 .category-chips button.active {
   border-color: rgba(139,131,255,0.75);
@@ -1075,21 +1115,21 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 .category-ecosystem { margin: 0 var(--sp-md) var(--sp-lg); }
 .ecosystem-card {
-  border: 1px solid var(--clr-border);
-  border-radius: var(--r-lg);
-  padding: var(--sp-md);
-  background: linear-gradient(145deg, rgba(108,99,255,0.10), rgba(255,255,255,0.035));
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
 }
 .ecosystem-banner { display: flex; gap: var(--sp-md); align-items: flex-start; margin-bottom: var(--sp-md); }
 .ecosystem-icon {
   width: 48px; height: 48px; border-radius: var(--r-md);
   display: flex; align-items: center; justify-content: center;
-  background: var(--clr-surface-2); font-size: 1.6rem; flex-shrink: 0;
+  background: rgba(255,255,255,0.055); font-size: 1.6rem; flex-shrink: 0;
 }
 .ecosystem-banner h3 { font-size: 1rem; margin-bottom: 4px; }
 .ecosystem-banner p:last-child { color: var(--clr-text-2); font-size: 0.8rem; line-height: 1.45; }
 .ecosystem-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--sp-sm); }
-.ecosystem-grid div { padding: 10px; border: 1px solid var(--clr-border); border-radius: var(--r-md); background: rgba(255,255,255,0.035); }
+.ecosystem-grid div { padding: 12px 0; border-top: 1px solid var(--clr-border); border-radius: 0; background: transparent; }
 .ecosystem-grid strong { display: block; font-size: 0.78rem; margin-bottom: 2px; }
 .ecosystem-grid span, .ecosystem-proof-row span { color: var(--clr-text-2); font-size: 0.7rem; }
 .ecosystem-proof-row { display: flex; flex-wrap: wrap; gap: var(--sp-sm); margin-top: var(--sp-md); }
@@ -1102,15 +1142,43 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   margin: 0 var(--sp-md) var(--sp-lg);
 }
 .local-proof-grid div {
-  padding: var(--sp-md);
-  border: 1px solid var(--clr-border);
-  border-radius: var(--r-md);
-  background: rgba(255,255,255,0.04);
+  padding: var(--sp-md) 0;
+  border: 0;
+  border-top: 1px solid var(--clr-border);
+  border-radius: 0;
+  background: transparent;
 }
 .local-proof-grid strong { display: block; font-size: 0.86rem; margin-bottom: 3px; }
 .local-proof-grid span { display: block; color: var(--clr-text-2); font-size: 0.74rem; }
 
-.home-section { margin-bottom: var(--sp-lg); }
+.home-section { margin-bottom: var(--sp-xl); }
+
+.premium-inspection-highlight {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--sp-md);
+  margin: 0 var(--sp-md) var(--sp-lg);
+  padding: var(--sp-md);
+  border: 1px solid rgba(245,158,11,0.26);
+  border-radius: var(--r-lg);
+  background: linear-gradient(145deg, rgba(245,158,11,0.13), rgba(255,255,255,0.035));
+  cursor: pointer;
+}
+
+.premium-inspection-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(245,158,11,0.14);
+  font-size: 1.45rem;
+}
+
+.premium-inspection-highlight h3 { font-size: 1rem; margin-bottom: 4px; }
+.premium-inspection-highlight p:not(.service-hero-kicker) { color: var(--clr-text-2); font-size: 0.82rem; line-height: 1.45; }
+.premium-inspection-highlight > span { grid-column: 2; color: var(--clr-warning); font-weight: 900; font-size: 0.86rem; }
 
 .section-header {
   display: flex;
@@ -1139,7 +1207,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .cards-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: var(--sp-sm);
+  gap: 12px;
   padding: 0 var(--sp-md);
 }
 
@@ -1162,10 +1230,10 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 /* ── Card ────────────────────────────────────────────────────────────────── */
 
 .card {
-  background: var(--clr-surface);
+  background: rgba(255,255,255,0.045);
   border: 1px solid var(--clr-border);
-  border-radius: var(--r-md);
-  padding: var(--sp-md);
+  border-radius: 22px;
+  padding: 16px;
   cursor: pointer;
   transition: border-color var(--dur), transform var(--dur);
   -webkit-tap-highlight-color: transparent;
@@ -1177,9 +1245,15 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 /* Service card */
 .service-card {
-  width: 160px;
+  width: 190px;
   flex-shrink: 0;
+  min-height: 184px;
+  display: flex;
+  flex-direction: column;
 }
+
+.service-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-sm); margin-bottom: var(--sp-sm); }
+.service-card-foot { margin-top: auto; padding-top: var(--sp-sm); }
 
 .fallback-services-grid .service-card,
 .fallback-service-card {
@@ -1188,17 +1262,24 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 
 .card-icon {
-  font-size: 1.75rem;
-  margin-bottom: var(--sp-sm);
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.055);
+  font-size: 1.55rem;
+  margin-bottom: 0;
 }
 
 .card h4 {
-  font-size: 0.875rem;
-  font-weight: 600;
-  margin-bottom: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 0.98rem;
+  font-weight: 800;
+  margin-bottom: 4px;
+  line-height: 1.25;
+  white-space: normal;
+  overflow: visible;
 }
 
 .card-meta {
@@ -1214,8 +1295,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 
 .card-badge {
-  position: absolute;
-  top: 10px; right: 10px;
+  position: static;
   background: rgba(108,99,255,0.2);
   color: var(--clr-primary-2);
   font-size: 0.65rem;
@@ -1272,11 +1352,14 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   font-size: 1.25rem;
 }
 
+.home-page .floating-whatsapp,
+.home-page .floating-support { display: none; }
+
 .floating-support { font-weight: 900; background: linear-gradient(135deg, var(--clr-primary), var(--clr-accent)); box-shadow: 0 14px 34px rgba(108,99,255,0.35); }
 
 .premium-inspection-panel {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   gap: var(--sp-md);
   align-items: center;
   margin-bottom: var(--sp-md);
@@ -1285,6 +1368,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   border-radius: var(--r-md);
   background: linear-gradient(145deg, rgba(245,158,11,0.12), rgba(255,255,255,0.035));
 }
+.premium-inspection-mark { width: 42px; height: 42px; border-radius: var(--r-md); display: flex; align-items: center; justify-content: center; background: rgba(245,158,11,0.14); }
 .premium-inspection-panel strong { display: block; font-size: 0.88rem; margin-bottom: 3px; }
 .premium-inspection-panel p { color: var(--clr-text-2); font-size: 0.76rem; line-height: 1.35; }
 .premium-inspection-panel span { color: var(--clr-warning); font-weight: 900; white-space: nowrap; font-size: 0.82rem; }
@@ -1617,15 +1701,14 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 @media (min-width: 480px) {
   body {
-    /* FIX: ensure sidebar doesn't look broken on desktop */
-    border-left: 1px solid var(--clr-border);
-    border-right: 1px solid var(--clr-border);
+    border-left: 0;
+    border-right: 0;
   }
 }
 
 @media (min-width: 760px) {
   body {
-    max-width: 1120px;
+    max-width: none;
   }
 
   .bottom-nav {
@@ -1639,36 +1722,33 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   }
 
   .home-content {
-    max-width: 1080px;
+    max-width: 1240px;
     width: 100%;
     margin: 0 auto;
   }
 
   .top-bar {
-    max-width: 1080px;
+    max-width: 1240px;
     width: 100%;
     margin: 0 auto;
+    padding-left: var(--sp-xl);
+    padding-right: var(--sp-xl);
   }
 
   .service-hero {
-    margin: var(--sp-md) var(--sp-lg) var(--sp-lg);
-    padding: var(--sp-xl);
-    min-height: 250px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    background:
-      radial-gradient(circle at 82% 18%, rgba(34,197,94,0.18), transparent 32%),
-      linear-gradient(145deg, rgba(34,197,94,0.12), rgba(108,99,255,0.12));
+    margin: 12px var(--sp-xl) 36px;
+    padding: 36px 0 10px;
+    min-height: 300px;
+    grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+    align-items: end;
   }
 
   .service-hero h1 {
-    font-size: 2.3rem;
-    max-width: 620px;
+    max-width: 760px;
   }
 
   .service-hero p {
-    max-width: 560px;
+    max-width: 660px;
     font-size: 1rem;
   }
 
@@ -1679,7 +1759,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   }
 
   .market-search-section,
-  .category-ecosystem {
+  .category-ecosystem,
+  .premium-inspection-highlight {
     margin-left: var(--sp-lg);
     margin-right: var(--sp-lg);
   }
@@ -1706,7 +1787,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   .cards-grid.horizontal-scroll,
   .fallback-services-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     overflow: visible;
   }
 
@@ -1726,30 +1807,21 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 
 @media (min-width: 1024px) {
-  .home-content {
-    display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
-    gap: var(--sp-lg);
-    align-items: start;
-  }
-
-  .service-hero,
-  .market-search-section,
-  .browse-strip-section,
-  .category-ecosystem,
-  .local-proof-grid,
-  #services-section {
-    grid-column: 1 / -1;
-  }
-
   .market-search-section {
-    max-width: 760px;
+    max-width: none;
   }
 
   .cards-grid.horizontal-scroll,
   .fallback-services-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
+
+  .premium-inspection-highlight {
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+  }
+
+  .premium-inspection-highlight > span { grid-column: auto; }
 
   .modal-sheet {
     max-width: 560px;

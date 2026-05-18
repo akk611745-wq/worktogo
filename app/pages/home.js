@@ -20,20 +20,24 @@ export async function render(container) {
             <h2 class="user-name">${_esc(user?.name || "Haldwani")}</h2>
           </div>
         </div>
-        <button class="icon-btn support-btn" title="Support" onclick="UI.openSupport('selector')"><span>?</span></button>
+        <button class="support-entry" title="WhatsApp support" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })"><span>WhatsApp help</span></button>
       </header>
 
       <div class="home-content">
         <section class="service-hero">
-          <p class="service-hero-kicker" id="category-kicker">${_esc(_pilotConfig.city)} local services</p>
-          <h1 id="category-hero-title">${_esc(_pilotConfig.hero_title)}</h1>
-          <p id="category-hero-subtitle">${_esc(_pilotConfig.hero_subtitle)}</p>
-          <div class="service-trust-row">
-            ${(_pilotConfig.trust_badges || []).slice(0, 3).map(t => `<span>${_esc(t)}</span>`).join("")}
+          <div class="service-hero-copy">
+            <p class="service-hero-kicker" id="category-kicker">${_esc(_pilotConfig.city)} local services</p>
+            <h1 id="category-hero-title">${_esc(_pilotConfig.hero_title)}</h1>
+            <p id="category-hero-subtitle">${_esc(_pilotConfig.hero_subtitle)}</p>
+            <div class="hero-actions">
+              <button class="btn-primary hero-primary" onclick="HomePage.scrollToServices()">Book a local service</button>
+              <button class="btn-ghost-inline" onclick="HomePage.setCategory('inspection')">Premium inspection</button>
+            </div>
           </div>
-          <div class="hero-actions">
-            <button class="btn-primary hero-primary" onclick="HomePage.scrollToServices()">Explore services</button>
-            <button class="btn-ghost-inline" onclick="HomePage.setCategory('inspection')">Premium inspection</button>
+          <div class="service-hero-market">
+            <div class="hero-market-card primary"><strong>Verified local help</strong><span>Request now · team confirms visit</span></div>
+            <div class="hero-market-card"><strong>Pay after service</strong><span>Clear pilot flow for normal jobs</span></div>
+            <div class="hero-market-card"><strong>Site inspection</strong><span>For complex work and estimates</span></div>
           </div>
         </section>
 
@@ -49,13 +53,26 @@ export async function render(container) {
 
         <section class="home-section browse-strip-section">
           <div class="section-header compact">
-            <h3>Service categories</h3>
+            <div>
+              <p class="section-eyebrow">Browse by need</p>
+              <h3>Service categories</h3>
+            </div>
             <button class="see-all" onclick="HomePage.toggleMoreCategories()" id="more-categories-btn">More</button>
           </div>
           <div class="category-chips" id="category-chips">
             <button class="active" onclick="HomePage.setCategory('')"><span>🧰</span>All</button>
             ${_categoryChips().slice(0, 7).map(c => `<button onclick="HomePage.setCategory('${_esc(c.slug || '')}')"><span>${c.icon}</span>${_esc(c.label)}</button>`).join("")}
           </div>
+        </section>
+
+        <section class="premium-inspection-highlight" onclick="HomePage.setCategory('inspection')">
+          <div class="premium-inspection-icon">🛡️</div>
+          <div>
+            <p class="service-hero-kicker">Premium inspection</p>
+            <h3>For painting, waterproofing, AC and complex jobs</h3>
+            <p>Choose inspection when you need scope clarity, site check, or an estimate before work starts.</p>
+          </div>
+          <span>From ₹99</span>
         </section>
 
         <section class="category-ecosystem" id="category-ecosystem">
@@ -90,7 +107,6 @@ export async function render(container) {
       </div>
 
       ${UI.buildNav("home")}
-      <button class="floating-support" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })" aria-label="Support">?</button>
     </div>
 
     <!-- Order Modal -->
@@ -412,7 +428,27 @@ function _renderServices(res) {
   if (!el) return;
 
   if (!res.ok) {
-    el.innerHTML = UI.errorState(res.error || "Couldn't load services.", "HomeSections.reloadServices");
+    const safeMessage = _friendlyServiceError(res.error);
+    el.classList.remove("horizontal-scroll");
+    el.classList.add("fallback-services-grid");
+    el.innerHTML = _fallbackServices().slice(0, 4).map(s => `
+      <div class="service-card card fallback-service-card" onclick="UI.openSupport('selector', { category: ${_jsString(s.name)}, service: ${_jsString(s.example)} })">
+        <div class="card-icon">${s.icon}</div>
+        <h4>${_esc(s.name)}</h4>
+        <p class="card-meta">${_esc(s.example)}</p>
+        <p class="card-price">${_esc(s.price)}</p>
+        <p class="local-service-copy">${_esc(_pilotConfig.city)} assisted booking</p>
+        <span class="card-badge">Help</span>
+      </div>
+    `).join("") + `
+      <div class="fallback-help-card service-recovery-card">
+        <h3>Services are temporarily slow to load</h3>
+        <p>${_esc(safeMessage)} You can still request help and WorkToGo will guide the booking.</p>
+        <div class="recovery-actions">
+          <button class="btn-ghost-inline" onclick="HomeSections.reloadServices()">Retry</button>
+          <button class="btn-ghost-inline" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })">WhatsApp support</button>
+        </div>
+      </div>`;
     return;
   }
 
@@ -454,12 +490,16 @@ function _renderServices(res) {
 
   el.innerHTML = list.map(s => `
     <div class="service-card card" onclick="HomeModals.openBooking(${_jsonAttr(s)})">
-      <div class="card-icon">${s.icon || "🔧"}</div>
+      <div class="service-card-top">
+        <div class="card-icon">${s.icon || "🔧"}</div>
+        <span class="card-badge">Request</span>
+      </div>
       <h4>${_esc(s.name || "")}</h4>
-      <p class="card-meta">${_esc(s.category_name || s.category || "")}</p>
-      <p class="card-price">${UI.formatCurrency(_servicePrice(s))}</p>
-      <p class="local-service-copy">${_esc(_pilotConfig.city)} local · Verified pilot service</p>
-      <span class="card-badge">Request</span>
+      <p class="card-meta">${_esc(s.category_name || s.category || "Local service")}</p>
+      <div class="service-card-foot">
+        <p class="card-price">${UI.formatCurrency(_servicePrice(s))}</p>
+        <p class="local-service-copy">${_esc(_pilotConfig.city)} · confirmed before visit</p>
+      </div>
     </div>
   `).join("");
 }
@@ -641,9 +681,17 @@ function _normalizeSearchService(s) {
 function _premiumInspectionPanel(category) {
   if (!category.inspection) return "";
   return `<div class="premium-inspection-panel">
+    <div class="premium-inspection-mark">🛡️</div>
     <div><strong>Premium inspection available</strong><p>Best for ${_esc(category.label.toLowerCase())} jobs where scope, estimate, or site condition must be checked first.</p></div>
     <span>From ₹99</span>
   </div>`;
+}
+
+function _friendlyServiceError(error = "") {
+  const msg = String(error || "").toLowerCase();
+  if (msg.includes("internal server") || msg.includes("500")) return "Live service data is being refreshed.";
+  if (msg.includes("network") || msg.includes("failed")) return "Network connection looks unstable.";
+  return "We could not refresh live services right now.";
 }
 
 function _savePendingBookingIntent(service) {
