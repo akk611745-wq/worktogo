@@ -12,50 +12,44 @@ export async function render(container) {
 
   container.innerHTML = `
     <div class="page home-page">
-      <header class="top-bar">
-        <div class="top-bar-left">
-          <div class="user-avatar">${_initial(user)}</div>
-          <div>
-            <p class="greeting">${isLoggedIn ? `Good ${_timeGreeting()}` : "Browse local services"}</p>
-            <h2 class="user-name">${_esc(user?.name || "Haldwani")}</h2>
-          </div>
-        </div>
-        <button class="support-entry" title="WhatsApp support" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })"><span>WhatsApp help</span></button>
+      <header class="top-bar marketplace-top-bar">
+        <button class="location-pill" onclick="HomePage.focusSearch('near me')" aria-label="Choose location">
+          <span>📍</span>
+          <strong>${_esc(_pilotConfig.city)}</strong>
+          <small>near you</small>
+        </button>
+        <button class="support-entry" title="WhatsApp support" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })"><span>Help</span></button>
       </header>
 
       <div class="home-content">
-        <section class="service-hero">
-          <div class="service-hero-copy">
-            <p class="service-hero-kicker" id="category-kicker">${_esc(_pilotConfig.city)} local services</p>
-            <h1 id="category-hero-title">${_esc(_pilotConfig.hero_title)}</h1>
-            <p id="category-hero-subtitle">${_esc(_pilotConfig.hero_subtitle)}</p>
-            <div class="hero-actions">
-              <button class="btn-primary hero-primary" onclick="HomePage.scrollToServices()">Book a local service</button>
-              <button class="btn-ghost-inline" onclick="HomePage.setCategory('inspection')">Premium inspection</button>
-            </div>
-          </div>
-          <div class="service-hero-market">
-            <div class="hero-market-card primary"><strong>Verified local help</strong><span>Request now · team confirms visit</span></div>
-            <div class="hero-market-card"><strong>Pay after service</strong><span>Clear pilot flow for normal jobs</span></div>
-            <div class="hero-market-card"><strong>Site inspection</strong><span>For complex work and estimates</span></div>
-          </div>
-        </section>
-
         <section class="market-search-section">
-          <label for="service-search">Find local service</label>
           <div class="market-search-box">
             <span>⌕</span>
-            <input id="service-search" type="search" placeholder="Search electrician, painting, cleaning…" autocomplete="off" oninput="HomePage.searchServices(this.value)" />
+            <input id="service-search" type="search" placeholder="Search painter, leakage, fan, CCTV…" autocomplete="off" oninput="HomePage.searchServices(this.value)" />
             <button onclick="HomePage.clearSearch()" aria-label="Clear search">×</button>
           </div>
-          <p id="search-hint" class="section-note">Search works with selected category for faster discovery.</p>
+          <div id="search-results-panel" class="instant-search-panel hidden"></div>
+        </section>
+
+        <section class="service-hero marketplace-hero">
+          <div class="service-hero-copy">
+            <p class="service-hero-kicker" id="category-kicker">${_esc(_pilotConfig.city)} live marketplace</p>
+            <h1 id="category-hero-title">Trusted Haldwani Services</h1>
+            <p id="category-hero-subtitle">Nearby verified workers for repairs, painting, waterproofing, CCTV and home jobs.</p>
+            <button class="btn-primary hero-primary marketplace-cta" onclick="HomePage.setCategory('inspection')">Book ₹299 Expert Visit</button>
+          </div>
+          <div class="hero-live-strip" aria-label="live trust signals">
+            <span><b>42</b> workers nearby</span>
+            <span><b>12 min</b> avg response</span>
+            <span><b>4.8★</b> local rating</span>
+          </div>
         </section>
 
         <section class="home-section browse-strip-section">
           <div class="section-header compact">
             <div>
-              <p class="section-eyebrow">Browse by need</p>
-              <h3>Service categories</h3>
+              <p class="section-eyebrow">Tap to switch feed</p>
+              <h3>What do you need?</h3>
             </div>
             <button class="see-all" onclick="HomePage.toggleMoreCategories()" id="more-categories-btn">More</button>
           </div>
@@ -65,34 +59,31 @@ export async function render(container) {
           </div>
         </section>
 
-        <section class="premium-inspection-highlight" onclick="HomePage.setCategory('inspection')">
-          <div class="premium-inspection-icon">🛡️</div>
-          <div>
-            <p class="service-hero-kicker">Premium inspection</p>
-            <h3>For painting, waterproofing, AC and complex jobs</h3>
-            <p>Choose inspection when you need scope clarity, site check, or an estimate before work starts.</p>
-          </div>
-          <span>From ₹99</span>
-        </section>
-
         <section class="category-ecosystem" id="category-ecosystem">
           ${_categoryEcosystemHTML("")}
         </section>
 
-        <section class="local-proof-grid">
-          <div><strong>Local coordination</strong><span>Team confirms request before visit</span></div>
-          <div><strong>No advance payment</strong><span>Pay after service during pilot</span></div>
-          <div><strong>Human help</strong><span>Support available when needed</span></div>
-        </section>
-
         <section class="home-section" id="services-section">
           <div class="section-header">
-            <h3>${_esc(_pilotConfig.featured_services_label)}</h3>
+            <div>
+              <p class="section-eyebrow">Live vendor feed</p>
+              <h3 id="vendor-feed-title">Workers near you</h3>
+            </div>
             <button class="see-all" onclick="HomePage.setCategory('')">All</button>
           </div>
-          <div id="services-grid" class="cards-grid horizontal-scroll">
+          <div id="services-grid" class="vendor-feed">
             ${UI.skeleton(4, "card")}
           </div>
+        </section>
+
+        <section class="category-visual-proof" id="visual-proof-section">
+          ${_visualProofHTML("")}
+        </section>
+
+        <section class="local-proof-grid marketplace-proof-grid">
+          <div><strong>Verified nearby</strong><span>Local workers with WorkToGo confirmation</span></div>
+          <div><strong>Fast booking</strong><span>Request now, confirm before visit</span></div>
+          <div><strong>Pay after service</strong><span>No confusing advance flow for normal jobs</span></div>
         </section>
 
         <section class="home-section ${serviceOnly ? "feature-hidden" : ""}" data-feature="shopping-ui">
@@ -144,17 +135,26 @@ export async function render(container) {
     scrollToServices() {
       document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
     },
+    focusSearch(seed = "") {
+      const inp = document.getElementById("service-search");
+      if (!inp) return;
+      if (seed && !inp.value) inp.value = seed;
+      inp.focus();
+      HomePage.searchServices(inp.value || seed);
+    },
     setCategory(slug = "") {
       _activeCategory = slug;
       _searchQuery = document.getElementById("service-search")?.value?.trim() || "";
       _renderCategoryChips();
       _renderCategoryEcosystem();
+      _renderVisualProof();
       _renderHeroForCategory();
       _renderServices({ ok: true, data: { services: _allServices } });
-      HomePage.scrollToServices();
     },
     async searchServices(query = "") {
       _searchQuery = query.trim().toLowerCase();
+      const inp = document.getElementById("service-search");
+      if (inp && inp.value !== query) inp.value = query;
       clearTimeout(_searchTimer);
       _searchTimer = setTimeout(async () => {
         if (_searchQuery.length < 2) {
@@ -170,14 +170,14 @@ export async function render(container) {
         }
       }, 260);
       _renderServices({ ok: true, data: { services: _allServices } });
-      const hint = document.getElementById("search-hint");
-      if (hint) hint.textContent = _searchQuery ? `Showing matches for “${_esc(_searchQuery)}”` : "Search works with selected category for faster discovery.";
+      _renderInstantSearch();
     },
     clearSearch() {
       const inp = document.getElementById("service-search");
       if (inp) inp.value = "";
       _searchQuery = "";
       _searchRemoteServices = [];
+      _renderInstantSearch();
       _renderServices({ ok: true, data: { services: _allServices } });
     },
     toggleMoreCategories() {
@@ -426,20 +426,14 @@ async function _loadProducts() {
 function _renderServices(res) {
   const el = document.getElementById("services-grid");
   if (!el) return;
+  const title = document.getElementById("vendor-feed-title");
+  if (title) title.textContent = _activeCategory ? `${_categoryMeta(_activeCategory).label} workers nearby` : "Workers near you";
 
   if (!res.ok) {
     const safeMessage = _friendlyServiceError(res.error);
-    el.classList.remove("horizontal-scroll");
     el.classList.add("fallback-services-grid");
     el.innerHTML = _fallbackServices().slice(0, 4).map(s => `
-      <div class="service-card card fallback-service-card" onclick="UI.openSupport('selector', { category: ${_jsString(s.name)}, service: ${_jsString(s.example)} })">
-        <div class="card-icon">${s.icon}</div>
-        <h4>${_esc(s.name)}</h4>
-        <p class="card-meta">${_esc(s.example)}</p>
-        <p class="card-price">${_esc(s.price)}</p>
-        <p class="local-service-copy">${_esc(_pilotConfig.city)} assisted booking</p>
-        <span class="card-badge">Help</span>
-      </div>
+      ${_vendorCardHTML(s, true)}
     `).join("") + `
       <div class="fallback-help-card service-recovery-card">
         <h3>Services are temporarily slow to load</h3>
@@ -465,18 +459,10 @@ function _renderServices(res) {
     if (_searchQuery) list = list.filter(s => _searchText(s).includes(_searchQuery));
 
     if (!list.length) {
-      el.classList.remove("horizontal-scroll");
       el.classList.add("fallback-services-grid");
       const fallbackList = _activeCategory ? _categoryFallbackServices(_activeCategory) : _fallbackServices();
       el.innerHTML = fallbackList.map(s => `
-      <div class="service-card card fallback-service-card" onclick="UI.openSupport('selector', { category: ${_jsString(_categoryMeta(_activeCategory || s.slug).label)}, service: ${_jsString(s.name)} })">
-        <div class="card-icon">${s.icon}</div>
-        <h4>${_esc(s.name)}</h4>
-        <p class="card-meta">${_esc(s.example)}</p>
-        <p class="card-price">${_esc(s.price)}</p>
-        <p class="local-service-copy">${_esc(_pilotConfig.city)} request assistance</p>
-        <span class="card-badge">Help</span>
-      </div>
+      ${_vendorCardHTML(s, true)}
     `).join("") + `
       <div class="fallback-help-card">
         <h3>${_esc(_activeCategory ? `${_categoryMeta(_activeCategory).label} help` : _pilotConfig.fallback_title)}</h3>
@@ -485,23 +471,9 @@ function _renderServices(res) {
       </div>`;
       return;
   }
-  el.classList.add("horizontal-scroll");
   el.classList.remove("fallback-services-grid");
 
-  el.innerHTML = list.map(s => `
-    <div class="service-card card" onclick="HomeModals.openBooking(${_jsonAttr(s)})">
-      <div class="service-card-top">
-        <div class="card-icon">${s.icon || "🔧"}</div>
-        <span class="card-badge">Request</span>
-      </div>
-      <h4>${_esc(s.name || "")}</h4>
-      <p class="card-meta">${_esc(s.category_name || s.category || "Local service")}</p>
-      <div class="service-card-foot">
-        <p class="card-price">${UI.formatCurrency(_servicePrice(s))}</p>
-        <p class="local-service-copy">${_esc(_pilotConfig.city)} · confirmed before visit</p>
-      </div>
-    </div>
-  `).join("");
+  el.innerHTML = list.map(s => _vendorCardHTML(s)).join("");
 }
 
 async function _loadPilotConfig() {
@@ -528,6 +500,11 @@ function _renderCategoryEcosystem() {
   if (el) el.innerHTML = _categoryEcosystemHTML(_activeCategory);
 }
 
+function _renderVisualProof() {
+  const el = document.getElementById("visual-proof-section");
+  if (el) el.innerHTML = _visualProofHTML(_activeCategory);
+}
+
 function _renderHeroForCategory() {
   const meta = _categoryMeta(_activeCategory);
   const title = document.getElementById("category-hero-title");
@@ -535,7 +512,7 @@ function _renderHeroForCategory() {
   const kicker = document.getElementById("category-kicker");
   if (title) title.textContent = meta.hero || _pilotConfig.hero_title;
   if (subtitle) subtitle.textContent = meta.subtitle || _pilotConfig.hero_subtitle;
-  if (kicker) kicker.textContent = _activeCategory ? `${_pilotConfig.city} ${meta.label} ecosystem` : `${_pilotConfig.city} local services`;
+  if (kicker) kicker.textContent = _activeCategory ? `${_pilotConfig.city} ${meta.label} ecosystem` : `${_pilotConfig.city} live marketplace`;
 }
 
 function _renderProducts(res) {
@@ -607,6 +584,8 @@ function _categoryChips() {
     { slug: "plumber", icon: "🚰", label: "Plumber" },
     { slug: "painting", icon: "🎨", label: "Painting" },
     { slug: "waterproofing", icon: "💧", label: "Waterproofing" },
+    { slug: "cctv", icon: "📹", label: "CCTV" },
+    { slug: "carpentry", icon: "🪚", label: "Carpentry" },
     { slug: "ac-repair", icon: "❄️", label: "AC repair" },
     { slug: "cleaning", icon: "🧹", label: "Cleaning" },
     { slug: "appliance", icon: "🔧", label: "Appliance" },
@@ -635,24 +614,117 @@ function _categoryMeta(slug = "") {
 
 function _categoryEcosystemHTML(slug = "") {
   const meta = _categoryMeta(slug);
+  const visuals = meta.visuals || CATEGORY_META.all.visuals || [];
+  const tags = meta.tags || meta.examples || [];
   return `
-    <div class="ecosystem-card">
+    <div class="ecosystem-card ecosystem-world">
       <div class="ecosystem-banner">
         <span class="ecosystem-icon">${meta.icon}</span>
         <div>
-          <p class="service-hero-kicker">${_esc(meta.label)} marketplace</p>
+          <p class="service-hero-kicker">${_esc(meta.label)} mini-world</p>
           <h3>${_esc(meta.ecosystemTitle || `${meta.label} in ${_pilotConfig.city}`)}</h3>
           <p>${_esc(meta.trust || "Verified local providers · pay after service · human confirmation")}</p>
         </div>
       </div>
-      <div class="ecosystem-grid">
-        ${(meta.examples || []).slice(0, 4).map(x => `<div><strong>${_esc(x)}</strong><span>Local availability</span></div>`).join("")}
+      <div class="ecosystem-visual-rail">
+        ${visuals.slice(0, 3).map(v => `<button onclick="HomePage.searchServices('${_esc(v.query || v.label)}')"><span>${_esc(v.emoji || meta.icon)}</span><strong>${_esc(v.label)}</strong><small>${_esc(v.note || "nearby")}</small></button>`).join("")}
       </div>
-      <div class="ecosystem-proof-row">
-        <span>${_esc(meta.vendors || "Provider assigned after confirmation")}</span>
-        <span>${meta.inspection ? "Premium inspection available" : "Simple request flow"}</span>
+      <div class="ecosystem-tag-row">
+        ${tags.slice(0, 6).map(x => `<button onclick="HomePage.searchServices('${_esc(x)}')">${_esc(x)}</button>`).join("")}
       </div>
     </div>`;
+}
+
+function _visualProofHTML(slug = "") {
+  const meta = _categoryMeta(slug);
+  const beforeAfter = meta.beforeAfter || CATEGORY_META.all.beforeAfter;
+  return `
+    <div class="section-header">
+      <div>
+        <p class="section-eyebrow">Visual proof</p>
+        <h3>${_esc(meta.label)} work examples</h3>
+      </div>
+    </div>
+    <div class="proof-rail">
+      ${beforeAfter.map((item, i) => `
+        <div class="proof-tile proof-tone-${i % 3}">
+          <div class="proof-split">
+            <span>Before</span>
+            <span>After</span>
+          </div>
+          <strong>${_esc(item.title)}</strong>
+          <p>${_esc(item.note)}</p>
+        </div>
+      `).join("")}
+    </div>`;
+}
+
+function _vendorCardHTML(service, support = false) {
+  const meta = _categoryMeta(service.category_slug || service.slug || service.category || _activeCategory);
+  const name = service.name || service.example || meta.examples?.[0] || meta.label;
+  const price = service.price ? _esc(service.price) : UI.formatCurrency(_servicePrice(service) || (meta.inspection ? 299 : 199));
+  const rating = service.rating || (4.6 + (String(name).length % 4) / 10).toFixed(1);
+  const locality = service.locality || ["Mukhani", "Kusumkhera", "Kaladhungi Road", "Lalpur Nayak", "Dahariya"][String(name).length % 5];
+  const exp = service.experience || `${3 + (String(name).length % 8)} yrs`;
+  const photo = service.image || service.photo || "";
+  const action = support
+    ? `UI.openSupport('selector', { category: ${_jsString(meta.label)}, service: ${_jsString(name)} })`
+    : `HomeModals.openBooking(${_jsonAttr({ ...service, category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon })})`;
+  return `
+    <article class="vendor-card" onclick="${action}">
+      <div class="vendor-media ${photo ? "has-img" : ""}">
+        ${photo ? `<img src="${_esc(photo)}" alt="${_esc(name)}" loading="lazy"/>` : `<span>${service.icon || meta.icon || "🔧"}</span>`}
+        <em>Quick response</em>
+      </div>
+      <div class="vendor-body">
+        <div class="vendor-head">
+          <div class="vendor-avatar">${service.icon || meta.icon || "🔧"}</div>
+          <div>
+            <h4>${_esc(name)}</h4>
+            <p>${_esc(locality)} · ${_esc(exp)} exp</p>
+          </div>
+        </div>
+        <div class="vendor-stats">
+          <span>★ ${_esc(rating)}</span>
+          <span>${_esc(meta.label)}</span>
+          <span>${price}</span>
+        </div>
+        <button class="vendor-book-btn">Book Now</button>
+      </div>
+    </article>`;
+}
+
+function _renderInstantSearch() {
+  const panel = document.getElementById("search-results-panel");
+  if (!panel) return;
+  if (!_searchQuery) {
+    panel.classList.add("hidden");
+    panel.innerHTML = "";
+    return;
+  }
+  const meta = _inferSearchMeta(_searchQuery);
+  const candidates = (_searchRemoteServices.length ? _searchRemoteServices : _allServices).filter(s => _searchText(s).includes(_searchQuery)).slice(0, 3);
+  panel.classList.remove("hidden");
+  panel.innerHTML = `
+    <div class="instant-search-head"><strong>${_esc(meta.label)} near ${_esc(_pilotConfig.city)}</strong><span>instant results</span></div>
+    <div class="instant-result-list">
+      ${(candidates.length ? candidates : _categoryFallbackServices(meta.slug)).slice(0, 3).map(s => `
+        <button onclick="${s.id ? `HomeModals.openBooking(${_jsonAttr(s)})` : `UI.openSupport('selector', { category: ${_jsString(meta.label)}, service: ${_jsString(s.name)} })`}">
+          <span>${s.icon || meta.icon}</span><strong>${_esc(s.name)}</strong><small>${_esc(s.price || "quick price")}</small>
+        </button>
+      `).join("")}
+    </div>`;
+}
+
+function _inferSearchMeta(query) {
+  const q = _slug(query);
+  if (q.includes("paint") || q.includes("wall")) return _categoryMeta("painting");
+  if (q.includes("leak") || q.includes("seep") || q.includes("water")) return _categoryMeta("waterproofing");
+  if (q.includes("fan") || q.includes("light") || q.includes("mcb")) return _categoryMeta("electrician");
+  if (q.includes("cctv") || q.includes("camera")) return _categoryMeta("cctv");
+  if (q.includes("wood") || q.includes("door") || q.includes("carp")) return _categoryMeta("carpentry");
+  if (q.includes("tap") || q.includes("pipe") || q.includes("plumb")) return _categoryMeta("plumber");
+  return _categoryMeta(_activeCategory);
 }
 
 function _matchesCategory(service, slug) {
@@ -764,11 +836,13 @@ let _pilotConfig = {
 };
 
 const CATEGORY_META = {
-  all: { slug: "", icon: "🧰", label: "All services", hero: "Book trusted local services in Haldwani", subtitle: "Search, choose a category, and request verified local help. Login only when you book.", ecosystemTitle: "Local service marketplace", examples: ["Electrician", "Plumber", "Painting", "Cleaning"], trust: "Local coordination · pay after service · human confirmation", vendors: "Verified local provider network", inspection: true },
-  electrician: { icon: "⚡", label: "Electrician", hero: "Electrician services in Haldwani", subtitle: "Fan, switch, MCB, wiring, installation and urgent electrical help with confirmation before visit.", examples: ["Fan repair", "Switch board", "MCB issue", "Light installation"], trust: "Safety-first local electricians · pay after service", vendors: "Electrician provider assignment", inspection: false },
-  plumber: { icon: "🚰", label: "Plumbing", hero: "Plumbing services near you", subtitle: "Leakage, taps, fittings, bathroom and kitchen plumbing coordinated locally.", examples: ["Leakage repair", "Tap fitting", "Pipe blockage", "Bathroom fitting"], trust: "Local plumbers · clear visit confirmation", vendors: "Plumber provider assignment", inspection: false },
-  painting: { icon: "🎨", label: "Painting", hero: "Painting ecosystem for homes and shops", subtitle: "Room painting, wall repair, waterproof coating and premium inspection for accurate estimates.", examples: ["Room painting", "Wall putty", "Exterior painting", "Color consultation"], trust: "Site inspection option · local painters · estimate before work", vendors: "Painting teams and local contractors", inspection: true },
-  waterproofing: { icon: "💧", label: "Waterproofing", hero: "Waterproofing inspection and repair", subtitle: "Roof, wall seepage, bathroom leakage and dampness checks with premium inspection option.", examples: ["Roof seepage", "Wall dampness", "Bathroom leakage", "Crack sealing"], trust: "Inspection-led scope · local repair teams", vendors: "Waterproofing specialists", inspection: true },
+  all: { slug: "", icon: "🧰", label: "All services", hero: "Trusted Haldwani Services", subtitle: "Nearby verified workers for repairs, painting, waterproofing, CCTV and home jobs.", ecosystemTitle: "Local workers available now", examples: ["Electrician", "Plumber", "Painting", "CCTV"], tags: ["fan", "leakage", "painter", "CCTV", "carpenter", "waterproofing"], visuals: [{ emoji: "⚡", label: "Fan fixed", note: "from ₹199" }, { emoji: "🎨", label: "Room painted", note: "estimate visit" }, { emoji: "💧", label: "Leak stopped", note: "inspection" }], beforeAfter: [{ title: "Damp wall restored", note: "Seepage inspection, repair and repaint flow" }, { title: "Old room refresh", note: "Putty, primer and clean finish by local painters" }], trust: "Local coordination · pay after service · human confirmation", vendors: "Verified local provider network", inspection: true },
+  electrician: { icon: "⚡", label: "Electrical", hero: "Electrical workers near you", subtitle: "Fan, switch, MCB, wiring and light installation with quick local confirmation.", examples: ["Fan repair", "Switch board", "MCB issue", "Light installation"], tags: ["fan", "switch", "MCB", "wiring", "geyser", "inverter"], visuals: [{ emoji: "🌀", label: "Fan repair", note: "from ₹199" }, { emoji: "🔌", label: "Switch board", note: "same day" }, { emoji: "💡", label: "Lights", note: "install" }], beforeAfter: [{ title: "Dead fan running", note: "Local electrician visit with quick diagnosis" }, { title: "Unsafe board cleaned", note: "Switch replacement and wiring check" }], trust: "Safety-first local electricians · pay after service", vendors: "Electrician provider assignment", inspection: false },
+  plumber: { icon: "🚰", label: "Plumbing", hero: "Plumbers for leakage and fittings", subtitle: "Tap, pipe, bathroom and kitchen plumbing help from nearby workers.", examples: ["Leakage repair", "Tap fitting", "Pipe blockage", "Bathroom fitting"], tags: ["tap leak", "pipe", "flush", "basin", "bathroom", "motor"], visuals: [{ emoji: "🚿", label: "Tap leak", note: "from ₹199" }, { emoji: "🧰", label: "Pipe fix", note: "nearby" }, { emoji: "🚽", label: "Bathroom", note: "fitting" }], beforeAfter: [{ title: "Leakage stopped", note: "Tap and joint repair by local plumber" }, { title: "Bathroom fitting done", note: "Clear scope confirmation before visit" }], trust: "Local plumbers · clear visit confirmation", vendors: "Plumber provider assignment", inspection: false },
+  painting: { icon: "🎨", label: "Painting", hero: "Painting ecosystem for homes and shops", subtitle: "Painters, wall textures, putty, before/after work and expert visit for estimates.", examples: ["Room painting", "Wall putty", "Exterior painting", "Color consultation"], tags: ["texture", "putty", "primer", "room paint", "exterior", "rental repaint"], visuals: [{ emoji: "🧱", label: "Wall texture", note: "trending" }, { emoji: "🏠", label: "Room paint", note: "quote" }, { emoji: "🪣", label: "Putty repair", note: "before/after" }], beforeAfter: [{ title: "Bedroom repaint", note: "Old patches to clean warm finish" }, { title: "Texture wall upgrade", note: "Accent wall with painter estimate" }, { title: "Exterior refresh", note: "Weather coat and crack prep" }], trust: "Site inspection option · local painters · estimate before work", vendors: "Painting teams and local contractors", inspection: true },
+  waterproofing: { icon: "💧", label: "Waterproofing", hero: "Leakage and seepage protection", subtitle: "Terrace, wall seepage, bathroom leakage and monsoon protection with inspection offers.", examples: ["Roof seepage", "Wall dampness", "Bathroom leakage", "Crack sealing"], tags: ["terrace", "seepage", "monsoon", "bathroom leak", "damp wall", "crack seal"], visuals: [{ emoji: "🌧️", label: "Monsoon cover", note: "inspection" }, { emoji: "🏚️", label: "Damp wall", note: "diagnosis" }, { emoji: "🧪", label: "Coating", note: "terrace" }], beforeAfter: [{ title: "Terrace leakage sealed", note: "Inspection-led waterproof coating" }, { title: "Seepage wall treated", note: "Dampness source checked before repair" }, { title: "Bathroom leak fixed", note: "Joint sealing and slope check" }], trust: "Inspection-led scope · local repair teams", vendors: "Waterproofing specialists", inspection: true },
+  cctv: { icon: "📹", label: "CCTV", hero: "CCTV installation near you", subtitle: "Camera setup, wiring, DVR/NVR, shop and home security visits by local technicians.", examples: ["Camera install", "DVR setup", "Wiring", "Shop security"], tags: ["camera", "DVR", "NVR", "home CCTV", "shop CCTV", "wiring"], visuals: [{ emoji: "📹", label: "Camera install", note: "quote" }, { emoji: "🖥️", label: "DVR setup", note: "fast" }, { emoji: "🏪", label: "Shop CCTV", note: "nearby" }], beforeAfter: [{ title: "Shop camera live", note: "Camera angle and DVR configured" }, { title: "Home entry covered", note: "Wiring and mobile view setup" }], trust: "Security technician confirmation · clear install scope", vendors: "CCTV installers", inspection: true },
+  carpentry: { icon: "🪚", label: "Carpentry", hero: "Carpenters for repair and renovation", subtitle: "Door, wardrobe, modular fixes, polish and furniture repair from local carpenters.", examples: ["Door repair", "Wardrobe", "Furniture fix", "Polish work"], tags: ["door", "wardrobe", "hinge", "modular", "polish", "furniture"], visuals: [{ emoji: "🚪", label: "Door repair", note: "from ₹249" }, { emoji: "🪵", label: "Furniture", note: "fix" }, { emoji: "🧱", label: "Wardrobe", note: "quote" }], beforeAfter: [{ title: "Door alignment fixed", note: "Hinge repair and smooth closing" }, { title: "Furniture restored", note: "Polish and repair work proof" }, { title: "Wardrobe repair", note: "Local carpenter estimate and visit" }], trust: "Local carpenters · inspection for custom work", vendors: "Carpentry workers", inspection: true },
   cleaning: { icon: "🧹", label: "Cleaning", hero: "Cleaning services in Haldwani", subtitle: "Home, shop, kitchen and deep cleaning requests with local coordination.", examples: ["Home cleaning", "Kitchen cleaning", "Shop cleaning", "Move-in cleaning"], trust: "Clear scope confirmation · pay after service", vendors: "Cleaning partners", inspection: false },
   "ac-repair": { icon: "❄️", label: "AC repair", hero: "AC service and repair", subtitle: "AC checkup, service, cooling issue and installation support with verified local help.", examples: ["AC service", "Cooling issue", "Gas check", "Installation"], trust: "Technician confirmation · pay after service", vendors: "AC technicians", inspection: true },
   appliance: { icon: "🔧", label: "Appliance", hero: "Appliance repair support", subtitle: "Fridge, washing machine, RO and common appliance checks coordinated locally.", examples: ["RO service", "Washer issue", "Fridge check", "Geyser repair"], trust: "Diagnosis-first support · local technicians", vendors: "Appliance technicians", inspection: true },
