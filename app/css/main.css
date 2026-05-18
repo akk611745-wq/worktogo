@@ -920,7 +920,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 
 .marketplace-top-bar {
-  position: sticky;
+  position: relative;
   top: 0;
   z-index: 60;
   padding-top: calc(12px + env(safe-area-inset-top, 0px));
@@ -1117,10 +1117,10 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 .market-search-section {
   position: sticky;
-  top: calc(62px + env(safe-area-inset-top, 0px));
+  top: calc(8px + env(safe-area-inset-top, 0px));
   z-index: 55;
-  margin: 0 var(--sp-md) 10px;
-  padding: 0 0 4px;
+  margin: 0 var(--sp-md) 8px;
+  padding: 4px 0 4px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1216,6 +1216,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   color: var(--market-text);
   font-size: 0.78rem;
   font-weight: 800;
+  box-shadow: 0 8px 20px rgba(17,17,17,0.04);
 }
 
 .category-chips button span { font-size: 1.35rem; line-height: 1; }
@@ -1368,7 +1369,10 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   background: #fff;
   color: var(--market-text);
   box-shadow: 0 16px 38px rgba(17,17,17,0.10);
+  -webkit-tap-highlight-color: transparent;
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
+.vendor-card:active { transform: scale(0.985); box-shadow: 0 10px 28px rgba(17,17,17,0.10); }
 .vendor-media {
   position: relative;
   display: flex;
@@ -1394,6 +1398,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .vendor-body { padding: 14px; }
 .vendor-head { display: flex; align-items: center; gap: 10px; }
 .vendor-avatar { width: 42px; height: 42px; border-radius: 15px; display: flex; align-items: center; justify-content: center; background: var(--market-soft); }
+.vendor-head > div:last-child { min-width: 0; }
 .vendor-head h4 { font-size: 1rem; line-height: 1.15; margin-bottom: 3px; }
 .vendor-head p { color: var(--market-muted); font-size: 0.74rem; }
 .vendor-stats { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
@@ -1414,6 +1419,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   background: var(--market-orange);
   color: #fff;
   font-weight: 900;
+  pointer-events: none;
 }
 
 .category-visual-proof { margin-bottom: var(--sp-xl); }
@@ -1459,7 +1465,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .cards-grid.horizontal-scroll::-webkit-scrollbar { display: none; }
 
 .fallback-services-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
 }
 
 /* ── Card ────────────────────────────────────────────────────────────────── */
@@ -2024,6 +2030,11 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     overflow: visible;
+  }
+
+  .vendor-feed.fallback-services-grid {
+    display: flex;
+    overflow-x: auto;
   }
 
   .vendor-feed,

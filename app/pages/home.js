@@ -155,6 +155,7 @@ export async function render(container) {
       _searchQuery = query.trim().toLowerCase();
       const inp = document.getElementById("service-search");
       if (inp && inp.value !== query) inp.value = query;
+      _syncCategoryFromSearch();
       clearTimeout(_searchTimer);
       _searchTimer = setTimeout(async () => {
         if (_searchQuery.length < 2) {
@@ -716,6 +717,18 @@ function _renderInstantSearch() {
     </div>`;
 }
 
+function _syncCategoryFromSearch() {
+  if (_searchQuery.length < 2) return;
+  const inferred = _inferSearchMeta(_searchQuery);
+  const inferredSlug = inferred.slug || "";
+  if (!inferredSlug || inferredSlug === _activeCategory) return;
+  _activeCategory = inferredSlug;
+  _renderCategoryChips();
+  _renderCategoryEcosystem();
+  _renderVisualProof();
+  _renderHeroForCategory();
+}
+
 function _inferSearchMeta(query) {
   const q = _slug(query);
   if (q.includes("paint") || q.includes("wall")) return _categoryMeta("painting");
@@ -729,12 +742,12 @@ function _inferSearchMeta(query) {
 
 function _matchesCategory(service, slug) {
   const wanted = _slug(slug);
-  const values = [service.category_slug, service.category, service.category_name, service.name].map(_slug);
+  const values = [service.category_slug, service.category, service.category_name, service.name].map(_slug).filter(Boolean);
   return values.some(v => v === wanted || v.includes(wanted) || wanted.includes(v));
 }
 
 function _searchText(service) {
-  return [service.name, service.description, service.category, service.category_name, service.short_desc].filter(Boolean).join(" ").toLowerCase();
+  return [service.name, service.description, service.category, service.category_name, service.category_slug, service.slug, service.short_desc, service.example].filter(Boolean).join(" ").toLowerCase();
 }
 
 function _normalizeSearchService(s) {
@@ -782,6 +795,7 @@ function _resumePendingBooking() {
       _activeCategory = pending.category;
       _renderCategoryChips();
       _renderCategoryEcosystem();
+      _renderVisualProof();
       _renderHeroForCategory();
     }
     setTimeout(() => HomeModals.openBooking(pending.service), 350);
