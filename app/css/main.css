@@ -1228,7 +1228,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   box-shadow: 0 10px 24px rgba(255,107,0,0.20);
 }
 
-.category-ecosystem { margin: 0 var(--sp-md) var(--sp-lg); }
+.category-ecosystem { margin: 0 var(--sp-md) 12px; }
 .ecosystem-card {
   border: 0;
   border-radius: 0;
@@ -1326,6 +1326,69 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   font-weight: 900;
   box-shadow: 0 12px 28px rgba(17,17,17,0.14);
 }
+
+.operating-feed {
+  margin: 0 var(--sp-md) var(--sp-lg);
+  padding: 14px 0 0;
+  border-top: 1px solid rgba(24,24,24,0.08);
+}
+.operating-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.operating-head h3 { color: var(--market-text); font-size: 1rem; line-height: 1.15; }
+.operating-head > span {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  border-radius: var(--r-full);
+  background: rgba(22,163,74,0.10);
+  color: var(--market-green);
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+.ops-ticker {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.ops-ticker::-webkit-scrollbar { display: none; }
+.ops-ticker button {
+  flex: 0 0 168px;
+  min-height: 66px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  background: #171717;
+  color: #fff;
+  text-align: left;
+  box-shadow: 0 10px 22px rgba(17,17,17,0.12);
+}
+.ops-ticker strong { display: block; font-size: 0.82rem; line-height: 1.15; margin-bottom: 5px; }
+.ops-ticker small { color: rgba(255,255,255,0.70); font-size: 0.68rem; }
+.ops-supply-row {
+  display: grid;
+  gap: 8px;
+  margin-top: 2px;
+}
+.ops-supply-row div {
+  padding: 10px 0;
+  border-top: 1px solid var(--market-line);
+}
+.ops-supply-row strong { display: block; font-size: 0.76rem; margin-bottom: 3px; }
+.ops-supply-row span { color: var(--market-muted); font-size: 0.72rem; line-height: 1.35; }
+
+.category-operating-mode .service-hero { margin-bottom: 18px; }
+.category-operating-mode .browse-strip-section { margin-bottom: 10px; }
+.category-operating-mode .market-search-box {
+  min-height: 46px;
+  box-shadow: 0 8px 18px rgba(17,17,17,0.06);
+}
+.category-operating-mode .market-search-box input { min-height: 40px; }
 
 .local-proof-grid {
   display: grid;
@@ -1664,6 +1727,12 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .booking-context-strip strong { font-size: 0.9rem; }
 .booking-context-strip small,
 .upload-readiness-field small { color: var(--clr-text-2); font-size: 0.72rem; line-height: 1.35; }
+.fast-booking-trust {
+  grid-template-columns: 1fr;
+  gap: 6px;
+  background: rgba(34,197,94,0.08);
+  border-color: rgba(34,197,94,0.18);
+}
 
 .support-selector-overlay {
   position: fixed;
@@ -2052,6 +2121,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
   .market-search-section,
   .category-ecosystem,
+  .operating-feed,
   .premium-inspection-highlight {
     margin-left: var(--sp-lg);
     margin-right: var(--sp-lg);
@@ -2126,6 +2196,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   .service-hero,
   .browse-strip-section,
   .category-ecosystem,
+  .operating-feed,
   #visual-proof-section,
   .marketplace-proof-grid {
     grid-column: 1;
@@ -2151,6 +2222,22 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
     max-width: none;
     width: 100%;
   }
+
+  .ops-ticker {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+
+  .ops-ticker button { flex-basis: auto; }
+
+  .ops-supply-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .category-operating-mode .home-page,
+  .category-operating-mode .home-content { min-height: auto; }
 
   .market-search-section {
     max-width: none;

@@ -36,7 +36,7 @@ export async function render(container) {
             <p class="service-hero-kicker" id="category-kicker">${_esc(_pilotConfig.city)} live marketplace</p>
             <h1 id="category-hero-title">Trusted Haldwani Services</h1>
             <p id="category-hero-subtitle">Nearby verified workers for repairs, painting, waterproofing, CCTV and home jobs.</p>
-            <button class="btn-primary hero-primary marketplace-cta" onclick="HomePage.setCategory('inspection')">Book ₹299 Expert Visit</button>
+            <button class="btn-primary hero-primary marketplace-cta" id="hero-category-cta" onclick="HomePage.bookCategoryCta(HomePage.activeCategorySlug?.())">Book ₹299 Expert Visit</button>
           </div>
           <div class="hero-live-strip" aria-label="live trust signals">
             <span><b>42</b> workers nearby</span>
@@ -63,6 +63,10 @@ export async function render(container) {
           ${_categoryEcosystemHTML("")}
         </section>
 
+        <section class="operating-feed" id="operating-feed">
+          ${_operatingFeedHTML("")}
+        </section>
+
         <section class="home-section" id="services-section">
           <div class="section-header">
             <div>
@@ -80,10 +84,8 @@ export async function render(container) {
           ${_visualProofHTML("")}
         </section>
 
-        <section class="local-proof-grid marketplace-proof-grid">
-          <div><strong>Verified nearby</strong><span>Local workers with WorkToGo confirmation</span></div>
-          <div><strong>Fast booking</strong><span>Request now, confirm before visit</span></div>
-          <div><strong>Pay after service</strong><span>No confusing advance flow for normal jobs</span></div>
+        <section class="local-proof-grid marketplace-proof-grid" id="trust-proof-section">
+          ${_trustProofHTML("")}
         </section>
 
         <section class="home-section ${serviceOnly ? "feature-hidden" : ""}" data-feature="shopping-ui">
@@ -152,9 +154,12 @@ export async function render(container) {
       _renderInstantSearch();
       _renderCategoryChips();
       _renderCategoryEcosystem();
+      _renderOperatingFeed();
       _renderVisualProof();
+      _renderTrustProof();
       _renderHeroForCategory();
       _renderServices({ ok: true, data: { services: _allServices } });
+      _syncOperatingMode();
     },
     filterEcosystem(term = "") {
       _activeChipFilter = String(term || "").trim().toLowerCase();
@@ -164,7 +169,10 @@ export async function render(container) {
       if (inp) inp.value = "";
       _renderInstantSearch();
       _renderCategoryEcosystem();
+      _renderOperatingFeed();
       _renderVisualProof();
+      _renderTrustProof();
+      _renderHeroForCategory();
       _renderServices({ ok: true, data: { services: _allServices } });
       document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     },
@@ -210,9 +218,13 @@ export async function render(container) {
     activeCategoryLabel() {
       return _categoryMeta(_activeCategory).label;
     },
+    activeCategorySlug() {
+      return _activeCategory;
+    },
     bookCategoryCta(slug = "") {
       const meta = _categoryMeta(slug || _activeCategory);
-      const service = _allServices.find(s => _matchesCategory(s, meta.slug));
+      const service = _allServices.find(s => _matchesCategory(s, meta.slug) && (!_activeChipFilter || _searchText(s).includes(_activeChipFilter)))
+        || _allServices.find(s => _matchesCategory(s, meta.slug));
       if (service?.id) {
         HomeModals.openBooking({ ...service, category_slug: service.category_slug || meta.slug, icon: service.icon || meta.icon });
         return;
@@ -241,6 +253,7 @@ export async function render(container) {
 
   _loadServices();
   if (!serviceOnly && CONFIG.FEATURES?.SHOPPING_UI) _loadProducts();
+  _syncOperatingMode();
 }
 
 // ── Modal Controller ────────────────────────────────────────────────────────
@@ -352,10 +365,10 @@ window.HomeModals = (() => {
         <strong>${_esc(category.label)} lead</strong>
         <small>Auto-routed to the right WorkToGo pipeline</small>
       </div>
-      <div class="trust-panel booking-trust-panel">
-        <span>1. Send request</span>
-        <span>2. WorkToGo/provider confirms time and scope</span>
-        <span>3. Provider visits · Pay after service unless inspection is selected</span>
+      <div class="trust-panel booking-trust-panel fast-booking-trust">
+        <span>✓ Problem goes to ${_esc(category.label)} pipeline</span>
+        <span>✓ WorkToGo confirms worker and timing</span>
+        <span>✓ Pay after service for normal jobs</span>
       </div>
       <div class="modal-field">
         <label for="booking-name">Name</label>
@@ -366,9 +379,10 @@ window.HomeModals = (() => {
         <input type="tel" id="booking-mobile" class="modal-input" placeholder="Mobile number for confirmation" autocomplete="tel" value="${_esc(user?.phone || user?.mobile || "")}" />
       </div>
       <div class="modal-field">
-        <label for="booking-date">Preferred Date &amp; Time</label>
+        <label for="booking-date">When can worker visit?</label>
         <input type="datetime-local" id="booking-date" class="modal-input"
           min="${_isoNow()}"
+          value="${_defaultScheduledLocal()}"
         />
       </div>
       <div class="modal-field">
@@ -380,8 +394,8 @@ window.HomeModals = (() => {
         <textarea id="booking-address" class="modal-textarea" placeholder="House number, street, nearby landmark" rows="2" autocomplete="street-address"></textarea>
       </div>
       <div class="modal-field">
-        <label for="booking-notes">Notes (optional)</label>
-        <textarea id="booking-notes" class="modal-textarea" placeholder="Example: ${_esc(category.examples?.[0] || "problem details")}, call before coming…" rows="2"></textarea>
+        <label for="booking-notes">Problem note (optional)</label>
+        <textarea id="booking-notes" class="modal-textarea" placeholder="Example: ${_esc(_activeChipFilter || category.examples?.[0] || "problem details")}, call before coming…" rows="2"></textarea>
       </div>
       <div class="modal-field upload-readiness-field">
         <label for="booking-proof-image">Problem photo (optional-ready)</label>
@@ -462,6 +476,12 @@ window.HomeModals = (() => {
 
   function _isoNow() {
     return new Date().toISOString().slice(0, 16);
+  }
+
+  function _defaultScheduledLocal() {
+    const d = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0);
+    return d.toISOString().slice(0, 16);
   }
 
   return { openOrder, changeQty, confirmOrder, openBooking, confirmBooking, close, closeBooking, closeOnOverlay };
@@ -561,9 +581,19 @@ function _renderCategoryEcosystem() {
   if (el) el.innerHTML = _categoryEcosystemHTML(_activeCategory);
 }
 
+function _renderOperatingFeed() {
+  const el = document.getElementById("operating-feed");
+  if (el) el.innerHTML = _operatingFeedHTML(_activeCategory);
+}
+
 function _renderVisualProof() {
   const el = document.getElementById("visual-proof-section");
   if (el) el.innerHTML = _visualProofHTML(_activeCategory);
+}
+
+function _renderTrustProof() {
+  const el = document.getElementById("trust-proof-section");
+  if (el) el.innerHTML = _trustProofHTML(_activeCategory);
 }
 
 function _renderHeroForCategory() {
@@ -571,9 +601,11 @@ function _renderHeroForCategory() {
   const title = document.getElementById("category-hero-title");
   const subtitle = document.getElementById("category-hero-subtitle");
   const kicker = document.getElementById("category-kicker");
+  const cta = document.getElementById("hero-category-cta");
   if (title) title.textContent = meta.hero || _pilotConfig.hero_title;
-  if (subtitle) subtitle.textContent = meta.subtitle || _pilotConfig.hero_subtitle;
-  if (kicker) kicker.textContent = _activeCategory ? `${_pilotConfig.city} ${meta.label} ecosystem` : `${_pilotConfig.city} live marketplace`;
+  if (subtitle) subtitle.textContent = _activeChipFilter ? `${_title(_activeChipFilter)} request mode · ${meta.subtitle || _pilotConfig.hero_subtitle}` : (meta.subtitle || _pilotConfig.hero_subtitle);
+  if (kicker) kicker.textContent = _activeCategory ? `${_pilotConfig.city} ${meta.label} operating mode` : `${_pilotConfig.city} live marketplace`;
+  if (cta) cta.textContent = _activeCategory ? `${meta.inspection ? "Book inspection" : "Book now"} · ${_activeChipFilter ? _title(_activeChipFilter) : meta.label}` : "Book ₹299 Expert Visit";
 }
 
 function _renderProducts(res) {
@@ -676,6 +708,7 @@ function _categoryMeta(slug = "") {
 
 function _categoryEcosystemHTML(slug = "") {
   const meta = _categoryMeta(slug);
+  const contextLabel = _activeContextLabel(meta);
   const visuals = meta.visuals || CATEGORY_META.all.visuals || [];
   const tags = meta.tags || meta.examples || [];
   const dealers = meta.dealers || CATEGORY_META.all.dealers || [];
@@ -687,8 +720,8 @@ function _categoryEcosystemHTML(slug = "") {
       <div class="ecosystem-banner">
         <span class="ecosystem-icon">${meta.icon}</span>
         <div>
-          <p class="service-hero-kicker">${_esc(meta.label)} mini-world</p>
-          <h3>${_esc(meta.ecosystemTitle || `${meta.label} in ${_pilotConfig.city}`)}</h3>
+          <p class="service-hero-kicker">${_esc(_activeCategory ? `${meta.label} operating mode` : `${meta.label} discovery`)}</p>
+          <h3>${_esc(contextLabel)} in ${_esc(_pilotConfig.city)}</h3>
           <p>${_esc(meta.trust || "Verified local providers · pay after service · human confirmation")}</p>
         </div>
       </div>
@@ -708,14 +741,51 @@ function _categoryEcosystemHTML(slug = "") {
     </div>`;
 }
 
+function _operatingFeedHTML(slug = "") {
+  const meta = _categoryMeta(slug);
+  const context = _activeContextLabel(meta);
+  const jobs = _contextItems(meta, "jobs", meta.examples || []).slice(0, 4);
+  const materials = _contextItems(meta, "materials", meta.materials || CATEGORY_META.all.materials || []).slice(0, 4);
+  const dealers = _contextItems(meta, "dealers", meta.dealers || CATEGORY_META.all.dealers || []).slice(0, 3);
+  const places = meta.locality || CATEGORY_META.all.locality || ["nearby"];
+  return `
+    <div class="operating-head">
+      <div>
+        <p class="section-eyebrow">Live operating feed</p>
+        <h3>${_esc(context)} activity</h3>
+      </div>
+      <span>${_activeCategory ? "Category only" : "Mixed local"}</span>
+    </div>
+    <div class="ops-ticker">
+      ${jobs.map((job, i) => `<button onclick="HomePage.filterEcosystem('${_esc(job)}')"><strong>${_esc(job)}</strong><small>${_esc(places[i % places.length] || "nearby")} · ${i + 8} min ago</small></button>`).join("")}
+    </div>
+    <div class="ops-supply-row">
+      <div><strong>Materials moving</strong><span>${_esc(materials.join(" · "))}</span></div>
+      <div><strong>Dealer path</strong><span>${_esc(dealers.join(" · "))}</span></div>
+      <div><strong>Lead route</strong><span>${_esc(meta.label)} → WorkToGo confirm → local worker</span></div>
+    </div>`;
+}
+
+function _trustProofHTML(slug = "") {
+  const meta = _categoryMeta(slug);
+  const context = _activeContextLabel(meta);
+  return `
+    <div><strong>${_esc(context)} verified nearby</strong><span>${_esc(meta.vendors || "Local workers with WorkToGo confirmation")}</span></div>
+    <div><strong>Fast ${_esc(meta.label.toLowerCase())} booking</strong><span>Request now, WorkToGo confirms before visit</span></div>
+    <div><strong>Clear local payment</strong><span>Pay after service for normal jobs; inspection when scope is unclear</span></div>`;
+}
+
 function _visualProofHTML(slug = "") {
   const meta = _categoryMeta(slug);
-  const beforeAfter = meta.beforeAfter || CATEGORY_META.all.beforeAfter;
+  const baseProof = meta.beforeAfter || CATEGORY_META.all.beforeAfter;
+  const beforeAfter = _activeChipFilter
+    ? [...baseProof].sort((a, b) => Number(_proofMatches(b)) - Number(_proofMatches(a)))
+    : baseProof;
   return `
     <div class="section-header">
       <div>
         <p class="section-eyebrow">Visual proof</p>
-        <h3>${_esc(meta.label)} work examples</h3>
+        <h3>${_esc(_activeContextLabel(meta))} proof</h3>
       </div>
     </div>
     <div class="proof-rail">
@@ -731,6 +801,11 @@ function _visualProofHTML(slug = "") {
         </div>
       `).join("")}
     </div>`;
+}
+
+function _proofMatches(item) {
+  if (!_activeChipFilter) return false;
+  return `${item.title || ""} ${item.note || ""}`.toLowerCase().includes(_activeChipFilter);
 }
 
 function _vendorCardHTML(service, support = false) {
@@ -814,6 +889,25 @@ function _searchText(service) {
   return [service.name, service.description, service.category, service.category_name, service.category_slug, service.slug, service.short_desc, service.example].filter(Boolean).join(" ").toLowerCase();
 }
 
+function _contextItems(meta, key, fallback = []) {
+  const all = Array.isArray(meta[key]) && meta[key].length ? meta[key] : fallback;
+  if (!_activeChipFilter) return all;
+  const primary = _title(_activeChipFilter);
+  const filtered = all.filter(x => String(x).toLowerCase().includes(_activeChipFilter));
+  return [primary, ...filtered, ...all.filter(x => !filtered.includes(x))].filter(Boolean);
+}
+
+function _activeContextLabel(meta) {
+  return _activeChipFilter ? `${_title(_activeChipFilter)} ${meta.label}` : meta.label;
+}
+
+function _syncOperatingMode() {
+  const page = document.querySelector(".home-page");
+  if (!page) return;
+  page.classList.toggle("category-operating-mode", Boolean(_activeCategory));
+  document.querySelector('[data-feature="shopping-ui"]')?.classList.toggle("feature-hidden", Boolean(_activeCategory) || Boolean(CONFIG.FEATURES?.SERVICE_ONLY_MODE));
+}
+
 function _normalizeSearchService(s) {
   return {
     ...s,
@@ -859,8 +953,11 @@ function _resumePendingBooking() {
       _activeCategory = pending.category;
       _renderCategoryChips();
       _renderCategoryEcosystem();
+      _renderOperatingFeed();
       _renderVisualProof();
+      _renderTrustProof();
       _renderHeroForCategory();
+      _syncOperatingMode();
     }
     setTimeout(() => HomeModals.openBooking(pending.service), 350);
   } catch {}
