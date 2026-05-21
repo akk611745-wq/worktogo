@@ -193,11 +193,12 @@ export async function render(container) {
       HomePage.filterEcosystem(seed);
     },
     selectBookingMode(mode = "") {
+      const selectedButton = [...document.querySelectorAll(".booking-mode-option")].find(btn => btn.dataset.mode === mode);
+      if (!selectedButton || selectedButton.disabled || selectedButton.getAttribute("aria-disabled") === "true") return;
       const hidden = document.getElementById("booking-mode");
       if (hidden) hidden.value = mode;
       document.querySelectorAll(".booking-mode-option").forEach(btn => btn.classList.remove("active"));
-      const selected = [...document.querySelectorAll(".booking-mode-option")].find(btn => btn.getAttribute("onclick")?.includes(`'${mode}'`));
-      selected?.classList.add("active");
+      selectedButton.classList.add("active");
       const confirm = document.getElementById("btn-confirm-booking")?.querySelector(".btn-label");
       if (confirm) confirm.textContent = mode === "inspection" ? "Request ₹299 Inspection" : mode === "direct_vendor" ? "Book Vendor" : "Submit Free Lead";
       _persistPendingBookingForm();
@@ -1045,7 +1046,7 @@ function _premiumInspectionPanel(category) {
 }
 
 function _bookingModeOption(value, label, note, selected, disabled = false) {
-  return `<button type="button" class="booking-mode-option ${selected === value ? "active" : ""} ${disabled ? "disabled" : ""}" ${disabled ? "aria-disabled=\"true\"" : ""} onclick="HomePage.selectBookingMode?.('${_esc(value)}') || (document.getElementById('booking-mode').value='${_esc(value)}')">
+  return `<button type="button" data-mode="${_esc(value)}" class="booking-mode-option ${selected === value ? "active" : ""} ${disabled ? "disabled" : ""}" ${disabled ? "disabled aria-disabled=\"true\"" : ""} onclick="HomePage.selectBookingMode?.('${_esc(value)}') || (document.getElementById('booking-mode').value='${_esc(value)}')">
     <strong>${_esc(label)}</strong><small>${_esc(note)}</small>
   </button>`;
 }
