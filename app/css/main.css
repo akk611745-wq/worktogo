@@ -1162,17 +1162,16 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 .slim-service-hero {
   min-height: auto;
-  max-height: 120px;
+  max-height: 88px;
   margin: 0 var(--sp-md) 10px;
-  padding: 12px;
+  padding: 10px 14px;
   border-radius: 20px;
   overflow: hidden;
 }
 .slim-service-hero .service-hero-copy { min-width: 0; }
-.slim-service-hero h1 { font-size: 1.18rem; line-height: 1.08; margin-bottom: 4px; }
-.slim-service-hero p:not(.service-hero-kicker) { font-size: 0.78rem; line-height: 1.25; margin-bottom: 8px; }
-.slim-service-hero .hero-primary { min-height: 38px; padding: 0 14px; font-size: 0.8rem; }
-.slim-service-hero .hero-live-strip { margin-top: 8px; }
+.slim-service-hero h1 { font-size: 1rem; line-height: 1.02; margin-bottom: 5px; }
+.slim-service-hero .service-hero-kicker { font-size: 0.62rem; margin-bottom: 2px; }
+.slim-service-hero .hero-primary { min-height: 30px; padding: 0 12px; font-size: 0.75rem; }
 
 .market-search-section label {
   display: block;

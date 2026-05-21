@@ -50,10 +50,8 @@ export async function render(container) {
           <div class="service-hero-copy">
             <p class="service-hero-kicker" id="category-kicker">${_esc(_pilotConfig.city)} live marketplace</p>
             <h1 id="category-hero-title">Trusted Haldwani Services</h1>
-            <p id="category-hero-subtitle">Nearby verified workers for repairs, painting, waterproofing, CCTV and home jobs.</p>
             <button class="btn-primary hero-primary marketplace-cta" id="hero-category-cta" onclick="HomePage.bookCategoryCta(HomePage.activeCategorySlug?.())">Book · All services</button>
           </div>
-          <div class="hero-live-strip hidden" aria-label="live trust signals" id="hero-live-strip"></div>
         </section>
 
         <section class="home-section" id="services-section">
@@ -688,21 +686,11 @@ function _renderOperatingFeed() {
 function _renderHeroForCategory() {
   const meta = _categoryMeta(_activeCategory);
   const title = document.getElementById("category-hero-title");
-  const subtitle = document.getElementById("category-hero-subtitle");
   const kicker = document.getElementById("category-kicker");
   const cta = document.getElementById("hero-category-cta");
   if (title) title.textContent = meta.hero || _pilotConfig.hero_title;
-  if (subtitle) subtitle.textContent = _activeChipFilter ? `${_title(_activeChipFilter)} request mode · ${meta.subtitle || _pilotConfig.hero_subtitle}` : (meta.subtitle || _pilotConfig.hero_subtitle);
   if (kicker) kicker.textContent = _activeCategory ? `${_pilotConfig.city} ${meta.label} operating mode` : `${_pilotConfig.city} live marketplace`;
   if (cta) cta.textContent = `Book · ${_activeChipFilter ? _title(_activeChipFilter) : meta.label}`;
-}
-
-function _renderHeroStats() {
-  const el = document.getElementById("hero-live-strip");
-  if (!el) return;
-  const stats = Array.isArray(_pilotConfig.hero_stats) ? _pilotConfig.hero_stats : [];
-  el.innerHTML = stats.map(s => `<span><b>${_esc(s.value || "")}</b> ${_esc(s.label || "")}</span>`).join("");
-  el.classList.toggle("hidden", !stats.length);
 }
 
 function _renderProducts(res) {
