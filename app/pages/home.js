@@ -207,11 +207,9 @@ export async function render(container) {
       _persistPendingBookingForm();
     },
     openSearch() {
-      _searchActive = true;
       _renderInstantSearch();
     },
     async searchServices(query = "") {
-      _searchActive = true;
       _searchQuery = query.trim().toLowerCase();
       _activeDiscoveryKind = "";
       const inp = document.getElementById("service-search");
@@ -239,7 +237,6 @@ export async function render(container) {
       if (inp) inp.value = "";
       _searchQuery = "";
       _searchRemoteServices = [];
-      _searchActive = false;
       _renderInstantSearch();
       _renderServices({ ok: true, data: { services: _allServices } });
       _persistHomeState();
@@ -751,23 +748,8 @@ function _renderProducts(res) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function _initial(user) {
-  return (user?.name || "U").charAt(0).toUpperCase();
-}
-
-function _timeGreeting() {
-  const h = new Date().getHours();
-  if (h < 12) return "morning";
-  if (h < 17) return "afternoon";
-  return "evening";
-}
-
 function _esc(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  return UI.escapeHtml(str);
 }
 
 function _unwrapData(data) {
@@ -1068,16 +1050,7 @@ function _canonicalBookingMode(value, service, category) {
 }
 
 function _customerProfile() {
-  const user = AUTH.getUser?.() || {};
-  let stored = {};
-  try { stored = JSON.parse(localStorage.getItem("wtg_customer_profile") || "{}"); } catch {}
-  return {
-    ...stored,
-    name: stored.name || user?.name || "",
-    phone: stored.phone || user?.phone || user?.mobile || "",
-    locality: stored.locality || user?.locality || user?.area || "",
-    address: stored.address || user?.address || "",
-  };
+  return UI.customerProfile();
 }
 
 function _inspectionPrice(service = null, category = null) {
@@ -1109,7 +1082,6 @@ function _restoreHomeState() {
     _activeChipFilter = state.chip || "";
     _activeDiscoveryKind = state.discovery || "";
     _searchQuery = state.query || "";
-    _searchActive = Boolean(_searchQuery);
   } catch {}
 }
 
@@ -1203,7 +1175,6 @@ function _jsonAttr(obj) {
 let _pilotLoaded = false;
 let _activeCategory = "";
 let _searchQuery = "";
-let _searchActive = false;
 let _activeChipFilter = "";
 let _activeDiscoveryKind = "";
 let _searchTimer = null;

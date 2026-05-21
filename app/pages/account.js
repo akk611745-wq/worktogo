@@ -184,21 +184,9 @@ function _roleLabel(role) {
 }
 
 function _escapeHtml(str) {
-  return String(str || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  return UI.escapeHtml(str);
 }
 
 function _customerProfile(user = {}) {
-  let stored = {};
-  try { stored = JSON.parse(localStorage.getItem("wtg_customer_profile") || "{}"); } catch {}
-  return {
-    ...stored,
-    name: stored.name || user?.name || "",
-    phone: stored.phone || user?.phone || user?.mobile || "",
-    locality: stored.locality || user?.locality || user?.area || "",
-    address: stored.address || user?.address || "",
-  };
+  return UI.customerProfile(user);
 }

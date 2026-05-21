@@ -141,11 +141,7 @@ window.BookingsPage = (() => {
   }
 
   function _esc(str) {
-    return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+    return UI.escapeHtml(str);
   }
 
   function _normalizeBooking(b) {

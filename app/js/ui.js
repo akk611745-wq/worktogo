@@ -108,6 +108,27 @@ const UI = (() => {
     } catch { return dateStr; }
   }
 
+  function escapeHtml(str = "") {
+    return String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function customerProfile(user = null) {
+    const currentUser = user || (typeof AUTH !== "undefined" && AUTH.getUser?.()) || {};
+    let stored = {};
+    try { stored = JSON.parse(localStorage.getItem("wtg_customer_profile") || "{}"); } catch {}
+    return {
+      ...stored,
+      name: stored.name || currentUser?.name || "",
+      phone: stored.phone || currentUser?.phone || currentUser?.mobile || "",
+      locality: stored.locality || currentUser?.locality || currentUser?.area || "",
+      address: stored.address || currentUser?.address || "",
+    };
+  }
+
   // ── Refresh Dot ────────────────────────────────────────────────────────
 
   function pulseRefreshDot() {
@@ -243,7 +264,7 @@ const UI = (() => {
   return {
     toast, showNotificationBanner,
     statusBadge, skeleton, emptyState, errorState,
-    formatCurrency, formatDate,
+    formatCurrency, formatDate, escapeHtml, customerProfile,
     pulseRefreshDot, buildNav,
     openSupport, closeSupport, sendSupport,
   };
