@@ -782,8 +782,6 @@ function _categoryEcosystemHTML(slug = "") {
   const contextLabel = _activeContextLabel(meta);
   const visuals = meta.visuals || CATEGORY_META.all.visuals || [];
   const tags = meta.tags || meta.examples || [];
-  const dealers = meta.dealers || CATEGORY_META.all.dealers || [];
-  const materials = meta.materials || CATEGORY_META.all.materials || [];
   const brands = meta.brands || CATEGORY_META.all.brands || [];
   const locality = meta.locality || CATEGORY_META.all.locality || [];
   return `
@@ -791,7 +789,7 @@ function _categoryEcosystemHTML(slug = "") {
       <summary class="ecosystem-summary">
         <span class="ecosystem-icon">${meta.icon}</span>
         <strong>${_esc(contextLabel)} ecosystem</strong>
-        <small>Dealers, materials, brands and localities</small>
+        <small>Service options and local availability</small>
       </summary>
       <div class="ecosystem-banner">
         <span class="ecosystem-icon">${meta.icon}</span>
@@ -808,8 +806,6 @@ function _categoryEcosystemHTML(slug = "") {
         ${tags.slice(0, 8).map(x => `<button class="${_activeChipFilter === String(x).toLowerCase() ? "active" : ""}" onclick="HomePage.filterEcosystem('${_esc(x)}')">${_esc(x)}</button>`).join("")}
       </div>
       <div class="ecosystem-local-grid">
-        <button type="button" onclick="HomePage.ecosystemDiscover('dealers', '${_esc(dealers[0] || meta.label)}')"><strong>Nearby dealers</strong><span>${_esc(dealers.join(" · "))}</span></button>
-        <button type="button" onclick="HomePage.ecosystemDiscover('materials', '${_esc(materials[0] || meta.label)}')"><strong>Materials</strong><span>${_esc(materials.join(" · "))}</span></button>
         <button type="button" onclick="HomePage.ecosystemDiscover('brands', '${_esc(brands[0] || meta.label)}')"><strong>Brands ready</strong><span>${_esc(brands.join(" · "))}</span></button>
         <button type="button" onclick="HomePage.ecosystemDiscover('locality', '${_esc(locality[0] || _pilotConfig.city)}')"><strong>Locality active</strong><span>${_esc(locality.join(" · "))}</span></button>
       </div>
@@ -821,8 +817,6 @@ function _operatingFeedHTML(slug = "") {
   const meta = _categoryMeta(slug);
   const context = _activeContextLabel(meta);
   const jobs = _contextItems(meta, "jobs", meta.examples || []).slice(0, 4);
-  const materials = _contextItems(meta, "materials", meta.materials || CATEGORY_META.all.materials || []).slice(0, 4);
-  const dealers = _contextItems(meta, "dealers", meta.dealers || CATEGORY_META.all.dealers || []).slice(0, 3);
   const places = meta.locality || CATEGORY_META.all.locality || ["nearby"];
   return `
     <div class="operating-head">
@@ -835,11 +829,7 @@ function _operatingFeedHTML(slug = "") {
     <div class="ops-ticker">
       ${jobs.map((job, i) => `<button onclick="HomePage.filterEcosystem('${_esc(job)}')"><strong>${_esc(job)}</strong><small>${_esc(places[i % places.length] || "nearby")} · ${i + 8} min ago</small></button>`).join("")}
     </div>
-    <div class="ops-supply-row">
-      <div><strong>Materials moving</strong><span>${_esc(materials.join(" · "))}</span></div>
-      <div><strong>Dealer path</strong><span>${_esc(dealers.join(" · "))}</span></div>
-      <div><strong>Lead route</strong><span>${_esc(meta.label)} → WorkToGo confirm → local worker</span></div>
-    </div>`;
+    `;
 }
 
 function _trustProofHTML(slug = "") {
