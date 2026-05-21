@@ -30,25 +30,56 @@ try {
                 $hasPhase2A = true;
             }
 
+            $hasShortDesc = false;
+            $shortDescStmt = $db->query("SHOW COLUMNS FROM services LIKE 'short_desc'");
+            if ($shortDescStmt && $shortDescStmt->rowCount() > 0) {
+                $hasShortDesc = true;
+            }
+
+            $hasSlug = false;
+            $slugStmt = $db->query("SHOW COLUMNS FROM services LIKE 'slug'");
+            if ($slugStmt && $slugStmt->rowCount() > 0) {
+                $hasSlug = true;
+            }
+
+            $hasRating = false;
+            $ratingStmt = $db->query("SHOW COLUMNS FROM services LIKE 'rating'");
+            if ($ratingStmt && $ratingStmt->rowCount() > 0) {
+                $hasRating = true;
+            }
+
+            $hasFeatured = false;
+            $featuredStmt = $db->query("SHOW COLUMNS FROM services LIKE 'is_featured'");
+            if ($featuredStmt && $featuredStmt->rowCount() > 0) {
+                $hasFeatured = true;
+            }
+
+            $slugSelect = $hasSlug ? 's.slug' : "'' AS slug";
+            $shortDescSelect = $hasShortDesc ? 's.short_desc' : "'' AS short_desc";
+            $ratingSelect = $hasRating ? 's.rating' : '0.00 AS rating';
+            $shortDescWhere = $hasShortDesc ? ' OR s.short_desc LIKE :q' : '';
+            $featuredOrder = $hasFeatured ? 's.is_featured DESC, ' : '';
+            $ratingOrder = $hasRating ? 's.rating DESC, ' : '';
+
             if ($hasPhase2A) {
-                $svcQuery = "SELECT s.id, s.name, s.slug, s.short_desc, s.base_price, s.rating,
+                $svcQuery = "SELECT s.id, s.name, {$slugSelect}, {$shortDescSelect}, s.base_price, {$ratingSelect},
                         'service' AS result_type,
                         v.business_name AS vendor_name
                  FROM services s
                  LEFT JOIN vendors v ON v.id = s.vendor_id
                  WHERE s.status = 'active' AND s.deleted_at IS NULL
-                   AND (s.name LIKE :q OR s.description LIKE :q OR s.short_desc LIKE :q)
-                 ORDER BY s.is_featured DESC, s.rating DESC
+                   AND (s.name LIKE :q OR s.description LIKE :q{$shortDescWhere})
+                 ORDER BY {$featuredOrder}{$ratingOrder}s.name ASC
                  LIMIT :limit OFFSET :offset";
             } else {
-                $svcQuery = "SELECT s.id, s.name, '' AS slug, '' AS short_desc, s.base_price, 0.00 AS rating,
+                $svcQuery = "SELECT s.id, s.name, {$slugSelect}, {$shortDescSelect}, s.base_price, {$ratingSelect},
                         'service' AS result_type,
                         v.business_name AS vendor_name
                  FROM services s
                  LEFT JOIN vendors v ON v.id = s.vendor_id
                  WHERE s.status = 'active'
-                   AND (s.name LIKE :q)
-                 ORDER BY s.id DESC
+                   AND (s.name LIKE :q{$shortDescWhere})
+                 ORDER BY {$featuredOrder}{$ratingOrder}s.id DESC
                  LIMIT :limit OFFSET :offset";
             }
 

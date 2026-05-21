@@ -9,6 +9,7 @@ export async function render(container) {
   const serviceOnly = Boolean(CONFIG.FEATURES?.SERVICE_ONLY_MODE);
   const isLoggedIn = AUTH.isLoggedIn();
   await _loadPilotConfig();
+  _restoreHomeState();
 
   container.innerHTML = `
     <div class="page home-page">
@@ -25,7 +26,7 @@ export async function render(container) {
         <section class="market-search-section">
           <div class="market-search-box">
             <span>⌕</span>
-            <input id="service-search" type="search" placeholder="Search painter, leakage, fan, CCTV…" autocomplete="off" onfocus="HomePage.openSearch()" oninput="HomePage.searchServices(this.value)" />
+            <input id="service-search" type="search" placeholder="Search painter, leakage, fan, CCTV…" autocomplete="off" value="${_esc(_searchQuery)}" onfocus="HomePage.openSearch()" oninput="HomePage.searchServices(this.value)" />
             <button onclick="HomePage.clearSearch()" aria-label="Clear search">×</button>
           </div>
           <div id="search-results-panel" class="instant-search-panel hidden"></div>
@@ -151,6 +152,7 @@ export async function render(container) {
       _searchRemoteServices = [];
       const inp = document.getElementById("service-search");
       if (inp) inp.value = "";
+      _activeDiscoveryKind = "";
       _renderInstantSearch();
       _renderCategoryChips();
       _renderCategoryEcosystem();
@@ -160,6 +162,7 @@ export async function render(container) {
       _renderHeroForCategory();
       _renderServices({ ok: true, data: { services: _allServices } });
       _syncOperatingMode();
+      _persistHomeState();
     },
     filterEcosystem(term = "") {
       _activeChipFilter = String(term || "").trim().toLowerCase();
@@ -175,6 +178,32 @@ export async function render(container) {
       _renderHeroForCategory();
       _renderServices({ ok: true, data: { services: _allServices } });
       document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      _persistHomeState();
+    },
+    ecosystemDiscover(kind = "", value = "") {
+      const meta = _categoryMeta(_activeCategory);
+      const lookup = {
+        dealers: meta.dealers || CATEGORY_META.all.dealers || [],
+        materials: meta.materials || CATEGORY_META.all.materials || [],
+        brands: meta.brands || CATEGORY_META.all.brands || [],
+        locality: meta.locality || CATEGORY_META.all.locality || [],
+      };
+      const seed = value || lookup[kind]?.[0] || meta.label;
+      _activeDiscoveryKind = kind;
+      HomePage.filterEcosystem(seed);
+    },
+    selectBookingMode(mode = "") {
+      const hidden = document.getElementById("booking-mode");
+      if (hidden) hidden.value = mode;
+      document.querySelectorAll(".booking-mode-option").forEach(btn => btn.classList.remove("active"));
+      const selected = [...document.querySelectorAll(".booking-mode-option")].find(btn => btn.getAttribute("onclick")?.includes(`'${mode}'`));
+      selected?.classList.add("active");
+      const confirm = document.getElementById("btn-confirm-booking")?.querySelector(".btn-label");
+      if (confirm) confirm.textContent = mode === "inspection" ? "Request ₹299 Inspection" : mode === "direct_vendor" ? "Book Vendor" : "Submit Free Lead";
+      _persistPendingBookingForm();
+    },
+    persistPendingBookingForm() {
+      _persistPendingBookingForm();
     },
     openSearch() {
       _searchActive = true;
@@ -183,6 +212,7 @@ export async function render(container) {
     async searchServices(query = "") {
       _searchActive = true;
       _searchQuery = query.trim().toLowerCase();
+      _activeDiscoveryKind = "";
       const inp = document.getElementById("service-search");
       if (inp && inp.value !== query) inp.value = query;
       clearTimeout(_searchTimer);
@@ -201,6 +231,7 @@ export async function render(container) {
       }, 260);
       _renderServices({ ok: true, data: { services: _allServices } });
       _renderInstantSearch();
+      _persistHomeState();
     },
     clearSearch() {
       const inp = document.getElementById("service-search");
@@ -210,6 +241,7 @@ export async function render(container) {
       _searchActive = false;
       _renderInstantSearch();
       _renderServices({ ok: true, data: { services: _allServices } });
+      _persistHomeState();
     },
     toggleMoreCategories() {
       _showAllCategories = !_showAllCategories;
@@ -223,6 +255,14 @@ export async function render(container) {
     },
     bookCategoryCta(slug = "") {
       const meta = _categoryMeta(slug || _activeCategory);
+      if (!(slug || _activeCategory)) {
+        const inspection = _allServices.find(s => _matchesCategory(s, "inspection"))
+          || _allServices.find(s => _categoryMeta(s.category_slug || s.category || "").inspection);
+        if (inspection?.id) {
+          HomeModals.openBooking({ ...inspection, booking_mode: "inspection", icon: inspection.icon || "🛡️" });
+          return;
+        }
+      }
       const service = _allServices.find(s => _matchesCategory(s, meta.slug) && (!_activeChipFilter || _searchText(s).includes(_activeChipFilter)))
         || _allServices.find(s => _matchesCategory(s, meta.slug));
       if (service?.id) {
@@ -254,6 +294,7 @@ export async function render(container) {
   _loadServices();
   if (!serviceOnly && CONFIG.FEATURES?.SHOPPING_UI) _loadProducts();
   _syncOperatingMode();
+  _renderInstantSearch();
 }
 
 // ── Modal Controller ────────────────────────────────────────────────────────
@@ -263,6 +304,10 @@ window.HomeModals = (() => {
   let _currentService = null;
 
   function openOrder(product) {
+    if (CONFIG.FEATURES?.SERVICE_ONLY_MODE) {
+      UI.toast("Orders are disabled in service-only mode.", "info");
+      return;
+    }
     _currentProduct = product;
     document.getElementById("order-modal-title").textContent = _esc(product.name || "Place Order");
     document.getElementById("order-modal-body").innerHTML = `
@@ -347,19 +392,27 @@ window.HomeModals = (() => {
 
   function openBooking(service) {
     _currentService = service;
-    const user = AUTH.getUser?.() || {};
+    const profile = _customerProfile();
     const category = _categoryMeta(service.category_slug || service.category || _activeCategory);
+    const restored = _pendingBookingForm();
+    const defaultMode = restored.booking_mode || service.booking_mode || (service.vendor_id ? "direct_vendor" : (category.inspection ? "inspection" : "free_lead"));
+    const inspectionPrice = _inspectionPrice(service, category);
     document.getElementById("booking-modal-title").textContent = _esc(service.name || "Book Service");
     document.getElementById("booking-modal-body").innerHTML = `
       <div class="modal-product-info">
         <div class="modal-product-placeholder">${service.icon || "🔧"}</div>
         <div>
-          <p class="modal-price">${UI.formatCurrency(_servicePrice(service))}</p>
+          <p class="modal-price">${category.inspection ? `Inspection ${UI.formatCurrency(inspectionPrice)}` : UI.formatCurrency(_servicePrice(service))}</p>
           ${service.description ? `<p class="modal-desc">${_esc(service.description)}</p>` : ""}
-          <p class="service-note">${_esc(category.label)} request · Pay after service. WorkToGo confirms before visit.</p>
+          <p class="service-note">${_esc(category.label)} request · One WorkToGo lifecycle tracks inspection, lead and vendor assignment.</p>
         </div>
       </div>
       ${_premiumInspectionPanel(category)}
+      <div class="booking-mode-picker" role="radiogroup" aria-label="Booking mode">
+        ${_bookingModeOption("inspection", "Premium inspection", `${UI.formatCurrency(inspectionPrice)} visit · payment verified separately`, defaultMode)}
+        ${_bookingModeOption("free_lead", "Free lead", "No payment · admin routes category-wise", defaultMode)}
+        ${_bookingModeOption("direct_vendor", "Direct vendor", "Send to listed provider · admin tracks", defaultMode, !service.vendor_id)}
+      </div>
       <div class="booking-context-strip">
         <span>${category.icon}</span>
         <strong>${_esc(category.label)} lead</strong>
@@ -372,11 +425,11 @@ window.HomeModals = (() => {
       </div>
       <div class="modal-field">
         <label for="booking-name">Name</label>
-        <input type="text" id="booking-name" class="modal-input" placeholder="Your name" autocomplete="name" value="${_esc(user?.name || "")}" />
+        <input type="text" id="booking-name" class="modal-input" placeholder="Your name" autocomplete="name" value="${_esc(restored.name || profile.name || "")}" oninput="HomePage.persistPendingBookingForm?.()" />
       </div>
       <div class="modal-field">
         <label for="booking-mobile">Mobile</label>
-        <input type="tel" id="booking-mobile" class="modal-input" placeholder="Mobile number for confirmation" autocomplete="tel" value="${_esc(user?.phone || user?.mobile || "")}" />
+        <input type="tel" id="booking-mobile" class="modal-input" placeholder="Mobile number for confirmation" autocomplete="tel" value="${_esc(restored.phone || profile.phone || "")}" oninput="HomePage.persistPendingBookingForm?.()" />
       </div>
       <div class="modal-field">
         <label for="booking-date">When can worker visit?</label>
@@ -387,22 +440,18 @@ window.HomeModals = (() => {
       </div>
       <div class="modal-field">
         <label for="booking-area">Area / Landmark</label>
-        <input type="text" id="booking-area" class="modal-input" placeholder="e.g. Mukhani, Kusumkhera, near canal road" autocomplete="address-level2" />
+        <input type="text" id="booking-area" class="modal-input" placeholder="e.g. Mukhani, Kusumkhera, near canal road" autocomplete="address-level2" value="${_esc(restored.locality || profile.locality || profile.area || "")}" oninput="HomePage.persistPendingBookingForm?.()" />
       </div>
       <div class="modal-field">
         <label for="booking-address">Full Address</label>
-        <textarea id="booking-address" class="modal-textarea" placeholder="House number, street, nearby landmark" rows="2" autocomplete="street-address"></textarea>
+        <textarea id="booking-address" class="modal-textarea" placeholder="House number, street, nearby landmark" rows="2" autocomplete="street-address" oninput="HomePage.persistPendingBookingForm?.()">${_esc(restored.address || profile.address || "")}</textarea>
       </div>
       <div class="modal-field">
         <label for="booking-notes">Problem note (optional)</label>
-        <textarea id="booking-notes" class="modal-textarea" placeholder="Example: ${_esc(_activeChipFilter || category.examples?.[0] || "problem details")}, call before coming…" rows="2"></textarea>
+        <textarea id="booking-notes" class="modal-textarea" placeholder="Example: ${_esc(_activeChipFilter || category.examples?.[0] || "problem details")}, call before coming…" rows="2" oninput="HomePage.persistPendingBookingForm?.()">${_esc(restored.notes || "")}</textarea>
       </div>
-      <div class="modal-field upload-readiness-field">
-        <label for="booking-proof-image">Problem photo (optional-ready)</label>
-        <input type="file" id="booking-proof-image" class="modal-input" accept="image/*" />
-        <small>Photo upload is prepared for field proof; current request will still submit without uploading.</small>
-      </div>
-      <p class="service-note">After submission you can track status in Bookings. Keep your phone available for confirmation.</p>
+      <input type="hidden" id="booking-mode" value="${_esc(defaultMode)}" />
+      <p class="service-note">After submission you can track status in Bookings. Inspection payment is shown as pending until verified.</p>
     `;
     document.getElementById("booking-modal").classList.remove("hidden");
   }
@@ -410,7 +459,7 @@ window.HomeModals = (() => {
   async function confirmBooking() {
     if (!AUTH.isLoggedIn()) {
       UI.toast("Login with mobile OTP to request this service", "info");
-      _savePendingBookingIntent(_currentService);
+      _savePendingBookingIntent(_currentService, _pendingBookingForm());
       closeBooking();
       ROUTER.go("login");
       return;
@@ -423,6 +472,7 @@ window.HomeModals = (() => {
     const address = document.getElementById("booking-address")?.value?.trim() || "";
     const notes   = document.getElementById("booking-notes")?.value?.trim() || "";
     const category = _categoryMeta(_currentService.category_slug || _currentService.category || _activeCategory);
+    const bookingMode = _canonicalBookingMode(document.getElementById("booking-mode")?.value, _currentService, category);
 
     if (!dateVal) { UI.toast("Please choose preferred date and time", "error"); return; }
     if (Number.isNaN(new Date(dateVal).getTime()) || new Date(dateVal).getTime() <= Date.now()) {
@@ -431,19 +481,31 @@ window.HomeModals = (() => {
     }
     if (!name) { UI.toast("Please enter your name", "error"); return; }
     if (!mobile) { UI.toast("Please enter mobile number", "error"); return; }
+    const mobileDigits = mobile.replace(/\D/g, "");
+    if (mobileDigits.length !== 10) { UI.toast("Please enter a valid 10-digit mobile number", "error"); return; }
     if (!area) { UI.toast("Please enter area or landmark", "error"); return; }
     if (!address) { UI.toast("Please enter full address", "error"); return; }
 
     const btn = document.getElementById("btn-confirm-booking");
     if (btn) { btn.disabled = true; btn.classList.add("loading"); }
 
+    _persistCustomerProfile({ name, phone: mobile, locality: area, address });
+
     const res = await API.createBooking({
       service_id: _currentService.id,
       ...(dateVal ? { scheduled_at: new Date(dateVal).toISOString() } : {}),
+      booking_mode: bookingMode,
+      lifecycle_type: bookingMode,
+      payment_method: bookingMode === "inspection" ? "online" : "cod",
+      expected_payment_amount: bookingMode === "inspection" ? _inspectionPrice(_currentService, category) : 0,
+      payment_status: "unpaid",
       category_slug: category.slug || _activeCategory,
       category_label: category.label,
       customer_name: name,
-      customer_mobile: mobile,
+      customer_mobile: mobileDigits,
+      customer_locality: area,
+      customer_address: address,
+      vendor_id: bookingMode === "direct_vendor" ? (_currentService.vendor_id || null) : null,
       notes: [`Category: ${category.label}`, `Customer: ${name}`, `Mobile: ${mobile}`, `Area/Landmark: ${area}`, `Address: ${address}`, _activeChipFilter ? `Selected issue: ${_activeChipFilter}` : "", notes ? `Notes: ${notes}` : ""].filter(Boolean).join("\n"),
     });
 
@@ -451,7 +513,8 @@ window.HomeModals = (() => {
 
     if (res.ok) {
       closeBooking();
-      UI.toast("Request sent — we will confirm shortly.", "success");
+      _clearPendingBookingForm();
+      UI.toast(bookingMode === "inspection" ? "Inspection request saved — payment pending until verified." : "Request sent — track status in Bookings.", "success");
       setTimeout(() => ROUTER.go("bookings"), 800);
     } else {
       UI.toast(res.error || "Failed to book service. Try again.", "error");
@@ -535,8 +598,10 @@ function _renderServices(res) {
   }
   if (list.length) _allServices = list;
   if (_searchQuery && _searchRemoteServices.length) list = _searchRemoteServices;
-    if (_activeCategory) list = list.filter(s => _matchesCategory(s, _activeCategory));
-    if (_activeChipFilter) list = list.filter(s => _searchText(s).includes(_activeChipFilter) || _categoryMeta(_activeCategory).examples?.join(" ").toLowerCase().includes(_activeChipFilter) || _categoryMeta(_activeCategory).tags?.join(" ").toLowerCase().includes(_activeChipFilter));
+    const inferred = _searchQuery ? _inferSearchMeta(_searchQuery) : null;
+    const categoryFilter = _activeCategory || (inferred?.slug || "");
+    if (categoryFilter) list = list.filter(s => _matchesCategory(s, categoryFilter));
+    if (_activeChipFilter) list = list.filter(s => _serviceMatchesDiscovery(s, _activeChipFilter, _categoryMeta(_activeCategory)));
     if (_searchQuery) list = list.filter(s => _searchText(s).includes(_searchQuery));
 
     if (!list.length) {
@@ -605,7 +670,7 @@ function _renderHeroForCategory() {
   if (title) title.textContent = meta.hero || _pilotConfig.hero_title;
   if (subtitle) subtitle.textContent = _activeChipFilter ? `${_title(_activeChipFilter)} request mode · ${meta.subtitle || _pilotConfig.hero_subtitle}` : (meta.subtitle || _pilotConfig.hero_subtitle);
   if (kicker) kicker.textContent = _activeCategory ? `${_pilotConfig.city} ${meta.label} operating mode` : `${_pilotConfig.city} live marketplace`;
-  if (cta) cta.textContent = _activeCategory ? `${meta.inspection ? "Book inspection" : "Book now"} · ${_activeChipFilter ? _title(_activeChipFilter) : meta.label}` : "Book ₹299 Expert Visit";
+  if (cta) cta.textContent = _activeCategory ? `${meta.inspection ? "Book inspection" : "Book now"} · ${_activeChipFilter ? _title(_activeChipFilter) : meta.label}` : "Request service help";
 }
 
 function _renderProducts(res) {
@@ -732,10 +797,10 @@ function _categoryEcosystemHTML(slug = "") {
         ${tags.slice(0, 8).map(x => `<button class="${_activeChipFilter === String(x).toLowerCase() ? "active" : ""}" onclick="HomePage.filterEcosystem('${_esc(x)}')">${_esc(x)}</button>`).join("")}
       </div>
       <div class="ecosystem-local-grid">
-        <div><strong>Nearby dealers</strong><span>${_esc(dealers.join(" · "))}</span></div>
-        <div><strong>Materials</strong><span>${_esc(materials.join(" · "))}</span></div>
-        <div><strong>Brands ready</strong><span>${_esc(brands.join(" · "))}</span></div>
-        <div><strong>Locality active</strong><span>${_esc(locality.join(" · "))}</span></div>
+        <button type="button" onclick="HomePage.ecosystemDiscover('dealers', '${_esc(dealers[0] || meta.label)}')"><strong>Nearby dealers</strong><span>${_esc(dealers.join(" · "))}</span></button>
+        <button type="button" onclick="HomePage.ecosystemDiscover('materials', '${_esc(materials[0] || meta.label)}')"><strong>Materials</strong><span>${_esc(materials.join(" · "))}</span></button>
+        <button type="button" onclick="HomePage.ecosystemDiscover('brands', '${_esc(brands[0] || meta.label)}')"><strong>Brands ready</strong><span>${_esc(brands.join(" · "))}</span></button>
+        <button type="button" onclick="HomePage.ecosystemDiscover('locality', '${_esc(locality[0] || _pilotConfig.city)}')"><strong>Locality active</strong><span>${_esc(locality.join(" · "))}</span></button>
       </div>
       <button class="ecosystem-inspection-cta" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}')">${meta.inspection ? "Book inspection" : "Book now"} · ${_esc(meta.label)}</button>
     </div>`;
@@ -816,14 +881,15 @@ function _vendorCardHTML(service, support = false) {
   const locality = service.locality || ["Mukhani", "Kusumkhera", "Kaladhungi Road", "Lalpur Nayak", "Dahariya"][String(name).length % 5];
   const exp = service.experience || `${3 + (String(name).length % 8)} yrs`;
   const photo = service.image || service.photo || "";
+  const semantics = _vendorSemantics(service, meta);
   const action = support
     ? `UI.openSupport('selector', { category: ${_jsString(meta.label)}, service: ${_jsString(name)} })`
     : `HomeModals.openBooking(${_jsonAttr({ ...service, category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon })})`;
   return `
-    <article class="vendor-card" onclick="${action}">
+    <article class="vendor-card vendor-${_esc(semantics.visibility)}" data-vendor-state="${_esc(semantics.visibility)}" data-vendor-priority="${_esc(semantics.priority)}" onclick="${action}">
       <div class="vendor-media ${photo ? "has-img" : ""}">
         ${photo ? `<img src="${_esc(photo)}" alt="${_esc(name)}" loading="lazy"/>` : `<span>${service.icon || meta.icon || "🔧"}</span>`}
-        <em>Quick response</em>
+        <em>${_esc(semantics.badge)}</em>
       </div>
       <div class="vendor-body">
         <div class="vendor-head">
@@ -880,13 +946,26 @@ function _matchesCategory(service, slug) {
   const wanted = _slug(slug);
   const meta = _categoryMeta(wanted);
   const aliases = (meta.aliases || []).map(_slug);
-  const values = [service.category_slug, service.category, service.category_name, service.name, service.description, service.short_desc, service.example].map(_slug).filter(Boolean);
+  const values = [service.category_slug, service.category, service.category_name, service.name, service.description, service.short_desc, service.example, service.vendor_name, service.locality].map(_slug).filter(Boolean);
   return values.some(v => v === wanted || v.includes(wanted) || wanted.includes(v))
     || aliases.some(a => values.some(v => v === a || v.includes(a) || a.includes(v)));
 }
 
 function _searchText(service) {
-  return [service.name, service.description, service.category, service.category_name, service.category_slug, service.slug, service.short_desc, service.example].filter(Boolean).join(" ").toLowerCase();
+  return [service.name, service.description, service.category, service.category_name, service.category_slug, service.slug, service.short_desc, service.example, service.vendor_name, service.locality].filter(Boolean).join(" ").toLowerCase();
+}
+
+function _serviceMatchesDiscovery(service, term, meta) {
+  const haystack = [
+    _searchText(service),
+    ...(meta.examples || []),
+    ...(meta.tags || []),
+    ...(meta.dealers || CATEGORY_META.all.dealers || []),
+    ...(meta.materials || CATEGORY_META.all.materials || []),
+    ...(meta.brands || CATEGORY_META.all.brands || []),
+    ...(meta.locality || CATEGORY_META.all.locality || []),
+  ].join(" ").toLowerCase();
+  return haystack.includes(String(term || "").toLowerCase());
 }
 
 function _contextItems(meta, key, fallback = []) {
@@ -898,6 +977,7 @@ function _contextItems(meta, key, fallback = []) {
 }
 
 function _activeContextLabel(meta) {
+  if (_activeChipFilter && _activeDiscoveryKind) return `${_title(_activeChipFilter)} ${_title(_activeDiscoveryKind)} ${meta.label}`;
   return _activeChipFilter ? `${_title(_activeChipFilter)} ${meta.label}` : meta.label;
 }
 
@@ -923,11 +1003,98 @@ function _normalizeSearchService(s) {
 
 function _premiumInspectionPanel(category) {
   if (!category.inspection) return "";
+  const price = UI.formatCurrency(_inspectionPrice(null, category));
   return `<div class="premium-inspection-panel">
     <div class="premium-inspection-mark">🛡️</div>
-    <div><strong>Premium inspection available</strong><p>Best for ${_esc(category.label.toLowerCase())} jobs where scope, estimate, or site condition must be checked first.</p></div>
-    <span>From ₹99</span>
+    <div><strong>Premium inspection available</strong><p>Best for ${_esc(category.label.toLowerCase())} jobs where scope, estimate, or site condition must be checked first. Payment remains pending until verified.</p></div>
+    <span>${_esc(price)}</span>
   </div>`;
+}
+
+function _bookingModeOption(value, label, note, selected, disabled = false) {
+  return `<button type="button" class="booking-mode-option ${selected === value ? "active" : ""} ${disabled ? "disabled" : ""}" ${disabled ? "aria-disabled=\"true\"" : ""} onclick="HomePage.selectBookingMode?.('${_esc(value)}') || (document.getElementById('booking-mode').value='${_esc(value)}')">
+    <strong>${_esc(label)}</strong><small>${_esc(note)}</small>
+  </button>`;
+}
+
+function _canonicalBookingMode(value, service, category) {
+  const mode = String(value || "").toLowerCase();
+  if (mode === "inspection" && category.inspection) return "inspection";
+  if (mode === "direct_vendor" && service?.vendor_id) return "direct_vendor";
+  return "free_lead";
+}
+
+function _customerProfile() {
+  const user = AUTH.getUser?.() || {};
+  let stored = {};
+  try { stored = JSON.parse(localStorage.getItem("wtg_customer_profile") || "{}"); } catch {}
+  return {
+    ...stored,
+    name: stored.name || user?.name || "",
+    phone: stored.phone || user?.phone || user?.mobile || "",
+    locality: stored.locality || user?.locality || user?.area || "",
+    address: stored.address || user?.address || "",
+  };
+}
+
+function _inspectionPrice(service = null, category = null) {
+  return Number(service?.inspection_price ?? category?.inspection_price ?? _pilotConfig.inspection_price ?? CONFIG.SERVICE_ONLY?.INSPECTION_PRICE ?? 299);
+}
+
+function _persistCustomerProfile(profile) {
+  try {
+    const current = _customerProfile();
+    localStorage.setItem("wtg_customer_profile", JSON.stringify({ ...current, ...profile }));
+  } catch {}
+}
+
+function _vendorSemantics(service, meta) {
+  const raw = String(service.vendor_visibility || service.visibility || service.vendor_state || "").toLowerCase();
+  const featured = Boolean(service.is_featured || service.featured);
+  const trusted = Boolean(service.is_trusted || service.trusted || Number(service.rating || 0) >= 4.7);
+  const demand = Boolean(service.demand_priority || service.priority === "demand" || meta.inspection);
+  const live = Boolean(service.is_live || service.live || raw === "live");
+  const visibility = live ? "live" : featured ? "featured" : trusted ? "trusted" : demand ? "demand-priority" : "normal";
+  const badgeMap = { live: "Live vendor", featured: "Featured", trusted: "Trusted", "demand-priority": "High demand", normal: "Quick response" };
+  return { visibility, priority: demand ? "demand" : "normal", badge: badgeMap[visibility] || badgeMap.normal };
+}
+
+function _restoreHomeState() {
+  try {
+    const state = JSON.parse(sessionStorage.getItem("wtg_home_state") || "{}");
+    _activeCategory = state.category || _activeCategory || "";
+    _activeChipFilter = state.chip || "";
+    _activeDiscoveryKind = state.discovery || "";
+    _searchQuery = state.query || "";
+    _searchActive = Boolean(_searchQuery);
+  } catch {}
+}
+
+function _persistHomeState() {
+  try {
+    sessionStorage.setItem("wtg_home_state", JSON.stringify({ category: _activeCategory, chip: _activeChipFilter, discovery: _activeDiscoveryKind, query: _searchQuery }));
+  } catch {}
+}
+
+function _pendingBookingForm() {
+  try { return JSON.parse(sessionStorage.getItem("wtg_pending_booking_form") || "{}"); } catch { return {}; }
+}
+
+function _persistPendingBookingForm() {
+  try {
+    sessionStorage.setItem("wtg_pending_booking_form", JSON.stringify({
+      booking_mode: document.getElementById("booking-mode")?.value || "",
+      name: document.getElementById("booking-name")?.value?.trim() || "",
+      phone: document.getElementById("booking-mobile")?.value?.trim() || "",
+      locality: document.getElementById("booking-area")?.value?.trim() || "",
+      address: document.getElementById("booking-address")?.value?.trim() || "",
+      notes: document.getElementById("booking-notes")?.value?.trim() || "",
+    }));
+  } catch {}
+}
+
+function _clearPendingBookingForm() {
+  try { sessionStorage.removeItem("wtg_pending_booking_form"); } catch {}
 }
 
 function _friendlyServiceError(error = "") {
@@ -937,8 +1104,8 @@ function _friendlyServiceError(error = "") {
   return "We could not refresh live services right now.";
 }
 
-function _savePendingBookingIntent(service) {
-  try { sessionStorage.setItem("wtg_pending_booking", JSON.stringify({ service, category: _activeCategory, ts: Date.now() })); } catch {}
+function _savePendingBookingIntent(service, form = {}) {
+  try { sessionStorage.setItem("wtg_pending_booking", JSON.stringify({ service, category: _activeCategory, form, ts: Date.now() })); } catch {}
 }
 
 function _resumePendingBooking() {
@@ -949,6 +1116,7 @@ function _resumePendingBooking() {
     const pending = JSON.parse(raw);
     sessionStorage.removeItem("wtg_pending_booking");
     if (!pending?.service || Date.now() - Number(pending.ts || 0) > 30 * 60 * 1000) return;
+    if (pending.form) sessionStorage.setItem("wtg_pending_booking_form", JSON.stringify(pending.form));
     if (pending.category) {
       _activeCategory = pending.category;
       _renderCategoryChips();
@@ -959,13 +1127,14 @@ function _resumePendingBooking() {
       _renderHeroForCategory();
       _syncOperatingMode();
     }
-    setTimeout(() => HomeModals.openBooking(pending.service), 350);
+    const current = pending.service.id ? _allServices.find(s => String(s.id) === String(pending.service.id)) : null;
+    setTimeout(() => HomeModals.openBooking(current || pending.service), 350);
   } catch {}
 }
 
 function _categoryFallbackServices(slug) {
   const meta = _categoryMeta(slug);
-  return (meta.examples || []).slice(0, 4).map((name, i) => ({ slug, icon: meta.icon, name, example: `${meta.label} local request`, price: i === 0 && meta.inspection ? "Inspection from ₹99" : "Request quote" }));
+  return (meta.examples || []).slice(0, 4).map((name, i) => ({ slug, icon: meta.icon, name, example: `${meta.label} local request`, price: i === 0 && meta.inspection ? `Inspection ${UI.formatCurrency(_inspectionPrice(null, meta))}` : "Request quote" }));
 }
 
 function _slug(v = "") { return String(v || "").toLowerCase().trim().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
@@ -993,6 +1162,7 @@ let _activeCategory = "";
 let _searchQuery = "";
 let _searchActive = false;
 let _activeChipFilter = "";
+let _activeDiscoveryKind = "";
 let _searchTimer = null;
 let _searchRemoteServices = [];
 let _showAllCategories = false;

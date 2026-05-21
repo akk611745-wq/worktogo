@@ -95,6 +95,7 @@ window.BookingsPage = (() => {
             <span class="item-title">${_esc(b.service_name || b.name || "Service")}</span>
             ${UI.statusBadge(b.status || "pending")}
           </div>
+          <div class="item-row muted small"><span>${_esc(_lifecycleLabel(b))}</span></div>
           ${b.status === "pending" ? `<div class="item-row muted small"><span>Request sent — WorkToGo will confirm shortly.</span></div>` : ""}
           ${b.status === "confirmed" ? `<div class="item-row muted small"><span>Provider/admin confirmed. Please keep your phone available.</span></div>` : ""}
           ${b.status === "in_progress" ? `<div class="item-row muted small"><span>Service is in progress. Pay after service only.</span></div>` : ""}
@@ -112,7 +113,7 @@ window.BookingsPage = (() => {
           </div>
           ${b.notes ? `<div class="item-row muted small"><span>${_esc(_shortNotes(b.notes))}</span></div>` : ""}
           <div class="item-row muted small">
-            <span>Payment: ${_esc(_paymentLabel(b.payment_method || "cod"))}</span>
+            <span>Payment: ${_esc(_paymentLabel(b.payment_method || "cod", b.payment_status, b.booking_mode))}</span>
           </div>
           <div class="item-row muted small">
             <span>ID: ${_esc(String(b.id || "—"))}</span>
@@ -167,15 +168,42 @@ window.BookingsPage = (() => {
       status: map[status] || status,
       amount: b.amount ?? b.total ?? b.price,
       payment_method: b.payment_method || "cod",
+      payment_status: b.payment_status || "unpaid",
+      booking_mode: b.booking_mode || _modeFromNotes(b.notes),
+      vendor_route: b.vendor_route || "admin_queue",
     };
   }
 
-  function _paymentLabel(method) {
-    return String(method).toLowerCase() === "online" ? "Online pending" : "Pay after service";
+  function _paymentLabel(method, status, mode) {
+    if (mode === "inspection") {
+      if (status === "paid" || status === "verified") return "Inspection payment verified";
+      if (status === "failed") return "Inspection payment not completed";
+      return "Inspection payment pending verification";
+    }
+    return String(method).toLowerCase() === "online" ? "Online" : "Pay after service";
+  }
+
+  function _lifecycleLabel(b) {
+    const mode = b.booking_mode || "free_lead";
+    if (mode === "inspection") return "Premium inspection lifecycle · company/agent visit · status tracked here";
+    if (mode === "direct_vendor") return `Direct vendor lifecycle · ${b.vendor_name ? "assigned to " + b.vendor_name : "vendor receives lead"}`;
+    return "Free lead lifecycle · admin assignment queue · category-wise routing";
+  }
+
+  function _modeFromNotes(notes = "") {
+    const text = String(notes || "").toLowerCase();
+    if (text.includes("lifecycle mode: inspection")) return "inspection";
+    if (text.includes("lifecycle mode: direct_vendor")) return "direct_vendor";
+    return "free_lead";
   }
 
   function _shortNotes(notes) {
-    return String(notes || "").split("\n").slice(0, 2).join(" · ").slice(0, 140);
+    return String(notes || "")
+      .split("\n")
+      .filter(line => !/^(Lifecycle mode|Category slug|Category label|Customer name|Customer mobile|Customer locality|Customer address|Vendor route):/i.test(line.trim()))
+      .slice(0, 2)
+      .join(" · ")
+      .slice(0, 140);
   }
 
   return { _load, setFilter, openSupport };

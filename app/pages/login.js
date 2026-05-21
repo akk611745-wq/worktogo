@@ -149,7 +149,10 @@ window.LoginPage = (() => {
 
   function _init() {
     const phoneInput = document.getElementById("inp-phone");
+    const savedOtp = _pendingOtpState();
+    if (savedOtp.phone) _phone = savedOtp.phone;
     if (phoneInput) {
+      if (_phone) phoneInput.value = _phone;
       phoneInput.addEventListener("keydown", e => { if (e.key === "Enter") sendOtp(); });
       phoneInput.addEventListener("focus", () => phoneInput.select());
     }
@@ -194,6 +197,27 @@ window.LoginPage = (() => {
         if (pasted.length === 6) verifyOtp();
       });
     });
+
+    if (savedOtp.step === "otp" && _phone && Date.now() - Number(savedOtp.ts || 0) < 10 * 60 * 1000) {
+      const sentTo = document.getElementById("otp-sent-to");
+      if (sentTo) sentTo.textContent = `Sent to +91 ${_phone}`;
+      document.getElementById("step-phone")?.classList.remove("active");
+      document.getElementById("step-otp")?.classList.add("active");
+      document.querySelectorAll(".otp-digit")[0]?.focus();
+      _startResendTimer(Math.max(1, Number(savedOtp.resendRemaining || 1)));
+    }
+  }
+
+  function _pendingOtpState() {
+    try { return JSON.parse(sessionStorage.getItem("wtg_pending_otp") || "{}"); } catch { return {}; }
+  }
+
+  function _savePendingOtpState(extra = {}) {
+    try { sessionStorage.setItem("wtg_pending_otp", JSON.stringify({ phone: _phone, step: "otp", ts: Date.now(), ...extra })); } catch {}
+  }
+
+  function _clearPendingOtpState() {
+    try { sessionStorage.removeItem("wtg_pending_otp"); } catch {}
   }
 
   function switchAuthTab(tab) {
@@ -381,6 +405,7 @@ window.LoginPage = (() => {
     document.getElementById("step-otp")?.classList.add("active");
     document.querySelectorAll(".otp-digit")[0]?.focus();
 
+    _savePendingOtpState({ resendRemaining: 30 });
     _startResendTimer(30);
     UI.toast("OTP sent!", "success");
   }
@@ -402,6 +427,7 @@ window.LoginPage = (() => {
     _setLoading("btn-verify", false);
 
     if (result.ok) {
+      _clearPendingOtpState();
       UI.toast("Login successful!", "success");
       redirectAfterLogin(result.user);
     } else {
@@ -433,6 +459,7 @@ window.LoginPage = (() => {
     UI.toast("OTP resent!", "success");
     document.querySelectorAll(".otp-digit").forEach(i => { i.value = ""; });
     document.querySelectorAll(".otp-digit")[0]?.focus();
+    _savePendingOtpState({ resendRemaining: 30 });
     _startResendTimer(30);
   }
 
@@ -446,6 +473,7 @@ window.LoginPage = (() => {
     document.getElementById("tab-phone")?.setAttribute("aria-selected", "true");
     document.getElementById("tab-email")?.setAttribute("aria-selected", "false");
     if (_resendInterval) { clearInterval(_resendInterval); _resendInterval = null; }
+    _clearPendingOtpState();
   }
 
   return { sendOtp, verifyOtp, resendOtp, goBack, switchAuthTab, showRegister, emailLogin, emailRegister, googleLogin, _init };

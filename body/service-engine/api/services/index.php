@@ -129,6 +129,51 @@ function canonicalJobStatusForBooking(string $status): string
     };
 }
 
+function canonicalBookingMode(array $input, array $service): string
+{
+    $mode = strtolower(trim((string)($input['booking_mode'] ?? $input['lifecycle_type'] ?? '')));
+    if (in_array($mode, ['inspection', 'premium_inspection'], true)) return 'inspection';
+    if (in_array($mode, ['direct_vendor', 'vendor_direct'], true) && !empty($service['vendor_id'])) return 'direct_vendor';
+    return 'free_lead';
+}
+
+function serviceLifecycleNote(array $input, string $bookingMode, array $service): string
+{
+    $notes = trim((string)($input['notes'] ?? ''));
+    $lines = [
+        'Lifecycle mode: ' . $bookingMode,
+        'Category slug: ' . trim((string)($input['category_slug'] ?? '')),
+        'Category label: ' . trim((string)($input['category_label'] ?? '')),
+        'Customer name: ' . trim((string)($input['customer_name'] ?? '')),
+        'Customer mobile: ' . trim((string)($input['customer_mobile'] ?? '')),
+        'Customer locality: ' . trim((string)($input['customer_locality'] ?? '')),
+        'Customer address: ' . trim((string)($input['customer_address'] ?? '')),
+        'Vendor route: ' . ($bookingMode === 'direct_vendor' ? ('direct:' . (int)($service['vendor_id'] ?? 0)) : 'admin_queue'),
+        $notes,
+    ];
+    return trim(implode("\n", array_values(array_filter($lines, fn($line) => trim((string)$line) !== ''))));
+}
+
+function servicePaymentStatusForMode(string $bookingMode, string $paymentMethod): string
+{
+    return 'unpaid';
+}
+
+function serviceJobPriorityForMode(string $bookingMode, array $input): string
+{
+    if ($bookingMode === 'inspection') return 'high';
+    if (!empty($input['demand_priority'])) return 'demand';
+    return 'normal';
+}
+
+function serviceModeFromNotes(?string $notes): string
+{
+    $notes = (string)$notes;
+    if (str_contains($notes, 'Lifecycle mode: inspection')) return 'inspection';
+    if (str_contains($notes, 'Lifecycle mode: direct_vendor')) return 'direct_vendor';
+    return 'free_lead';
+}
+
 // ── GET /api/services ──────────────────────────────────────────────────────────
 if ($method === 'GET' && $uri === '/api/services') {
     header('Cache-Control: no-store, max-age=0');
@@ -326,9 +371,12 @@ if ($method === 'DELETE' && preg_match('#^/api/services/(\d+)$#', $uri, $m)) {
 // ── POST /api/service/request (create booking + auto-create job) ──────────────
 if ($method === 'POST' && $uri === '/api/service/request') {
     $auth  = AuthMiddleware::require();
-    $input = defined('HEART_INTERNAL_INC') 
-        ? json_decode($GLOBALS['HEART_PAYLOAD'] ?? '{}', true) 
-        : (json_decode(file_get_contents('php://input'), true) ?? []);
+    if (defined('HEART_INTERNAL_INC')) {
+        $decoded = json_decode($GLOBALS['HEART_PAYLOAD'] ?? '{}', true) ?: [];
+        $input = is_array($decoded['data'] ?? null) ? $decoded['data'] : $decoded;
+    } else {
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+    }
 
     $serviceId   = (int)($input['service_id']   ?? 0);
     $scheduledAt = trim($input['scheduled_at']   ?? '');
@@ -366,11 +414,15 @@ if ($method === 'POST' && $uri === '/api/service/request') {
     $service = $svcStmt->fetch(PDO::FETCH_ASSOC);
     if (!$service) Response::notFound('Service');
 
+    $bookingMode = canonicalBookingMode($input, $service);
     $paymentMethod = strtolower(trim($input['payment_method'] ?? 'cod'));
-    if ($paymentMethod === 'online') {
-        Response::validation('Online service payment is disabled during the pilot. Please use pay after service.');
-    }
-    $paymentMethod = 'cod';
+    $paymentMethod = ($bookingMode === 'inspection' && $paymentMethod === 'online') ? 'online' : 'cod';
+    $paymentStatus = servicePaymentStatusForMode($bookingMode, $paymentMethod);
+    $canonicalNotes = serviceLifecycleNote($input, $bookingMode, $service);
+    $bookingTotal = $bookingMode === 'inspection'
+        ? (float)($input['expected_payment_amount'] ?? servicePublicSetting($db, 'inspection_price', $service['inspection_price'] ?? 299))
+        : (float)$service['base_price'];
+    $jobPriority = serviceJobPriorityForMode($bookingMode, $input);
 
     // Generate collision-resistant unique reference numbers
     $bookingNum = 'WTG-BKG-' . strtoupper(bin2hex(random_bytes(4)));
@@ -386,7 +438,7 @@ if ($method === 'POST' && $uri === '/api/service/request') {
                  scheduled_at, duration_minutes, total, address_id, notes,
                  created_at)
              VALUES
-                (:bnum, :uid, :vid, :sid, 'pending', 'unpaid', :pmethod,
+                (:bnum, :uid, :vid, :sid, 'pending', :pstatus, :pmethod,
                  :sched, :dur, :price, :addr, :notes,
                  NOW())"
         );
@@ -395,12 +447,13 @@ if ($method === 'POST' && $uri === '/api/service/request') {
             ':uid'   => (int)$auth['user_id'],
             ':vid'   => (int)$service['vendor_id'],
             ':sid'   => $serviceId,
+            ':pstatus' => $paymentStatus,
             ':pmethod' => $paymentMethod,
             ':sched' => $scheduledAt,
             ':dur'   => (int)($service['duration_minutes'] ?? 60),
-            ':price' => (float)$service['base_price'],
+            ':price' => $bookingTotal,
             ':addr'  => $addressId,
-            ':notes' => $notes ?: null,
+            ':notes' => $canonicalNotes ?: null,
         ]);
 
         $bookingId = (int)$db->lastInsertId();
@@ -409,18 +462,26 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         $paymentData = null;
         if ($paymentMethod === 'online') {
             require_once SYSTEM_ROOT . '/core/helpers/Payment.php';
-            $paymentData = Payment::createOrder('cashfree', (float)$service['base_price'], $bookingNum);
-            $db->prepare("UPDATE bookings SET payment_id = ? WHERE id = ?")->execute([$paymentData['payment_id'], $bookingId]);
+            try {
+                $paymentData = Payment::createOrder('cashfree', $bookingTotal, $bookingNum);
+                $db->prepare("UPDATE bookings SET payment_id = ?, payment_status = 'unpaid' WHERE id = ?")
+                   ->execute([$paymentData['payment_id'] ?? null, $bookingId]);
+                $paymentStatus = 'unpaid';
+            } catch (Throwable $paymentError) {
+                $paymentData = ['success' => false, 'message' => 'Payment session could not be created. Booking lifecycle is still saved.'];
+                $db->prepare("UPDATE bookings SET payment_status = 'failed' WHERE id = ?")->execute([$bookingId]);
+                $paymentStatus = 'failed';
+            }
         }
 
         // Auto-create linked job so job_number constraint is always satisfied
         $jStmt = $db->prepare(
             "INSERT INTO jobs
                 (job_number, booking_id, vendor_id, user_id, title, description,
-                 status, priority, created_at, updated_at)
-             VALUES
-                (:jnum, :bid, :vid, :uid, :title, :desc,
-                 'open', 'normal', NOW(), NOW())"
+                  status, priority, created_at, updated_at)
+              VALUES
+                 (:jnum, :bid, :vid, :uid, :title, :desc,
+                  'open', :priority, NOW(), NOW())"
         );
         $jStmt->execute([
             ':jnum'  => $jobNum,
@@ -428,7 +489,8 @@ if ($method === 'POST' && $uri === '/api/service/request') {
             ':vid'   => (int)$service['vendor_id'],
             ':uid'   => (int)$auth['user_id'],
             ':title' => 'Job: ' . $service['name'],
-            ':desc'  => $notes ?: null,
+            ':desc'  => $canonicalNotes ?: null,
+            ':priority' => $jobPriority,
         ]);
 
         $db->commit();
@@ -443,9 +505,13 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         'booking_number' => $bookingNum,
         'job_number'     => $jobNum,
         'service'        => $service['name'],
+        'booking_mode'   => $bookingMode,
+        'lifecycle_type' => $bookingMode,
         'scheduled_at'   => $scheduledAt,
-        'total'          => (float)$service['base_price'],
+        'total'          => $bookingTotal,
         'status'         => 'pending',
+        'payment_status' => $paymentStatus,
+        'vendor_route'   => $bookingMode === 'direct_vendor' ? 'direct_vendor' : 'admin_queue',
         'payment_data'   => $paymentData,
     ], 201);
 }
@@ -512,6 +578,8 @@ if ($method === 'GET' && $uri === '/api/service/bookings') {
         $booking['job_status'] = normalizeServiceJobStatus((string)($booking['job_status'] ?? $booking['status']));
         $booking['amount'] = $booking['total'] ?? $booking['amount'] ?? null;
         $booking['payment_method'] = $booking['payment_method'] ?: 'cod';
+        $booking['booking_mode'] = serviceModeFromNotes($booking['notes'] ?? null);
+        $booking['vendor_route'] = $booking['booking_mode'] === 'direct_vendor' ? 'direct_vendor' : 'admin_queue';
         $booking['support_hint'] = 'WorkToGo support can help with this booking ID.';
     }
     unset($booking);
@@ -558,6 +626,8 @@ if ($method === 'GET' && preg_match('#^/api/service/bookings/(\d+)$#', $uri, $m)
     $booking['job_status'] = normalizeServiceJobStatus((string)($booking['job_status'] ?? $booking['status']));
     $booking['amount'] = $booking['total'] ?? $booking['amount'] ?? null;
     $booking['payment_method'] = $booking['payment_method'] ?: 'cod';
+    $booking['booking_mode'] = serviceModeFromNotes($booking['notes'] ?? null);
+    $booking['vendor_route'] = $booking['booking_mode'] === 'direct_vendor' ? 'direct_vendor' : 'admin_queue';
     $booking['support_hint'] = 'WorkToGo support can help with this booking ID.';
 
     // Attach linked job

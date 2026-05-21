@@ -11,6 +11,7 @@
 export async function render(container) {
   if (!AUTH.requireAuth()) return;
   const user = AUTH.getUser();
+  const profile = _customerProfile(user);
   const role = AUTH.getRole();
   const isVendor = role === CONFIG.ROLES.VENDOR_SERVICE || role === CONFIG.ROLES.VENDOR_SHOPPING;
   const serviceOnly = Boolean(CONFIG.FEATURES?.SERVICE_ONLY_MODE);
@@ -26,10 +27,17 @@ export async function render(container) {
         <div class="profile-card">
           <div class="profile-avatar">${_initials(user)}</div>
           <div class="profile-info">
-            <h3>${_escapeHtml(user?.name || "User")}</h3>
-            <p class="phone-number">+91 ${_escapeHtml(user?.phone || "—")}</p>
+            <h3>${_escapeHtml(profile.name || "User")}</h3>
+            <p class="phone-number">+91 ${_escapeHtml(profile.phone || "—")}</p>
             <span class="role-chip role-${_escapeHtml(role)}">${_roleLabel(role)}</span>
           </div>
+        </div>
+
+        <div class="account-profile-freeze-card">
+          <strong>Booking autofill active</strong>
+          <span>${_escapeHtml(profile.locality || "Locality not saved yet")}</span>
+          <p>${_escapeHtml(profile.address || "Your next submitted booking will save address for future requests.")}</p>
+          <button type="button" class="btn-text-inline" onclick="AccountPage.clearAutofill()">Clear saved autofill</button>
         </div>
 
         <!-- Menu Items -->
@@ -135,6 +143,11 @@ window.AccountPage = {
   editProfile() {
     UI.toast("Profile editing is temporarily manual during service launch", "info");
   },
+  clearAutofill() {
+    localStorage.removeItem("wtg_customer_profile");
+    UI.toast("Saved booking autofill cleared", "success");
+    ROUTER.go("account");
+  },
   contactSupport() {
     UI.openSupport("selector");
   },
@@ -176,4 +189,16 @@ function _escapeHtml(str) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function _customerProfile(user = {}) {
+  let stored = {};
+  try { stored = JSON.parse(localStorage.getItem("wtg_customer_profile") || "{}"); } catch {}
+  return {
+    ...stored,
+    name: stored.name || user?.name || "",
+    phone: stored.phone || user?.phone || user?.mobile || "",
+    locality: stored.locality || user?.locality || user?.area || "",
+    address: stored.address || user?.address || "",
+  };
 }
