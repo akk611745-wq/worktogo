@@ -32,37 +32,49 @@ export async function render(container) {
           <div id="search-results-panel" class="instant-search-panel hidden"></div>
         </section>
 
-        <section class="service-action-block browse-strip-section" id="services-section">
-          <div class="service-action-head">
-            <h3>What do you need?</h3>
+        <section class="home-section browse-strip-section">
+          <div class="section-header compact">
+            <div>
+              <p class="section-eyebrow">Tap to switch feed</p>
+              <h3>What do you need?</h3>
+            </div>
             <button class="see-all" onclick="HomePage.toggleMoreCategories()" id="more-categories-btn">More</button>
           </div>
           <div class="category-chips" id="category-chips">
             <button class="active" onclick="HomePage.setCategory('')"><span>🧰</span>All</button>
             ${_categoryChips().slice(0, 7).map(c => `<button onclick="HomePage.setCategory('${_esc(c.slug || '')}')"><span>${c.icon}</span>${_esc(c.label)}</button>`).join("")}
           </div>
-
-          <div class="service-hero marketplace-hero slim-service-hero">
-            <div class="service-hero-copy">
-              <p class="service-hero-kicker" id="category-kicker">${_esc(_pilotConfig.city)} services near you</p>
-              <h1 id="category-hero-title">Trusted Haldwani Services</h1>
-              <p id="category-hero-subtitle">${_esc(_categoryMeta("").examples.join(" • "))}</p>
-            </div>
-          </div>
-
-          <div id="services-grid" class="vendor-feed">
-            ${UI.skeleton(4, "card")}
-          </div>
-
-          <p class="service-action-note" id="service-action-note"></p>
-          <button class="btn-primary hero-primary marketplace-cta" id="hero-category-cta" onclick="HomePage.bookCategoryCta(HomePage.activeCategorySlug?.())">Book · All Services</button>
-        </section>
-
-        <section class="operating-feed hidden" id="operating-feed">
         </section>
 
         <section class="category-ecosystem" id="category-ecosystem">
           ${_categoryEcosystemHTML("")}
+        </section>
+
+        <section class="operating-feed" id="operating-feed">
+          ${_operatingFeedHTML("")}
+
+        </section>
+
+        <section class="home-section" id="services-section">
+          <div class="section-header">
+            <div>
+              <p class="section-eyebrow">Live vendor feed</p>
+              <h3 id="vendor-feed-title">Workers near you</h3>
+            </div>
+            <button class="see-all" onclick="HomePage.setCategory('')">All</button>
+          </div>
+          <div id="services-grid" class="vendor-feed">
+            ${UI.skeleton(4, "card")}
+          </div>
+        </section>
+
+        <section class="category-visual-proof" id="visual-proof-section">
+          ${_visualProofHTML("")}
+        </section>
+
+        <section class="local-proof-grid marketplace-proof-grid" id="trust-proof-section">
+          ${_trustProofHTML("")}
+
         </section>
 
         <section class="home-section ${serviceOnly ? "feature-hidden" : ""}" data-feature="shopping-ui">
@@ -548,7 +560,7 @@ window.HomeModals = (() => {
 
 async function _handleInspectionCheckout(booking, bookingMode) {
   const paymentData = booking?.payment_data || booking?.paymentData || null;
-  if (!paymentData) return true;
+  if (bookingMode !== "inspection" || !paymentData) return true;
   if (paymentData.success === false) {
     UI.toast(paymentData.message || "Payment session could not be created. Booking remains pending.", "error", 5000);
     return false;
@@ -556,16 +568,13 @@ async function _handleInspectionCheckout(booking, bookingMode) {
   const sessionId = paymentData.payment_session_id || paymentData.paymentSessionId || paymentData.session_id;
   const redirectUrl = paymentData.payment_link || paymentData.payment_url || paymentData.redirect_url || paymentData.url;
   try {
-    if (sessionId) {
-      await _loadCashfreeSdk();
+    if (window.Cashfree && sessionId) {
       const cashfree = typeof window.Cashfree === "function" ? window.Cashfree({ mode: paymentData.mode || "production" }) : window.Cashfree;
-      if (!cashfree?.checkout) throw new Error("Cashfree checkout unavailable");
       const result = await cashfree.checkout({ paymentSessionId: sessionId, redirectTarget: "_modal" });
       if (result?.error || result?.paymentDetails?.payment_status === "FAILED") {
-        UI.toast("Payment failed. You can retry from Bookings; this booking remains pending.", "error", 6000);
+        UI.toast("Payment was not completed. Your inspection booking remains pending.", "error", 5000);
         return false;
       }
-      UI.toast("Booking Confirmed", "success");
       return true;
     }
     if (redirectUrl) {
@@ -575,29 +584,9 @@ async function _handleInspectionCheckout(booking, bookingMode) {
     UI.toast("Payment checkout is unavailable. Your inspection booking remains pending.", "error", 5000);
     return false;
   } catch (err) {
-    UI.toast("Payment was cancelled or failed. You can retry from Bookings; this booking remains pending.", "error", 6000);
+    UI.toast("Payment was cancelled or failed. Your inspection booking remains pending.", "error", 5000);
     return false;
   }
-}
-
-function _loadCashfreeSdk() {
-  if (window.Cashfree) return Promise.resolve();
-  if (window.__wtgCashfreeSdkPromise) return window.__wtgCashfreeSdkPromise;
-  window.__wtgCashfreeSdkPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector('script[src="https://sdk.cashfree.com/js/ui/2.0.0/cashfree.prod.js"]');
-    if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Cashfree SDK failed to load")), { once: true });
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://sdk.cashfree.com/js/ui/2.0.0/cashfree.prod.js";
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Cashfree SDK failed to load"));
-    document.head.appendChild(script);
-  });
-  return window.__wtgCashfreeSdkPromise;
 }
 
 // ── Loaders ─────────────────────────────────────────────────────────────────
@@ -619,21 +608,27 @@ async function _loadProducts() {
 function _renderServices(res) {
   const el = document.getElementById("services-grid");
   if (!el) return;
-  const note = document.getElementById("service-action-note");
-  if (note) note.textContent = "";
+  const title = document.getElementById("vendor-feed-title");
+  if (title) title.textContent = _activeCategory ? `${_categoryMeta(_activeCategory).label} services` : "Available services";
 
-    if (!res.ok) {
+  if (!res.ok) {
+    const safeMessage = _friendlyServiceError(res.error);
     el.classList.remove("fallback-services-grid");
-    el.innerHTML = "";
-    if (note) note.textContent = _bookingEmptyStateText();
+    el.innerHTML = `
+      <div class="fallback-help-card service-recovery-card">
+        <h3>Services are temporarily slow to load</h3>
+        <p>${_esc(safeMessage)} You can still request help and WorkToGo will guide the booking.</p>
+        <div class="recovery-actions">
+          <button class="btn-ghost-inline" onclick="HomeSections.reloadServices()">Retry</button>
+          <button class="btn-ghost-inline" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })">WhatsApp support</button>
+        </div>
+      </div>`;
     return;
   }
 
   const payload = _unwrapData(res.data);
   let list = Array.isArray(payload) ? payload : (payload?.services || payload?.data || []);
   if (payload?.pilot_config) _pilotConfig = { ..._pilotConfig, ...payload.pilot_config };
-  _liveActivityItems = _extractLiveActivity(payload);
-  _renderOperatingFeed();
   if (Array.isArray(payload?.categories) && payload.categories.length) {
     _serviceCategories = payload.categories.map(c => ({ slug: c.slug, label: c.name, icon: c.icon || "🔧" }));
     _renderCategoryChips();
@@ -648,8 +643,12 @@ function _renderServices(res) {
 
     if (!list.length) {
       el.classList.remove("fallback-services-grid");
-      el.innerHTML = "";
-      if (note) note.textContent = _bookingEmptyStateText();
+      el.innerHTML = `
+      <div class="fallback-help-card">
+        <h3>${_esc(_activeCategory ? `${_categoryMeta(_activeCategory).label} help` : _pilotConfig.fallback_title)}</h3>
+        <p>${_esc(_searchQuery || _activeChipFilter ? "No exact match found yet. WorkToGo can still route this category request." : _pilotConfig.fallback_text)}</p>
+        <button class="btn-ghost-inline" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })">Get guided help</button>
+      </div>`;
       return;
   }
   el.classList.remove("fallback-services-grid");
@@ -683,26 +682,27 @@ function _renderCategoryEcosystem() {
 
 function _renderOperatingFeed() {
   const el = document.getElementById("operating-feed");
-  if (!el) return;
-  const html = _operatingFeedHTML(_activeCategory);
-  el.innerHTML = html;
-  el.classList.toggle("hidden", !html);
+  if (el) el.innerHTML = _operatingFeedHTML(_activeCategory);
 }
 
 function _renderHeroForCategory() {
   const meta = _categoryMeta(_activeCategory);
   const title = document.getElementById("category-hero-title");
-  const kicker = document.getElementById("category-kicker");
   const subtitle = document.getElementById("category-hero-subtitle");
+  const kicker = document.getElementById("category-kicker");
   const cta = document.getElementById("hero-category-cta");
   if (title) title.textContent = meta.hero || _pilotConfig.hero_title;
-  if (kicker) kicker.textContent = _activeCategory ? `${meta.label} services near you` : `${_pilotConfig.city} services near you`;
-  if (subtitle) subtitle.textContent = (meta.examples || []).slice(0, 4).join(" • ");
-  if (cta) cta.textContent = `Book · ${_categoryCtaLabel(meta)}`;
+  if (subtitle) subtitle.textContent = _activeChipFilter ? `${_title(_activeChipFilter)} request mode · ${meta.subtitle || _pilotConfig.hero_subtitle}` : (meta.subtitle || _pilotConfig.hero_subtitle);
+  if (kicker) kicker.textContent = _activeCategory ? `${_pilotConfig.city} ${meta.label} operating mode` : `${_pilotConfig.city} live marketplace`;
+  if (cta) cta.textContent = `Book · ${_activeChipFilter ? _title(_activeChipFilter) : meta.label}`;
 }
 
-function _categoryCtaLabel(meta = _categoryMeta(_activeCategory)) {
-  return _activeCategory ? meta.label : "All Services";
+function _renderHeroStats() {
+  const el = document.getElementById("hero-live-strip");
+  if (!el) return;
+  const stats = Array.isArray(_pilotConfig.hero_stats) ? _pilotConfig.hero_stats : [];
+  el.innerHTML = stats.map(s => `<span><b>${_esc(s.value || "")}</b> ${_esc(s.label || "")}</span>`).join("");
+  el.classList.toggle("hidden", !stats.length);
 }
 
 function _renderProducts(res) {
@@ -791,56 +791,67 @@ function _categoryMeta(slug = "") {
 
 function _categoryEcosystemHTML(slug = "") {
   const meta = _categoryMeta(slug);
+  const contextLabel = _activeContextLabel(meta);
+  const visuals = meta.visuals || CATEGORY_META.all.visuals || [];
+  const tags = meta.tags || meta.examples || [];
+  const dealers = meta.dealers || CATEGORY_META.all.dealers || [];
+  const materials = meta.materials || CATEGORY_META.all.materials || [];
+  const brands = meta.brands || CATEGORY_META.all.brands || [];
+  const locality = meta.locality || CATEGORY_META.all.locality || [];
   return `
     <details class="ecosystem-card ecosystem-world">
       <summary class="ecosystem-summary">
         <span class="ecosystem-icon">${meta.icon}</span>
-        <strong>About this service</strong>
-        <small>How WorkToGo handles this request</small>
+        <strong>${_esc(contextLabel)} ecosystem</strong>
+        <small>Dealers, materials, brands and localities</small>
       </summary>
       <div class="ecosystem-banner">
         <span class="ecosystem-icon">${meta.icon}</span>
         <div>
-          <h3>${_esc(meta.label)} in ${_esc(_pilotConfig.city)}</h3>
+          <p class="service-hero-kicker">${_esc(_activeCategory ? `${meta.label} operating mode` : `${meta.label} discovery`)}</p>
+          <h3>${_esc(contextLabel)} in ${_esc(_pilotConfig.city)}</h3>
           <p>${_esc(meta.trust || "Verified local providers · pay after service · human confirmation")}</p>
         </div>
       </div>
-      <div class="ecosystem-customer-info">
-        <div><strong>Service area</strong><span>${_esc(_pilotConfig.city)}</span></div>
-        <div><strong>Booking flow</strong><span>Submit request, WorkToGo confirms worker and timing before visit.</span></div>
-        <div><strong>Payment</strong><span>${meta.inspection ? "Inspection jobs can require online visit payment. Normal jobs are paid after service." : "Pay after service for normal jobs."}</span></div>
+      <div class="ecosystem-visual-rail">
+        ${visuals.slice(0, 3).map(v => `<button class="${_activeChipFilter === String(v.query || v.label).toLowerCase() ? "active" : ""}" onclick="HomePage.filterEcosystem('${_esc(v.query || v.label)}')"><span>${_esc(v.emoji || meta.icon)}</span><strong>${_esc(v.label)}</strong><small>${_esc(v.note || "nearby")}</small></button>`).join("")}
+      </div>
+      <div class="ecosystem-tag-row">
+        ${tags.slice(0, 8).map(x => `<button class="${_activeChipFilter === String(x).toLowerCase() ? "active" : ""}" onclick="HomePage.filterEcosystem('${_esc(x)}')">${_esc(x)}</button>`).join("")}
+      </div>
+      <div class="ecosystem-local-grid">
+        <button type="button" onclick="HomePage.ecosystemDiscover('dealers', '${_esc(dealers[0] || meta.label)}')"><strong>Nearby dealers</strong><span>${_esc(dealers.join(" · "))}</span></button>
+        <button type="button" onclick="HomePage.ecosystemDiscover('materials', '${_esc(materials[0] || meta.label)}')"><strong>Materials</strong><span>${_esc(materials.join(" · "))}</span></button>
+        <button type="button" onclick="HomePage.ecosystemDiscover('brands', '${_esc(brands[0] || meta.label)}')"><strong>Brands ready</strong><span>${_esc(brands.join(" · "))}</span></button>
+        <button type="button" onclick="HomePage.ecosystemDiscover('locality', '${_esc(locality[0] || _pilotConfig.city)}')"><strong>Locality active</strong><span>${_esc(locality.join(" · "))}</span></button>
       </div>
       <button class="ecosystem-inspection-cta" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}')">${meta.inspection ? "Book inspection" : "Book now"} · ${_esc(meta.label)}</button>
     </details>`;
 }
 
 function _operatingFeedHTML(slug = "") {
-  const liveItems = _liveActivityItems.filter(item => !slug || _matchesLiveActivity(item, slug));
-  if (!liveItems.length) return "";
   const meta = _categoryMeta(slug);
   const context = _activeContextLabel(meta);
+  const jobs = _contextItems(meta, "jobs", meta.examples || []).slice(0, 4);
+  const materials = _contextItems(meta, "materials", meta.materials || CATEGORY_META.all.materials || []).slice(0, 4);
+  const dealers = _contextItems(meta, "dealers", meta.dealers || CATEGORY_META.all.dealers || []).slice(0, 3);
+  const places = meta.locality || CATEGORY_META.all.locality || ["nearby"];
   return `
     <div class="operating-head">
       <div>
+        <p class="section-eyebrow">Live operating feed</p>
         <h3>${_esc(context)} activity</h3>
       </div>
       <span>${_activeCategory ? "Category only" : "Mixed local"}</span>
     </div>
     <div class="ops-ticker">
-      ${liveItems.slice(0, 4).map(item => `<button onclick="HomePage.filterEcosystem('${_esc(item.category || item.title || "")}')"><strong>${_esc(item.title || item.category || "Service update")}</strong><small>${_esc([item.locality || item.area, item.time_label || item.created_at].filter(Boolean).join(" · "))}</small></button>`).join("")}
+      ${jobs.map((job, i) => `<button onclick="HomePage.filterEcosystem('${_esc(job)}')"><strong>${_esc(job)}</strong><small>${_esc(places[i % places.length] || "nearby")} · ${i + 8} min ago</small></button>`).join("")}
     </div>
-    `;
-}
-
-function _extractLiveActivity(payload = {}) {
-  const source = payload.live_activity || payload.activity || payload.activity_feed || payload.live_feed || [];
-  return Array.isArray(source) ? source.filter(item => item && (item.is_live || item.real || item.source === "backend" || item.id)) : [];
-}
-
-function _matchesLiveActivity(item, slug) {
-  const wanted = _slug(slug);
-  const values = [item.category_slug, item.category, item.title, item.service_name].map(_slug).filter(Boolean);
-  return values.some(v => v === wanted || v.includes(wanted) || wanted.includes(v));
+    <div class="ops-supply-row">
+      <div><strong>Materials moving</strong><span>${_esc(materials.join(" · "))}</span></div>
+      <div><strong>Dealer path</strong><span>${_esc(dealers.join(" · "))}</span></div>
+      <div><strong>Lead route</strong><span>${_esc(meta.label)} → WorkToGo confirm → local worker</span></div>
+    </div>`;
 }
 
 function _trustProofHTML(slug = "") {
@@ -916,12 +927,9 @@ function _vendorCardHTML(service, support = false) {
           <span>${_esc(meta.label)}</span>
           ${price ? `<span>${_esc(price)}</span>` : ""}
         </div>
+        <button class="vendor-book-btn">Book Now</button>
       </div>
     </article>`;
-}
-
-function _bookingEmptyStateText() {
-  return "No live worker cards for this category right now. Submit a booking and WorkToGo will assign the best available worker.";
 }
 
 function _renderInstantSearch() {
@@ -1054,7 +1062,7 @@ function _premiumInspectionPanel(category) {
   const price = UI.formatCurrency(_inspectionPrice(null, category));
   return `<div class="premium-inspection-panel">
     <div class="premium-inspection-mark">🛡️</div>
-    <div><strong>${_esc(category.label)} Inspection · ${_esc(price)}</strong><p>Agent visits your home · Full diagnosis · Best fix</p></div>
+    <div><strong>${_esc(price)} Inspection</strong><p>Agent visits your home · Full diagnosis · Best fix</p></div>
     <span>${_esc(price)}</span>
   </div>`;
 }
@@ -1204,7 +1212,6 @@ let _searchRemoteServices = [];
 let _showAllCategories = false;
 let _allServices = [];
 let _serviceCategories = [];
-let _liveActivityItems = [];
 let _pilotConfig = {
   city: CONFIG.SERVICE_ONLY?.CITY || "Haldwani",
   hero_title: "Book trusted local services in Haldwani",
