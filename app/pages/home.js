@@ -32,37 +32,30 @@ export async function render(container) {
           <div id="search-results-panel" class="instant-search-panel hidden"></div>
         </section>
 
-        <section class="home-section browse-strip-section">
-          <div class="section-header compact">
-            <div>
-              <h3>What do you need?</h3>
-            </div>
+        <section class="service-action-block browse-strip-section" id="services-section">
+          <div class="service-action-head">
+            <h3>What do you need?</h3>
             <button class="see-all" onclick="HomePage.toggleMoreCategories()" id="more-categories-btn">More</button>
           </div>
           <div class="category-chips" id="category-chips">
             <button class="active" onclick="HomePage.setCategory('')"><span>🧰</span>All</button>
             ${_categoryChips().slice(0, 7).map(c => `<button onclick="HomePage.setCategory('${_esc(c.slug || '')}')"><span>${c.icon}</span>${_esc(c.label)}</button>`).join("")}
           </div>
-        </section>
 
-        <section class="service-hero marketplace-hero slim-service-hero">
-          <div class="service-hero-copy">
-            <p class="service-hero-kicker" id="category-kicker">${_esc(_pilotConfig.city)} live marketplace</p>
-            <h1 id="category-hero-title">Trusted Haldwani Services</h1>
-            <button class="btn-primary hero-primary marketplace-cta" id="hero-category-cta" onclick="HomePage.bookCategoryCta(HomePage.activeCategorySlug?.())">Book · All services</button>
-          </div>
-        </section>
-
-        <section class="home-section" id="services-section">
-          <div class="section-header">
-            <div>
-              <h3 id="vendor-feed-title">Workers near you</h3>
+          <div class="service-hero marketplace-hero slim-service-hero">
+            <div class="service-hero-copy">
+              <p class="service-hero-kicker" id="category-kicker">${_esc(_pilotConfig.city)} services near you</p>
+              <h1 id="category-hero-title">Trusted Haldwani Services</h1>
+              <p id="category-hero-subtitle">${_esc(_categoryMeta("").examples.join(" • "))}</p>
             </div>
-            <button class="see-all" onclick="HomePage.setCategory('')">All</button>
           </div>
+
           <div id="services-grid" class="vendor-feed">
             ${UI.skeleton(4, "card")}
           </div>
+
+          <p class="service-action-note" id="service-action-note"></p>
+          <button class="btn-primary hero-primary marketplace-cta" id="hero-category-cta" onclick="HomePage.bookCategoryCta(HomePage.activeCategorySlug?.())">Book · All Services</button>
         </section>
 
         <section class="operating-feed hidden" id="operating-feed">
@@ -603,12 +596,13 @@ async function _loadProducts() {
 function _renderServices(res) {
   const el = document.getElementById("services-grid");
   if (!el) return;
-  const title = document.getElementById("vendor-feed-title");
-  if (title) title.textContent = _activeCategory ? `${_categoryMeta(_activeCategory).label} services` : "Available services";
+  const note = document.getElementById("service-action-note");
+  if (note) note.textContent = "";
 
     if (!res.ok) {
     el.classList.remove("fallback-services-grid");
-    el.innerHTML = _bookingEmptyStateHTML();
+    el.innerHTML = "";
+    if (note) note.textContent = _bookingEmptyStateText();
     return;
   }
 
@@ -631,7 +625,8 @@ function _renderServices(res) {
 
     if (!list.length) {
       el.classList.remove("fallback-services-grid");
-      el.innerHTML = _bookingEmptyStateHTML();
+      el.innerHTML = "";
+      if (note) note.textContent = _bookingEmptyStateText();
       return;
   }
   el.classList.remove("fallback-services-grid");
@@ -675,9 +670,11 @@ function _renderHeroForCategory() {
   const meta = _categoryMeta(_activeCategory);
   const title = document.getElementById("category-hero-title");
   const kicker = document.getElementById("category-kicker");
+  const subtitle = document.getElementById("category-hero-subtitle");
   const cta = document.getElementById("hero-category-cta");
   if (title) title.textContent = meta.hero || _pilotConfig.hero_title;
   if (kicker) kicker.textContent = _activeCategory ? `${meta.label} services near you` : `${_pilotConfig.city} services near you`;
+  if (subtitle) subtitle.textContent = (meta.examples || []).slice(0, 4).join(" • ");
   if (cta) cta.textContent = `Book · ${_categoryCtaLabel(meta)}`;
 }
 
@@ -906,16 +903,12 @@ function _vendorCardHTML(service, support = false) {
           <span>${_esc(meta.label)}</span>
           ${price ? `<span>${_esc(price)}</span>` : ""}
         </div>
-        <button class="vendor-book-btn">Book Now</button>
       </div>
     </article>`;
 }
 
-function _bookingEmptyStateHTML() {
-  return `<div class="service-empty-state">
-    <p>Booking available · WorkToGo will assign best worker</p>
-    <button type="button" class="btn-ghost-inline" onclick="HomePage.bookCategoryCta(HomePage.activeCategorySlug?.())">Book Now</button>
-  </div>`;
+function _bookingEmptyStateText() {
+  return "No live worker cards for this category right now. Submit a booking and WorkToGo will assign the best available worker.";
 }
 
 function _renderInstantSearch() {
