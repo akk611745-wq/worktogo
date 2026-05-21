@@ -1814,6 +1814,11 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   text-align: left;
 }
 .booking-mode-option.active { border-color: rgba(108,99,255,0.55); background: rgba(108,99,255,0.10); }
+.booking-mode-premium { border-color: rgba(255,107,0,0.70); }
+.booking-mode-default { border-color: rgba(17,17,17,0.70); }
+.booking-mode-direct { border-color: rgba(59,130,246,0.55); }
+.booking-mode-premium.active { border-color: var(--market-orange); background: rgba(255,107,0,0.12); }
+.booking-mode-default.active { border-color: #171717; background: rgba(17,17,17,0.10); }
 .booking-mode-option.disabled { opacity: 0.48; pointer-events: none; }
 .booking-mode-option strong { font-size: 0.82rem; }
 .booking-mode-option small { color: var(--clr-text-2); font-size: 0.72rem; line-height: 1.3; }

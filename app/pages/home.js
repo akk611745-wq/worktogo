@@ -391,27 +391,33 @@ window.HomeModals = (() => {
   }
 
   function openBooking(service) {
+    if (!AUTH.isLoggedIn()) {
+      UI.toast("Login with mobile OTP to book this service", "info");
+      _savePendingBookingIntent(service, _pendingBookingForm());
+      ROUTER.go("login");
+      return;
+    }
     _currentService = service;
     const profile = _customerProfile();
     const category = _categoryMeta(service.category_slug || service.category || _activeCategory);
     const restored = _pendingBookingForm();
-    const defaultMode = restored.booking_mode || service.booking_mode || (service.vendor_id ? "direct_vendor" : (category.inspection ? "inspection" : "free_lead"));
+    const defaultMode = restored.booking_mode || service.booking_mode || (service.vendor_id ? "direct_vendor" : "free_lead");
     const inspectionPrice = _inspectionPrice(service, category);
-    document.getElementById("booking-modal-title").textContent = _esc(service.name || "Book Service");
+    document.getElementById("booking-modal-title").textContent = `Book ${category.label}`;
     document.getElementById("booking-modal-body").innerHTML = `
       <div class="modal-product-info">
         <div class="modal-product-placeholder">${service.icon || "🔧"}</div>
         <div>
-          <p class="modal-price">${category.inspection ? `Inspection ${UI.formatCurrency(inspectionPrice)}` : UI.formatCurrency(_servicePrice(service))}</p>
+          <p class="modal-price">${_esc(category.label)}</p>
           ${service.description ? `<p class="modal-desc">${_esc(service.description)}</p>` : ""}
-          <p class="service-note">${_esc(category.label)} request · One WorkToGo lifecycle tracks inspection, lead and vendor assignment.</p>
+          <p class="service-note">Choose inspection, free lead, or a direct vendor route when available.</p>
         </div>
       </div>
       ${_premiumInspectionPanel(category)}
       <div class="booking-mode-picker" role="radiogroup" aria-label="Booking mode">
-        ${_bookingModeOption("inspection", "Premium inspection", `${UI.formatCurrency(inspectionPrice)} visit · payment verified separately`, defaultMode)}
-        ${_bookingModeOption("free_lead", "Free lead", "No payment · admin routes category-wise", defaultMode)}
-        ${_bookingModeOption("direct_vendor", "Direct vendor", "Send to listed provider · admin tracks", defaultMode, !service.vendor_id)}
+        ${_bookingModeOption("inspection", `MODE 1 — ${UI.formatCurrency(inspectionPrice)} Inspection`, "Agent visits your home · Full diagnosis · Best fix", defaultMode, false, "premium")}
+        ${_bookingModeOption("free_lead", "MODE 2 — Free Lead", "WorkToGo assigns best worker · No payment now", defaultMode, false, "default")}
+        ${_bookingModeOption("direct_vendor", "MODE 3 — Direct Vendor", "Book this specific worker directly", defaultMode, !service.vendor_id, "direct")}
       </div>
       <div class="booking-context-strip">
         <span>${category.icon}</span>
@@ -516,7 +522,7 @@ window.HomeModals = (() => {
       if (!paymentOk) return;
       closeBooking();
       _clearPendingBookingForm();
-      UI.toast(bookingMode === "inspection" ? "Inspection request saved — payment pending until verified." : "Request sent — track status in Bookings.", "success");
+      UI.toast(bookingMode === "inspection" ? "Inspection payment completed — booking confirmed." : bookingMode === "direct_vendor" ? "Direct vendor booking sent." : "Free lead sent to admin dashboard.", "success");
       setTimeout(() => ROUTER.go("bookings"), 800);
     } else {
       UI.toast(res.error || "Failed to book service. Try again.", "error");
@@ -1058,24 +1064,23 @@ function _normalizeSearchService(s) {
 }
 
 function _premiumInspectionPanel(category) {
-  if (!category.inspection) return "";
   const price = UI.formatCurrency(_inspectionPrice(null, category));
   return `<div class="premium-inspection-panel">
     <div class="premium-inspection-mark">🛡️</div>
-    <div><strong>Premium inspection available</strong><p>Best for ${_esc(category.label.toLowerCase())} jobs where scope, estimate, or site condition must be checked first. Payment remains pending until verified.</p></div>
+    <div><strong>${_esc(price)} Inspection</strong><p>Agent visits your home · Full diagnosis · Best fix</p></div>
     <span>${_esc(price)}</span>
   </div>`;
 }
 
-function _bookingModeOption(value, label, note, selected, disabled = false) {
-  return `<button type="button" data-mode="${_esc(value)}" class="booking-mode-option ${selected === value ? "active" : ""} ${disabled ? "disabled" : ""}" ${disabled ? "disabled aria-disabled=\"true\"" : ""} onclick="HomePage.selectBookingMode?.('${_esc(value)}') || (document.getElementById('booking-mode').value='${_esc(value)}')">
+function _bookingModeOption(value, label, note, selected, disabled = false, tone = "") {
+  return `<button type="button" data-mode="${_esc(value)}" class="booking-mode-option booking-mode-${_esc(tone || value)} ${selected === value ? "active" : ""} ${disabled ? "disabled" : ""}" ${disabled ? "disabled aria-disabled=\"true\"" : ""} onclick="HomePage.selectBookingMode?.('${_esc(value)}') || (document.getElementById('booking-mode').value='${_esc(value)}')">
     <strong>${_esc(label)}</strong><small>${_esc(note)}</small>
   </button>`;
 }
 
 function _canonicalBookingMode(value, service, category) {
   const mode = String(value || "").toLowerCase();
-  if (mode === "inspection" && category.inspection) return "inspection";
+  if (mode === "inspection") return "inspection";
   if (mode === "direct_vendor" && service?.vendor_id) return "direct_vendor";
   return "free_lead";
 }
