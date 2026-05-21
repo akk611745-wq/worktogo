@@ -1007,13 +1007,13 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .home-content { flex: 1; width: 100%; }
 
 .service-hero {
-  margin: 0 var(--sp-md) 8px;
-  padding: 6px 0 2px;
+  margin: 0 var(--sp-md) 12px;
+  padding: 10px 0 4px;
   border: 0;
   border-radius: 0;
   background: transparent;
   display: grid;
-  gap: 8px;
+  gap: 12px;
 }
 
 .marketplace-hero {
@@ -1034,16 +1034,16 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 .service-hero h1 {
   color: var(--market-text);
-  font-size: clamp(1.35rem, 7vw, 2.25rem);
-  line-height: 1.02;
-  margin-bottom: 4px;
-  letter-spacing: -0.035em;
+  font-size: clamp(1.65rem, 8.5vw, 2.9rem);
+  line-height: 1;
+  margin-bottom: 6px;
+  letter-spacing: -0.045em;
 }
 
 .service-hero p {
   color: var(--market-muted);
-  font-size: 0.82rem;
-  line-height: 1.35;
+  font-size: 0.9rem;
+  line-height: 1.42;
 }
 
 .hero-live-strip {
@@ -1066,8 +1066,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .hero-live-strip b { color: var(--market-text); }
 
 .marketplace-cta {
-  min-height: 42px;
-  border-radius: 14px;
+  min-height: 48px;
+  border-radius: 16px;
   background: linear-gradient(135deg, var(--market-orange), #ff8a00);
   box-shadow: 0 16px 34px rgba(255,107,0,0.26);
   font-weight: 900;
@@ -1208,7 +1208,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   justify-content: center;
   gap: 4px;
   min-width: 66px;
-  min-height: 54px;
+  min-height: 58px;
   padding: 7px 10px;
   border-radius: 16px;
   border: 1px solid var(--market-line);
@@ -1238,13 +1238,13 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .ecosystem-world { animation: fadeUp 0.18s var(--ease); }
 .ecosystem-banner { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
 .ecosystem-icon {
-  width: 34px; height: 34px; border-radius: 12px;
+  width: 40px; height: 40px; border-radius: 14px;
   display: flex; align-items: center; justify-content: center;
-  background: #fff; font-size: 1.1rem; flex-shrink: 0;
+  background: #fff; font-size: 1.3rem; flex-shrink: 0;
   box-shadow: 0 10px 26px rgba(17,17,17,0.08);
 }
-.ecosystem-banner h3 { font-size: 0.88rem; margin-bottom: 2px; }
-.ecosystem-banner p:last-child { color: var(--market-muted); font-size: 0.72rem; line-height: 1.25; }
+.ecosystem-banner h3 { font-size: 0.94rem; margin-bottom: 3px; }
+.ecosystem-banner p:last-child { color: var(--market-muted); font-size: 0.76rem; line-height: 1.35; }
 .ecosystem-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--sp-sm); }
 .ecosystem-grid div { padding: 12px 0; border-top: 1px solid var(--clr-border); border-radius: 0; background: transparent; }
 .ecosystem-grid strong { display: block; font-size: 0.78rem; margin-bottom: 2px; }
@@ -1267,10 +1267,10 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .proof-rail::-webkit-scrollbar,
 .vendor-feed::-webkit-scrollbar { display: none; }
 .ecosystem-visual-rail button {
-  flex: 0 0 112px;
-  min-height: 82px;
-  padding: 10px;
-  border-radius: 18px;
+  flex: 0 0 124px;
+  min-height: 96px;
+  padding: 12px;
+  border-radius: 20px;
   background: linear-gradient(145deg, #ffffff, #fff1df);
   color: var(--market-text);
   text-align: left;
@@ -1284,8 +1284,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 .ecosystem-visual-rail button.active small,
 .ecosystem-tag-row button.active { color: #fff; }
-.ecosystem-visual-rail span { display: block; font-size: 1.15rem; margin-bottom: 6px; }
-.ecosystem-visual-rail strong { display: block; font-size: 0.78rem; line-height: 1.1; }
+.ecosystem-visual-rail span { display: block; font-size: 1.35rem; margin-bottom: 8px; }
+.ecosystem-visual-rail strong { display: block; font-size: 0.84rem; line-height: 1.1; }
 .ecosystem-visual-rail small { display: block; margin-top: 4px; color: var(--market-orange); font-weight: 900; font-size: 0.66rem; }
 .ecosystem-tag-row { display: flex; gap: 8px; overflow-x: auto; padding-top: 8px; scrollbar-width: none; }
 .ecosystem-tag-row::-webkit-scrollbar { display: none; }
@@ -1312,8 +1312,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .ecosystem-local-grid::-webkit-scrollbar { display: none; }
 .ecosystem-local-grid button {
   flex: 0 0 136px;
-  min-height: 54px;
-  padding: 9px 10px;
+  min-height: 62px;
+  padding: 10px;
   border: 1px solid var(--market-line);
   border-radius: 15px;
   background: rgba(255,255,255,0.72);
@@ -1323,11 +1323,11 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   overflow-wrap: anywhere;
 }
 .ecosystem-local-grid button:active { transform: scale(0.985); }
-.ecosystem-local-grid strong { display: block; font-size: 0.7rem; margin-bottom: 3px; }
-.ecosystem-local-grid span { color: var(--market-muted); font-size: 0.64rem; line-height: 1.2; }
+.ecosystem-local-grid strong { display: block; font-size: 0.74rem; margin-bottom: 4px; }
+.ecosystem-local-grid span { color: var(--market-muted); font-size: 0.68rem; line-height: 1.28; }
 .ecosystem-inspection-cta {
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
   margin-top: 8px;
   border-radius: 14px;
   background: #171717;
@@ -1337,8 +1337,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 
 .operating-feed {
-  margin: 0 var(--sp-md) 12px;
-  padding: 8px 0 0;
+  margin: 0 var(--sp-md) 14px;
+  padding: 10px 0 0;
   border-top: 1px solid rgba(24,24,24,0.08);
 }
 .operating-head {
@@ -1379,7 +1379,13 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 .ops-ticker strong { display: block; font-size: 0.82rem; line-height: 1.15; margin-bottom: 5px; }
 .ops-ticker small { color: rgba(255,255,255,0.70); font-size: 0.68rem; }
-.ops-supply-row { display: none; }
+.ops-supply-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  margin-top: 2px;
+}
+.ops-supply-row div { padding: 8px 0; }
 .ops-supply-row div {
   padding: 10px 0;
   border-top: 1px solid var(--market-line);
@@ -1464,10 +1470,10 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 
 .vendor-card {
-  flex: 0 0 76vw;
-  max-width: 320px;
+  flex: 0 0 80vw;
+  max-width: 340px;
   overflow: hidden;
-  border-radius: 22px;
+  border-radius: 24px;
   background: #fff;
   color: var(--market-text);
   box-shadow: 0 16px 38px rgba(17,17,17,0.10);
@@ -1484,9 +1490,9 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 96px;
+  height: 120px;
   background: linear-gradient(135deg, #ffe8c7, #fff7ed 48%, #e8fff0);
-  font-size: 2rem;
+  font-size: 2.4rem;
 }
 .vendor-media img { width: 100%; height: 100%; object-fit: cover; }
 .vendor-media em {
@@ -1504,7 +1510,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .vendor-featured .vendor-media em { background: rgba(245,158,11,0.96); }
 .vendor-trusted .vendor-media em { background: rgba(37,99,235,0.92); }
 .vendor-demand-priority .vendor-media em { background: rgba(220,38,38,0.90); }
-.vendor-body { padding: 10px; }
+.vendor-body { padding: 12px; }
 .vendor-head { display: flex; align-items: center; gap: 10px; }
 .vendor-avatar { width: 42px; height: 42px; border-radius: 15px; display: flex; align-items: center; justify-content: center; background: var(--market-soft); }
 .vendor-head > div:last-child { min-width: 0; }
@@ -1523,8 +1529,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .vendor-stats span:last-child { color: var(--market-orange); background: #fff0e3; }
 .vendor-book-btn {
   width: 100%;
-  min-height: 38px;
-  border-radius: 13px;
+  min-height: 42px;
+  border-radius: 14px;
   background: var(--market-orange);
   color: #fff;
   font-weight: 900;
@@ -1533,11 +1539,11 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 .category-visual-proof { margin-bottom: 14px; }
 .proof-tile {
-  flex: 0 0 64vw;
-  max-width: 250px;
-  min-height: 128px;
-  padding: 12px;
-  border-radius: 20px;
+  flex: 0 0 70vw;
+  max-width: 300px;
+  min-height: 178px;
+  padding: 14px;
+  border-radius: 24px;
   color: #fff;
   display: flex;
   flex-direction: column;
@@ -1547,10 +1553,11 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .proof-tone-0 { background: linear-gradient(145deg, #7c2d12, #ff6b00); }
 .proof-tone-1 { background: linear-gradient(145deg, #14532d, #16a34a); }
 .proof-tone-2 { background: linear-gradient(145deg, #1e3a8a, #38bdf8); }
-.proof-split { display: none; }
-.proof-tile em { display: inline-flex; width: fit-content; margin-top: 0; padding: 4px 8px; border-radius: var(--r-full); background: rgba(255,255,255,0.18); font-size: 0.62rem; font-style: normal; font-weight: 900; }
-.proof-tile strong { font-size: 0.92rem; margin-top: 8px; }
-.proof-tile p { color: rgba(255,255,255,0.82); font-size: 0.7rem; line-height: 1.25; margin-top: 3px; }
+.proof-split { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: auto; }
+.proof-split span { min-height: 52px; border-radius: 14px; display: flex; align-items: end; padding: 8px; background: rgba(255,255,255,0.18); font-size: 0.66rem; font-weight: 900; }
+.proof-tile em { display: inline-flex; width: fit-content; margin-top: 10px; padding: 4px 8px; border-radius: var(--r-full); background: rgba(255,255,255,0.18); font-size: 0.64rem; font-style: normal; font-weight: 900; }
+.proof-tile strong { font-size: 1rem; margin-top: 12px; }
+.proof-tile p { color: rgba(255,255,255,0.82); font-size: 0.76rem; line-height: 1.3; margin-top: 4px; }
 
 /* ── Cards Grid ─────────────────────────────────────────────────────────── */
 
