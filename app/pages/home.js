@@ -60,14 +60,6 @@ export async function render(container) {
           </div>
         </section>
 
-        <section class="category-ecosystem" id="category-ecosystem">
-          ${_categoryEcosystemHTML("")}
-        </section>
-
-        <section class="operating-feed" id="operating-feed">
-          ${_operatingFeedHTML("")}
-        </section>
-
         <section class="home-section" id="services-section">
           <div class="section-header">
             <div>
@@ -79,6 +71,14 @@ export async function render(container) {
           <div id="services-grid" class="vendor-feed">
             ${UI.skeleton(4, "card")}
           </div>
+        </section>
+
+        <section class="category-ecosystem" id="category-ecosystem">
+          ${_categoryEcosystemHTML("")}
+        </section>
+
+        <section class="operating-feed" id="operating-feed">
+          ${_operatingFeedHTML("")}
         </section>
 
         <section class="category-visual-proof" id="visual-proof-section">
