@@ -1126,6 +1126,20 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   background: transparent;
 }
 
+.slim-service-hero {
+  min-height: auto;
+  max-height: 160px;
+  margin: 0 var(--sp-md) 10px;
+  padding: 12px;
+  border-radius: 20px;
+  overflow: hidden;
+}
+.slim-service-hero .service-hero-copy { min-width: 0; }
+.slim-service-hero h1 { font-size: 1.18rem; line-height: 1.08; margin-bottom: 4px; }
+.slim-service-hero p:not(.service-hero-kicker) { font-size: 0.78rem; line-height: 1.25; margin-bottom: 8px; }
+.slim-service-hero .hero-primary { min-height: 38px; padding: 0 14px; font-size: 0.8rem; }
+.slim-service-hero .hero-live-strip { margin-top: 8px; }
+
 .market-search-section label {
   display: block;
   margin-bottom: 8px;
@@ -2162,6 +2176,13 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
     align-items: end;
   }
 
+  .slim-service-hero {
+    max-height: none;
+    margin: 8px var(--sp-lg) 18px;
+    padding: 18px;
+    min-height: 180px;
+  }
+
   .service-hero h1 {
     max-width: 760px;
   }
@@ -2251,8 +2272,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   }
 
   .market-search-section,
-  .service-hero,
   .browse-strip-section,
+  .service-hero,
   .category-ecosystem,
   .operating-feed,
   #visual-proof-section,

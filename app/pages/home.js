@@ -32,20 +32,6 @@ export async function render(container) {
           <div id="search-results-panel" class="instant-search-panel hidden"></div>
         </section>
 
-        <section class="service-hero marketplace-hero">
-          <div class="service-hero-copy">
-            <p class="service-hero-kicker" id="category-kicker">${_esc(_pilotConfig.city)} live marketplace</p>
-            <h1 id="category-hero-title">Trusted Haldwani Services</h1>
-            <p id="category-hero-subtitle">Nearby verified workers for repairs, painting, waterproofing, CCTV and home jobs.</p>
-            <button class="btn-primary hero-primary marketplace-cta" id="hero-category-cta" onclick="HomePage.bookCategoryCta(HomePage.activeCategorySlug?.())">Book ₹299 Expert Visit</button>
-          </div>
-          <div class="hero-live-strip" aria-label="live trust signals">
-            <span><b>42</b> workers nearby</span>
-            <span><b>12 min</b> avg response</span>
-            <span><b>4.8★</b> local rating</span>
-          </div>
-        </section>
-
         <section class="home-section browse-strip-section">
           <div class="section-header compact">
             <div>
@@ -58,6 +44,16 @@ export async function render(container) {
             <button class="active" onclick="HomePage.setCategory('')"><span>🧰</span>All</button>
             ${_categoryChips().slice(0, 7).map(c => `<button onclick="HomePage.setCategory('${_esc(c.slug || '')}')"><span>${c.icon}</span>${_esc(c.label)}</button>`).join("")}
           </div>
+        </section>
+
+        <section class="service-hero marketplace-hero slim-service-hero">
+          <div class="service-hero-copy">
+            <p class="service-hero-kicker" id="category-kicker">${_esc(_pilotConfig.city)} live marketplace</p>
+            <h1 id="category-hero-title">Trusted Haldwani Services</h1>
+            <p id="category-hero-subtitle">Nearby verified workers for repairs, painting, waterproofing, CCTV and home jobs.</p>
+            <button class="btn-primary hero-primary marketplace-cta" id="hero-category-cta" onclick="HomePage.bookCategoryCta(HomePage.activeCategorySlug?.())">Book ₹299 Expert Visit</button>
+          </div>
+          <div class="hero-live-strip hidden" aria-label="live trust signals" id="hero-live-strip"></div>
         </section>
 
         <section class="home-section" id="services-section">
@@ -73,10 +69,6 @@ export async function render(container) {
           </div>
         </section>
 
-        <section class="category-ecosystem" id="category-ecosystem">
-          ${_categoryEcosystemHTML("")}
-        </section>
-
         <section class="operating-feed" id="operating-feed">
           ${_operatingFeedHTML("")}
         </section>
@@ -87,6 +79,10 @@ export async function render(container) {
 
         <section class="local-proof-grid marketplace-proof-grid" id="trust-proof-section">
           ${_trustProofHTML("")}
+        </section>
+
+        <section class="category-ecosystem" id="category-ecosystem">
+          ${_categoryEcosystemHTML("")}
         </section>
 
         <section class="home-section ${serviceOnly ? "feature-hidden" : ""}" data-feature="shopping-ui">
@@ -705,6 +701,15 @@ function _renderHeroForCategory() {
   if (subtitle) subtitle.textContent = _activeChipFilter ? `${_title(_activeChipFilter)} request mode · ${meta.subtitle || _pilotConfig.hero_subtitle}` : (meta.subtitle || _pilotConfig.hero_subtitle);
   if (kicker) kicker.textContent = _activeCategory ? `${_pilotConfig.city} ${meta.label} operating mode` : `${_pilotConfig.city} live marketplace`;
   if (cta) cta.textContent = _activeCategory ? `${meta.inspection ? "Book inspection" : "Book now"} · ${_activeChipFilter ? _title(_activeChipFilter) : meta.label}` : "Request service help";
+  _renderHeroStats();
+}
+
+function _renderHeroStats() {
+  const el = document.getElementById("hero-live-strip");
+  if (!el) return;
+  const stats = Array.isArray(_pilotConfig.hero_stats) ? _pilotConfig.hero_stats : [];
+  el.innerHTML = stats.map(s => `<span><b>${_esc(s.value || "")}</b> ${_esc(s.label || "")}</span>`).join("");
+  el.classList.toggle("hidden", !stats.length);
 }
 
 function _renderProducts(res) {
