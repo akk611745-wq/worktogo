@@ -762,7 +762,8 @@ function _servicePrice(service) {
 
 function _categoryChips() {
   const dynamic = _serviceCategories.length ? _serviceCategories : [];
-  const base = [
+  // FALLBACK — use only if backend returns nothing.
+  const fallback = [
     { slug: "electrician", icon: "⚡", label: "Electrician" },
     { slug: "plumber", icon: "🚰", label: "Plumber" },
     { slug: "painting", icon: "🎨", label: "Painting" },
@@ -775,7 +776,7 @@ function _categoryChips() {
     { slug: "tutor", icon: "📚", label: "Tutor" },
     { slug: "inspection", icon: "🛡️", label: "Inspection" },
   ];
-  return _mergeCategories(dynamic, base);
+  return dynamic.length ? _mergeCategories(dynamic, []) : _mergeCategories([], fallback);
 }
 
 function _mergeCategories(dynamic, base) {
