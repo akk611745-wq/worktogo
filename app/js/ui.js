@@ -32,10 +32,11 @@ const UI = (() => {
     // Backend canonical
     pending:     { label: "Pending",     cls: "status-pending"    },
     open:        { label: "Pending",     cls: "status-pending"    },
-    assigned:    { label: "Confirmed",   cls: "status-confirmed"  },
+    assigned:    { label: "Assigned",    cls: "status-confirmed"  },
     accepted:    { label: "Confirmed",   cls: "status-confirmed"  },
-    in_progress: { label: "In Progress", cls: "status-processing" },
-    completed:   { label: "Completed",   cls: "status-success"    },
+    in_progress: { label: "Assigned",    cls: "status-processing" },
+    completed:   { label: "Done",        cls: "status-success"    },
+    done:        { label: "Done",        cls: "status-success"    },
     cancelled:   { label: "Cancelled",   cls: "status-cancelled"  },
     // Booking extras
     confirmed:   { label: "Confirmed",   cls: "status-confirmed"  },

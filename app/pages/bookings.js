@@ -62,7 +62,7 @@ window.BookingsPage = (() => {
       return;
     }
 
-    _all = (Array.isArray(res.data) ? res.data : (res.data?.bookings || res.data?.data || [])).map(_normalizeBooking);
+    _all = _extractBookings(res.data).map(_normalizeBooking);
     _render();
     if (silent) UI.pulseRefreshDot();
   }
@@ -92,9 +92,13 @@ window.BookingsPage = (() => {
         <div class="item-icon booking-icon">${_esc(b.service_icon || "🛠️")}</div>
         <div class="item-body">
           <div class="item-row">
-            <span class="item-title">${_esc(b.service_name || b.name || "Service")}</span>
+            <span class="item-title">${_esc(b.category_label || b.category_name || b.service_name || b.name || "Service")}</span>
             ${UI.statusBadge(b.status || "pending")}
           </div>
+          <div class="item-row muted small"><span>Category: ${_esc(b.category_label || b.category_name || b.service_name || "Service")}</span></div>
+          <div class="item-row muted small"><span>Mode: ${_esc(_modeLabel(b.booking_mode))}</span></div>
+          <div class="item-row muted small"><span>Status: ${_esc(_statusLabel(b.status))}</span></div>
+          <div class="item-row muted small"><span>Date: ${_esc(b.scheduled_at ? UI.formatDate(b.scheduled_at) : UI.formatDate(b.created_at))}</span></div>
           <div class="item-row muted small"><span>${_esc(_lifecycleLabel(b))}</span></div>
           ${b.status === "pending" ? `<div class="item-row muted small"><span>Request sent — WorkToGo will confirm shortly.</span></div>` : ""}
           ${b.status === "confirmed" ? `<div class="item-row muted small"><span>Provider/admin confirmed. Please keep your phone available.</span></div>` : ""}
@@ -148,14 +152,15 @@ window.BookingsPage = (() => {
     const status = String(b.status || b.job_status || "pending").toLowerCase();
     const map = {
       open: "pending",
-      assigned: "confirmed",
+      assigned: "assigned",
       accepted: "confirmed",
       confirmed: "confirmed",
       started: "in_progress",
       ongoing: "in_progress",
       in_progress: "in_progress",
-      completed: "completed",
-      delivered: "completed",
+      completed: "done",
+      done: "done",
+      delivered: "done",
       rejected: "cancelled",
       cancelled: "cancelled",
     };
@@ -168,6 +173,29 @@ window.BookingsPage = (() => {
       booking_mode: b.booking_mode || _modeFromNotes(b.notes),
       vendor_route: b.vendor_route || "admin_queue",
     };
+  }
+
+  function _extractBookings(data) {
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.bookings)) return data.bookings;
+    if (Array.isArray(data?.data)) return data.data;
+    const block = (data?.blocks || []).find(b => b.engine === "service") || data?.blocks?.[0];
+    const payload = block?.data || block?.payload || block || {};
+    return payload.bookings || payload.items || [];
+  }
+
+  function _statusLabel(status = "") {
+    const map = { pending: "Pending", confirmed: "Confirmed", assigned: "Assigned", done: "Done", in_progress: "Assigned", completed: "Done" };
+    return map[String(status || "").toLowerCase()] || _title(status || "pending");
+  }
+
+  function _modeLabel(mode = "") {
+    const map = { inspection: "₹299 Inspection", free_lead: "Free Lead", direct_vendor: "Direct Vendor" };
+    return map[String(mode || "free_lead").toLowerCase()] || _title(mode);
+  }
+
+  function _title(v = "") {
+    return String(v || "").replace(/_/g, " ").replace(/\b\w/g, m => m.toUpperCase());
   }
 
   function _paymentLabel(method, status, mode) {
