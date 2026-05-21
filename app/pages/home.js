@@ -201,7 +201,7 @@ export async function render(container) {
       document.querySelectorAll(".booking-mode-option").forEach(btn => btn.classList.remove("active"));
       selectedButton.classList.add("active");
       const confirm = document.getElementById("btn-confirm-booking")?.querySelector(".btn-label");
-      if (confirm) confirm.textContent = mode === "inspection" ? "Request ₹299 Inspection" : mode === "direct_vendor" ? "Book Vendor" : "Submit Free Lead";
+      if (confirm) confirm.textContent = mode === "inspection" ? `Pay ${UI.formatCurrency(_inspectionPrice())} Inspection` : mode === "direct_vendor" ? "Book Vendor" : "Submit Free Lead";
       _persistPendingBookingForm();
     },
     persistPendingBookingForm() {
@@ -609,14 +609,12 @@ function _renderServices(res) {
   const el = document.getElementById("services-grid");
   if (!el) return;
   const title = document.getElementById("vendor-feed-title");
-  if (title) title.textContent = _activeCategory ? `${_categoryMeta(_activeCategory).label} workers nearby` : "Workers near you";
+  if (title) title.textContent = _activeCategory ? `${_categoryMeta(_activeCategory).label} services` : "Available services";
 
   if (!res.ok) {
     const safeMessage = _friendlyServiceError(res.error);
-    el.classList.add("fallback-services-grid");
-    el.innerHTML = _fallbackServices().slice(0, 4).map(s => `
-      ${_vendorCardHTML(s, true)}
-    `).join("") + `
+    el.classList.remove("fallback-services-grid");
+    el.innerHTML = `
       <div class="fallback-help-card service-recovery-card">
         <h3>Services are temporarily slow to load</h3>
         <p>${_esc(safeMessage)} You can still request help and WorkToGo will guide the booking.</p>
@@ -644,11 +642,8 @@ function _renderServices(res) {
     if (_searchQuery) list = list.filter(s => _searchText(s).includes(_searchQuery));
 
     if (!list.length) {
-      el.classList.add("fallback-services-grid");
-      const fallbackList = _activeCategory ? _categoryFallbackServices(_activeCategory) : _fallbackServices();
-      el.innerHTML = fallbackList.map(s => `
-      ${_vendorCardHTML(s, true)}
-    `).join("") + `
+      el.classList.remove("fallback-services-grid");
+      el.innerHTML = `
       <div class="fallback-help-card">
         <h3>${_esc(_activeCategory ? `${_categoryMeta(_activeCategory).label} help` : _pilotConfig.fallback_title)}</h3>
         <p>${_esc(_searchQuery || _activeChipFilter ? "No exact match found yet. WorkToGo can still route this category request." : _pilotConfig.fallback_text)}</p>
@@ -903,8 +898,8 @@ function _proofMatches(item) {
 
 function _vendorCardHTML(service, support = false) {
   const meta = _categoryMeta(service.category_slug || service.slug || service.category || _activeCategory);
-  const name = service.name || service.example || meta.examples?.[0] || meta.label;
-  const price = service.price ? _esc(service.price) : UI.formatCurrency(_servicePrice(service) || (meta.inspection ? 299 : 199));
+  const name = service.name || service.vendor_name || "Available worker";
+  const price = _servicePriceLabel(service);
   const rating = service.rating || "";
   const locality = service.locality || service.vendor_locality || service.area || "";
   const exp = service.experience || "";
@@ -930,7 +925,7 @@ function _vendorCardHTML(service, support = false) {
           <div class="vendor-stats">
           ${rating ? `<span>★ ${_esc(rating)}</span>` : ""}
           <span>${_esc(meta.label)}</span>
-          <span>${price}</span>
+          ${price ? `<span>${_esc(price)}</span>` : ""}
         </div>
         <button class="vendor-book-btn">Book Now</button>
       </div>
@@ -1104,7 +1099,7 @@ function _vendorSemantics(service, meta) {
   const raw = String(service.vendor_visibility || service.visibility || service.vendor_state || "").toLowerCase();
   const featured = Boolean(service.is_featured || service.featured);
   const trusted = Boolean(service.is_trusted || service.trusted || Number(service.rating || 0) >= 4.7);
-  const demand = Boolean(service.demand_priority || service.priority === "demand" || meta.inspection);
+  const demand = Boolean(service.demand_priority || service.priority === "demand");
   const live = Boolean(service.is_live || service.live || raw === "live");
   const quick = Boolean(service.quick_response || service.fast_response);
   const visibility = live ? "live" : featured ? "featured" : trusted ? "trusted" : demand ? "demand-priority" : quick ? "quick" : "normal";
@@ -1184,7 +1179,7 @@ function _resumePendingBooking() {
 
 function _categoryFallbackServices(slug) {
   const meta = _categoryMeta(slug);
-  return (meta.examples || []).slice(0, 4).map((name, i) => ({ slug, icon: meta.icon, name, example: `${meta.label} local request`, price: i === 0 && meta.inspection ? `Inspection ${UI.formatCurrency(_inspectionPrice(null, meta))}` : "Request quote" }));
+  return (meta.examples || []).slice(0, 4).map(name => ({ slug, icon: meta.icon, name, example: `${meta.label} local request` }));
 }
 
 function _slug(v = "") { return String(v || "").toLowerCase().trim().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
@@ -1193,12 +1188,12 @@ function _jsString(v = "") { return JSON.stringify(String(v || "")); }
 
 function _fallbackServices() {
   return [
-    { slug: "electrician", icon: "⚡", name: "Electrician", example: "Fan, switch, MCB repair", price: "From ₹199" },
-    { slug: "plumber", icon: "🚰", name: "Plumber", example: "Leakage, tap, fitting", price: "From ₹199" },
-    { slug: "ac-repair", icon: "❄️", name: "AC Repair", example: "Service and checkup", price: "From ₹299" },
-    { slug: "cleaning", icon: "🧹", name: "Cleaning", example: "Home/shop basic cleaning", price: "From ₹399" },
-    { slug: "appliance", icon: "🔧", name: "Appliance Repair", example: "Fridge, washer, RO check", price: "From ₹299" },
-    { slug: "custom", icon: "💬", name: "Other local help", example: "Ask WorkToGo support", price: "WhatsApp" },
+    { slug: "electrician", icon: "⚡", name: "Electrician", example: "Fan, switch, MCB repair" },
+    { slug: "plumber", icon: "🚰", name: "Plumber", example: "Leakage, tap, fitting" },
+    { slug: "ac-repair", icon: "❄️", name: "AC Repair", example: "Service and checkup" },
+    { slug: "cleaning", icon: "🧹", name: "Cleaning", example: "Home/shop basic cleaning" },
+    { slug: "appliance", icon: "🔧", name: "Appliance Repair", example: "Fridge, washer, RO check" },
+    { slug: "custom", icon: "💬", name: "Other local help", example: "Ask WorkToGo support" },
   ];
 }
 
