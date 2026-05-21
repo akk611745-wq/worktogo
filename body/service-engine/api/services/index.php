@@ -174,6 +174,11 @@ function serviceModeFromNotes(?string $notes): string
     return 'free_lead';
 }
 
+function serviceBookingColumnSql(PDO $db, string $column, string $expr): string
+{
+    return serviceTableHasColumn($db, 'bookings', $column) ? $expr : "NULL AS {$column}";
+}
+
 // ── GET /api/services ──────────────────────────────────────────────────────────
 if ($method === 'GET' && $uri === '/api/services') {
     header('Cache-Control: no-store, max-age=0');
@@ -435,11 +440,13 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         $bStmt = $db->prepare(
             "INSERT INTO bookings
                 (booking_number, user_id, vendor_id, service_id, status, payment_status, payment_method,
-                 scheduled_at, duration_minutes, total, address_id, notes,
+                 booking_mode, scheduled_at, duration_minutes, total, address_id, notes,
+                 customer_name, customer_mobile, customer_locality, customer_address, vendor_route,
                  created_at)
              VALUES
                 (:bnum, :uid, :vid, :sid, 'pending', :pstatus, :pmethod,
-                 :sched, :dur, :price, :addr, :notes,
+                 :booking_mode, :sched, :dur, :price, :addr, :notes,
+                 :customer_name, :customer_mobile, :customer_locality, :customer_address, :vendor_route,
                  NOW())"
         );
         $bStmt->execute([
@@ -449,11 +456,17 @@ if ($method === 'POST' && $uri === '/api/service/request') {
             ':sid'   => $serviceId,
             ':pstatus' => $paymentStatus,
             ':pmethod' => $paymentMethod,
+            ':booking_mode' => $bookingMode,
             ':sched' => $scheduledAt,
             ':dur'   => (int)($service['duration_minutes'] ?? 60),
             ':price' => $bookingTotal,
             ':addr'  => $addressId,
             ':notes' => $canonicalNotes ?: null,
+            ':customer_name' => trim((string)($input['customer_name'] ?? '')) ?: null,
+            ':customer_mobile' => trim((string)($input['customer_mobile'] ?? '')) ?: null,
+            ':customer_locality' => trim((string)($input['customer_locality'] ?? '')) ?: null,
+            ':customer_address' => trim((string)($input['customer_address'] ?? '')) ?: null,
+            ':vendor_route' => $bookingMode === 'direct_vendor' ? 'direct_vendor' : 'admin_queue',
         ]);
 
         $bookingId = (int)$db->lastInsertId();
@@ -556,10 +569,18 @@ if ($method === 'GET' && $uri === '/api/service/bookings') {
     }
 
     $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+    $bookingModeSelect = serviceBookingColumnSql($db, 'booking_mode', 'b.booking_mode');
+    $customerNameSelect = serviceBookingColumnSql($db, 'customer_name', 'b.customer_name');
+    $customerMobileSelect = serviceBookingColumnSql($db, 'customer_mobile', 'b.customer_mobile');
+    $customerLocalitySelect = serviceBookingColumnSql($db, 'customer_locality', 'b.customer_locality');
+    $customerAddressSelect = serviceBookingColumnSql($db, 'customer_address', 'b.customer_address');
+    $vendorRouteSelect = serviceBookingColumnSql($db, 'vendor_route', 'b.vendor_route');
 
     $stmt = $db->prepare(
         "SELECT b.*, s.name AS service_name, v.business_name AS vendor_name,
-                 u.name AS customer_name, u.phone AS customer_phone,
+                 {$customerNameSelect}, {$customerMobileSelect}, {$customerLocalitySelect}, {$customerAddressSelect},
+                 {$bookingModeSelect}, {$vendorRouteSelect},
+                 u.name AS user_name, u.phone AS customer_phone,
                  j.id AS job_id, j.job_number, j.status AS job_status
          FROM bookings b
          LEFT JOIN services s ON s.id = b.service_id
@@ -578,8 +599,9 @@ if ($method === 'GET' && $uri === '/api/service/bookings') {
         $booking['job_status'] = normalizeServiceJobStatus((string)($booking['job_status'] ?? $booking['status']));
         $booking['amount'] = $booking['total'] ?? $booking['amount'] ?? null;
         $booking['payment_method'] = $booking['payment_method'] ?: 'cod';
-        $booking['booking_mode'] = serviceModeFromNotes($booking['notes'] ?? null);
-        $booking['vendor_route'] = $booking['booking_mode'] === 'direct_vendor' ? 'direct_vendor' : 'admin_queue';
+        $booking['booking_mode'] = $booking['booking_mode'] ?: serviceModeFromNotes($booking['notes'] ?? null);
+        $booking['vendor_route'] = $booking['vendor_route'] ?: ($booking['booking_mode'] === 'direct_vendor' ? 'direct_vendor' : 'admin_queue');
+        $booking['customer_name'] = $booking['customer_name'] ?: ($booking['user_name'] ?? null);
         $booking['support_hint'] = 'WorkToGo support can help with this booking ID.';
     }
     unset($booking);
@@ -596,6 +618,12 @@ if ($method === 'GET' && preg_match('#^/api/service/bookings/(\d+)$#', $uri, $m)
 
     $stmt = $db->prepare(
         "SELECT b.*, s.name AS service_name, v.business_name AS vendor_name,
+                 " . serviceBookingColumnSql($db, 'booking_mode', 'b.booking_mode') . ",
+                 " . serviceBookingColumnSql($db, 'customer_name', 'b.customer_name') . ",
+                 " . serviceBookingColumnSql($db, 'customer_mobile', 'b.customer_mobile') . ",
+                 " . serviceBookingColumnSql($db, 'customer_locality', 'b.customer_locality') . ",
+                 " . serviceBookingColumnSql($db, 'customer_address', 'b.customer_address') . ",
+                 " . serviceBookingColumnSql($db, 'vendor_route', 'b.vendor_route') . ",
                  j.id AS job_id, j.job_number, j.status AS job_status
          FROM bookings b
          LEFT JOIN services s ON s.id = b.service_id
@@ -626,8 +654,8 @@ if ($method === 'GET' && preg_match('#^/api/service/bookings/(\d+)$#', $uri, $m)
     $booking['job_status'] = normalizeServiceJobStatus((string)($booking['job_status'] ?? $booking['status']));
     $booking['amount'] = $booking['total'] ?? $booking['amount'] ?? null;
     $booking['payment_method'] = $booking['payment_method'] ?: 'cod';
-    $booking['booking_mode'] = serviceModeFromNotes($booking['notes'] ?? null);
-    $booking['vendor_route'] = $booking['booking_mode'] === 'direct_vendor' ? 'direct_vendor' : 'admin_queue';
+    $booking['booking_mode'] = $booking['booking_mode'] ?: serviceModeFromNotes($booking['notes'] ?? null);
+    $booking['vendor_route'] = $booking['vendor_route'] ?: ($booking['booking_mode'] === 'direct_vendor' ? 'direct_vendor' : 'admin_queue');
     $booking['support_hint'] = 'WorkToGo support can help with this booking ID.';
 
     // Attach linked job
