@@ -216,7 +216,7 @@ const UI = (() => {
         navKey: "explore",
         icon: `<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>`,
         label: "Explore",
-        action: "ROUTER.go('home'); setTimeout(() => HomePage?.focusTopSearch?.(), 120);",
+        action: "ROUTER.go('home'); setTimeout(() => HomePage?.openExploreOverlay?.(), 120);",
       },
       {
         page: "account",

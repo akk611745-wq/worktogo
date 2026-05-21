@@ -91,6 +91,13 @@ export async function render(container) {
       ${UI.buildNav("home")}
     </div>
 
+    <div id="explore-overlay" class="explore-overlay hidden" role="dialog" aria-modal="true" aria-label="Explore services">
+      <div class="explore-search-shell">
+        <div id="explore-search-slot"></div>
+        <button class="explore-close" type="button" onclick="HomePage.closeExploreOverlay()" aria-label="Close explore">×</button>
+      </div>
+    </div>
+
     <!-- Order Modal -->
     <div id="order-modal" class="modal-overlay hidden" onclick="HomeModals.closeOnOverlay(event)">
       <div class="modal-sheet">
@@ -127,6 +134,7 @@ export async function render(container) {
       document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
     },
     focusSearch(seed = "") {
+      HomePage.openExploreOverlay();
       const inp = document.getElementById("service-search");
       if (!inp) return;
       if (seed && !inp.value) inp.value = seed;
@@ -134,8 +142,13 @@ export async function render(container) {
       HomePage.searchServices(inp.value || seed);
     },
     focusTopSearch() {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      setTimeout(() => HomePage.focusSearch(""), 160);
+      HomePage.openExploreOverlay();
+    },
+    openExploreOverlay() {
+      _openExploreOverlay();
+    },
+    closeExploreOverlay() {
+      _closeExploreOverlay();
     },
     setCategory(slug = "") {
       _activeCategory = slug;
@@ -279,6 +292,7 @@ export async function render(container) {
 
   _loadServices();
   if (!serviceOnly && CONFIG.FEATURES?.SHOPPING_UI) _loadProducts();
+  _setupExploreOverlay();
   _syncOperatingMode();
   _renderInstantSearch();
 }
@@ -932,11 +946,45 @@ function _renderInstantSearch() {
     <div class="instant-search-head"><strong>${_esc(meta.label)} near ${_esc(_pilotConfig.city)}</strong><span>instant results</span></div>
     <div class="instant-result-list">
       ${(candidates.length ? candidates : _categoryFallbackServices(meta.slug)).slice(0, 3).map(s => `
-        <button onclick="${s.id ? `HomeModals.openBooking(${_jsonAttr(s)})` : `UI.openSupport('selector', { category: ${_jsString(meta.label)}, service: ${_jsString(s.name)} })`}">
-          <span>${s.icon || meta.icon}</span><strong>${_esc(s.name)}</strong><small>${_esc(s.price || "quick price")}</small>
+        <button onclick="HomePage.closeExploreOverlay(); ${s.id ? `HomeModals.openBooking(${_jsonAttr(s)})` : `UI.openSupport('selector', { category: ${_jsString(meta.label)}, service: ${_jsString(s.name)} })`}">
+          <span>${s.icon || meta.icon}</span><strong>${_esc(s.name)}</strong>${_servicePriceLabel(s) ? `<small>${_esc(_servicePriceLabel(s))}</small>` : ""}
         </button>
       `).join("")}
     </div>`;
+}
+
+function _setupExploreOverlay() {
+  const section = document.querySelector(".market-search-section");
+  const slot = document.getElementById("explore-search-slot");
+  const overlay = document.getElementById("explore-overlay");
+  if (!section || !slot || !overlay) return;
+  slot.appendChild(section);
+  section.classList.remove("top-search-hidden");
+  section.removeAttribute("aria-hidden");
+  overlay.addEventListener("click", e => { if (e.target === overlay) _closeExploreOverlay(); });
+}
+
+function _openExploreOverlay() {
+  const overlay = document.getElementById("explore-overlay");
+  if (!overlay) return;
+  overlay.classList.remove("hidden");
+  document.body.classList.add("explore-open");
+  setTimeout(() => {
+    const inp = document.getElementById("service-search");
+    inp?.focus();
+    _renderInstantSearch();
+  }, 40);
+}
+
+function _closeExploreOverlay() {
+  document.getElementById("explore-overlay")?.classList.add("hidden");
+  document.body.classList.remove("explore-open");
+}
+
+function _servicePriceLabel(service) {
+  if (service?.price) return String(service.price);
+  const amount = service?.base_price ?? service?.amount ?? service?.starting_price;
+  return amount ? UI.formatCurrency(amount) : "";
 }
 
 function _inferSearchMeta(query) {

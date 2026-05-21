@@ -1128,6 +1128,38 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 .top-search-hidden { display: none; }
 
+.explore-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: #fff;
+  color: var(--market-text);
+  padding: calc(14px + env(safe-area-inset-top, 0px)) var(--sp-md) var(--sp-md);
+}
+.explore-overlay.hidden { display: none; }
+.explore-open { overflow: hidden; }
+.explore-search-shell {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: start;
+}
+#explore-search-slot .market-search-section {
+  display: block;
+  position: static;
+  margin: 0;
+  padding: 0;
+}
+.explore-close {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-full);
+  background: var(--market-soft);
+  color: var(--market-text);
+  font-size: 1.45rem;
+  font-weight: 800;
+}
+
 .slim-service-hero {
   min-height: auto;
   max-height: 120px;
