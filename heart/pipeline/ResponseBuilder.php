@@ -165,8 +165,9 @@ class ResponseBuilder
         $block = [
             'type'   => $name . '_results',
             'engine' => $name,
-            'items'  => $data['items']   ?? $data['results'] ?? $data['data'] ?? [],
+            'items'  => $data['items'] ?? $data['results'] ?? $data['services'] ?? $data['bookings'] ?? $data['data'] ?? [],
             'total'  => $data['total']   ?? $data['count']   ?? null,
+            'data'   => $data,
         ];
 
         // Ensure items is always an array
@@ -182,6 +183,11 @@ class ResponseBuilder
                 break;
 
             case 'service':
+                $block['services'] = is_array($data['services'] ?? null) ? $data['services'] : [];
+                $block['bookings'] = is_array($data['bookings'] ?? null) ? $data['bookings'] : [];
+                $block['booking'] = is_array($data['booking'] ?? null) ? $data['booking'] : null;
+                $block['categories'] = is_array($data['categories'] ?? null) ? $data['categories'] : [];
+                $block['pilot_config'] = is_array($data['pilot_config'] ?? null) ? $data['pilot_config'] : [];
                 $block['available_slots'] = is_array($data['slots']     ?? null) ? $data['slots']     : [];
                 $block['providers']       = is_array($data['providers'] ?? null) ? $data['providers'] : [];
                 break;

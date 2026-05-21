@@ -82,6 +82,37 @@ const API = (() => {
     return _request("POST", "", { intent: intent, data: payload });
   }
 
+  function _firstBlock(response, engine = "service") {
+    const blocks = response?.data?.blocks || [];
+    return blocks.find(b => b.engine === engine) || blocks[0] || null;
+  }
+
+  function _unwrapServicePayload(response) {
+    const block = _firstBlock(response, "service");
+    const data = block?.data || block?.payload || response?.data?.data || response?.data || {};
+    return {
+      services: data.services || block?.services || block?.items || [],
+      categories: data.categories || block?.categories || [],
+      pilot_config: data.pilot_config || block?.pilot_config || {},
+      total: data.total ?? block?.total ?? 0,
+    };
+  }
+
+  function _unwrapBookingsPayload(response) {
+    const block = _firstBlock(response, "service");
+    const data = block?.data || block?.payload || response?.data?.data || response?.data || {};
+    return {
+      bookings: data.bookings || block?.bookings || block?.items || [],
+      total: data.total ?? block?.total ?? 0,
+    };
+  }
+
+  function _unwrapBookingPayload(response) {
+    const block = _firstBlock(response, "service");
+    const data = block?.data || block?.payload || response?.data?.data || response?.data || {};
+    return data.booking || data;
+  }
+
   return {
 
     // ── Auth: OTP Flow (REST - Direct) ──────────────────────────────────
@@ -112,7 +143,8 @@ const API = (() => {
     },
 
     async getServices() {
-      return _intent("service:list_services");
+      const res = await _intent("service:list_services");
+      return res.ok ? { ...res, data: _unwrapServicePayload(res) } : res;
     },
 
     async getPublicSettings() {
@@ -134,11 +166,13 @@ const API = (() => {
 
     // ── Bookings (Intent Pipeline) ──────────────────────────────────────
     async getBookings() {
-      return _intent("service:list_bookings");
+      const res = await _intent("service:list_bookings");
+      return res.ok ? { ...res, data: _unwrapBookingsPayload(res) } : res;
     },
 
     async createBooking(payload) {
-      return _intent("service:create_booking", payload);
+      const res = await _intent("service:create_booking", payload);
+      return res.ok ? { ...res, data: _unwrapBookingPayload(res) } : res;
     },
 
     // ── Profile (Intent Pipeline) ───────────────────────────────────────
