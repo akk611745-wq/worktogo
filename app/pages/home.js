@@ -548,7 +548,7 @@ window.HomeModals = (() => {
 
 async function _handleInspectionCheckout(booking, bookingMode) {
   const paymentData = booking?.payment_data || booking?.paymentData || null;
-  if (bookingMode !== "inspection" || !paymentData) return true;
+  if (!paymentData) return true;
   if (paymentData.success === false) {
     UI.toast(paymentData.message || "Payment session could not be created. Booking remains pending.", "error", 5000);
     return false;
@@ -556,13 +556,16 @@ async function _handleInspectionCheckout(booking, bookingMode) {
   const sessionId = paymentData.payment_session_id || paymentData.paymentSessionId || paymentData.session_id;
   const redirectUrl = paymentData.payment_link || paymentData.payment_url || paymentData.redirect_url || paymentData.url;
   try {
-    if (window.Cashfree && sessionId) {
+    if (sessionId) {
+      await _loadCashfreeSdk();
       const cashfree = typeof window.Cashfree === "function" ? window.Cashfree({ mode: paymentData.mode || "production" }) : window.Cashfree;
+      if (!cashfree?.checkout) throw new Error("Cashfree checkout unavailable");
       const result = await cashfree.checkout({ paymentSessionId: sessionId, redirectTarget: "_modal" });
       if (result?.error || result?.paymentDetails?.payment_status === "FAILED") {
-        UI.toast("Payment was not completed. Your inspection booking remains pending.", "error", 5000);
+        UI.toast("Payment failed. You can retry from Bookings; this booking remains pending.", "error", 6000);
         return false;
       }
+      UI.toast("Booking Confirmed", "success");
       return true;
     }
     if (redirectUrl) {
@@ -572,9 +575,29 @@ async function _handleInspectionCheckout(booking, bookingMode) {
     UI.toast("Payment checkout is unavailable. Your inspection booking remains pending.", "error", 5000);
     return false;
   } catch (err) {
-    UI.toast("Payment was cancelled or failed. Your inspection booking remains pending.", "error", 5000);
+    UI.toast("Payment was cancelled or failed. You can retry from Bookings; this booking remains pending.", "error", 6000);
     return false;
   }
+}
+
+function _loadCashfreeSdk() {
+  if (window.Cashfree) return Promise.resolve();
+  if (window.__wtgCashfreeSdkPromise) return window.__wtgCashfreeSdkPromise;
+  window.__wtgCashfreeSdkPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[src="https://sdk.cashfree.com/js/ui/2.0.0/cashfree.prod.js"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Cashfree SDK failed to load")), { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://sdk.cashfree.com/js/ui/2.0.0/cashfree.prod.js";
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Cashfree SDK failed to load"));
+    document.head.appendChild(script);
+  });
+  return window.__wtgCashfreeSdkPromise;
 }
 
 // ── Loaders ─────────────────────────────────────────────────────────────────
