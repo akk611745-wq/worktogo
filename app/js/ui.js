@@ -194,8 +194,8 @@ const UI = (() => {
         page: "home",
         navKey: "explore",
         icon: `<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>`,
-        label: "Services",
-        action: "ROUTER.go('home'); setTimeout(() => HomePage?.scrollToServices?.(), 120);",
+        label: "Explore",
+        action: "ROUTER.go('home'); setTimeout(() => HomePage?.focusTopSearch?.(), 120);",
       },
       {
         page: "account",

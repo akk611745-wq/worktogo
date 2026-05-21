@@ -141,6 +141,10 @@ export async function render(container) {
       inp.focus();
       HomePage.searchServices(inp.value || seed);
     },
+    focusTopSearch() {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      setTimeout(() => HomePage.focusSearch(""), 160);
+    },
     setCategory(slug = "") {
       _activeCategory = slug;
       _activeChipFilter = "";
