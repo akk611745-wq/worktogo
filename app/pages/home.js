@@ -35,7 +35,6 @@ export async function render(container) {
         <section class="home-section browse-strip-section">
           <div class="section-header compact">
             <div>
-              <p class="section-eyebrow">Tap to switch feed</p>
               <h3>What do you need?</h3>
             </div>
             <button class="see-all" onclick="HomePage.toggleMoreCategories()" id="more-categories-btn">More</button>
@@ -57,7 +56,6 @@ export async function render(container) {
         <section class="home-section" id="services-section">
           <div class="section-header">
             <div>
-              <p class="section-eyebrow">Live vendor feed</p>
               <h3 id="vendor-feed-title">Workers near you</h3>
             </div>
             <button class="see-all" onclick="HomePage.setCategory('')">All</button>
@@ -679,7 +677,7 @@ function _renderHeroForCategory() {
   const kicker = document.getElementById("category-kicker");
   const cta = document.getElementById("hero-category-cta");
   if (title) title.textContent = meta.hero || _pilotConfig.hero_title;
-  if (kicker) kicker.textContent = _activeCategory ? `${_pilotConfig.city} ${meta.label} operating mode` : `${_pilotConfig.city} live marketplace`;
+  if (kicker) kicker.textContent = _activeCategory ? `${meta.label} services near you` : `${_pilotConfig.city} services near you`;
   if (cta) cta.textContent = `Book · ${_activeChipFilter ? _title(_activeChipFilter) : meta.label}`;
 }
 
@@ -784,7 +782,6 @@ function _categoryEcosystemHTML(slug = "") {
       <div class="ecosystem-banner">
         <span class="ecosystem-icon">${meta.icon}</span>
         <div>
-          <p class="service-hero-kicker">${_esc(_activeCategory ? `${meta.label} operating mode` : `${meta.label} discovery`)}</p>
           <h3>${_esc(contextLabel)} in ${_esc(_pilotConfig.city)}</h3>
           <p>${_esc(meta.trust || "Verified local providers · pay after service · human confirmation")}</p>
         </div>
@@ -811,7 +808,6 @@ function _operatingFeedHTML(slug = "") {
   return `
     <div class="operating-head">
       <div>
-        <p class="section-eyebrow">Live operating feed</p>
         <h3>${_esc(context)} activity</h3>
       </div>
       <span>${_activeCategory ? "Category only" : "Mixed local"}</span>
