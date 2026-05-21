@@ -1339,6 +1339,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .ecosystem-card:not([open]) .ecosystem-visual-rail,
 .ecosystem-card:not([open]) .ecosystem-tag-row,
 .ecosystem-card:not([open]) .ecosystem-local-grid,
+.ecosystem-card:not([open]) .ecosystem-customer-info,
 .ecosystem-card:not([open]) .ecosystem-inspection-cta { display: none; }
 .ecosystem-world { animation: fadeUp 0.18s var(--ease); }
 .ecosystem-banner { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
@@ -1356,6 +1357,26 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .ecosystem-grid span, .ecosystem-proof-row span { color: var(--clr-text-2); font-size: 0.7rem; }
 .ecosystem-proof-row { display: flex; flex-wrap: wrap; gap: var(--sp-sm); margin-top: var(--sp-md); }
 .ecosystem-proof-row span { padding: 6px 10px; border-radius: var(--r-full); background: rgba(255,255,255,0.05); border: 1px solid var(--clr-border); }
+
+.ecosystem-customer-info {
+  display: grid;
+  gap: 8px;
+}
+.ecosystem-customer-info div {
+  padding: 10px 0;
+  border-top: 1px solid var(--market-line);
+}
+.ecosystem-customer-info strong {
+  display: block;
+  font-size: 0.78rem;
+  margin-bottom: 3px;
+}
+.ecosystem-customer-info span {
+  display: block;
+  color: var(--market-muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
 
 .ecosystem-visual-rail,
 .proof-rail,

@@ -768,34 +768,24 @@ function _categoryMeta(slug = "") {
 
 function _categoryEcosystemHTML(slug = "") {
   const meta = _categoryMeta(slug);
-  const contextLabel = _activeContextLabel(meta);
-  const visuals = meta.visuals || CATEGORY_META.all.visuals || [];
-  const tags = meta.tags || meta.examples || [];
-  const brands = meta.brands || CATEGORY_META.all.brands || [];
-  const locality = meta.locality || CATEGORY_META.all.locality || [];
   return `
     <details class="ecosystem-card ecosystem-world">
       <summary class="ecosystem-summary">
         <span class="ecosystem-icon">${meta.icon}</span>
-        <strong>${_esc(contextLabel)} ecosystem</strong>
-        <small>Service options and local availability</small>
+        <strong>About this service</strong>
+        <small>How WorkToGo handles this request</small>
       </summary>
       <div class="ecosystem-banner">
         <span class="ecosystem-icon">${meta.icon}</span>
         <div>
-          <h3>${_esc(contextLabel)} in ${_esc(_pilotConfig.city)}</h3>
+          <h3>${_esc(meta.label)} in ${_esc(_pilotConfig.city)}</h3>
           <p>${_esc(meta.trust || "Verified local providers · pay after service · human confirmation")}</p>
         </div>
       </div>
-      <div class="ecosystem-visual-rail">
-        ${visuals.slice(0, 3).map(v => `<button class="${_activeChipFilter === String(v.query || v.label).toLowerCase() ? "active" : ""}" onclick="HomePage.filterEcosystem('${_esc(v.query || v.label)}')"><span>${_esc(v.emoji || meta.icon)}</span><strong>${_esc(v.label)}</strong><small>${_esc(v.note || "nearby")}</small></button>`).join("")}
-      </div>
-      <div class="ecosystem-tag-row">
-        ${tags.slice(0, 8).map(x => `<button class="${_activeChipFilter === String(x).toLowerCase() ? "active" : ""}" onclick="HomePage.filterEcosystem('${_esc(x)}')">${_esc(x)}</button>`).join("")}
-      </div>
-      <div class="ecosystem-local-grid">
-        <button type="button" onclick="HomePage.ecosystemDiscover('brands', '${_esc(brands[0] || meta.label)}')"><strong>Brands ready</strong><span>${_esc(brands.join(" · "))}</span></button>
-        <button type="button" onclick="HomePage.ecosystemDiscover('locality', '${_esc(locality[0] || _pilotConfig.city)}')"><strong>Locality active</strong><span>${_esc(locality.join(" · "))}</span></button>
+      <div class="ecosystem-customer-info">
+        <div><strong>Service area</strong><span>${_esc(_pilotConfig.city)}</span></div>
+        <div><strong>Booking flow</strong><span>Submit request, WorkToGo confirms worker and timing before visit.</span></div>
+        <div><strong>Payment</strong><span>${meta.inspection ? "Inspection jobs can require online visit payment. Normal jobs are paid after service." : "Pay after service for normal jobs."}</span></div>
       </div>
       <button class="ecosystem-inspection-cta" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}')">${meta.inspection ? "Book inspection" : "Book now"} · ${_esc(meta.label)}</button>
     </details>`;
