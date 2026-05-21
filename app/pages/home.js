@@ -67,8 +67,7 @@ export async function render(container) {
           </div>
         </section>
 
-        <section class="operating-feed" id="operating-feed">
-          ${_operatingFeedHTML("")}
+        <section class="operating-feed hidden" id="operating-feed">
         </section>
 
         <section class="category-ecosystem" id="category-ecosystem">
@@ -618,6 +617,8 @@ function _renderServices(res) {
   const payload = _unwrapData(res.data);
   let list = Array.isArray(payload) ? payload : (payload?.services || payload?.data || []);
   if (payload?.pilot_config) _pilotConfig = { ..._pilotConfig, ...payload.pilot_config };
+  _liveActivityItems = _extractLiveActivity(payload);
+  _renderOperatingFeed();
   if (Array.isArray(payload?.categories) && payload.categories.length) {
     _serviceCategories = payload.categories.map(c => ({ slug: c.slug, label: c.name, icon: c.icon || "🔧" }));
     _renderCategoryChips();
@@ -666,7 +667,10 @@ function _renderCategoryEcosystem() {
 
 function _renderOperatingFeed() {
   const el = document.getElementById("operating-feed");
-  if (el) el.innerHTML = _operatingFeedHTML(_activeCategory);
+  if (!el) return;
+  const html = _operatingFeedHTML(_activeCategory);
+  el.innerHTML = html;
+  el.classList.toggle("hidden", !html);
 }
 
 function _renderHeroForCategory() {
@@ -800,10 +804,10 @@ function _categoryEcosystemHTML(slug = "") {
 }
 
 function _operatingFeedHTML(slug = "") {
+  const liveItems = _liveActivityItems.filter(item => !slug || _matchesLiveActivity(item, slug));
+  if (!liveItems.length) return "";
   const meta = _categoryMeta(slug);
   const context = _activeContextLabel(meta);
-  const jobs = _contextItems(meta, "jobs", meta.examples || []).slice(0, 4);
-  const places = meta.locality || CATEGORY_META.all.locality || ["nearby"];
   return `
     <div class="operating-head">
       <div>
@@ -813,9 +817,20 @@ function _operatingFeedHTML(slug = "") {
       <span>${_activeCategory ? "Category only" : "Mixed local"}</span>
     </div>
     <div class="ops-ticker">
-      ${jobs.map((job, i) => `<button onclick="HomePage.filterEcosystem('${_esc(job)}')"><strong>${_esc(job)}</strong><small>${_esc(places[i % places.length] || "nearby")} · ${i + 8} min ago</small></button>`).join("")}
+      ${liveItems.slice(0, 4).map(item => `<button onclick="HomePage.filterEcosystem('${_esc(item.category || item.title || "")}')"><strong>${_esc(item.title || item.category || "Service update")}</strong><small>${_esc([item.locality || item.area, item.time_label || item.created_at].filter(Boolean).join(" · "))}</small></button>`).join("")}
     </div>
     `;
+}
+
+function _extractLiveActivity(payload = {}) {
+  const source = payload.live_activity || payload.activity || payload.activity_feed || payload.live_feed || [];
+  return Array.isArray(source) ? source.filter(item => item && (item.is_live || item.real || item.source === "backend" || item.id)) : [];
+}
+
+function _matchesLiveActivity(item, slug) {
+  const wanted = _slug(slug);
+  const values = [item.category_slug, item.category, item.title, item.service_name].map(_slug).filter(Boolean);
+  return values.some(v => v === wanted || v.includes(wanted) || wanted.includes(v));
 }
 
 function _trustProofHTML(slug = "") {
@@ -1183,6 +1198,7 @@ let _searchRemoteServices = [];
 let _showAllCategories = false;
 let _allServices = [];
 let _serviceCategories = [];
+let _liveActivityItems = [];
 let _pilotConfig = {
   city: CONFIG.SERVICE_ONLY?.CITY || "Haldwani",
   hero_title: "Book trusted local services in Haldwani",
