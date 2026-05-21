@@ -678,7 +678,11 @@ function _renderHeroForCategory() {
   const cta = document.getElementById("hero-category-cta");
   if (title) title.textContent = meta.hero || _pilotConfig.hero_title;
   if (kicker) kicker.textContent = _activeCategory ? `${meta.label} services near you` : `${_pilotConfig.city} services near you`;
-  if (cta) cta.textContent = `Book · ${_activeChipFilter ? _title(_activeChipFilter) : meta.label}`;
+  if (cta) cta.textContent = `Book · ${_categoryCtaLabel(meta)}`;
+}
+
+function _categoryCtaLabel(meta = _categoryMeta(_activeCategory)) {
+  return _activeCategory ? meta.label : "All Services";
 }
 
 function _renderProducts(res) {
@@ -1044,7 +1048,7 @@ function _premiumInspectionPanel(category) {
   const price = UI.formatCurrency(_inspectionPrice(null, category));
   return `<div class="premium-inspection-panel">
     <div class="premium-inspection-mark">🛡️</div>
-    <div><strong>${_esc(price)} Inspection</strong><p>Agent visits your home · Full diagnosis · Best fix</p></div>
+    <div><strong>${_esc(category.label)} Inspection · ${_esc(price)}</strong><p>Agent visits your home · Full diagnosis · Best fix</p></div>
     <span>${_esc(price)}</span>
   </div>`;
 }
