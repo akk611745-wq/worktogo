@@ -903,9 +903,9 @@ function _vendorCardHTML(service, support = false) {
   const meta = _categoryMeta(service.category_slug || service.slug || service.category || _activeCategory);
   const name = service.name || service.example || meta.examples?.[0] || meta.label;
   const price = service.price ? _esc(service.price) : UI.formatCurrency(_servicePrice(service) || (meta.inspection ? 299 : 199));
-  const rating = service.rating || (4.6 + (String(name).length % 4) / 10).toFixed(1);
-  const locality = service.locality || ["Mukhani", "Kusumkhera", "Kaladhungi Road", "Lalpur Nayak", "Dahariya"][String(name).length % 5];
-  const exp = service.experience || `${3 + (String(name).length % 8)} yrs`;
+  const rating = service.rating || "";
+  const locality = service.locality || service.vendor_locality || service.area || "";
+  const exp = service.experience || "";
   const photo = service.image || service.photo || "";
   const semantics = _vendorSemantics(service, meta);
   const action = support
@@ -915,18 +915,18 @@ function _vendorCardHTML(service, support = false) {
     <article class="vendor-card vendor-${_esc(semantics.visibility)}" data-vendor-state="${_esc(semantics.visibility)}" data-vendor-priority="${_esc(semantics.priority)}" onclick="${action}">
       <div class="vendor-media ${photo ? "has-img" : ""}">
         ${photo ? `<img src="${_esc(photo)}" alt="${_esc(name)}" loading="lazy"/>` : `<span>${service.icon || meta.icon || "🔧"}</span>`}
-        <em>${_esc(semantics.badge)}</em>
+        ${semantics.badge ? `<em>${_esc(semantics.badge)}</em>` : ""}
       </div>
       <div class="vendor-body">
         <div class="vendor-head">
           <div class="vendor-avatar">${service.icon || meta.icon || "🔧"}</div>
-          <div>
-            <h4>${_esc(name)}</h4>
-            <p>${_esc(locality)} · ${_esc(exp)} exp</p>
+            <div>
+              <h4>${_esc(name)}</h4>
+              ${(locality || exp) ? `<p>${[locality, exp ? `${exp} exp` : ""].filter(Boolean).map(_esc).join(" · ")}</p>` : ""}
+            </div>
           </div>
-        </div>
-        <div class="vendor-stats">
-          <span>★ ${_esc(rating)}</span>
+          <div class="vendor-stats">
+          ${rating ? `<span>★ ${_esc(rating)}</span>` : ""}
           <span>${_esc(meta.label)}</span>
           <span>${price}</span>
         </div>
@@ -1071,8 +1071,9 @@ function _vendorSemantics(service, meta) {
   const trusted = Boolean(service.is_trusted || service.trusted || Number(service.rating || 0) >= 4.7);
   const demand = Boolean(service.demand_priority || service.priority === "demand" || meta.inspection);
   const live = Boolean(service.is_live || service.live || raw === "live");
-  const visibility = live ? "live" : featured ? "featured" : trusted ? "trusted" : demand ? "demand-priority" : "normal";
-  const badgeMap = { live: "Live vendor", featured: "Featured", trusted: "Trusted", "demand-priority": "High demand", normal: "Quick response" };
+  const quick = Boolean(service.quick_response || service.fast_response);
+  const visibility = live ? "live" : featured ? "featured" : trusted ? "trusted" : demand ? "demand-priority" : quick ? "quick" : "normal";
+  const badgeMap = { live: "Live vendor", featured: "Featured", trusted: "Trusted", "demand-priority": "High demand", quick: "Quick response", normal: "" };
   return { visibility, priority: demand ? "demand" : "normal", badge: badgeMap[visibility] || badgeMap.normal };
 }
 
