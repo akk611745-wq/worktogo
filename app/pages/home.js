@@ -512,6 +512,8 @@ window.HomeModals = (() => {
     if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
 
     if (res.ok) {
+      const paymentOk = await _handleInspectionCheckout(res.data, bookingMode);
+      if (!paymentOk) return;
       closeBooking();
       _clearPendingBookingForm();
       UI.toast(bookingMode === "inspection" ? "Inspection request saved — payment pending until verified." : "Request sent — track status in Bookings.", "success");
@@ -549,6 +551,37 @@ window.HomeModals = (() => {
 
   return { openOrder, changeQty, confirmOrder, openBooking, confirmBooking, close, closeBooking, closeOnOverlay };
 })();
+
+async function _handleInspectionCheckout(booking, bookingMode) {
+  const paymentData = booking?.payment_data || booking?.paymentData || null;
+  if (bookingMode !== "inspection" || !paymentData) return true;
+  if (paymentData.success === false) {
+    UI.toast(paymentData.message || "Payment session could not be created. Booking remains pending.", "error", 5000);
+    return false;
+  }
+  const sessionId = paymentData.payment_session_id || paymentData.paymentSessionId || paymentData.session_id;
+  const redirectUrl = paymentData.payment_link || paymentData.payment_url || paymentData.redirect_url || paymentData.url;
+  try {
+    if (window.Cashfree && sessionId) {
+      const cashfree = typeof window.Cashfree === "function" ? window.Cashfree({ mode: paymentData.mode || "production" }) : window.Cashfree;
+      const result = await cashfree.checkout({ paymentSessionId: sessionId, redirectTarget: "_modal" });
+      if (result?.error || result?.paymentDetails?.payment_status === "FAILED") {
+        UI.toast("Payment was not completed. Your inspection booking remains pending.", "error", 5000);
+        return false;
+      }
+      return true;
+    }
+    if (redirectUrl) {
+      window.location.href = redirectUrl;
+      return false;
+    }
+    UI.toast("Payment checkout is unavailable. Your inspection booking remains pending.", "error", 5000);
+    return false;
+  } catch (err) {
+    UI.toast("Payment was cancelled or failed. Your inspection booking remains pending.", "error", 5000);
+    return false;
+  }
+}
 
 // ── Loaders ─────────────────────────────────────────────────────────────────
 
