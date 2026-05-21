@@ -57,6 +57,13 @@ try {
             $slugSelect = $hasSlug ? 's.slug' : "'' AS slug";
             $shortDescSelect = $hasShortDesc ? 's.short_desc' : "'' AS short_desc";
             $ratingSelect = $hasRating ? 's.rating' : '0.00 AS rating';
+            $categoryIconSelect = "NULL AS category_icon";
+            try {
+                $categoryIconStmt = $db->query("SHOW COLUMNS FROM categories LIKE 'icon'");
+                if ($categoryIconStmt && $categoryIconStmt->rowCount() > 0) {
+                    $categoryIconSelect = 'c.icon AS category_icon';
+                }
+            } catch (PDOException) {}
             $shortDescWhere = $hasShortDesc ? ' OR s.short_desc LIKE :q' : '';
             $featuredOrder = $hasFeatured ? 's.is_featured DESC, ' : '';
             $ratingOrder = $hasRating ? 's.rating DESC, ' : '';
@@ -64,9 +71,13 @@ try {
             if ($hasPhase2A) {
                 $svcQuery = "SELECT s.id, s.name, {$slugSelect}, {$shortDescSelect}, s.base_price, {$ratingSelect},
                         'service' AS result_type,
-                        v.business_name AS vendor_name
+                        v.business_name AS vendor_name,
+                        c.slug AS category_slug,
+                        c.name AS category_name,
+                        {$categoryIconSelect}
                  FROM services s
                  LEFT JOIN vendors v ON v.id = s.vendor_id
+                 LEFT JOIN categories c ON c.id = s.category_id
                  WHERE s.status = 'active' AND s.deleted_at IS NULL
                    AND (s.name LIKE :q OR s.description LIKE :q{$shortDescWhere})
                  ORDER BY {$featuredOrder}{$ratingOrder}s.name ASC
@@ -74,9 +85,13 @@ try {
             } else {
                 $svcQuery = "SELECT s.id, s.name, {$slugSelect}, {$shortDescSelect}, s.base_price, {$ratingSelect},
                         'service' AS result_type,
-                        v.business_name AS vendor_name
+                        v.business_name AS vendor_name,
+                        c.slug AS category_slug,
+                        c.name AS category_name,
+                        {$categoryIconSelect}
                  FROM services s
                  LEFT JOIN vendors v ON v.id = s.vendor_id
+                 LEFT JOIN categories c ON c.id = s.category_id
                  WHERE s.status = 'active'
                    AND (s.name LIKE :q{$shortDescWhere})
                  ORDER BY {$featuredOrder}{$ratingOrder}s.id DESC
