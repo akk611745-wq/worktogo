@@ -23,7 +23,7 @@ export async function render(container) {
       </header>
 
       <div class="home-content">
-        <section class="market-search-section">
+        <section class="market-search-section top-search-hidden" aria-hidden="true">
           <div class="market-search-box">
             <span>⌕</span>
             <input id="service-search" type="search" placeholder="Search painter, leakage, fan, CCTV…" autocomplete="off" value="${_esc(_searchQuery)}" onfocus="HomePage.openSearch()" oninput="HomePage.searchServices(this.value)" />
@@ -51,7 +51,7 @@ export async function render(container) {
             <p class="service-hero-kicker" id="category-kicker">${_esc(_pilotConfig.city)} live marketplace</p>
             <h1 id="category-hero-title">Trusted Haldwani Services</h1>
             <p id="category-hero-subtitle">Nearby verified workers for repairs, painting, waterproofing, CCTV and home jobs.</p>
-            <button class="btn-primary hero-primary marketplace-cta" id="hero-category-cta" onclick="HomePage.bookCategoryCta(HomePage.activeCategorySlug?.())">Book ₹299 Expert Visit</button>
+            <button class="btn-primary hero-primary marketplace-cta" id="hero-category-cta" onclick="HomePage.bookCategoryCta(HomePage.activeCategorySlug?.())">Book · All services</button>
           </div>
           <div class="hero-live-strip hidden" aria-label="live trust signals" id="hero-live-strip"></div>
         </section>
@@ -71,14 +71,6 @@ export async function render(container) {
 
         <section class="operating-feed" id="operating-feed">
           ${_operatingFeedHTML("")}
-        </section>
-
-        <section class="category-visual-proof" id="visual-proof-section">
-          ${_visualProofHTML("")}
-        </section>
-
-        <section class="local-proof-grid marketplace-proof-grid" id="trust-proof-section">
-          ${_trustProofHTML("")}
         </section>
 
         <section class="category-ecosystem" id="category-ecosystem">
@@ -157,8 +149,6 @@ export async function render(container) {
       _renderCategoryChips();
       _renderCategoryEcosystem();
       _renderOperatingFeed();
-      _renderVisualProof();
-      _renderTrustProof();
       _renderHeroForCategory();
       _renderServices({ ok: true, data: { services: _allServices } });
       _syncOperatingMode();
@@ -173,8 +163,6 @@ export async function render(container) {
       _renderInstantSearch();
       _renderCategoryEcosystem();
       _renderOperatingFeed();
-      _renderVisualProof();
-      _renderTrustProof();
       _renderHeroForCategory();
       _renderServices({ ok: true, data: { services: _allServices } });
       document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -682,16 +670,6 @@ function _renderOperatingFeed() {
   if (el) el.innerHTML = _operatingFeedHTML(_activeCategory);
 }
 
-function _renderVisualProof() {
-  const el = document.getElementById("visual-proof-section");
-  if (el) el.innerHTML = _visualProofHTML(_activeCategory);
-}
-
-function _renderTrustProof() {
-  const el = document.getElementById("trust-proof-section");
-  if (el) el.innerHTML = _trustProofHTML(_activeCategory);
-}
-
 function _renderHeroForCategory() {
   const meta = _categoryMeta(_activeCategory);
   const title = document.getElementById("category-hero-title");
@@ -701,8 +679,7 @@ function _renderHeroForCategory() {
   if (title) title.textContent = meta.hero || _pilotConfig.hero_title;
   if (subtitle) subtitle.textContent = _activeChipFilter ? `${_title(_activeChipFilter)} request mode · ${meta.subtitle || _pilotConfig.hero_subtitle}` : (meta.subtitle || _pilotConfig.hero_subtitle);
   if (kicker) kicker.textContent = _activeCategory ? `${_pilotConfig.city} ${meta.label} operating mode` : `${_pilotConfig.city} live marketplace`;
-  if (cta) cta.textContent = _activeCategory ? `${meta.inspection ? "Book inspection" : "Book now"} · ${_activeChipFilter ? _title(_activeChipFilter) : meta.label}` : "Request service help";
-  _renderHeroStats();
+  if (cta) cta.textContent = `Book · ${_activeChipFilter ? _title(_activeChipFilter) : meta.label}`;
 }
 
 function _renderHeroStats() {
@@ -807,7 +784,12 @@ function _categoryEcosystemHTML(slug = "") {
   const brands = meta.brands || CATEGORY_META.all.brands || [];
   const locality = meta.locality || CATEGORY_META.all.locality || [];
   return `
-    <div class="ecosystem-card ecosystem-world">
+    <details class="ecosystem-card ecosystem-world">
+      <summary class="ecosystem-summary">
+        <span class="ecosystem-icon">${meta.icon}</span>
+        <strong>${_esc(contextLabel)} ecosystem</strong>
+        <small>Dealers, materials, brands and localities</small>
+      </summary>
       <div class="ecosystem-banner">
         <span class="ecosystem-icon">${meta.icon}</span>
         <div>
@@ -829,7 +811,7 @@ function _categoryEcosystemHTML(slug = "") {
         <button type="button" onclick="HomePage.ecosystemDiscover('locality', '${_esc(locality[0] || _pilotConfig.city)}')"><strong>Locality active</strong><span>${_esc(locality.join(" · "))}</span></button>
       </div>
       <button class="ecosystem-inspection-cta" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}')">${meta.inspection ? "Book inspection" : "Book now"} · ${_esc(meta.label)}</button>
-    </div>`;
+    </details>`;
 }
 
 function _operatingFeedHTML(slug = "") {
@@ -1139,8 +1121,6 @@ function _resumePendingBooking() {
       _renderCategoryChips();
       _renderCategoryEcosystem();
       _renderOperatingFeed();
-      _renderVisualProof();
-      _renderTrustProof();
       _renderHeroForCategory();
       _syncOperatingMode();
     }
