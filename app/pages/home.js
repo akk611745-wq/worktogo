@@ -609,18 +609,9 @@ function _renderServices(res) {
   const title = document.getElementById("vendor-feed-title");
   if (title) title.textContent = _activeCategory ? `${_categoryMeta(_activeCategory).label} services` : "Available services";
 
-  if (!res.ok) {
-    const safeMessage = _friendlyServiceError(res.error);
+    if (!res.ok) {
     el.classList.remove("fallback-services-grid");
-    el.innerHTML = `
-      <div class="fallback-help-card service-recovery-card">
-        <h3>Services are temporarily slow to load</h3>
-        <p>${_esc(safeMessage)} You can still request help and WorkToGo will guide the booking.</p>
-        <div class="recovery-actions">
-          <button class="btn-ghost-inline" onclick="HomeSections.reloadServices()">Retry</button>
-          <button class="btn-ghost-inline" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })">WhatsApp support</button>
-        </div>
-      </div>`;
+    el.innerHTML = _bookingEmptyStateHTML();
     return;
   }
 
@@ -641,12 +632,7 @@ function _renderServices(res) {
 
     if (!list.length) {
       el.classList.remove("fallback-services-grid");
-      el.innerHTML = `
-      <div class="fallback-help-card">
-        <h3>${_esc(_activeCategory ? `${_categoryMeta(_activeCategory).label} help` : _pilotConfig.fallback_title)}</h3>
-        <p>${_esc(_searchQuery || _activeChipFilter ? "No exact match found yet. WorkToGo can still route this category request." : _pilotConfig.fallback_text)}</p>
-        <button class="btn-ghost-inline" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })">Get guided help</button>
-      </div>`;
+      el.innerHTML = _bookingEmptyStateHTML();
       return;
   }
   el.classList.remove("fallback-services-grid");
@@ -908,6 +894,13 @@ function _vendorCardHTML(service, support = false) {
         <button class="vendor-book-btn">Book Now</button>
       </div>
     </article>`;
+}
+
+function _bookingEmptyStateHTML() {
+  return `<div class="service-empty-state">
+    <p>Booking available · WorkToGo will assign best worker</p>
+    <button type="button" class="btn-ghost-inline" onclick="HomePage.bookCategoryCta(HomePage.activeCategorySlug?.())">Book Now</button>
+  </div>`;
 }
 
 function _renderInstantSearch() {

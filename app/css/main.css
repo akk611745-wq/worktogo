@@ -1746,6 +1746,24 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   grid-column: 1 / -1;
 }
 
+.service-empty-state {
+  width: calc(100vw - 32px);
+  max-width: 340px;
+  min-height: 132px;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  padding: var(--sp-md);
+  text-align: center;
+  color: var(--market-muted);
+}
+.service-empty-state p { font-size: 0.9rem; font-weight: 800; line-height: 1.35; }
+.service-empty-state .btn-ghost-inline {
+  background: var(--market-orange);
+  border-color: var(--market-orange);
+  color: #fff;
+}
+
 .fallback-help-card h3,
 .trust-story-card h3 { font-size: 0.98rem; margin-bottom: 4px; }
 .fallback-help-card p,
