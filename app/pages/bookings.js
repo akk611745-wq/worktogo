@@ -42,9 +42,9 @@ window.BookingsPage = (() => {
   let _filter = "all";
 
   // Upcoming — pending/confirmed/in_progress
-  const UPCOMING_STATUSES = ["pending", "confirmed", "in_progress"];
+  const UPCOMING_STATUSES = ["pending", "confirmed", "assigned", "in_progress"];
   // Done
-  const DONE_STATUSES     = ["completed", "cancelled"];
+  const DONE_STATUSES     = ["completed", "done", "cancelled"];
 
   async function _load(silent = false) {
     if (!silent) {
@@ -190,7 +190,7 @@ window.BookingsPage = (() => {
   }
 
   function _modeLabel(mode = "") {
-    const map = { inspection: "₹299 Inspection", free_lead: "Free Lead", direct_vendor: "Direct Vendor" };
+    const map = { inspection: "₹299 inspection", free_lead: "Free booking", direct_vendor: "Requested worker" };
     return map[String(mode || "free_lead").toLowerCase()] || _title(mode);
   }
 
@@ -209,9 +209,9 @@ window.BookingsPage = (() => {
 
   function _lifecycleLabel(b) {
     const mode = b.booking_mode || "free_lead";
-    if (mode === "inspection") return "Premium inspection lifecycle · company/agent visit · status tracked here";
-    if (mode === "direct_vendor") return `Direct vendor lifecycle · ${b.vendor_name ? "assigned to " + b.vendor_name : "vendor receives lead"}`;
-    return "Free lead lifecycle · admin assignment queue · category-wise routing";
+    if (mode === "inspection") return "Inspection visit · payment verification · worker assignment tracked here";
+    if (mode === "direct_vendor") return b.vendor_name ? `Requested worker · ${b.vendor_name}` : "Worker request sent · WorkToGo will confirm";
+    return "Free booking · WorkToGo will assign a nearby worker";
   }
 
   function _modeFromNotes(notes = "") {

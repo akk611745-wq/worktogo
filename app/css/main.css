@@ -915,7 +915,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--sp-lg) var(--sp-md) var(--sp-lg);
+  padding: var(--sp-md) var(--sp-md) var(--sp-sm);
   gap: var(--sp-md);
 }
 
@@ -1007,26 +1007,26 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .home-content { flex: 1; width: 100%; }
 
 .service-hero {
-  margin: 0 var(--sp-md) var(--sp-lg);
-  padding: 22px 0 4px;
-
-  border: 0;
-  border-radius: 0;
-  background: transparent;
+  margin: 0 var(--sp-md) 10px;
+  padding: 18px;
+  border: 1px solid rgba(255,107,0,0.16);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 92% 4%, rgba(255,255,255,0.95), transparent 30%),
+    linear-gradient(135deg, #171717 0%, #2a190d 50%, #ff6b00 130%);
   display: grid;
-  gap: var(--sp-lg);
-
+  gap: var(--sp-sm);
+  box-shadow: 0 18px 40px rgba(17,17,17,0.14);
 }
 
 .marketplace-hero {
-  margin-top: 4px;
-  padding: 12px var(--sp-md) 4px;
+  margin-top: 0;
 }
 
 .service-hero-copy { max-width: 620px; }
 
 .service-hero-kicker {
-  color: var(--market-green);
+  color: #86efac;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -1035,20 +1035,30 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 
 .service-hero h1 {
-  color: var(--market-text);
-  font-size: clamp(2.15rem, 12vw, 4.4rem);
-  line-height: 0.98;
+  color: #fff;
+  font-size: clamp(1.55rem, 8vw, 2.45rem);
+  line-height: 1.02;
   margin-bottom: var(--sp-sm);
-  letter-spacing: -0.055em;
-
+  letter-spacing: -0.045em;
 }
 
 .service-hero p {
-  color: var(--market-muted);
-  font-size: 0.98rem;
-  line-height: 1.55;
-
+  color: rgba(255,255,255,0.78);
+  font-size: 0.84rem;
+  line-height: 1.35;
 }
+
+.inspection-line {
+  display: grid;
+  gap: 2px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.08);
+}
+.inspection-line strong { color: #fff; font-size: 0.9rem; }
+.inspection-line span { color: rgba(255,255,255,0.72); font-size: 0.74rem; }
 
 .hero-live-strip {
   display: flex;
@@ -1070,11 +1080,10 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .hero-live-strip b { color: var(--market-text); }
 
 .marketplace-cta {
-  min-height: 58px;
-  border-radius: 18px;
-
+  min-height: 48px;
+  border-radius: 16px;
   background: linear-gradient(135deg, var(--market-orange), #ff8a00);
-  box-shadow: 0 16px 34px rgba(255,107,0,0.26);
+  box-shadow: 0 14px 28px rgba(255,107,0,0.28);
   font-weight: 900;
 }
 
@@ -1248,7 +1257,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   display: flex;
   gap: 10px;
   overflow-x: auto;
-  padding: 0 var(--sp-md) 12px;
+  padding: 0 var(--sp-md) 8px;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
 }
@@ -1256,14 +1265,14 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .category-chips button {
   flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-width: 76px;
-  min-height: 72px;
-  padding: 10px 12px;
-  border-radius: 20px;
+  min-width: auto;
+  min-height: 42px;
+  padding: 9px 13px;
+  border-radius: var(--r-full);
 
   border: 1px solid var(--market-line);
   background: rgba(255,255,255,0.88);
@@ -1274,6 +1283,57 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 
 .category-chips button span { font-size: 1.35rem; line-height: 1; }
+
+.quick-services-section { margin: 0 0 8px; }
+.quick-service-rail {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 0 var(--sp-md) 6px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.quick-service-rail::-webkit-scrollbar { display: none; }
+.quick-service-card {
+  flex: 0 0 132px;
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 20px;
+  border: 1px solid var(--market-line);
+  background: #fff;
+  color: var(--market-text);
+  text-align: left;
+  box-shadow: 0 10px 22px rgba(17,17,17,0.06);
+}
+.quick-service-card span { font-size: 1.35rem; }
+.quick-service-card strong { font-size: 0.82rem; line-height: 1.15; }
+
+.free-booking-strip {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  margin: 0 var(--sp-md) 12px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(22,163,74,0.18);
+  background: rgba(22,163,74,0.08);
+}
+.free-booking-strip strong { display: block; font-size: 0.84rem; }
+.free-booking-strip span { display: block; color: var(--market-muted); font-size: 0.72rem; line-height: 1.25; }
+.free-booking-strip button {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: var(--r-full);
+  background: #fff;
+  color: var(--market-green);
+  font-weight: 900;
+  border: 1px solid rgba(22,163,74,0.18);
+}
 
 .category-chips button.active {
   border-color: rgba(255,107,0,0.55);
@@ -1294,7 +1354,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   grid-template-columns: auto 1fr;
   gap: 2px 10px;
   align-items: center;
-  padding: 12px 0;
+  padding: 10px 0;
   border-top: 1px solid var(--market-line);
   list-style: none;
   cursor: pointer;
@@ -1384,7 +1444,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   margin-top: 14px;
 }
 .ecosystem-local-grid button {
-  min-height: 72px;
+  min-height: 64px;
   padding: 12px;
 
   border: 1px solid var(--market-line);
@@ -1411,9 +1471,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 
 .operating-feed {
-  margin: 0 var(--sp-md) var(--sp-lg);
-  padding: 14px 0 0;
-
+  margin: 0 var(--sp-md) 14px;
+  padding: 10px 0 0;
   border-top: 1px solid rgba(24,24,24,0.08);
 }
 .operating-head {
@@ -1424,15 +1483,6 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   margin-bottom: 10px;
 }
 .operating-head h3 { color: var(--market-text); font-size: 1rem; line-height: 1.15; }
-.operating-head > span {
-  flex: 0 0 auto;
-  padding: 6px 9px;
-  border-radius: var(--r-full);
-  background: rgba(22,163,74,0.10);
-  color: var(--market-green);
-  font-size: 0.66rem;
-  font-weight: 900;
-}
 .ops-ticker {
   display: flex;
   gap: 8px;
@@ -1443,17 +1493,21 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 .ops-ticker::-webkit-scrollbar { display: none; }
 .ops-ticker button {
-  flex: 0 0 168px;
-  min-height: 66px;
-  padding: 10px 12px;
-  border-radius: 18px;
-  background: #171717;
-  color: #fff;
+  flex: 0 0 auto;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border-radius: var(--r-full);
+  background: #fff;
+  color: var(--market-text);
   text-align: left;
-  box-shadow: 0 10px 22px rgba(17,17,17,0.12);
+  border: 1px solid var(--market-line);
+  box-shadow: 0 8px 18px rgba(17,17,17,0.05);
 }
-.ops-ticker strong { display: block; font-size: 0.82rem; line-height: 1.15; margin-bottom: 5px; }
-.ops-ticker small { color: rgba(255,255,255,0.70); font-size: 0.68rem; }
+.ops-ticker strong { display: block; font-size: 0.76rem; line-height: 1.15; }
+.ops-ticker small { color: var(--market-muted); font-size: 0.68rem; }
 .ops-supply-row {
   display: grid;
   gap: 8px;
@@ -1491,7 +1545,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .local-proof-grid strong { display: block; font-size: 0.86rem; margin-bottom: 3px; }
 .local-proof-grid span { display: block; color: var(--market-muted); font-size: 0.74rem; }
 
-.home-section { margin-bottom: var(--sp-xl); }
+.home-section { margin-bottom: 18px; }
 
 .premium-inspection-highlight {
   display: grid;
@@ -1544,10 +1598,10 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 
 .vendor-card {
-  flex: 0 0 82vw;
-  max-width: 360px;
+  flex: 0 0 74vw;
+  max-width: 300px;
   overflow: hidden;
-  border-radius: 28px;
+  border-radius: 22px;
 
   background: #fff;
   color: var(--market-text);
@@ -1565,9 +1619,9 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 150px;
+  height: 88px;
   background: linear-gradient(135deg, #ffe8c7, #fff7ed 48%, #e8fff0);
-  font-size: 3rem;
+  font-size: 2.1rem;
 
 }
 .vendor-media img { width: 100%; height: 100%; object-fit: cover; }
@@ -1586,14 +1640,14 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .vendor-featured .vendor-media em { background: rgba(245,158,11,0.96); }
 .vendor-trusted .vendor-media em { background: rgba(37,99,235,0.92); }
 .vendor-demand-priority .vendor-media em { background: rgba(220,38,38,0.90); }
-.vendor-body { padding: 14px; }
+.vendor-body { padding: 12px; }
 
 .vendor-head { display: flex; align-items: center; gap: 10px; }
 .vendor-avatar { width: 42px; height: 42px; border-radius: 15px; display: flex; align-items: center; justify-content: center; background: var(--market-soft); }
 .vendor-head > div:last-child { min-width: 0; }
 .vendor-head h4 { font-size: 1rem; line-height: 1.15; margin-bottom: 3px; }
 .vendor-head p { color: var(--market-muted); font-size: 0.74rem; }
-.vendor-stats { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.vendor-stats { display: flex; flex-wrap: wrap; gap: 6px; margin: 9px 0; }
 .vendor-stats span {
   padding: 6px 9px;
   border-radius: var(--r-full);
@@ -1606,7 +1660,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .vendor-stats span:last-child { color: var(--market-orange); background: #fff0e3; }
 .vendor-book-btn {
   width: 100%;
-  min-height: 44px;
+  min-height: 38px;
   border-radius: 15px;
 
   background: var(--market-orange);
@@ -1617,11 +1671,11 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 .category-visual-proof { margin-bottom: var(--sp-xl); }
 .proof-tile {
-  flex: 0 0 74vw;
-  max-width: 320px;
-  min-height: 210px;
-  padding: 16px;
-  border-radius: 28px;
+  flex: 0 0 68vw;
+  max-width: 260px;
+  min-height: 150px;
+  padding: 12px;
+  border-radius: 22px;
 
   color: #fff;
   display: flex;
@@ -1633,9 +1687,9 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .proof-tone-1 { background: linear-gradient(145deg, #14532d, #16a34a); }
 .proof-tone-2 { background: linear-gradient(145deg, #1e3a8a, #38bdf8); }
 .proof-split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: auto; }
-.proof-split span { min-height: 78px; border-radius: 18px; display: flex; align-items: end; padding: 10px; background: rgba(255,255,255,0.18); font-size: 0.72rem; font-weight: 900; }
+.proof-split span { min-height: 46px; border-radius: 14px; display: flex; align-items: end; padding: 8px; background: rgba(255,255,255,0.18); font-size: 0.68rem; font-weight: 900; }
 .proof-tile em { display: inline-flex; width: fit-content; margin-top: 12px; padding: 5px 9px; border-radius: var(--r-full); background: rgba(255,255,255,0.18); font-size: 0.66rem; font-style: normal; font-weight: 900; }
-.proof-tile strong { font-size: 1.1rem; margin-top: 16px; }
+.proof-tile strong { font-size: 0.96rem; margin-top: 10px; }
 .proof-tile p { color: rgba(255,255,255,0.82); font-size: 0.8rem; line-height: 1.35; margin-top: 4px; }
 
 

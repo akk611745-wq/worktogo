@@ -35,7 +35,6 @@ export async function render(container) {
         <section class="home-section browse-strip-section">
           <div class="section-header compact">
             <div>
-              <p class="section-eyebrow">Tap to switch feed</p>
               <h3>What do you need?</h3>
             </div>
             <button class="see-all" onclick="HomePage.toggleMoreCategories()" id="more-categories-btn">More</button>
@@ -46,19 +45,29 @@ export async function render(container) {
           </div>
         </section>
 
-        <section class="category-ecosystem" id="category-ecosystem">
-          ${_categoryEcosystemHTML("")}
+        <section class="service-hero marketplace-hero" id="category-hero">
+          ${_heroHTML("")}
+        </section>
+
+        <section class="quick-services-section" id="quick-services-section">
+          ${_serviceCardsHTML("")}
+        </section>
+
+        <section class="free-booking-strip">
+          <div>
+            <strong>Free booking</strong>
+            <span>Create a request. WorkToGo routes it to a nearby worker.</span>
+          </div>
+          <button onclick="HomePage.bookCategoryCta('', 'free_lead')">Request</button>
         </section>
 
         <section class="operating-feed" id="operating-feed">
           ${_operatingFeedHTML("")}
-
         </section>
 
         <section class="home-section" id="services-section">
           <div class="section-header">
             <div>
-              <p class="section-eyebrow">Live vendor feed</p>
               <h3 id="vendor-feed-title">Workers near you</h3>
             </div>
             <button class="see-all" onclick="HomePage.setCategory('')">All</button>
@@ -68,12 +77,17 @@ export async function render(container) {
           </div>
         </section>
 
-        <section class="category-visual-proof" id="visual-proof-section">
-          ${_visualProofHTML("")}
+        <section class="category-ecosystem" id="category-ecosystem">
+          ${_categoryEcosystemHTML("")}
         </section>
 
         <section class="local-proof-grid marketplace-proof-grid" id="trust-proof-section">
           ${_trustProofHTML("")}
+
+        </section>
+
+        <section class="category-visual-proof" id="visual-proof-section">
+          ${_visualProofHTML("")}
 
         </section>
 
@@ -163,6 +177,7 @@ export async function render(container) {
       _renderCategoryEcosystem();
       _renderOperatingFeed();
       _renderHeroForCategory();
+      _renderQuickServiceCards();
       _renderServices({ ok: true, data: { services: _allServices } });
       _syncOperatingMode();
       _persistHomeState();
@@ -177,6 +192,7 @@ export async function render(container) {
       _renderCategoryEcosystem();
       _renderOperatingFeed();
       _renderHeroForCategory();
+      _renderQuickServiceCards();
       _renderServices({ ok: true, data: { services: _allServices } });
       document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       _persistHomeState();
@@ -252,23 +268,34 @@ export async function render(container) {
     activeCategorySlug() {
       return _activeCategory;
     },
-    bookCategoryCta(slug = "") {
+    bookCategoryCta(slug = "", mode = "") {
       const meta = _categoryMeta(slug || _activeCategory);
       if (!(slug || _activeCategory)) {
         const inspection = _allServices.find(s => _matchesCategory(s, "inspection"))
           || _allServices.find(s => _categoryMeta(s.category_slug || s.category || "").inspection);
         if (inspection?.id) {
-          HomeModals.openBooking({ ...inspection, booking_mode: "inspection", icon: inspection.icon || "🛡️" });
+          HomeModals.openBooking({ ...inspection, booking_mode: mode || "inspection", icon: inspection.icon || "🛡️" });
           return;
         }
       }
       const service = _allServices.find(s => _matchesCategory(s, meta.slug) && (!_activeChipFilter || _searchText(s).includes(_activeChipFilter)))
         || _allServices.find(s => _matchesCategory(s, meta.slug));
       if (service?.id) {
-        HomeModals.openBooking({ ...service, category_slug: service.category_slug || meta.slug, icon: service.icon || meta.icon });
+        HomeModals.openBooking({ ...service, booking_mode: mode || service.booking_mode, category_slug: service.category_slug || meta.slug, icon: service.icon || meta.icon });
         return;
       }
       UI.openSupport('selector', { category: meta.label, service: meta.examples?.[0] || meta.label });
+    },
+    bookQuickService(slug = "", serviceName = "") {
+      const meta = _categoryMeta(slug || _activeCategory);
+      const match = _allServices.find(s => _matchesCategory(s, meta.slug) && _searchText(s).includes(String(serviceName || "").toLowerCase()))
+        || _allServices.find(s => _matchesCategory(s, meta.slug));
+      if (match?.id) {
+        HomeModals.openBooking({ ...match, category_slug: match.category_slug || meta.slug, icon: match.icon || meta.icon, quick_service: serviceName });
+        return;
+      }
+      _activeChipFilter = String(serviceName || "").trim().toLowerCase();
+      HomePage.bookCategoryCta(meta.slug || "", "free_lead");
     }
   };
 
@@ -410,22 +437,22 @@ window.HomeModals = (() => {
         <div>
           <p class="modal-price">${_esc(category.label)}</p>
           ${service.description ? `<p class="modal-desc">${_esc(service.description)}</p>` : ""}
-          <p class="service-note">Choose inspection, free lead, or a direct vendor route when available.</p>
+          <p class="service-note">Choose a visit option. WorkToGo confirms the right worker before arrival.</p>
         </div>
       </div>
       ${_premiumInspectionPanel(category)}
       <div class="booking-mode-picker" role="radiogroup" aria-label="Booking mode">
-        ${_bookingModeOption("inspection", `MODE 1 — ${UI.formatCurrency(inspectionPrice)} Inspection`, "Agent visits your home · Full diagnosis · Best fix", defaultMode, false, "premium")}
-        ${_bookingModeOption("free_lead", "MODE 2 — Free Lead", "WorkToGo assigns best worker · No payment now", defaultMode, false, "default")}
-        ${_bookingModeOption("direct_vendor", "MODE 3 — Direct Vendor", "Book this specific worker directly", defaultMode, !service.vendor_id, "direct")}
+        ${_bookingModeOption("inspection", `${UI.formatCurrency(inspectionPrice)} inspection`, "Agent visit · diagnosis · worker assignment", defaultMode, false, "premium")}
+        ${_bookingModeOption("free_lead", "Free booking", "Create request · WorkToGo assigns nearby worker", defaultMode, false, "default")}
+        ${_bookingModeOption("direct_vendor", "Request this worker", "Available only when worker details are confirmed", defaultMode, !service.vendor_id, "direct")}
       </div>
       <div class="booking-context-strip">
         <span>${category.icon}</span>
-        <strong>${_esc(category.label)} lead</strong>
-        <small>Auto-routed to the right WorkToGo pipeline</small>
+        <strong>${_esc(category.label)} request</strong>
+        <small>WorkToGo confirms worker and timing</small>
       </div>
       <div class="trust-panel booking-trust-panel fast-booking-trust">
-        <span>✓ Problem goes to ${_esc(category.label)} pipeline</span>
+        <span>✓ Nearby worker assignment after confirmation</span>
         <span>✓ WorkToGo confirms worker and timing</span>
         <span>✓ Pay after service for normal jobs</span>
       </div>
@@ -457,7 +484,7 @@ window.HomeModals = (() => {
         <textarea id="booking-notes" class="modal-textarea" placeholder="Example: ${_esc(_activeChipFilter || category.examples?.[0] || "problem details")}, call before coming…" rows="2" oninput="HomePage.persistPendingBookingForm?.()">${_esc(restored.notes || "")}</textarea>
       </div>
       <input type="hidden" id="booking-mode" value="${_esc(defaultMode)}" />
-      <p class="service-note">After submission you can track status in Bookings. Inspection payment is shown as pending until verified.</p>
+      <p class="service-note">After submission you can track status in Bookings. Inspection is confirmed after payment success.</p>
     `;
     document.getElementById("booking-modal").classList.remove("hidden");
   }
@@ -522,7 +549,7 @@ window.HomeModals = (() => {
       if (!paymentOk) return;
       closeBooking();
       _clearPendingBookingForm();
-      UI.toast(bookingMode === "inspection" ? "Inspection payment completed — booking confirmed." : bookingMode === "direct_vendor" ? "Direct vendor booking sent." : "Free lead sent to admin dashboard.", "success");
+      UI.toast(bookingMode === "inspection" ? "Inspection payment completed. Booking confirmation is updating." : bookingMode === "direct_vendor" ? "Worker request sent." : "Free booking request sent.", "success");
       setTimeout(() => ROUTER.go("bookings"), 800);
     } else {
       UI.toast(res.error || "Failed to book service. Try again.", "error");
@@ -565,14 +592,24 @@ async function _handleInspectionCheckout(booking, bookingMode) {
     UI.toast(paymentData.message || "Payment session could not be created. Booking remains pending.", "error", 5000);
     return false;
   }
-  const sessionId = paymentData.payment_session_id || paymentData.paymentSessionId || paymentData.session_id;
-  const redirectUrl = paymentData.payment_link || paymentData.payment_url || paymentData.redirect_url || paymentData.url;
+  const gatewayData = paymentData.gateway_data || paymentData.gatewayData || {};
+  const sessionId = paymentData.payment_session_id || paymentData.paymentSessionId || paymentData.session_id || gatewayData.payment_session_id || gatewayData.paymentSessionId;
+  const redirectUrl = paymentData.payment_link || paymentData.payment_url || paymentData.redirect_url || paymentData.url || gatewayData.payment_link || gatewayData.payment_url;
   try {
     if (window.Cashfree && sessionId) {
       const cashfree = typeof window.Cashfree === "function" ? window.Cashfree({ mode: paymentData.mode || "production" }) : window.Cashfree;
       const result = await cashfree.checkout({ paymentSessionId: sessionId, redirectTarget: "_modal" });
-      if (result?.error || result?.paymentDetails?.payment_status === "FAILED") {
+      const status = String(result?.paymentDetails?.payment_status || result?.paymentDetails?.status || result?.status || "").toUpperCase();
+      if (result?.error || status === "FAILED" || status === "CANCELLED") {
         UI.toast("Payment was not completed. Your inspection booking remains pending.", "error", 5000);
+        return false;
+      }
+      if (!status) {
+        UI.toast("Payment result is pending verification. Your inspection booking remains pending.", "info", 5000);
+        return false;
+      }
+      if (status && !["SUCCESS", "PAID", "COMPLETED"].includes(status)) {
+        UI.toast("Payment is still pending. You can retry from Bookings if needed.", "info", 5000);
         return false;
       }
       return true;
@@ -609,7 +646,7 @@ function _renderServices(res) {
   const el = document.getElementById("services-grid");
   if (!el) return;
   const title = document.getElementById("vendor-feed-title");
-  if (title) title.textContent = _activeCategory ? `${_categoryMeta(_activeCategory).label} services` : "Available services";
+  if (title) title.textContent = _activeCategory ? `${_categoryMeta(_activeCategory).label} workers near you` : "Workers near you";
 
   if (!res.ok) {
     const safeMessage = _friendlyServiceError(res.error);
@@ -645,9 +682,9 @@ function _renderServices(res) {
       el.classList.remove("fallback-services-grid");
       el.innerHTML = `
       <div class="fallback-help-card">
-        <h3>${_esc(_activeCategory ? `${_categoryMeta(_activeCategory).label} help` : _pilotConfig.fallback_title)}</h3>
-        <p>${_esc(_searchQuery || _activeChipFilter ? "No exact match found yet. WorkToGo can still route this category request." : _pilotConfig.fallback_text)}</p>
-        <button class="btn-ghost-inline" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })">Get guided help</button>
+        <h3>Workers available after confirmation</h3>
+        <p>${_esc(_searchQuery || _activeChipFilter ? "No exact match found yet. WorkToGo can still route your request." : "Create a booking request and WorkToGo will confirm a nearby worker.")}</p>
+        <button class="btn-ghost-inline" onclick="HomePage.bookCategoryCta('', 'free_lead')">Free booking</button>
       </div>`;
       return;
   }
@@ -680,21 +717,19 @@ function _renderCategoryEcosystem() {
   if (el) el.innerHTML = _categoryEcosystemHTML(_activeCategory);
 }
 
+function _renderQuickServiceCards() {
+  const el = document.getElementById("quick-services-section");
+  if (el) el.innerHTML = _serviceCardsHTML(_activeCategory);
+}
+
 function _renderOperatingFeed() {
   const el = document.getElementById("operating-feed");
   if (el) el.innerHTML = _operatingFeedHTML(_activeCategory);
 }
 
 function _renderHeroForCategory() {
-  const meta = _categoryMeta(_activeCategory);
-  const title = document.getElementById("category-hero-title");
-  const subtitle = document.getElementById("category-hero-subtitle");
-  const kicker = document.getElementById("category-kicker");
-  const cta = document.getElementById("hero-category-cta");
-  if (title) title.textContent = meta.hero || _pilotConfig.hero_title;
-  if (subtitle) subtitle.textContent = _activeChipFilter ? `${_title(_activeChipFilter)} request mode · ${meta.subtitle || _pilotConfig.hero_subtitle}` : (meta.subtitle || _pilotConfig.hero_subtitle);
-  if (kicker) kicker.textContent = _activeCategory ? `${_pilotConfig.city} ${meta.label} operating mode` : `${_pilotConfig.city} live marketplace`;
-  if (cta) cta.textContent = `Book · ${_activeChipFilter ? _title(_activeChipFilter) : meta.label}`;
+  const el = document.getElementById("category-hero");
+  if (el) el.innerHTML = _heroHTML(_activeCategory);
 }
 
 function _renderHeroStats() {
@@ -802,15 +837,14 @@ function _categoryEcosystemHTML(slug = "") {
     <details class="ecosystem-card ecosystem-world">
       <summary class="ecosystem-summary">
         <span class="ecosystem-icon">${meta.icon}</span>
-        <strong>${_esc(contextLabel)} ecosystem</strong>
-        <small>Dealers, materials, brands and localities</small>
+        <strong>Nearby material support</strong>
+        <small>Local supply and dealer support if needed</small>
       </summary>
       <div class="ecosystem-banner">
         <span class="ecosystem-icon">${meta.icon}</span>
         <div>
-          <p class="service-hero-kicker">${_esc(_activeCategory ? `${meta.label} operating mode` : `${meta.label} discovery`)}</p>
-          <h3>${_esc(contextLabel)} in ${_esc(_pilotConfig.city)}</h3>
-          <p>${_esc(meta.trust || "Verified local providers · pay after service · human confirmation")}</p>
+          <h3>${_esc(contextLabel)} support in ${_esc(_pilotConfig.city)}</h3>
+          <p>${_esc("Parts, materials and local supply can be arranged after the worker confirms scope.")}</p>
         </div>
       </div>
       <div class="ecosystem-visual-rail">
@@ -820,37 +854,46 @@ function _categoryEcosystemHTML(slug = "") {
         ${tags.slice(0, 8).map(x => `<button class="${_activeChipFilter === String(x).toLowerCase() ? "active" : ""}" onclick="HomePage.filterEcosystem('${_esc(x)}')">${_esc(x)}</button>`).join("")}
       </div>
       <div class="ecosystem-local-grid">
-        <button type="button" onclick="HomePage.ecosystemDiscover('dealers', '${_esc(dealers[0] || meta.label)}')"><strong>Nearby dealers</strong><span>${_esc(dealers.join(" · "))}</span></button>
-        <button type="button" onclick="HomePage.ecosystemDiscover('materials', '${_esc(materials[0] || meta.label)}')"><strong>Materials</strong><span>${_esc(materials.join(" · "))}</span></button>
-        <button type="button" onclick="HomePage.ecosystemDiscover('brands', '${_esc(brands[0] || meta.label)}')"><strong>Brands ready</strong><span>${_esc(brands.join(" · "))}</span></button>
-        <button type="button" onclick="HomePage.ecosystemDiscover('locality', '${_esc(locality[0] || _pilotConfig.city)}')"><strong>Locality active</strong><span>${_esc(locality.join(" · "))}</span></button>
+        <button type="button" onclick="HomePage.ecosystemDiscover('materials', '${_esc(materials[0] || meta.label)}')"><strong>Local supply available</strong><span>${_esc(materials.slice(0, 3).join(" · "))}</span></button>
+        <button type="button" onclick="HomePage.ecosystemDiscover('dealers', '${_esc(dealers[0] || meta.label)}')"><strong>Fast dealer support</strong><span>Arranged after confirmation</span></button>
       </div>
-      <button class="ecosystem-inspection-cta" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}')">${meta.inspection ? "Book inspection" : "Book now"} · ${_esc(meta.label)}</button>
     </details>`;
 }
 
 function _operatingFeedHTML(slug = "") {
   const meta = _categoryMeta(slug);
-  const context = _activeContextLabel(meta);
   const jobs = _contextItems(meta, "jobs", meta.examples || []).slice(0, 4);
-  const materials = _contextItems(meta, "materials", meta.materials || CATEGORY_META.all.materials || []).slice(0, 4);
-  const dealers = _contextItems(meta, "dealers", meta.dealers || CATEGORY_META.all.dealers || []).slice(0, 3);
   const places = meta.locality || CATEGORY_META.all.locality || ["nearby"];
   return `
     <div class="operating-head">
       <div>
-        <p class="section-eyebrow">Live operating feed</p>
-        <h3>${_esc(context)} activity</h3>
+        <h3>Haldwani is active now</h3>
       </div>
-      <span>${_activeCategory ? "Category only" : "Mixed local"}</span>
     </div>
     <div class="ops-ticker">
-      ${jobs.map((job, i) => `<button onclick="HomePage.filterEcosystem('${_esc(job)}')"><strong>${_esc(job)}</strong><small>${_esc(places[i % places.length] || "nearby")} · ${i + 8} min ago</small></button>`).join("")}
-    </div>
-    <div class="ops-supply-row">
-      <div><strong>Materials moving</strong><span>${_esc(materials.join(" · "))}</span></div>
-      <div><strong>Dealer path</strong><span>${_esc(dealers.join(" · "))}</span></div>
-      <div><strong>Lead route</strong><span>${_esc(meta.label)} → WorkToGo confirm → local worker</span></div>
+      ${jobs.map((job, i) => `<button onclick="HomePage.filterEcosystem('${_esc(job)}')"><strong>${_esc(job)}</strong><small>${_esc(places[i % places.length] || "nearby")}</small></button>`).join("")}
+    </div>`;
+}
+
+function _heroHTML(slug = "") {
+  const meta = _categoryMeta(slug);
+  const price = UI.formatCurrency(_inspectionPrice(null, meta));
+  return `
+    <div class="service-hero-copy">
+      <p class="service-hero-kicker">${_esc(_pilotConfig.city)} · workers near you</p>
+      <h1>${_esc(meta.hero || _pilotConfig.hero_title)}</h1>
+      <p>${_esc(meta.subtitle || _pilotConfig.hero_subtitle)}</p>
+      <div class="inspection-line"><strong>${_esc(price)} inspection</strong><span>Agent visit · diagnosis · worker assignment</span></div>
+      <button class="btn-primary marketplace-cta hero-primary" id="hero-category-cta" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}')">Book ${_esc(meta.cta || meta.label.replace(/ services$/i, ""))}</button>
+    </div>`;
+}
+
+function _serviceCardsHTML(slug = "") {
+  const meta = _categoryMeta(slug);
+  const cards = (meta.examples?.length ? meta.examples : CATEGORY_META.all.examples).slice(0, 6);
+  return `
+    <div class="quick-service-rail">
+      ${cards.map(name => `<button class="quick-service-card" onclick="HomePage.bookQuickService('${_esc(meta.slug || "")}', '${_esc(name)}')"><span>${meta.icon}</span><strong>${_esc(name)}</strong></button>`).join("")}
     </div>`;
 }
 
@@ -872,8 +915,7 @@ function _visualProofHTML(slug = "") {
   return `
     <div class="section-header">
       <div>
-        <p class="section-eyebrow">Visual proof</p>
-        <h3>${_esc(_activeContextLabel(meta))} proof</h3>
+        <h3>Work proof</h3>
       </div>
     </div>
     <div class="proof-rail">
@@ -898,9 +940,9 @@ function _proofMatches(item) {
 
 function _vendorCardHTML(service, support = false) {
   const meta = _categoryMeta(service.category_slug || service.slug || service.category || _activeCategory);
-  const name = service.name || service.vendor_name || "Available worker";
+  const name = service.vendor_name || service.name || "Worker available after confirmation";
   const price = _servicePriceLabel(service);
-  const rating = service.rating || "";
+  const rating = service.rating && service.rating_is_verified ? service.rating : "";
   const locality = service.locality || service.vendor_locality || service.area || "";
   const exp = service.experience || "";
   const photo = service.image || service.photo || "";
@@ -927,7 +969,7 @@ function _vendorCardHTML(service, support = false) {
           <span>${_esc(meta.label)}</span>
           ${price ? `<span>${_esc(price)}</span>` : ""}
         </div>
-        <button class="vendor-book-btn">Book Now</button>
+        <button class="vendor-book-btn">Request worker</button>
       </div>
     </article>`;
 }
@@ -1062,7 +1104,7 @@ function _premiumInspectionPanel(category) {
   const price = UI.formatCurrency(_inspectionPrice(null, category));
   return `<div class="premium-inspection-panel">
     <div class="premium-inspection-mark">🛡️</div>
-    <div><strong>${_esc(price)} Inspection</strong><p>Agent visits your home · Full diagnosis · Best fix</p></div>
+    <div><strong>${_esc(price)} inspection</strong><p>Agent visit · diagnosis · worker assignment</p></div>
     <span>${_esc(price)}</span>
   </div>`;
 }
