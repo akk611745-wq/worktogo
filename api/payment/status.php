@@ -1,6 +1,6 @@
 <?php
 /**
- * API Endpoint: GET /api/payment/status.php?order_id=123
+ * API Endpoint: GET /api/payment/status.php?order_id=123 or ?booking_id=123
  *
  * Checks the current payment status of an order for frontend polling.
  */
@@ -19,10 +19,11 @@ if (!isset($currentUser) || empty($currentUser['user_id'])) {
 }
 
 $orderId = isset($_GET['order_id']) ? (int)$_GET['order_id'] : 0;
+$bookingId = isset($_GET['booking_id']) ? (int)$_GET['booking_id'] : 0;
 
-if ($orderId <= 0) {
+if ($orderId <= 0 && $bookingId <= 0) {
     http_response_code(400);
-    die(json_encode(['status' => 'error', 'message' => 'Invalid order_id']));
+    die(json_encode(['status' => 'error', 'message' => 'Invalid order_id or booking_id']));
 }
 
 $db = Database::getConnection();
@@ -32,13 +33,17 @@ if (!$db) {
     die(json_encode(['status' => 'error', 'message' => 'Database connection failed']));
 }
 
-$stmt = $db->prepare('SELECT payment_status, user_id FROM orders WHERE id = :id LIMIT 1');
-$stmt->execute([':id' => $orderId]);
+$referenceType = $bookingId > 0 ? 'booking' : 'order';
+$referenceId = $bookingId > 0 ? $bookingId : $orderId;
+$table = $referenceType === 'booking' ? 'bookings' : 'orders';
+
+$stmt = $db->prepare("SELECT payment_status, user_id FROM {$table} WHERE id = :id LIMIT 1");
+$stmt->execute([':id' => $referenceId]);
 $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$row) {
     http_response_code(404);
-    die(json_encode(['status' => 'error', 'message' => 'Order not found']));
+    die(json_encode(['status' => 'error', 'message' => ucfirst($referenceType) . ' not found']));
 }
 
 if ((string)$row['user_id'] !== (string)$currentUser['user_id']) {
@@ -53,5 +58,7 @@ if ($status === 'unpaid') {
 }
 
 echo json_encode([
+    'reference_type' => $referenceType,
+    'reference_id' => $referenceId,
     'payment_status' => $status
 ]);

@@ -92,7 +92,7 @@ const API = (() => {
     list:         ()             => intent("vendor:list_jobs"),
     get:          (id)           => intent("vendor:get_job", { id }),
     accept:       (id)           => intent("vendor:update_job_status", { id, status: "confirmed" }),
-    reject:       (id)           => intent("vendor:update_job_status", { id, status: "cancelled" }),
+    reject:       (id)           => intent("vendor:update_job_status", { id, status: "rejected" }),
     updateStatus: (id, status)   => intent("vendor:update_job_status", { id, status }),
   };
 

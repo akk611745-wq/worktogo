@@ -587,6 +587,7 @@ window.HomeModals = (() => {
 
 async function _handleInspectionCheckout(booking, bookingMode) {
   const paymentData = booking?.payment_data || booking?.paymentData || null;
+  const bookingId = booking?.booking_id || booking?.id || paymentData?.booking_id || null;
   if (bookingMode !== "inspection" || !paymentData) return true;
   if (paymentData.success === false) {
     UI.toast(paymentData.message || "Payment session could not be created. Booking remains pending.", "error", 5000);
@@ -612,6 +613,11 @@ async function _handleInspectionCheckout(booking, bookingMode) {
         UI.toast("Payment is still pending. You can retry from Bookings if needed.", "info", 5000);
         return false;
       }
+      const verified = await _waitForBookingPaymentTruth(bookingId);
+      if (!verified) {
+        UI.toast("Payment is pending backend verification. Booking remains pending until Cashfree confirms it.", "info", 6000);
+        return false;
+      }
       return true;
     }
     if (redirectUrl) {
@@ -624,6 +630,18 @@ async function _handleInspectionCheckout(booking, bookingMode) {
     UI.toast("Payment was cancelled or failed. Your inspection booking remains pending.", "error", 5000);
     return false;
   }
+}
+
+async function _waitForBookingPaymentTruth(bookingId) {
+  if (!bookingId || !API.getPaymentStatus) return false;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const res = await API.getPaymentStatus({ booking_id: bookingId }).catch(() => null);
+    const status = String(res?.data?.payment_status || "").toLowerCase();
+    if (status === "paid") return true;
+    if (["failed", "refunded"].includes(status)) return false;
+    await new Promise(resolve => setTimeout(resolve, 1500));
+  }
+  return false;
 }
 
 // ── Loaders ─────────────────────────────────────────────────────────────────

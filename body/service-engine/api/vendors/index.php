@@ -14,6 +14,7 @@
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Database.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Response.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/JWT.php';
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/ServiceVendorEligibility.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/heart/middleware/AuthMiddleware.php';
 
 $db = getDB();
@@ -122,9 +123,10 @@ if ($method === 'GET' && $uri === '/api/vendors') {
     // Production schema uses vendors.type; no deleted_at, no description, no logo_url, no address_id
     $where = ["v.status = 'active'"];
     $bind  = [];
+    $typeColumn = ServiceVendorEligibility::vendorTypeColumn($db);
 
     if ($type) {
-        $where[]              = 'v.type = :type';
+        $where[]              = "v.{$typeColumn} = :type";
         $bind[':type']        = $type;
     }
     if ($search) {
@@ -140,9 +142,11 @@ if ($method === 'GET' && $uri === '/api/vendors') {
     $total = (int)$countStmt->fetchColumn();
 
     // FIX: Only select columns that actually exist in the vendors table
-    $sql = "SELECT v.id, v.business_name, v.slug, v.type, v.type AS vendor_type,
+    $serviceLocalitiesSelect = serviceTableHasColumn($db, 'vendors', 'service_localities') ? 'v.service_localities' : 'NULL AS service_localities';
+    $serviceAreaNotesSelect = serviceTableHasColumn($db, 'vendors', 'service_area_notes') ? 'v.service_area_notes' : 'NULL AS service_area_notes';
+    $sql = "SELECT v.id, v.business_name, v.slug, v.{$typeColumn} AS type, v.{$typeColumn} AS vendor_type,
                    v.status, v.rating, v.commission_rate, v.is_online,
-                   v.lat, v.lng, v.created_at,
+                   v.lat, v.lng, {$serviceLocalitiesSelect}, {$serviceAreaNotesSelect}, v.created_at,
                    u.name AS owner_name, u.phone AS owner_phone, u.email AS owner_email
             FROM vendors v
             LEFT JOIN users u ON u.id = v.user_id
@@ -175,9 +179,11 @@ if ($method === 'GET' && $uri === '/api/vendors') {
 if ($method === 'GET' && preg_match('#^/api/vendors/(\d+)$#', $uri, $m)) {
     // FIX: Only select columns that actually exist in the vendors table
     $stmt = $db->prepare(
-        "SELECT v.id, v.business_name, v.slug, v.type, v.type AS vendor_type,
+        "SELECT v.id, v.business_name, v.slug, v." . ServiceVendorEligibility::vendorTypeColumn($db) . " AS type, v." . ServiceVendorEligibility::vendorTypeColumn($db) . " AS vendor_type,
                 v.status, v.rating, v.commission_rate, v.is_online,
-                v.lat, v.lng, v.created_at, v.updated_at,
+                v.lat, v.lng, " . (ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'service_localities') ? 'v.service_localities' : 'NULL AS service_localities') . ",
+                " . (ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'service_area_notes') ? 'v.service_area_notes' : 'NULL AS service_area_notes') . ",
+                v.created_at, v.updated_at,
                 u.name AS owner_name, u.phone AS owner_phone, u.email AS owner_email
          FROM vendors v
          LEFT JOIN users u ON u.id = v.user_id

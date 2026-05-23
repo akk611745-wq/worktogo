@@ -3,8 +3,11 @@
 # Security hardened for Hostinger shared hosting
 # ============================================
 
-Options -Indexes
+Options -Indexes -MultiViews
 ServerSignature Off
+
+# Apache fallback front-controller for clean API routes when rewrite negotiation is bypassed
+FallbackResource /index.php
 
 # Force HTTPS
 RewriteEngine On

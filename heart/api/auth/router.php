@@ -17,8 +17,8 @@ $_authRoute = match (true) {
     $method === 'POST' && $uri === '/api/auth/logout'         => 'logout.php',
     $method === 'GET'  && $uri === '/api/auth/me'             => 'me.php',
     $method === 'POST' && $uri === '/api/auth/refresh'        => 'refresh.php',
-    $method === 'POST' && $uri === '/api/auth/otp/send'       => 'send-otp.php',
-    $method === 'POST' && $uri === '/api/auth/otp/verify'     => 'verify-otp.php',
+    $method === 'POST' && in_array($uri, ['/api/auth/otp/send', '/api/auth/send-otp'], true)     => 'send-otp.php',
+    $method === 'POST' && in_array($uri, ['/api/auth/otp/verify', '/api/auth/verify-otp'], true) => 'verify-otp.php',
     // New routes
     $method === 'POST' && $uri === '/api/auth/email/register' => 'AuthController.php',
     $method === 'POST' && $uri === '/api/auth/email/login'    => 'AuthController.php',

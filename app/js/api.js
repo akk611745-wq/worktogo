@@ -175,6 +175,11 @@ const API = (() => {
       return res.ok ? { ...res, data: _unwrapBookingPayload(res) } : res;
     },
 
+    async getPaymentStatus(params = {}) {
+      const query = new URLSearchParams(params).toString();
+      return _request("GET", `/api/payment/status${query ? `?${query}` : ""}`);
+    },
+
     // ── Profile (Intent Pipeline) ───────────────────────────────────────
     async getProfile() {
       return _intent("user:get_profile");

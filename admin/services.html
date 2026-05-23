@@ -40,10 +40,10 @@
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>BOOKING</th><th>CUSTOMER</th><th>SERVICE</th><th>SCHEDULED</th><th>VENDOR</th><th>STATUS</th><th>PAYMENT</th><th>ACTIONS</th></tr>
+              <tr><th>BOOKING</th><th>CUSTOMER</th><th>SERVICE</th><th>SCHEDULED</th><th>VENDOR</th><th>ELIGIBILITY</th><th>STATUS</th><th>PAYMENT</th><th>ACTIONS</th></tr>
             </thead>
             <tbody id="service-bookings-tbody">
-              <tr class="loading-row"><td colspan="8"><div class="spinner" style="margin:auto"></div></td></tr>
+              <tr class="loading-row"><td colspan="9"><div class="spinner" style="margin:auto"></div></td></tr>
             </tbody>
           </table>
         </div>
@@ -91,6 +91,7 @@
 Shell.init({ title: 'Service Control', active: 'services.html' });
 
 let currentPage = 1, totalPages = 1;
+let serviceVendors = [];
 const SERVICE_STATUS_ALIASES = { open:'pending', pending:'pending', assigned:'confirmed', accepted:'confirmed', confirmed:'confirmed', started:'in_progress', ongoing:'in_progress', in_progress:'in_progress', delivered:'completed', completed:'completed', rejected:'cancelled', cancelled:'cancelled' };
 
 function normalizeServiceStatus(status) {
@@ -98,7 +99,7 @@ function normalizeServiceStatus(status) {
 }
 
 async function loadServiceBookings() {
-  tableLoading('service-bookings-tbody', 8);
+  tableLoading('service-bookings-tbody', 9);
   try {
     const params = {};
     const q = document.getElementById('booking-search')?.value.trim();
@@ -114,7 +115,7 @@ async function loadServiceBookings() {
     document.getElementById('booking-count').textContent = `${bookings.length.toLocaleString()} recent service bookings`;
     renderServiceBookings(bookings);
   } catch(e) {
-    tableEmpty('service-bookings-tbody', 8, 'Failed to load service bookings: ' + (e.message || ''));
+    tableEmpty('service-bookings-tbody', 9, 'Failed to load service bookings: ' + (e.message || ''));
   }
 }
 
@@ -123,9 +124,58 @@ function resetBookingFilters() {
   loadServiceBookings();
 }
 
+async function loadServiceVendors() {
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.VENDORS, { type: 'service', status: 'active', limit: CONFIG.MAX_PAGE_SIZE });
+    const payload = data?.data && !Array.isArray(data.data) ? data.data : data;
+    serviceVendors = payload?.vendors || payload?.data || [];
+  } catch(e) {
+    serviceVendors = [];
+  }
+}
+
+function vendorAssignControl(booking) {
+  const id = booking.id || booking._id;
+  const currentVendorId = String(booking.vendor_id || '');
+  const disabled = ['completed','cancelled'].includes(normalizeServiceStatus(booking.status));
+  const byVendor = {};
+  (booking.vendor_eligibility?.vendors || []).forEach(item => { byVendor[String(item.vendor_id)] = item; });
+  const options = ['<option value="">Select vendor</option>'].concat(serviceVendors.map(v => {
+    const vid = String(v.id || v._id || '');
+    const item = byVendor[vid];
+    const mark = item?.eligibility?.assignable ? '✅ ' : (item ? '⚠ ' : '');
+    const area = item?.service_localities ? ` — ${item.service_localities}` : '';
+    return `<option value="${escHtml(vid)}" ${vid === currentVendorId ? 'selected' : ''}>${mark}${escHtml(v.business_name || v.name || ('Vendor #' + vid))}${escHtml(area)}</option>`;
+  })).join('');
+  return `<div class="td-actions" style="gap:4px;flex-wrap:nowrap">
+    <select class="form-control" id="assign-vendor-${escHtml(String(id))}" style="min-width:150px;max-width:180px;padding:4px 6px;font-size:11px" ${disabled ? 'disabled' : ''}>${options}</select>
+    <button class="btn btn-sm btn-primary" onclick="assignBookingVendor('${escHtml(String(id))}')" ${disabled ? 'disabled' : ''}>Assign</button>
+  </div>`;
+}
+
+function eligibilityCell(booking) {
+  const summary = booking.vendor_eligibility || {};
+  const vendors = Array.isArray(summary.vendors) ? summary.vendors : [];
+  const current = vendors.find(v => String(v.vendor_id) === String(booking.vendor_id || '')) || null;
+  const eligibleCount = Number(summary.eligible_count || 0);
+  const locality = summary.booking_locality || booking.customer_locality || 'Locality missing';
+  const currentEligibility = current?.eligibility || null;
+  const assignable = currentEligibility?.assignable;
+  const statusText = current ? (assignable ? 'Eligible vendor' : 'Vendor issue') : (eligibleCount ? `${eligibleCount} eligible` : 'No eligible vendors');
+  const color = current ? (assignable ? 'var(--green)' : 'var(--red)') : (eligibleCount ? 'var(--green)' : 'var(--accent)');
+  const areaReason = currentEligibility?.service_area?.reason || (summary.booking_locality ? 'Compare service areas before assignment' : 'Booking locality missing');
+  const availabilityReason = currentEligibility?.availability?.reason || 'Availability unknown';
+  return `<div style="font-size:11px;line-height:1.45">
+    <div style="color:${color};font-weight:700">${escHtml(statusText)}</div>
+    <div style="color:var(--text-muted)">Area: ${escHtml(locality)}</div>
+    <div style="color:var(--text-muted)">${escHtml(areaReason)}</div>
+    <div style="color:var(--text-muted)">${escHtml(availabilityReason)}</div>
+  </div>`;
+}
+
 function renderServiceBookings(bookings) {
   const tbody = document.getElementById('service-bookings-tbody');
-  if (!bookings.length) { tableEmpty('service-bookings-tbody', 8, 'No service bookings yet. Confirm pilot services/vendors are seeded before public testing.'); return; }
+  if (!bookings.length) { tableEmpty('service-bookings-tbody', 9, 'No service bookings yet. Confirm pilot services/vendors are seeded before public testing.'); return; }
   tbody.innerHTML = bookings.map(b => {
     const id = b.id || b._id;
     const jobId = b.job_id || id;
@@ -137,14 +187,16 @@ function renderServiceBookings(bookings) {
     const wa = phone ? 'https://wa.me/91' + String(phone).replace(/\D/g,'').replace(/^91/,'') + '?text=' + encodeURIComponent('Hi, this is WorkToGo support about booking #' + id) : '';
     return `<tr>
       <td><div style="font-size:12px;color:var(--text-primary)">#${escHtml(String(id))}</div><div style="font-size:10px;color:${pendingTooLong?'var(--red)':'var(--text-muted)'}">${pendingTooLong?'⚠ Pending >30m':escHtml(b.booking_number||'')}</div></td>
-      <td><div>${escHtml(b.customer_name||b.user_name||'—')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(b.customer_phone||'')}</div></td>
+      <td><div>${escHtml(b.customer_name||b.user_name||'—')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(b.customer_phone||'')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(b.customer_locality||'Locality not set')}</div></td>
       <td>${escHtml(b.service_name||'Service')}</td>
       <td>${Fmt.date(b.scheduled_at||b.created_at)}</td>
       <td>${escHtml(b.vendor_name||'Unassigned')}</td>
+      <td>${eligibilityCell(b)}</td>
       <td>${statusBadge(status)}</td>
       <td><div>${escHtml(b.payment_method||'cod')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(b.payment_status||'unpaid')}</div></td>
       <td><div class="td-actions">
         ${phone ? `<a class="btn btn-sm btn-ghost" href="tel:${escHtml(phone)}">Call</a><a class="btn btn-sm btn-ghost" href="${wa}" target="_blank" rel="noopener">WA</a>` : ''}
+        ${vendorAssignControl(b)}
         ${canAdvance ? `<button class="btn btn-sm btn-ghost" onclick="adminSetJobStatus('${jobId}','confirmed')">Confirm</button>
         <button class="btn btn-sm btn-ghost" onclick="adminSetJobStatus('${jobId}','in_progress')">Progress</button>
         <button class="btn btn-sm btn-success" onclick="adminSetJobStatus('${jobId}','completed')">Complete</button>
@@ -152,6 +204,19 @@ function renderServiceBookings(bookings) {
       </div></td>
     </tr>`;
   }).join('');
+}
+
+async function assignBookingVendor(bookingId) {
+  const el = document.getElementById('assign-vendor-' + bookingId);
+  const vendorId = el?.value;
+  if (!vendorId) { Toast.warn('Select an active service vendor first.'); return; }
+  const vendorName = el.options[el.selectedIndex]?.textContent || ('Vendor #' + vendorId);
+  if (!await confirmAction(`Assign booking #${bookingId} to ${vendorName}?`)) return;
+  try {
+    await API.patch(CONFIG.ENDPOINTS.SERVICE_BOOKING_ASSIGN(bookingId), { vendor_id: Number(vendorId), status: 'assigned' });
+    Toast.success('Booking assignment updated.');
+    loadServiceBookings();
+  } catch(e) { Toast.error(e.message || 'Failed to assign vendor'); }
 }
 
 async function adminSetJobStatus(jobId, status) {
@@ -228,7 +293,7 @@ async function toggleService(id, newStatus) {
 document.getElementById('apply-filter').addEventListener('click', () => loadServices(1));
 document.getElementById('search-input').addEventListener('keydown', e => { if(e.key==='Enter') loadServices(1); });
 loadServices(1);
-loadServiceBookings();
+loadServiceVendors().then(loadServiceBookings);
 </script>
 </body>
 </html>

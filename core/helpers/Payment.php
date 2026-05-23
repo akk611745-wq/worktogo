@@ -8,7 +8,7 @@ class Payment
     /**
      * Create a payment session/order on the gateway
      */
-    public static function createOrder(string $provider, float $amount, string $receiptId): array
+    public static function createOrder(string $provider, float $amount, string $receiptId, array $options = []): array
     {
         if ($provider !== 'cashfree') {
             throw new Exception("Unsupported payment provider: {$provider}");
@@ -30,15 +30,34 @@ class Payment
             "Content-Type: application/json"
         ]);
         
-        $payload = json_encode([
+        $customer = $options['customer'] ?? [];
+        $orderMeta = [];
+        if (!empty($options['return_url'])) {
+            $orderMeta['return_url'] = (string)$options['return_url'];
+        }
+        if (!empty($options['notify_url'])) {
+            $orderMeta['notify_url'] = (string)$options['notify_url'];
+        }
+
+        $payloadData = [
             "order_id" => $receiptId,
             "order_amount" => $amount,
             "order_currency" => "INR",
             "customer_details" => [
-                "customer_id" => "cust_" . time(),
-                "customer_phone" => "9999999999"
+                "customer_id" => (string)($customer['id'] ?? ("cust_" . time())),
+                "customer_name" => (string)($customer['name'] ?? 'WorkToGo Customer'),
+                "customer_email" => (string)($customer['email'] ?? 'support@worktogo.com'),
+                "customer_phone" => preg_replace('/\D/', '', (string)($customer['phone'] ?? '9999999999')) ?: '9999999999'
             ]
-        ]);
+        ];
+        if ($orderMeta) {
+            $payloadData['order_meta'] = $orderMeta;
+        }
+        if (!empty($options['order_tags']) && is_array($options['order_tags'])) {
+            $payloadData['order_tags'] = $options['order_tags'];
+        }
+
+        $payload = json_encode($payloadData);
         curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
         
         $response = curl_exec($ch);
@@ -55,6 +74,9 @@ class Payment
                 'amount'       => $amount,
                 'currency'     => 'INR',
                 'status'       => 'created',
+                'payment_session_id' => $data['payment_session_id'] ?? null,
+                'order_token' => $data['order_token'] ?? null,
+                'mode' => strtolower((string)(getenv('CASHFREE_ENV') ?: 'production')),
                 'gateway_data' => $data
             ];
         }

@@ -103,14 +103,22 @@ try {
     if ($entityType === 'job') {
         $db->prepare("
             UPDATE jobs
-            SET status = 'in_progress', vendor_id = ?, assignment_lock_time = NULL
+            SET status = 'assigned', vendor_id = ?, assignment_lock_time = NULL, updated_at = NOW()
             WHERE id = ?
         ")->execute([$vendorId, $entityId]);
 
         // FIX 1: Prepared statement — was raw $entityId interpolation
-        $stmtUid = $db->prepare("SELECT user_id FROM jobs WHERE id = ?");
+        $stmtUid = $db->prepare("SELECT user_id, booking_id FROM jobs WHERE id = ?");
         $stmtUid->execute([$entityId]);
-        $userId = $stmtUid->fetchColumn();
+        $jobRef = $stmtUid->fetch(PDO::FETCH_ASSOC);
+        $userId = $jobRef['user_id'] ?? null;
+        if (!empty($jobRef['booking_id'])) {
+            $db->prepare("
+                UPDATE bookings
+                SET status = 'confirmed', vendor_id = ?, vendor_route = 'auto_assigned', updated_at = NOW()
+                WHERE id = ?
+            ")->execute([$vendorId, (int)$jobRef['booking_id']]);
+        }
     } else {
         $db->prepare("
             UPDATE orders

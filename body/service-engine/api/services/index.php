@@ -7,6 +7,7 @@
  * POST   /api/service/request         → create booking (+ auto-creates job)
  * GET    /api/service/bookings        → list bookings (scoped by role)
  * GET    /api/service/bookings/{id}   → booking detail with linked job
+ * PATCH  /api/service/bookings/{id}/assign → admin assign/reassign vendor
  * PATCH  /api/jobs/{id}/status        → update job status (vendor/admin)
  */
 
@@ -16,6 +17,7 @@
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Database.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Response.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/JWT.php';
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/ServiceVendorEligibility.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/heart/middleware/AuthMiddleware.php';
 
 $db = getDB();
@@ -129,6 +131,18 @@ function canonicalJobStatusForBooking(string $status): string
     };
 }
 
+function canonicalBookingStatusForJob(string $status): string
+{
+    return match (canonicalJobStatusForBooking($status)) {
+        'open' => 'pending',
+        'assigned' => 'confirmed',
+        'in_progress' => 'in_progress',
+        'completed' => 'completed',
+        'cancelled' => 'cancelled',
+        default => 'pending',
+    };
+}
+
 function canonicalBookingMode(array $input, array $service): string
 {
     $mode = strtolower(trim((string)($input['booking_mode'] ?? $input['lifecycle_type'] ?? '')));
@@ -177,6 +191,47 @@ function serviceModeFromNotes(?string $notes): string
 function serviceBookingColumnSql(PDO $db, string $column, string $expr): string
 {
     return serviceTableHasColumn($db, 'bookings', $column) ? $expr : "NULL AS {$column}";
+}
+
+function serviceJobColumnSql(PDO $db, string $column, string $expr): string
+{
+    return serviceTableHasColumn($db, 'jobs', $column) ? $expr : "NULL AS {$column}";
+}
+
+function serviceBookingEligibility(PDO $db, array $booking): array
+{
+    $typeColumn = ServiceVendorEligibility::vendorTypeColumn($db);
+    $onlineOrder = serviceTableHasColumn($db, 'vendors', 'is_online') ? 'v.is_online DESC, ' : '';
+    $stmt = $db->prepare(
+        "SELECT " . ServiceVendorEligibility::buildVendorSelect($db, 'v') . "
+         FROM vendors v
+         WHERE v.{$typeColumn} = 'service'
+         ORDER BY v.status = 'active' DESC, {$onlineOrder}v.business_name ASC"
+    );
+    $stmt->execute();
+    $vendors = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $eligibleCount = 0;
+    $items = [];
+    foreach ($vendors as $vendor) {
+        $availability = ServiceVendorEligibility::availabilityFor($db, (int)$vendor['id'], $booking['scheduled_at'] ?? null, (int)($booking['id'] ?? 0));
+        $eligibility = ServiceVendorEligibility::evaluate($vendor, $booking, $availability);
+        if ($eligibility['assignable']) $eligibleCount++;
+        $items[] = [
+            'vendor_id' => (int)$vendor['id'],
+            'vendor_name' => $vendor['business_name'],
+            'service_localities' => $vendor['service_localities'] ?? null,
+            'service_area_notes' => $vendor['service_area_notes'] ?? null,
+            'eligibility' => $eligibility,
+        ];
+    }
+
+    return [
+        'booking_locality' => $booking['customer_locality'] ?? null,
+        'scheduled_at' => $booking['scheduled_at'] ?? null,
+        'eligible_count' => $eligibleCount,
+        'vendors' => $items,
+    ];
 }
 
 // ── GET /api/services ──────────────────────────────────────────────────────────
@@ -436,6 +491,8 @@ if ($method === 'POST' && $uri === '/api/service/request') {
     try {
         $db->beginTransaction();
 
+        $initialVendorId = !empty($service['vendor_id']) ? (int)$service['vendor_id'] : null;
+
         // Create booking
         $bStmt = $db->prepare(
             "INSERT INTO bookings
@@ -452,7 +509,7 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         $bStmt->execute([
             ':bnum'  => $bookingNum,
             ':uid'   => (int)$auth['user_id'],
-            ':vid'   => (int)$service['vendor_id'],
+            ':vid'   => $initialVendorId,
             ':sid'   => $serviceId,
             ':pstatus' => $paymentStatus,
             ':pmethod' => $paymentMethod,
@@ -476,7 +533,24 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         if ($paymentMethod === 'online') {
             require_once SYSTEM_ROOT . '/core/helpers/Payment.php';
             try {
-                $paymentData = Payment::createOrder('cashfree', $bookingTotal, $bookingNum);
+                $paymentData = Payment::createOrder('cashfree', $bookingTotal, $bookingNum, [
+                    'return_url' => (defined('APP_URL') ? APP_URL : '') . '/api/payment/return?booking_id=' . $bookingId,
+                    'notify_url' => (defined('APP_URL') ? APP_URL : '') . '/api/payment/webhook',
+                    'customer' => [
+                        'id' => (int)$auth['user_id'],
+                        'name' => trim((string)($input['customer_name'] ?? 'WorkToGo Customer')) ?: 'WorkToGo Customer',
+                        'email' => 'support@worktogo.com',
+                        'phone' => trim((string)($input['customer_mobile'] ?? '9999999999')) ?: '9999999999',
+                    ],
+                    'order_tags' => [
+                        'internal_booking_id' => (string)$bookingId,
+                        'reference_type' => 'booking',
+                        'platform' => 'worktogo',
+                    ],
+                ]);
+                if (empty($paymentData['success']) || empty($paymentData['payment_id'])) {
+                    throw new RuntimeException($paymentData['message'] ?? 'Cashfree order was not created');
+                }
                 $db->prepare("UPDATE bookings SET payment_id = ?, payment_status = 'unpaid' WHERE id = ?")
                    ->execute([$paymentData['payment_id'] ?? null, $bookingId]);
                 $paymentStatus = 'unpaid';
@@ -499,7 +573,7 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         $jStmt->execute([
             ':jnum'  => $jobNum,
             ':bid'   => $bookingId,
-            ':vid'   => (int)$service['vendor_id'],
+            ':vid'   => $initialVendorId,
             ':uid'   => (int)$auth['user_id'],
             ':title' => 'Job: ' . $service['name'],
             ':desc'  => $canonicalNotes ?: null,
@@ -575,13 +649,14 @@ if ($method === 'GET' && $uri === '/api/service/bookings') {
     $customerLocalitySelect = serviceBookingColumnSql($db, 'customer_locality', 'b.customer_locality');
     $customerAddressSelect = serviceBookingColumnSql($db, 'customer_address', 'b.customer_address');
     $vendorRouteSelect = serviceBookingColumnSql($db, 'vendor_route', 'b.vendor_route');
+    $jobAssignmentLockSelect = serviceJobColumnSql($db, 'assignment_lock_time', 'j.assignment_lock_time');
 
     $stmt = $db->prepare(
         "SELECT b.*, s.name AS service_name, v.business_name AS vendor_name,
                  {$customerNameSelect}, {$customerMobileSelect}, {$customerLocalitySelect}, {$customerAddressSelect},
                  {$bookingModeSelect}, {$vendorRouteSelect},
-                 u.name AS user_name, u.phone AS customer_phone,
-                 j.id AS job_id, j.job_number, j.status AS job_status
+                  u.name AS user_name, u.phone AS customer_phone,
+                  j.id AS job_id, j.job_number, j.status AS job_status, {$jobAssignmentLockSelect}
          FROM bookings b
          LEFT JOIN services s ON s.id = b.service_id
          LEFT JOIN vendors v ON v.id = b.vendor_id
@@ -603,6 +678,9 @@ if ($method === 'GET' && $uri === '/api/service/bookings') {
         $booking['vendor_route'] = $booking['vendor_route'] ?: ($booking['booking_mode'] === 'direct_vendor' ? 'direct_vendor' : 'admin_queue');
         $booking['customer_name'] = $booking['customer_name'] ?: ($booking['user_name'] ?? null);
         $booking['support_hint'] = 'WorkToGo support can help with this booking ID.';
+        if ($auth['role'] === ROLE_ADMIN) {
+            $booking['vendor_eligibility'] = serviceBookingEligibility($db, $booking);
+        }
     }
     unset($booking);
 
@@ -657,6 +735,9 @@ if ($method === 'GET' && preg_match('#^/api/service/bookings/(\d+)$#', $uri, $m)
     $booking['booking_mode'] = $booking['booking_mode'] ?: serviceModeFromNotes($booking['notes'] ?? null);
     $booking['vendor_route'] = $booking['vendor_route'] ?: ($booking['booking_mode'] === 'direct_vendor' ? 'direct_vendor' : 'admin_queue');
     $booking['support_hint'] = 'WorkToGo support can help with this booking ID.';
+    if ($auth['role'] === ROLE_ADMIN) {
+        $booking['vendor_eligibility'] = serviceBookingEligibility($db, $booking);
+    }
 
     // Attach linked job
     $jobStmt = $db->prepare("SELECT * FROM jobs WHERE booking_id = ? LIMIT 1");
@@ -664,6 +745,131 @@ if ($method === 'GET' && preg_match('#^/api/service/bookings/(\d+)$#', $uri, $m)
     $job = $jobStmt->fetch(PDO::FETCH_ASSOC);
 
     Response::success(['booking' => $booking, 'job' => $job ?: null]);
+}
+
+// ── PATCH /api/service/bookings/{id}/assign ───────────────────────────────────
+// Admin assignment control. Reuses bookings.vendor_id and jobs.vendor_id/status;
+// no parallel routing table is introduced.
+if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/assign$#', $uri, $m)) {
+    $auth = AuthMiddleware::requireRole(ROLE_ADMIN);
+    $bookingId = (int)$m[1];
+    $input = defined('HEART_INTERNAL_INC')
+        ? (json_decode($GLOBALS['HEART_PAYLOAD'] ?? '{}', true)['data'] ?? [])
+        : (json_decode(file_get_contents('php://input'), true) ?? []);
+    $vendorId = (int)($input['vendor_id'] ?? 0);
+    $rawStatus = strtolower(trim((string)($input['status'] ?? 'assigned')));
+    $newJobStatus = match ($rawStatus) {
+        'assigned', 'confirmed', 'accept', 'accepted' => 'assigned',
+        'open', 'pending', 'unassigned' => 'open',
+        default => null,
+    };
+
+    if ($vendorId <= 0) Response::validation('vendor_id is required');
+    if (!$newJobStatus) Response::validation('status must be assigned or open');
+
+    $bookingStmt = $db->prepare(
+        "SELECT b.*, s.name AS service_name
+         FROM bookings b
+         LEFT JOIN services s ON s.id = b.service_id
+         WHERE b.id = ?
+         LIMIT 1"
+    );
+    $bookingStmt->execute([$bookingId]);
+    $booking = $bookingStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$booking) Response::notFound('Booking');
+
+    $currentStatus = normalizeServiceJobStatus((string)($booking['status'] ?? 'pending'));
+    if (in_array($currentStatus, ['completed', 'cancelled'], true)) {
+        Response::validation('Completed or cancelled bookings cannot be reassigned');
+    }
+
+    $typeColumn = ServiceVendorEligibility::vendorTypeColumn($db);
+    $vendorStmt = $db->prepare(
+        "SELECT " . ServiceVendorEligibility::buildVendorSelect($db, 'v') . "
+         FROM vendors v
+         WHERE v.id = ? AND v.status = 'active' AND v.{$typeColumn} = 'service'
+         LIMIT 1"
+    );
+    $vendorStmt->execute([$vendorId]);
+    $vendor = $vendorStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$vendor) Response::validation('Active service vendor not found');
+
+    $availability = ServiceVendorEligibility::availabilityFor($db, $vendorId, $booking['scheduled_at'] ?? null, $bookingId);
+    $eligibility = ServiceVendorEligibility::evaluate($vendor, $booking, $availability);
+    if (!$eligibility['assignable']) {
+        Response::validation('Vendor is not operationally eligible: ' . implode('; ', $eligibility['reasons']), ['eligibility' => $eligibility]);
+    }
+
+    $jobStmt = $db->prepare("SELECT * FROM jobs WHERE booking_id = ? LIMIT 1");
+    $jobStmt->execute([$bookingId]);
+    $job = $jobStmt->fetch(PDO::FETCH_ASSOC);
+
+    $bookingStatus = canonicalBookingStatusForJob($newJobStatus);
+    $effectiveVendorId = $newJobStatus === 'open' ? null : $vendorId;
+    $effectiveRoute = $newJobStatus === 'open' ? 'admin_queue' : 'admin_assigned';
+    $bookingUpdates = ['vendor_id = :vendor_id', 'status = :status'];
+    $bookingBind = [':vendor_id' => $effectiveVendorId, ':status' => $bookingStatus, ':id' => $bookingId];
+    if (serviceTableHasColumn($db, 'bookings', 'vendor_route')) {
+        $bookingUpdates[] = 'vendor_route = :vendor_route';
+        $bookingBind[':vendor_route'] = $effectiveRoute;
+    }
+    if (serviceTableHasColumn($db, 'bookings', 'updated_at')) {
+        $bookingUpdates[] = 'updated_at = NOW()';
+    }
+
+    try {
+        $db->beginTransaction();
+
+        $db->prepare("UPDATE bookings SET " . implode(', ', $bookingUpdates) . " WHERE id = :id")
+           ->execute($bookingBind);
+
+        if ($job) {
+            $jobUpdates = ['vendor_id = :vendor_id', 'status = :status'];
+            $jobBind = [':vendor_id' => $effectiveVendorId, ':status' => $newJobStatus, ':id' => (int)$job['id']];
+            if (serviceTableHasColumn($db, 'jobs', 'assignment_lock_time')) {
+                $jobUpdates[] = 'assignment_lock_time = NULL';
+            }
+            if (serviceTableHasColumn($db, 'jobs', 'updated_at')) {
+                $jobUpdates[] = 'updated_at = NOW()';
+            }
+            $db->prepare("UPDATE jobs SET " . implode(', ', $jobUpdates) . " WHERE id = :id")
+               ->execute($jobBind);
+            $jobId = (int)$job['id'];
+        } else {
+            $jobNum = 'WTG-JOB-' . strtoupper(bin2hex(random_bytes(4)));
+            $db->prepare(
+                "INSERT INTO jobs
+                    (job_number, booking_id, vendor_id, user_id, title, description, status, priority, assignment_lock_time, created_at, updated_at)
+                 VALUES
+                    (:jnum, :bid, :vid, :uid, :title, :desc, :status, 'normal', NOW(), NOW(), NOW())"
+            )->execute([
+                ':jnum' => $jobNum,
+                ':bid' => $bookingId,
+                ':vid' => $effectiveVendorId,
+                ':uid' => (int)($booking['user_id'] ?? 0),
+                ':title' => 'Job: ' . ($booking['service_name'] ?: ('Booking #' . $bookingId)),
+                ':desc' => $booking['notes'] ?? null,
+                ':status' => $newJobStatus,
+            ]);
+            $jobId = (int)$db->lastInsertId();
+        }
+
+        $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        Response::error('Booking assignment could not be updated', 500);
+    }
+
+    Response::success([
+        'booking_id' => $bookingId,
+        'job_id' => $jobId,
+        'vendor_id' => $effectiveVendorId,
+        'vendor_name' => $vendor['business_name'],
+        'status' => $bookingStatus,
+        'job_status' => normalizeServiceJobStatus($newJobStatus),
+        'vendor_route' => $effectiveRoute,
+        'eligibility' => $eligibility,
+    ], 200, 'Booking assignment updated');
 }
 
 // ── PATCH /api/jobs/{id}/status ───────────────────────────────────────────────
@@ -674,7 +880,9 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
         ? (json_decode($GLOBALS['HEART_PAYLOAD'] ?? '{}', true)['data'] ?? [])
         : (json_decode(file_get_contents('php://input'), true) ?? []);
     $jobId     = (int)$m[1];
-    $newStatus = canonicalJobStatusForBooking((string)($input['status'] ?? ''));
+    $rawStatus = strtolower(trim((string)($input['status'] ?? '')));
+    $isVendorRequeue = $auth['role'] === ROLE_VENDOR_SERVICE && in_array($rawStatus, ['rejected', 'reject', 'declined', 'decline'], true);
+    $newStatus = $isVendorRequeue ? 'open' : canonicalJobStatusForBooking($rawStatus);
 
     $allowed = ['open', 'assigned', 'in_progress', 'completed', 'cancelled'];
     if (!in_array($newStatus, $allowed, true)) {
@@ -694,7 +902,57 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
         }
     }
 
-    $updates = ['status = :status', 'updated_at = NOW()'];
+    if ($isVendorRequeue) {
+        $currentStatus = normalizeServiceJobStatus((string)($jobRow['status'] ?? 'pending'));
+        if (in_array($currentStatus, ['completed', 'cancelled'], true)) {
+            Response::validation('Completed or cancelled jobs cannot be rejected for reassignment');
+        }
+
+        try {
+            $db->beginTransaction();
+
+            $jobUpdates = ['vendor_id = NULL', 'status = :status', 'updated_at = NOW()'];
+            $jobBind = [':status' => 'open', ':id' => $jobId];
+            if (serviceTableHasColumn($db, 'jobs', 'assignment_lock_time')) {
+                $jobUpdates[] = 'assignment_lock_time = NULL';
+            }
+            $db->prepare("UPDATE jobs SET " . implode(', ', $jobUpdates) . " WHERE id = :id")
+               ->execute($jobBind);
+
+            if ($jobRow['booking_id']) {
+                $bookingUpdates = ['vendor_id = NULL', 'status = :status'];
+                $bookingBind = [':status' => 'pending', ':id' => (int)$jobRow['booking_id']];
+                if (serviceTableHasColumn($db, 'bookings', 'vendor_route')) {
+                    $bookingUpdates[] = 'vendor_route = :vendor_route';
+                    $bookingBind[':vendor_route'] = 'admin_queue';
+                }
+                if (serviceTableHasColumn($db, 'bookings', 'updated_at')) {
+                    $bookingUpdates[] = 'updated_at = NOW()';
+                }
+                $db->prepare("UPDATE bookings SET " . implode(', ', $bookingUpdates) . " WHERE id = :id")
+                   ->execute($bookingBind);
+            }
+
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            Response::error('Job could not be returned to admin queue', 500);
+        }
+
+        Response::success([
+            'message' => 'Job rejected and returned to admin queue for reassignment',
+            'job_id'  => $jobId,
+            'status'  => 'pending',
+            'job_status' => 'open',
+            'vendor_id' => null,
+            'vendor_route' => 'admin_queue',
+        ]);
+    }
+
+    try {
+        $db->beginTransaction();
+
+        $updates = ['status = :status', 'updated_at = NOW()'];
     $bind    = [':status' => $newStatus, ':id' => $jobId];
 
     if ($newStatus === 'in_progress' && empty($jobRow['started_at'])) {
@@ -704,8 +962,8 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
         $updates[] = 'completed_at = NOW()';
     }
 
-    $db->prepare("UPDATE jobs SET " . implode(', ', $updates) . " WHERE id = :id")
-       ->execute($bind);
+        $db->prepare("UPDATE jobs SET " . implode(', ', $updates) . " WHERE id = :id")
+           ->execute($bind);
 
     // Mirror status onto the linked booking
     $bookingStatus = match ($newStatus) {
@@ -716,9 +974,24 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
         'cancelled'   => 'cancelled',
         default       => null,
     };
-    if ($bookingStatus && $jobRow['booking_id']) {
-        $db->prepare("UPDATE bookings SET status = ?, updated_at = NOW() WHERE id = ?")
-           ->execute([$bookingStatus, (int)$jobRow['booking_id']]);
+        if ($bookingStatus && $jobRow['booking_id']) {
+            $bookingUpdates = ['status = :status'];
+            $bookingBind = [':status' => $bookingStatus, ':id' => (int)$jobRow['booking_id']];
+            if (!empty($jobRow['vendor_id'])) {
+                $bookingUpdates[] = 'vendor_id = :vendor_id';
+                $bookingBind[':vendor_id'] = (int)$jobRow['vendor_id'];
+            }
+            if (serviceTableHasColumn($db, 'bookings', 'updated_at')) {
+                $bookingUpdates[] = 'updated_at = NOW()';
+            }
+            $db->prepare("UPDATE bookings SET " . implode(', ', $bookingUpdates) . " WHERE id = :id")
+               ->execute($bookingBind);
+        }
+
+        $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        Response::error('Job status could not be synchronized', 500);
     }
 
     Response::success([

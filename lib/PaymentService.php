@@ -183,39 +183,33 @@ class PaymentService
         try {
             $this->db->beginTransaction();
 
-            // ── Find internal order by payment_id ───────────────────────
-            $stmt = $this->db->prepare(
-                'SELECT id, user_id, total, payment_status, payment_method
-                 FROM orders
-                 WHERE payment_id = :ref
-                    OR payment_id LIKE :ref_prefix
-                 LIMIT 1 FOR UPDATE'
-            );
-            $stmt->execute([
-                ':ref'        => $cfOrderId,
-                ':ref_prefix' => $cfOrderId . '|txn:%',
-            ]);
-            $order = $stmt->fetch(PDO::FETCH_ASSOC);
+            // ── Find internal payment target by exact Cashfree order reference ─────
+            $target = $this->fetchPaymentTargetForUpdate($cfOrderId);
 
-            if (!$order) {
+            if (!$target) {
                 $this->db->rollBack();
                 error_log("[PaymentService][Webhook] No order found for cf_order_id=$cfOrderId");
                 return $this->fail("Order not found for reference: $cfOrderId");
             }
 
-            $internalOrderId = (int)$order['id'];
+            $internalOrderId = (int)$target['id'];
+            $referenceType = (string)$target['reference_type'];
 
             // ── Idempotency: skip if already processed ────────────────────────────
-            if ($order['payment_status'] === 'paid') {
+            if ($target['payment_status'] === 'paid') {
+                $this->ensureSuccessfulTransaction($target, $cfAmount, $txnId);
+                if ($target['reference_type'] === 'booking') {
+                    $this->syncPaidBookingPropagation((int)$target['id']);
+                }
                 $this->db->rollBack();
                 return ['success' => true, 'message' => 'Already processed. Skipped.', 'error' => null];
             }
 
             // ── Server-side amount verification ───────────────────────────────────
-            $dbAmount = round((float)$order['total'], 2);
+            $dbAmount = round((float)$target['total'], 2);
             if ($cfAmount !== null && round((float)$cfAmount, 2) !== $dbAmount) {
                 error_log("[PaymentService][Webhook] Amount mismatch order $internalOrderId: webhook=$cfAmount db=$dbAmount");
-                $this->updateOrderPaymentMeta($internalOrderId, ['payment_status' => 'failed']);
+                $this->updatePaymentTargetMeta($referenceType, $internalOrderId, ['payment_status' => 'failed']);
                 $this->db->commit();
                 return $this->fail("Amount mismatch in webhook. Flagged for review.");
             }
@@ -234,58 +228,24 @@ class PaymentService
                 $meta['status'] = $orderStatus;
             }
 
-            $updated = $this->updateOrderPaymentMeta($internalOrderId, $meta);
+            $updated = $this->updatePaymentTargetMeta($referenceType, $internalOrderId, $meta);
 
             if (!$updated) {
                 $this->db->rollBack();
                 return $this->fail("DB update failed for order $internalOrderId.");
             }
 
-            // ── Create transaction record once after successful online payment ────────
-            // Cashfree can send the same webhook multiple times, so first check whether
-            // a successful order transaction already exists for this order ID.
             if ($newStatus === 'paid') {
-                $txnCheck = $this->db->prepare(
-                    'SELECT id
-                     FROM transactions
-                     WHERE reference_id = :reference_id
-                       AND reference_type = :reference_type
-                       AND status = :status
-                     LIMIT 1
-                     FOR UPDATE'
-                );
-                $txnCheck->execute([
-                    ':reference_id'   => $internalOrderId,
-                    ':reference_type' => 'order',
-                    ':status'         => 'success',
-                ]);
-
-                // If no transaction exists, insert exactly one successful Cashfree
-                // transaction for this order. The schema stores the payment method in
-                // the `gateway` column and requires `user_id`, so both are included.
-                if (!$txnCheck->fetch(PDO::FETCH_ASSOC)) {
-                    $txnInsert = $this->db->prepare(
-                        'INSERT INTO transactions
-                            (user_id, reference_id, reference_type, amount, status, gateway, gateway_ref, created_at)
-                         VALUES
-                            (:user_id, :reference_id, :reference_type, :amount, :status, :gateway, :gateway_ref, NOW())'
-                    );
-                    $txnInsert->execute([
-                        ':user_id'        => (int)$order['user_id'],
-                        ':reference_id'   => $internalOrderId,
-                        ':reference_type' => 'order',
-                        ':amount'         => round((float)$cfAmount, 2),
-                        ':status'         => 'success',
-                        ':gateway'        => 'cashfree',
-                        ':gateway_ref'    => $txnId,
-                    ]);
+                $this->ensureSuccessfulTransaction($target, $cfAmount, $txnId);
+                if ($referenceType === 'booking') {
+                    $this->syncPaidBookingPropagation($internalOrderId);
                 }
             }
 
             $this->db->commit();
 
             // ── F12: Auto-dispatch to SwiftDeliver after successful payment ────────
-            if ($newStatus === 'paid') {
+            if ($newStatus === 'paid' && $referenceType === 'order') {
                 $swiftUrl = rtrim((string)(getenv('SWIFTDELIVER_URL') ?: ''), '/');
                 $swiftSecret = (string)(getenv('SWIFTDELIVER_SECRET') ?: '');
 
@@ -342,12 +302,12 @@ class PaymentService
 
             if ($newStatus === 'failed') {
                 $this->db->prepare("INSERT INTO alerts (type, title, message, ref_type) VALUES ('payment_failure', 'Payment Failed', ?, 'none')")
-                   ->execute(["Payment failed for Order #$internalOrderId."]);
+                   ->execute(["Payment failed for " . ucfirst($referenceType) . " #$internalOrderId."]);
             }
 
             return [
                 'success' => true,
-                'message' => "Order $internalOrderId updated to status: $newStatus",
+                'message' => ucfirst($referenceType) . " $internalOrderId updated to status: $newStatus",
                 'error'   => null,
             ];
         } catch (\Throwable $e) {
@@ -388,6 +348,38 @@ class PaymentService
         return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
+    private function fetchPaymentTargetForUpdate(string $reference): ?array
+    {
+        $orderStmt = $this->db->prepare(
+            'SELECT id, user_id, total, payment_status, payment_method, :reference_type AS reference_type
+             FROM orders
+             WHERE payment_id = :ref
+                OR payment_id LIKE :ref_prefix
+             LIMIT 1 FOR UPDATE'
+        );
+        $orderStmt->execute([
+            ':reference_type' => 'order',
+            ':ref' => $reference,
+            ':ref_prefix' => $reference . '|txn:%',
+        ]);
+        $order = $orderStmt->fetch(PDO::FETCH_ASSOC);
+        if ($order) return $order;
+
+        $bookingStmt = $this->db->prepare(
+            'SELECT id, user_id, total, payment_status, payment_method, :reference_type AS reference_type
+             FROM bookings
+             WHERE payment_id = :ref
+                OR payment_id LIKE :ref_prefix
+             LIMIT 1 FOR UPDATE'
+        );
+        $bookingStmt->execute([
+            ':reference_type' => 'booking',
+            ':ref' => $reference,
+            ':ref_prefix' => $reference . '|txn:%',
+        ]);
+        return $bookingStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
     /**
      * Updates payment-related columns on the orders table.
      * Only updates columns that exist in $meta.
@@ -415,6 +407,93 @@ class PaymentService
         $sql  = 'UPDATE orders SET ' . implode(', ', $setClauses) . ' WHERE id = :id';
         $stmt = $this->db->prepare($sql);
         return $stmt->execute($params);
+    }
+
+    private function updatePaymentTargetMeta(string $referenceType, int $referenceId, array $meta): bool
+    {
+        if ($referenceType === 'order') {
+            return $this->updateOrderPaymentMeta($referenceId, $meta);
+        }
+
+        $allowed = [
+            'payment_status',
+            'payment_method',
+            'payment_id',
+            'status',
+        ];
+
+        $setClauses = [];
+        $params = [':id' => $referenceId];
+
+        foreach ($meta as $col => $val) {
+            if (!in_array($col, $allowed, true)) continue;
+            $setClauses[] = "`$col` = :$col";
+            $params[":$col"] = $val;
+        }
+
+        if (empty($setClauses)) return false;
+
+        $sql = 'UPDATE bookings SET ' . implode(', ', $setClauses) . ' WHERE id = :id';
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute($params);
+    }
+
+    private function ensureSuccessfulTransaction(array $target, mixed $cfAmount, ?string $txnId): void
+    {
+        $txnCheck = $this->db->prepare(
+            'SELECT id
+             FROM transactions
+             WHERE reference_id = :reference_id
+               AND reference_type = :reference_type
+               AND status = :status
+             LIMIT 1
+             FOR UPDATE'
+        );
+        $txnCheck->execute([
+            ':reference_id'   => (int)$target['id'],
+            ':reference_type' => (string)$target['reference_type'],
+            ':status'         => 'success',
+        ]);
+
+        if ($txnCheck->fetch(PDO::FETCH_ASSOC)) {
+            return;
+        }
+
+        $amount = $cfAmount !== null ? round((float)$cfAmount, 2) : round((float)$target['total'], 2);
+        $txnInsert = $this->db->prepare(
+            'INSERT INTO transactions
+                (user_id, reference_id, reference_type, amount, status, gateway, gateway_ref, created_at)
+             VALUES
+                (:user_id, :reference_id, :reference_type, :amount, :status, :gateway, :gateway_ref, NOW())'
+        );
+        $txnInsert->execute([
+            ':user_id'        => (int)$target['user_id'],
+            ':reference_id'   => (int)$target['id'],
+            ':reference_type' => (string)$target['reference_type'],
+            ':amount'         => $amount,
+            ':status'         => 'success',
+            ':gateway'        => 'cashfree',
+            ':gateway_ref'    => $txnId,
+        ]);
+    }
+
+    private function syncPaidBookingPropagation(int $bookingId): void
+    {
+        $bookingStmt = $this->db->prepare('SELECT id, vendor_id, status FROM bookings WHERE id = :id LIMIT 1 FOR UPDATE');
+        $bookingStmt->execute([':id' => $bookingId]);
+        $booking = $bookingStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$booking) {
+            return;
+        }
+
+        $jobStmt = $this->db->prepare('SELECT id, status FROM jobs WHERE booking_id = :booking_id LIMIT 1 FOR UPDATE');
+        $jobStmt->execute([':booking_id' => $bookingId]);
+        $job = $jobStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($job && in_array((string)$job['status'], ['open', 'pending'], true) && !empty($booking['vendor_id'])) {
+            $this->db->prepare("UPDATE jobs SET status = 'assigned', vendor_id = :vendor_id, assignment_lock_time = NULL, updated_at = NOW() WHERE id = :id")
+                ->execute([':vendor_id' => (int)$booking['vendor_id'], ':id' => (int)$job['id']]);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
