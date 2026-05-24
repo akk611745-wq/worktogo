@@ -1563,6 +1563,13 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   box-shadow: 0 8px 18px rgba(17,17,17,0.05);
 }
 .ops-status-pill { cursor: default; user-select: none; }
+.ops-ticker button.ops-status-pill { cursor: pointer; user-select: auto; }
+.ops-status-pill.active {
+  border-color: rgba(255,107,0,0.48);
+  background: linear-gradient(135deg, #fff7ed, #ffffff);
+  box-shadow: 0 10px 24px rgba(255,107,0,0.12);
+}
+.ops-status-pill.active small { color: var(--market-orange); font-weight: 900; }
 .ops-ticker strong { display: block; font-size: 0.76rem; line-height: 1.15; }
 .ops-ticker small { color: var(--market-muted); font-size: 0.68rem; }
 .ops-supply-row {

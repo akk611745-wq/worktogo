@@ -158,10 +158,12 @@ const UI = (() => {
             <button class="support-close" onclick="UI.closeSupport()" aria-label="Close support">×</button>
           </div>
           <div class="support-options">
-            <button onclick="UI.sendSupport('service')"><strong>Service help</strong><span>Questions before booking a local service</span></button>
-            <button onclick="UI.sendSupport('booking')"><strong>Booking help</strong><span>Help with an existing booking ID</span></button>
-            <button onclick="UI.sendSupport('vendor')"><strong>Vendor join</strong><span>For local providers who want to join</span></button>
-            <button onclick="UI.sendSupport('issue')"><strong>Support issue</strong><span>Payment, account, OTP, or other issue</span></button>
+            <button onclick="UI.sendSupport('booking')"><strong>Booking issue</strong><span>Request not saved, wrong details, or confirmation not visible</span></button>
+            <button onclick="UI.sendSupport('payment')"><strong>Payment issue</strong><span>Inspection payment failed, pending, or needs verification</span></button>
+            <button onclick="UI.sendSupport('late')"><strong>Worker late</strong><span>Assigned worker has not arrived or timing changed</span></button>
+            <button onclick="UI.sendSupport('wrong_service')"><strong>Wrong service</strong><span>Category, issue, address, or worker type needs correction</span></button>
+            <button onclick="UI.sendSupport('vendor')"><strong>Vendor join</strong><span>For local workers or service businesses joining WorkToGo</span></button>
+            <button onclick="UI.sendSupport('support')"><strong>Support help</strong><span>OTP, account, or general operational help</span></button>
           </div>
         </div>`;
       overlay.addEventListener("click", e => { if (e.target === overlay) closeSupport(); });
@@ -181,9 +183,13 @@ const UI = (() => {
     const context = directContext || _safeJSON(overlay?.dataset.context) || {};
     const labels = {
       service: "I need help choosing or booking a local service.",
-      booking: `I need help with my booking${context.bookingId ? ` ID ${context.bookingId}` : ""}.`,
+      booking: `I have a booking issue${context.bookingId ? ` with ID ${context.bookingId}` : ""}. Please check request status/details.`,
+      payment: `I have a payment issue${context.bookingId ? ` for booking ID ${context.bookingId}` : ""}. Please verify inspection/payment status.`,
+      late: `The worker is late${context.bookingId ? ` for booking ID ${context.bookingId}` : ""}. Please help with timing confirmation.`,
+      wrong_service: `My service request needs correction${context.bookingId ? ` for booking ID ${context.bookingId}` : ""}. Please update category/service/address details.`,
       vendor: "I want to join WorkToGo as a local service partner.",
-      issue: "I need support with my WorkToGo account, OTP, payment, or service issue.",
+      support: "I need WorkToGo support with OTP, account, booking, or service coordination.",
+      issue: "I need WorkToGo support with OTP, account, booking, or service coordination.",
     };
     const category = context.category ? ` Category: ${context.category}.` : "";
     const service = context.service ? ` Service: ${context.service}.` : "";
