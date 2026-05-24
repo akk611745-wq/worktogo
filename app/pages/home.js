@@ -590,6 +590,7 @@ window.HomeModals = (() => {
       }
       closeBooking();
       _clearPendingBookingForm();
+      _clearPendingBookingIntent();
       UI.toast(bookingMode === "inspection" ? "Inspection booked. Diagnosis visit is being confirmed." : bookingMode === "direct_vendor" ? "Worker request sent for confirmation." : "Free booking opened worker matching.", "success");
       setTimeout(() => ROUTER.go("bookings"), 800);
     } else {
@@ -1300,6 +1301,7 @@ function _pendingBookingForm() {
 
 function _persistPendingBookingForm() {
   try {
+    if (!document.getElementById("booking-service-context")) return;
     sessionStorage.setItem("wtg_pending_booking_form", JSON.stringify({
       booking_mode: document.getElementById("booking-mode")?.value || "",
       service_context: document.getElementById("booking-service-context")?.value?.trim() || "",
@@ -1315,6 +1317,13 @@ function _persistPendingBookingForm() {
 
 function _clearPendingBookingForm() {
   try { sessionStorage.removeItem("wtg_pending_booking_form"); } catch {}
+}
+
+function _clearPendingBookingIntent() {
+  try {
+    sessionStorage.removeItem("wtg_pending_booking");
+    sessionStorage.removeItem("wtg_resume_booking_once");
+  } catch {}
 }
 
 function _friendlyServiceError(error = "") {
@@ -1337,10 +1346,11 @@ function _resumePendingBooking() {
   try {
     const raw = sessionStorage.getItem("wtg_pending_booking");
     if (!raw) return;
+    if (sessionStorage.getItem("wtg_resume_booking_once") !== "1") return;
     const pending = JSON.parse(raw);
-    sessionStorage.removeItem("wtg_pending_booking");
     if (!pending?.service || Date.now() - Number(pending.ts || 0) > 30 * 60 * 1000) return;
     if (pending.form) sessionStorage.setItem("wtg_pending_booking_form", JSON.stringify(pending.form));
+    if (pending.form?.locality) _activeLocalityFilter = pending.form.locality;
     if (pending.category) {
       _activeCategory = pending.category;
       _renderCategoryChips();
@@ -1350,7 +1360,10 @@ function _resumePendingBooking() {
       _syncOperatingMode();
     }
     const current = pending.service.id ? _allServices.find(s => String(s.id) === String(pending.service.id)) : null;
-    setTimeout(() => HomeModals.openBooking(current || pending.service), 350);
+    setTimeout(() => {
+      try { sessionStorage.removeItem("wtg_resume_booking_once"); } catch {}
+      HomeModals.openBooking(current || pending.service);
+    }, 350);
   } catch {}
 }
 

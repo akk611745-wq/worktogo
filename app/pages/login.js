@@ -4,6 +4,7 @@
  */
 
 export async function render(container) {
+  const serviceOnly = Boolean(CONFIG.FEATURES?.SERVICE_ONLY_MODE);
   container.innerHTML = `
     <div class="login-page">
       <div class="login-glow"></div>
@@ -25,7 +26,7 @@ export async function render(container) {
           <button id="tab-phone" class="login-tab active" type="button" role="tab" aria-selected="true" onclick="LoginPage.switchAuthTab('phone')">
             Mobile OTP
           </button>
-          <button id="tab-email" class="login-tab" type="button" role="tab" aria-selected="false" onclick="LoginPage.switchAuthTab('email')">
+          <button id="tab-email" class="login-tab ${serviceOnly ? "feature-hidden" : ""}" type="button" role="tab" aria-selected="false" onclick="LoginPage.switchAuthTab('email')">
             Email
           </button>
         </div>
@@ -56,7 +57,7 @@ export async function render(container) {
           </div>
         </div>
 
-        <div id="step-email" class="login-step">
+        <div id="step-email" class="login-step ${serviceOnly ? "feature-hidden" : ""}">
           <h2>Login with email</h2>
           <p class="step-hint">Email login is secondary. Mobile OTP is recommended for faster support.</p>
           <div class="auth-field">
@@ -81,7 +82,7 @@ export async function render(container) {
           </button>
         </div>
 
-        <div id="step-register" class="login-step">
+        <div id="step-register" class="login-step ${serviceOnly ? "feature-hidden" : ""}">
           <h2>Create account</h2>
           <p class="step-hint">Enter your details to register</p>
           <div class="auth-field">
@@ -221,6 +222,10 @@ window.LoginPage = (() => {
   }
 
   function switchAuthTab(tab) {
+    if (tab === "email" && CONFIG.FEATURES?.SERVICE_ONLY_MODE) {
+      UI.toast("Use Mobile OTP during the Haldwani service pilot.", "info");
+      return;
+    }
     const showEmail = tab === "email";
 
     document.getElementById("tab-phone")?.classList.toggle("active", !showEmail);
@@ -238,6 +243,10 @@ window.LoginPage = (() => {
   }
 
   function showRegister() {
+    if (CONFIG.FEATURES?.SERVICE_ONLY_MODE) {
+      UI.toast("Use Mobile OTP during the Haldwani service pilot.", "info");
+      return;
+    }
     document.getElementById("step-email")?.classList.remove("active");
     document.getElementById("step-register")?.classList.add("active");
     document.getElementById("inp-reg-name")?.focus();
@@ -279,7 +288,8 @@ window.LoginPage = (() => {
   }
 
   function redirectAfterLogin(user) {
-    ROUTER.go('home');
+    if (AUTH.resolvePostLogin) AUTH.resolvePostLogin();
+    else ROUTER.go('home');
   }
 
   async function emailLogin() {

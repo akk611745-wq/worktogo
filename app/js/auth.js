@@ -62,10 +62,42 @@ const AUTH = (() => {
 
   function requireAuth() {
     if (!isLoggedIn()) {
+      try {
+        const route = (location.hash || "").replace(/^#/, "") || "home";
+        if (route && route !== "login" && route !== "home") sessionStorage.setItem("wtg_post_login_route", route);
+      } catch {}
       ROUTER.go("login");
       return false;
     }
     return true;
+  }
+
+  function resolvePostLogin() {
+    let pendingBooking = null;
+    let route = "";
+    let homeState = null;
+    try { pendingBooking = sessionStorage.getItem("wtg_pending_booking"); } catch {}
+    try { route = sessionStorage.getItem("wtg_post_login_route") || ""; } catch {}
+    try { homeState = sessionStorage.getItem("wtg_home_state"); } catch {}
+
+    if (pendingBooking) {
+      try { sessionStorage.setItem("wtg_resume_booking_once", "1"); } catch {}
+      ROUTER.go("home", true);
+      return;
+    }
+
+    if (route && route !== "login") {
+      try { sessionStorage.removeItem("wtg_post_login_route"); } catch {}
+      ROUTER.go(route, true);
+      return;
+    }
+
+    if (homeState) {
+      ROUTER.go("home", true);
+      return;
+    }
+
+    ROUTER.go("home", true);
   }
 
   // ── OTP Login Flow ─────────────────────────────────────────────────────
@@ -104,6 +136,6 @@ const AUTH = (() => {
   return {
     sendOtp, verifyAndLogin,
     emailLogin, emailRegister, googleLogin,
-    logout, getUser, getToken, isLoggedIn, requireAuth, getRole, hasRole,
+    logout, getUser, getToken, isLoggedIn, requireAuth, resolvePostLogin, getRole, hasRole,
   };
 })();

@@ -77,13 +77,15 @@ const ROUTER = (() => {
 
     // Auth guard
     if (!PUBLIC_PAGES.includes(target) && !AUTH.isLoggedIn()) {
+      try { sessionStorage.setItem("wtg_post_login_route", target); } catch {}
       _isRendering = false;
       go("login", true);
       return;
     }
     if (target === "login" && AUTH.isLoggedIn()) {
       _isRendering = false;
-      go("home", true);
+      if (AUTH.resolvePostLogin) AUTH.resolvePostLogin();
+      else go("home", true);
       return;
     }
 
