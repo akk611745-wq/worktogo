@@ -46,6 +46,19 @@ const UI = (() => {
     delivered:   { label: "Delivered",   cls: "status-success"    },
     scheduled:   { label: "Scheduled",   cls: "status-confirmed"  },
     ongoing:     { label: "In Progress", cls: "status-processing" },
+    payment_pending:       { label: "Payment pending",       cls: "status-pending"    },
+    inspection_requested:  { label: "Inspection requested",  cls: "status-pending"    },
+    inspection_assigned:   { label: "Inspection assigned",   cls: "status-confirmed"  },
+    inspection_scheduled:  { label: "Inspection scheduled",  cls: "status-confirmed"  },
+    inspection_completed:  { label: "Inspection completed",  cls: "status-success"    },
+    request_received:      { label: "Request received",      cls: "status-pending"    },
+    nearby_matching:       { label: "Matching nearby",       cls: "status-processing" },
+    worker_contacting:     { label: "Contacting worker",     cls: "status-processing" },
+    worker_assigned:       { label: "Worker assigned",       cls: "status-confirmed"  },
+    worker_requested:      { label: "Worker requested",      cls: "status-pending"    },
+    awaiting_response:     { label: "Awaiting response",     cls: "status-processing" },
+    worker_confirmed:      { label: "Worker confirmed",      cls: "status-confirmed"  },
+    service_in_progress:   { label: "Service in progress",   cls: "status-processing" },
   };
 
   function statusBadge(status = "") {
@@ -193,7 +206,9 @@ const UI = (() => {
     };
     const category = context.category ? ` Category: ${context.category}.` : "";
     const service = context.service ? ` Service: ${context.service}.` : "";
-    const message = `Hi WorkToGo, ${labels[intent] || labels.service}${category}${service}`;
+    const requestType = context.requestType ? ` Request type: ${context.requestType}.` : "";
+    const currentState = context.currentState ? ` Current state: ${context.currentState}.` : "";
+    const message = `Hi WorkToGo, ${labels[intent] || labels.service}${category}${service}${requestType}${currentState}`;
     const base = CONFIG.SERVICE_ONLY?.WHATSAPP_URL || "";
     closeSupport();
     if (base) {

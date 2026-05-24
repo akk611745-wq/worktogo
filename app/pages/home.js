@@ -282,18 +282,19 @@ export async function render(container) {
     },
     bookCategoryCta(slug = "", mode = "") {
       const meta = _categoryMeta(slug || _activeCategory);
+      const source = mode === "inspection" ? "hero" : "category";
       if (!(slug || _activeCategory)) {
         const inspection = _allServices.find(s => _matchesCategory(s, "inspection"))
           || _allServices.find(s => _categoryMeta(s.category_slug || s.category || "").inspection);
         if (inspection?.id) {
-          HomeModals.openBooking({ ...inspection, booking_mode: mode || "inspection", icon: inspection.icon || "🛡️" });
+          HomeModals.openBooking({ ...inspection, booking_mode: mode || "inspection", request_source: source, icon: inspection.icon || "🛡️" });
           return;
         }
       }
       const service = _allServices.find(s => _matchesCategory(s, meta.slug) && (!_activeChipFilter || _searchText(s).includes(_activeChipFilter)))
         || _allServices.find(s => _matchesCategory(s, meta.slug));
       if (service?.id) {
-        HomeModals.openBooking({ ...service, booking_mode: mode || service.booking_mode, category_slug: service.category_slug || meta.slug, icon: service.icon || meta.icon });
+        HomeModals.openBooking({ ...service, booking_mode: mode || service.booking_mode, request_source: source, category_slug: service.category_slug || meta.slug, icon: service.icon || meta.icon });
         return;
       }
       UI.openSupport('selector', { category: meta.label, service: meta.examples?.[0] || meta.label });
@@ -303,7 +304,7 @@ export async function render(container) {
       const match = _allServices.find(s => _matchesCategory(s, meta.slug) && _searchText(s).includes(String(serviceName || "").toLowerCase()))
         || _allServices.find(s => _matchesCategory(s, meta.slug));
       if (match?.id) {
-        HomeModals.openBooking({ ...match, category_slug: match.category_slug || meta.slug, icon: match.icon || meta.icon, quick_service: serviceName });
+        HomeModals.openBooking({ ...match, request_source: "service_chip", category_slug: match.category_slug || meta.slug, icon: match.icon || meta.icon, quick_service: serviceName });
         return;
       }
       _activeChipFilter = String(serviceName || "").trim().toLowerCase();
@@ -445,6 +446,7 @@ window.HomeModals = (() => {
       category_slug: category.slug || _activeCategory || service.category_slug || service.category || "",
       category_label: category.label,
       selected_service: selectedService,
+      request_source: service.request_source || "category",
     };
     const restored = _pendingBookingForm();
     const sameRestoredContext = !restored.service_context || restored.service_context === selectedService;
@@ -560,11 +562,49 @@ window.HomeModals = (() => {
 
     _persistCustomerProfile({ ...(name ? { name } : {}), phone: mobile, locality: area, address });
 
+    const requestType = _requestType(bookingMode);
+    const requestSource = _currentService.request_source || "category";
+    const selectedWorker = bookingMode === "direct_vendor" ? {
+      vendor_id: _currentService.vendor_id || null,
+      vendor_name: _currentService.vendor_name || _currentService.name || "Requested worker",
+    } : null;
+    const operationalPayload = {
+      request_type: requestType,
+      category: category.slug || _activeCategory,
+      category_label: category.label,
+      subservice: serviceContext,
+      locality: area,
+      selected_nearby_area: _activeLocalityFilter || area,
+      full_address: address,
+      customer: {
+        name: name || "WorkToGo Customer",
+        phone: mobileDigits,
+        auth_user_id: AUTH.getUser?.()?.id || null,
+      },
+      booking_mode: bookingMode,
+      booking_mode_label: _bookingModeMeaning(bookingMode),
+      issue_note: notes,
+      preferred_time: new Date(dateVal).toISOString(),
+      request_source: requestSource,
+      selected_worker: selectedWorker,
+      timestamp: new Date().toISOString(),
+      session_context: _sessionContext(),
+      tracking_state: _initialTrackingState(bookingMode),
+    };
+
     const res = await API.createBooking({
         service_id: _currentService.id,
         ...(dateVal ? { scheduled_at: new Date(dateVal).toISOString() } : {}),
         booking_mode: bookingMode,
         lifecycle_type: bookingMode,
+        request_type: requestType,
+        request_source: requestSource,
+        subservice: serviceContext,
+        issue_note: notes,
+        preferred_time: new Date(dateVal).toISOString(),
+        booking_mode_label: _bookingModeMeaning(bookingMode),
+        operational_tracking_state: operationalPayload.tracking_state,
+        operational_request: operationalPayload,
         payment_method: bookingMode === "inspection" ? "online" : "cod",
         expected_payment_amount: bookingMode === "inspection" ? _inspectionPrice(_currentService, category) : 0,
         payment_status: "unpaid",
@@ -574,8 +614,8 @@ window.HomeModals = (() => {
         customer_mobile: mobileDigits,
         customer_locality: area,
         customer_address: address,
-        vendor_id: bookingMode === "direct_vendor" ? (_currentService.vendor_id || null) : null,
-        notes: [`Category: ${category.label}`, serviceContext ? `Selected service: ${serviceContext}` : "", `Booking mode: ${bookingMode}`, bookingMode === "inspection" ? "Routing meaning: Issue unclear, technician diagnosis before final work" : bookingMode === "free_lead" ? "Routing meaning: Clear work, nearby worker matching" : "Routing meaning: Request shown worker via admin confirmation", `Customer: ${name || "Not provided"}`, `Mobile: ${mobile}`, `Area/Landmark: ${area}`, `Address: ${address}`, _activeLocalityFilter ? `Nearby context: ${_activeLocalityFilter}` : "", _activeChipFilter ? `Selected issue: ${_activeChipFilter}` : "", `Issue note: ${notes}`].filter(Boolean).join("\n"),
+        vendor_id: selectedWorker?.vendor_id || null,
+        notes: _adminRequestNotes(operationalPayload),
       }).catch(err => ({ ok: false, error: err?.message || "Network issue while sending booking." }));
 
       if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
@@ -1086,7 +1126,7 @@ function _vendorCardHTML(service, support = false) {
           ${exp ? `<span>${_esc(exp)} exp</span>` : ""}
           ${price ? `<span>${_esc(price)}</span>` : ""}
         </div>
-        <button class="vendor-book-btn" onclick="HomeModals.openBooking(${_jsonAttr({ ...service, category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon })})">Request via WorkToGo</button>
+        <button class="vendor-book-btn" onclick="HomeModals.openBooking(${_jsonAttr({ ...service, request_source: "worker_card", category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon })})">Request via WorkToGo</button>
       </div>
     </article>`;
 }
@@ -1112,7 +1152,7 @@ function _renderInstantSearch() {
     <div class="instant-search-head"><strong>${_esc(meta.label)} near ${_esc(_pilotConfig.city)}</strong><span>matching</span></div>
     <div class="instant-result-list">
       ${(candidates.length ? candidates : _categoryFallbackServices(meta.slug)).slice(0, 3).map(s => `
-        <button onclick="HomePage.closeExploreOverlay(); ${s.id ? `HomeModals.openBooking(${_jsonAttr(s)})` : `UI.openSupport('selector', { category: ${_jsString(meta.label)}, service: ${_jsString(s.name)} })`}">
+        <button onclick="HomePage.closeExploreOverlay(); ${s.id ? `HomeModals.openBooking(${_jsonAttr({ ...s, request_source: "search" })})` : `UI.openSupport('selector', { category: ${_jsString(meta.label)}, service: ${_jsString(s.name)} })`}">
           <span>${s.icon || meta.icon}</span><strong>${_esc(s.name)}</strong>${_servicePriceLabel(s) ? `<small>${_esc(_servicePriceLabel(s))}</small>` : ""}
         </button>
       `).join("")}
@@ -1242,6 +1282,61 @@ function _bookingModeOption(value, label, note, selected, disabled = false, tone
   return `<button type="button" data-mode="${_esc(value)}" class="booking-mode-option booking-mode-${_esc(tone || value)} ${selected === value ? "active" : ""} ${disabled ? "disabled" : ""}" ${disabled ? "disabled aria-disabled=\"true\"" : ""} onclick="HomePage.selectBookingMode?.('${_esc(value)}') || (document.getElementById('booking-mode').value='${_esc(value)}')">
     <strong>${_esc(label)}</strong><small>${_esc(note)}</small>
   </button>`;
+}
+
+function _requestType(mode = "") {
+  if (mode === "inspection") return "inspection";
+  if (mode === "direct_vendor") return "direct_worker";
+  return "free_match";
+}
+
+function _bookingModeMeaning(mode = "") {
+  if (mode === "inspection") return "Inspection: technician checks the issue first, then final work is confirmed";
+  if (mode === "direct_vendor") return "Direct worker request: WorkToGo asks the selected worker and confirms availability";
+  return "Free match: WorkToGo starts nearby worker matching for a clear job";
+}
+
+function _initialTrackingState(mode = "") {
+  if (mode === "inspection") return "payment_pending";
+  if (mode === "direct_vendor") return "worker_requested";
+  return "request_received";
+}
+
+function _sessionContext() {
+  return {
+    home_state: _safeSessionJSON("wtg_home_state"),
+    pending_booking_form: _safeSessionJSON("wtg_pending_booking_form"),
+    active_category: _activeCategory,
+    selected_issue: _activeChipFilter,
+    selected_locality: _activeLocalityFilter,
+    discovery_kind: _activeDiscoveryKind,
+    search_query: _searchQuery,
+  };
+}
+
+function _safeSessionJSON(key) {
+  try { return JSON.parse(sessionStorage.getItem(key) || "{}"); } catch { return {}; }
+}
+
+function _adminRequestNotes(payload = {}) {
+  const worker = payload.selected_worker?.vendor_id ? `${payload.selected_worker.vendor_name || "Selected worker"} (#${payload.selected_worker.vendor_id})` : "Not selected";
+  return [
+    `Request type: ${payload.request_type}`,
+    `Category: ${payload.category_label || payload.category}`,
+    `Subservice: ${payload.subservice || "Not specified"}`,
+    `Booking mode: ${payload.booking_mode}`,
+    `Booking mode meaning: ${payload.booking_mode_label}`,
+    `Tracking state: ${payload.tracking_state}`,
+    `Request source: ${payload.request_source}`,
+    `Customer: ${payload.customer?.name || "WorkToGo Customer"}`,
+    `Mobile: ${payload.customer?.phone || ""}`,
+    `Locality: ${payload.locality || ""}`,
+    `Selected nearby area: ${payload.selected_nearby_area || ""}`,
+    `Address: ${payload.full_address || ""}`,
+    `Preferred time: ${payload.preferred_time || ""}`,
+    `Selected worker: ${worker}`,
+    `Issue note: ${payload.issue_note || ""}`,
+  ].filter(Boolean).join("\n");
 }
 
 function _canonicalBookingMode(value, service, category) {
