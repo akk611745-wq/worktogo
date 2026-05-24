@@ -161,6 +161,7 @@ export async function render(container) {
       _closeExploreOverlay();
     },
     setCategory(slug = "") {
+      HomeModals.discardBookingDraft?.("category_change");
       _activeCategory = slug;
       _activeChipFilter = "";
       _searchQuery = "";
@@ -181,6 +182,7 @@ export async function render(container) {
       _persistHomeState();
     },
     filterEcosystem(term = "") {
+      HomeModals.discardBookingDraft?.("discovery_change");
       _activeChipFilter = String(term || "").trim().toLowerCase();
       _activeLocalityFilter = "";
       _searchQuery = "";
@@ -270,6 +272,7 @@ export async function render(container) {
       _persistHomeState();
     },
     clearSearch() {
+      clearTimeout(_searchTimer);
       const inp = document.getElementById("service-search");
       if (inp) inp.value = "";
       _searchQuery = "";
@@ -457,7 +460,7 @@ window.HomeModals = (() => {
       request_source: service.request_source || "category",
     };
     const restored = _pendingBookingForm();
-    const sameRestoredContext = !restored.service_context || restored.service_context === selectedService;
+    const sameRestoredContext = _sameBookingContext(restored, selectedService, category);
     const defaultMode = _canonicalBookingMode(service.booking_mode || (sameRestoredContext ? restored.booking_mode : "") || (service.vendor_id ? "direct_vendor" : "free_lead"), _currentService, category);
     const inspectionPrice = _inspectionPrice(_currentService, category);
     document.getElementById("booking-modal-title").textContent = defaultMode === "inspection" ? `Inspection for ${category.label}` : `Book ${category.label}`;
@@ -518,6 +521,7 @@ window.HomeModals = (() => {
       </div>
       <input type="hidden" id="booking-mode" value="${_esc(defaultMode)}" />
       <input type="hidden" id="booking-service-context" value="${_esc(selectedService)}" />
+      <input type="hidden" id="booking-category-context" value="${_esc(category.slug || _activeCategory || "")}" />
       <p class="service-note">After submission, admin sees work, area, urgency, mode and service context for assignment.</p>
     `;
     if (token !== _bookingOpenToken) return;
@@ -663,6 +667,19 @@ window.HomeModals = (() => {
     _unlockModalBody("booking");
   }
 
+  function discardBookingDraft(reason = "context_change") {
+    const modal = document.getElementById("booking-modal");
+    if (!modal || modal.classList.contains("hidden")) return;
+    _bookingOpenToken += 1;
+    _isBookingSubmitting = false;
+    modal.classList.add("hidden");
+    _currentService = null;
+    const btn = document.getElementById("btn-confirm-booking");
+    if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
+    if (reason === "category_change" || reason === "discovery_change") _clearPendingBookingForm();
+    _unlockModalBody("booking");
+  }
+
   function closeOnOverlay(e) {
     if (e.target !== e.currentTarget) return;
     if (e.currentTarget?.id === "booking-modal") closeBooking();
@@ -700,7 +717,7 @@ window.HomeModals = (() => {
     delete document.body.dataset.modalOpen;
   }
 
-  return { openOrder, changeQty, confirmOrder, openBooking, confirmBooking, close, closeBooking, closeOnOverlay };
+  return { openOrder, changeQty, confirmOrder, openBooking, confirmBooking, close, closeBooking, discardBookingDraft, closeOnOverlay };
 })();
 
 async function _handleInspectionCheckout(booking, bookingMode) {
@@ -1406,10 +1423,20 @@ function _pendingBookingForm() {
   try { return JSON.parse(sessionStorage.getItem("wtg_pending_booking_form") || "{}"); } catch { return {}; }
 }
 
+function _sameBookingContext(restored = {}, selectedService = "", category = {}) {
+  if (!restored.service_context && !restored.category) return true;
+  const restoredCategory = _slug(restored.category || "");
+  const currentCategory = _slug(category.slug || _activeCategory || "");
+  const sameService = !restored.service_context || restored.service_context === selectedService;
+  const sameCategory = !restoredCategory || restoredCategory === currentCategory;
+  return sameService && sameCategory;
+}
+
 function _persistPendingBookingForm() {
   try {
     if (!document.getElementById("booking-service-context")) return;
     sessionStorage.setItem("wtg_pending_booking_form", JSON.stringify({
+      category: document.getElementById("booking-category-context")?.value?.trim() || "",
       booking_mode: document.getElementById("booking-mode")?.value || "",
       service_context: document.getElementById("booking-service-context")?.value?.trim() || "",
       scheduled_at: document.getElementById("booking-date")?.value || "",
@@ -1444,7 +1471,7 @@ function _savePendingBookingIntent(service, form = {}) {
   if (!service) return;
   try {
     const category = service.category_slug || service.category || _activeCategory || "";
-    sessionStorage.setItem("wtg_pending_booking", JSON.stringify({ service: { ...service, category_slug: category }, category, form, ts: Date.now() }));
+    sessionStorage.setItem("wtg_pending_booking", JSON.stringify({ service: { ...service, category_slug: category }, category, form, ts: Date.now(), token: _bookingOpenToken }));
   } catch {}
 }
 

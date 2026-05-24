@@ -37,6 +37,7 @@ const ROUTER = (() => {
   let _currentPage = null;
   let _pollTimer   = null;
   let _isRendering = false; // prevent concurrent renders
+  let _queuedPage  = null;
 
   // ── Navigate ─────────────────────────────────────────────────────────
 
@@ -63,7 +64,10 @@ const ROUTER = (() => {
 
   async function _render(page) {
     // Prevent double renders (e.g. rapid clicks)
-    if (_isRendering) return;
+    if (_isRendering) {
+      _queuedPage = page;
+      return;
+    }
     _isRendering = true;
 
     _stopPolling();
@@ -98,6 +102,7 @@ const ROUTER = (() => {
 
     _currentPage = target;
     const app = document.getElementById("app");
+    _cleanupTransientUi();
     app.innerHTML = `<div class="page-loading"><div class="spinner"></div></div>`;
 
     try {
@@ -118,7 +123,19 @@ const ROUTER = (() => {
         </div>`;
     } finally {
       _isRendering = false;
+      if (_queuedPage && _queuedPage !== _currentPage) {
+        const next = _queuedPage;
+        _queuedPage = null;
+        _render(next);
+      } else {
+        _queuedPage = null;
+      }
     }
+  }
+
+  function _cleanupTransientUi() {
+    document.body.classList.remove("modal-open", "explore-open");
+    delete document.body.dataset.modalOpen;
   }
 
   function _isHiddenByServiceOnly(page) {
