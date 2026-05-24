@@ -57,7 +57,7 @@ window.BookingsPage = (() => {
     if (!res.ok) {
       if (!silent) {
         const el = document.getElementById("bookings-list");
-        if (el) el.innerHTML = UI.errorState(res.error || "Failed to load bookings.", "BookingsPage._load");
+        if (el) el.innerHTML = _bookingRecoveryState(res.error);
       }
       return;
     }
@@ -79,11 +79,7 @@ window.BookingsPage = (() => {
     }
 
     if (!list.length) {
-      el.innerHTML = UI.emptyState(
-        "📅",
-        _filter === "all" ? "No bookings yet" : "Nothing here",
-        _filter === "all" ? "Book a service from Home" : "No bookings in this category"
-      );
+      el.innerHTML = _bookingEmptyState(_filter);
       return;
     }
 
@@ -142,6 +138,34 @@ window.BookingsPage = (() => {
 
   function openSupport(id) {
     UI.openSupport("selector", { bookingId: id });
+  }
+
+  function _bookingEmptyState(filter) {
+    const title = filter === "all" ? "Request tracking ready" : "No matching requests in this lane";
+    const text = filter === "all"
+      ? "Book a service to start worker confirmation. Inspection and free booking updates appear here."
+      : "When a request reaches this stage, WorkToGo will show its confirmation updates here.";
+    return `<div class="empty-state operational-empty-state">
+      <div class="empty-icon">📍</div>
+      <h3>${_esc(title)}</h3>
+      <p>${_esc(text)}</p>
+      <button class="btn-retry" onclick="ROUTER.go('home')">Open services</button>
+    </div>`;
+  }
+
+  function _bookingRecoveryState(error = "") {
+    return `<div class="empty-state operational-empty-state">
+      <div class="empty-icon">🛠️</div>
+      <h3>Booking tracking is active</h3>
+      <p>${_esc(_friendlyBookingMessage(error))}</p>
+      <button class="btn-retry" onclick="BookingsPage._load()">Refresh tracking</button>
+    </div>`;
+  }
+
+  function _friendlyBookingMessage(error = "") {
+    const text = String(error || "").toLowerCase();
+    if (text.includes("network") || text.includes("failed")) return "Your requests remain in WorkToGo coordination. Refresh when your connection is stable.";
+    return "Requests are tracked after booking confirmation. Support can help with any booking ID.";
   }
 
   function _esc(str) {

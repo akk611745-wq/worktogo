@@ -442,9 +442,9 @@ window.HomeModals = (() => {
       </div>
       ${_premiumInspectionPanel(category)}
       <div class="booking-mode-picker" role="radiogroup" aria-label="Booking mode">
-        ${_bookingModeOption("inspection", `${UI.formatCurrency(inspectionPrice)} inspection`, "Agent visit · diagnosis · worker assignment", defaultMode, false, "premium")}
-        ${_bookingModeOption("free_lead", "Free booking", "Create request · WorkToGo assigns nearby worker", defaultMode, false, "default")}
-        ${_bookingModeOption("direct_vendor", "Request this worker", "Available only when worker details are confirmed", defaultMode, !service.vendor_id, "direct")}
+        ${_bookingModeOption("inspection", `${UI.formatCurrency(inspectionPrice)} inspection`, "Use when problem needs diagnosis, scope, estimate, or right-worker selection", defaultMode, false, "premium")}
+        ${_bookingModeOption("free_lead", "Free booking", "Use when job is clear. WorkToGo confirms a nearby worker and timing", defaultMode, false, "default")}
+        ${_bookingModeOption("direct_vendor", "Request this worker", "Only when this worker profile is already confirmed", defaultMode, !service.vendor_id, "direct")}
       </div>
       <div class="booking-context-strip">
         <span>${category.icon}</span>
@@ -452,9 +452,9 @@ window.HomeModals = (() => {
         <small>WorkToGo confirms worker and timing</small>
       </div>
       <div class="trust-panel booking-trust-panel fast-booking-trust">
-        <span>✓ Nearby worker assignment after confirmation</span>
-        <span>✓ WorkToGo confirms worker and timing</span>
-        <span>✓ Pay after service for normal jobs</span>
+        <span>✓ Inspection = expert diagnosis first</span>
+        <span>✓ Free booking = nearby worker confirmation</span>
+        <span>✓ Dealer/material support only after scope is clear</span>
       </div>
       <div class="modal-field">
         <label for="booking-name">Name</label>
@@ -484,7 +484,7 @@ window.HomeModals = (() => {
         <textarea id="booking-notes" class="modal-textarea" placeholder="Example: ${_esc(_activeChipFilter || category.examples?.[0] || "problem details")}, call before coming…" rows="2" oninput="HomePage.persistPendingBookingForm?.()">${_esc(restored.notes || "")}</textarea>
       </div>
       <input type="hidden" id="booking-mode" value="${_esc(defaultMode)}" />
-      <p class="service-note">After submission you can track status in Bookings. Inspection is confirmed after payment success.</p>
+      <p class="service-note">After submission you can track status in Bookings. Inspection starts after payment; free booking enters worker matching.</p>
     `;
     document.getElementById("booking-modal").classList.remove("hidden");
   }
@@ -549,10 +549,10 @@ window.HomeModals = (() => {
       if (!paymentOk) return;
       closeBooking();
       _clearPendingBookingForm();
-      UI.toast(bookingMode === "inspection" ? "Inspection payment completed. Booking confirmation is updating." : bookingMode === "direct_vendor" ? "Worker request sent." : "Free booking request sent.", "success");
+      UI.toast(bookingMode === "inspection" ? "Inspection booked. Diagnosis visit is being confirmed." : bookingMode === "direct_vendor" ? "Worker request sent for confirmation." : "Free booking opened worker matching.", "success");
       setTimeout(() => ROUTER.go("bookings"), 800);
     } else {
-      UI.toast(res.error || "Failed to book service. Try again.", "error");
+      UI.toast(res.error || "Booking request is in coordination. Please use support if confirmation does not appear.", "error");
     }
   }
 
@@ -624,10 +624,10 @@ async function _handleInspectionCheckout(booking, bookingMode) {
       window.location.href = redirectUrl;
       return false;
     }
-    UI.toast("Payment checkout is unavailable. Your inspection booking remains pending.", "error", 5000);
+    UI.toast("Inspection booking is saved. Payment confirmation can be completed from Bookings/support.", "info", 5000);
     return false;
   } catch (err) {
-    UI.toast("Payment was cancelled or failed. Your inspection booking remains pending.", "error", 5000);
+    UI.toast("Inspection booking remains saved for payment verification.", "info", 5000);
     return false;
   }
 }
@@ -667,15 +667,14 @@ function _renderServices(res) {
   if (title) title.textContent = _activeCategory ? `${_categoryMeta(_activeCategory).label} workers near you` : "Workers near you";
 
   if (!res.ok) {
-    const safeMessage = _friendlyServiceError(res.error);
     el.classList.remove("fallback-services-grid");
     el.innerHTML = `
       <div class="fallback-help-card service-recovery-card">
-        <h3>Services are temporarily slow to load</h3>
-        <p>${_esc(safeMessage)} You can still request help and WorkToGo will guide the booking.</p>
+        <h3>Nearby worker confirmation active</h3>
+        <p>${_esc(_friendlyServiceError(res.error))} Requests are still routed through WorkToGo confirmation.</p>
         <div class="recovery-actions">
-          <button class="btn-ghost-inline" onclick="HomeSections.reloadServices()">Retry</button>
-          <button class="btn-ghost-inline" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })">WhatsApp support</button>
+          <button class="btn-ghost-inline" onclick="HomePage.bookCategoryCta('', 'free_lead')">Open worker matching</button>
+          <button class="btn-ghost-inline" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })">Operations support</button>
         </div>
       </div>`;
     return;
@@ -700,8 +699,8 @@ function _renderServices(res) {
       el.classList.remove("fallback-services-grid");
       el.innerHTML = `
       <div class="fallback-help-card">
-        <h3>Workers available after confirmation</h3>
-        <p>${_esc(_searchQuery || _activeChipFilter ? "No exact match found yet. WorkToGo can still route your request." : "Create a booking request and WorkToGo will confirm a nearby worker.")}</p>
+        <h3>${_esc(_activeCategory ? `${_categoryMeta(_activeCategory).label} worker matching ready` : "Nearby worker matching ready")}</h3>
+        <p>${_esc(_searchQuery || _activeChipFilter ? "Exact live card is not shown yet. Submit the request and WorkToGo will route it after confirmation." : "Booking opens matching with nearby workers after confirmation.")}</p>
         <button class="btn-ghost-inline" onclick="HomePage.bookCategoryCta('', 'free_lead')">Free booking</button>
       </div>`;
       return;
@@ -782,7 +781,7 @@ function _renderProducts(res) {
   const list = Array.isArray(res.data) ? res.data : (res.data?.products || res.data?.data || []);
 
   if (!list.length) {
-    el.innerHTML = UI.emptyState("📦", "No products yet", "Check back soon");
+    el.innerHTML = UI.emptyState("📦", "Material support is secondary", "Dealer/material help appears after service scope is confirmed");
     return;
   }
 
@@ -864,17 +863,17 @@ function _categoryEcosystemHTML(slug = "") {
   const brands = meta.brands || CATEGORY_META.all.brands || [];
   const locality = meta.locality || CATEGORY_META.all.locality || [];
   return `
-    <details class="ecosystem-card ecosystem-world">
+    <details class="ecosystem-card ecosystem-world" ${slug ? "open" : ""}>
       <summary class="ecosystem-summary">
         <span class="ecosystem-icon">${meta.icon}</span>
-        <strong>${_esc(slug ? `${meta.label} dealer support` : "Nearby dealer support")}</strong>
-        <small>${_esc((dealers[0] || "Local dealer") + " · call/map support after worker scope")}</small>
+        <strong>${_esc(slug ? `${meta.label} material support` : "Material support after scope")}</strong>
+        <small>${_esc("Dealer help stays separate from worker execution")}</small>
       </summary>
       <div class="ecosystem-banner">
         <span class="ecosystem-icon">${meta.icon}</span>
         <div>
-          <h3>${_esc(contextLabel)} materials near ${_esc(_pilotConfig.city)}</h3>
-          <p>${_esc("Nearby dealer, address and call/map support stays ready after the worker confirms scope.")}</p>
+          <h3>${_esc(contextLabel)} material lane near ${_esc(_pilotConfig.city)}</h3>
+          <p>${_esc("Worker handles service execution. Dealer support begins only after issue, quantity and scope are confirmed.")}</p>
         </div>
       </div>
       <div class="ecosystem-visual-rail">
@@ -884,8 +883,8 @@ function _categoryEcosystemHTML(slug = "") {
         ${tags.slice(0, 8).map(x => `<button class="${_activeChipFilter === String(x).toLowerCase() ? "active" : ""}" onclick="HomePage.filterEcosystem('${_esc(x)}')">${_esc(x)}</button>`).join("")}
       </div>
       <div class="ecosystem-local-grid">
-        <button type="button" onclick="HomePage.ecosystemDiscover('materials', '${_esc(materials[0] || meta.label)}')"><strong>${_esc(meta.label)} materials</strong><span>${_esc(materials.slice(0, 3).join(" · "))}</span></button>
-        <button type="button" onclick="HomePage.ecosystemDiscover('dealers', '${_esc(dealers[0] || meta.label)}')"><strong>Nearby dealer</strong><span>${_esc(dealers[0] || "Address + call support")}</span></button>
+        <button type="button" onclick="HomePage.ecosystemDiscover('materials', '${_esc(materials[0] || meta.label)}')"><strong>Materials after scope</strong><span>${_esc(materials.slice(0, 3).join(" · ") || "Parts support")}</span></button>
+        <button type="button" onclick="HomePage.ecosystemDiscover('dealers', '${_esc(dealers[0] || meta.label)}')"><strong>Dealer lane</strong><span>${_esc(dealers[0] || "Address + call support after worker check")}</span></button>
       </div>
     </details>`;
 }
@@ -898,6 +897,7 @@ function _operatingFeedHTML(slug = "") {
     <div class="operating-head">
       <div>
         <h3>${_esc(slug ? `${meta.label} active nearby` : `${_pilotConfig.city} is active now`)}</h3>
+        <p>${_esc(slug ? `${meta.label} requests, worker confirmation and material support are handled as one local lane.` : "Local requests move through worker confirmation, scope clarity and support.")}</p>
       </div>
     </div>
     <div class="ops-ticker">
@@ -908,13 +908,16 @@ function _operatingFeedHTML(slug = "") {
 function _heroHTML(slug = "") {
   const meta = _categoryMeta(slug);
   const price = UI.formatCurrency(_inspectionPrice(null, meta));
-  const primaryText = `${price} Premium Inspection`;
+  const primaryText = `${price} Inspection`;
   return `
     <div class="service-hero-copy">
-      <p class="service-hero-kicker">${_esc(slug ? `${meta.label} ecosystem` : `${_pilotConfig.city} · workers near you`)}</p>
+      <p class="service-hero-kicker">${_esc(slug ? `${meta.label} operating lane` : `${_pilotConfig.city} local operating network`)}</p>
       <h1>${_esc(meta.hero || _pilotConfig.hero_title)}</h1>
       <p>${_esc(meta.subtitle || _pilotConfig.hero_subtitle)}</p>
-      <div class="inspection-line"><strong>${_esc(price)} Premium Inspection</strong><span>${_esc(slug ? `${meta.label} diagnosis · scope clarity · right worker` : "Agent visit · diagnosis · worker assignment")}</span></div>
+      <div class="booking-distinction-grid">
+        <div><strong>Inspection</strong><span>${_esc(`${price} · expert diagnosis first`)}</span></div>
+        <div><strong>Free booking</strong><span>Nearby worker confirmation</span></div>
+      </div>
       <div class="hero-cta-row">
         <button class="btn-primary marketplace-cta hero-primary" id="hero-category-cta" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'inspection')">${_esc(primaryText)}</button>
         <button class="hero-secondary" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Free booking</button>
@@ -927,7 +930,7 @@ function _serviceCardsHTML(slug = "") {
   const cards = (meta.examples?.length ? meta.examples : CATEGORY_META.all.examples).slice(0, 4);
   return `
     <div class="quick-service-rail">
-      ${cards.map(name => `<button class="quick-service-card" onclick="HomePage.bookQuickService('${_esc(meta.slug || "")}', '${_esc(name)}')"><span>${meta.icon}</span><strong>${_esc(name)}</strong><small>${_esc(slug ? "local booking" : "quick request")}</small></button>`).join("")}
+      ${cards.map(name => `<button class="quick-service-card" onclick="HomePage.bookQuickService('${_esc(meta.slug || "")}', '${_esc(name)}')"><span>${meta.icon}</span><strong>${_esc(name)}</strong><small>${_esc(slug ? `${meta.label} lane` : "worker match")}</small></button>`).join("")}
     </div>`;
 }
 
@@ -935,7 +938,7 @@ function _freeBookingStripHTML(slug = "") {
   const meta = _categoryMeta(slug);
   return `<div>
     <strong>${_esc(slug ? `Free ${meta.label} booking` : "Free booking")}</strong>
-    <span>${_esc(slug ? `Send a ${meta.label.toLowerCase()} request. WorkToGo confirms a nearby worker before visit.` : "Create a request. WorkToGo routes it to a nearby worker.")}</span>
+    <span>${_esc(slug ? `For clear ${meta.label.toLowerCase()} jobs: submit request, then WorkToGo confirms worker and time.` : "For clear jobs: submit request, then WorkToGo confirms nearby worker and time.")}</span>
   </div>
   <button onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Request</button>`;
 }
@@ -1026,15 +1029,21 @@ function _renderInstantSearch() {
   const panel = document.getElementById("search-results-panel");
   if (!panel) return;
   if (!_searchQuery) {
-    panel.classList.add("hidden");
-    panel.innerHTML = "";
+    const meta = _categoryMeta(_activeCategory);
+    const suggestions = _searchSuggestionItems(meta).slice(0, 6);
+    panel.classList.remove("hidden");
+    panel.innerHTML = `
+      <div class="instant-search-head"><strong>Search the local operating network</strong><span>ready</span></div>
+      <div class="search-placeholder-grid">
+        ${suggestions.map(item => `<button onclick="HomePage.searchServices('${_esc(item.query)}')"><span>${_esc(item.icon || meta.icon)}</span><strong>${_esc(item.label)}</strong><small>${_esc(item.note)}</small></button>`).join("")}
+      </div>`;
     return;
   }
   const meta = _inferSearchMeta(_searchQuery);
   const candidates = (_searchRemoteServices.length ? _searchRemoteServices : _allServices).filter(s => _searchText(s).includes(_searchQuery)).slice(0, 3);
   panel.classList.remove("hidden");
   panel.innerHTML = `
-    <div class="instant-search-head"><strong>${_esc(meta.label)} near ${_esc(_pilotConfig.city)}</strong><span>instant results</span></div>
+    <div class="instant-search-head"><strong>${_esc(meta.label)} near ${_esc(_pilotConfig.city)}</strong><span>matching</span></div>
     <div class="instant-result-list">
       ${(candidates.length ? candidates : _categoryFallbackServices(meta.slug)).slice(0, 3).map(s => `
         <button onclick="HomePage.closeExploreOverlay(); ${s.id ? `HomeModals.openBooking(${_jsonAttr(s)})` : `UI.openSupport('selector', { category: ${_jsString(meta.label)}, service: ${_jsString(s.name)} })`}">
@@ -1148,11 +1157,17 @@ function _normalizeSearchService(s) {
   };
 }
 
+function _searchSuggestionItems(meta) {
+  const base = meta.slug ? [meta, _categoryMeta("inspection")] : [_categoryMeta("electrician"), _categoryMeta("plumber"), _categoryMeta("painting"), _categoryMeta("waterproofing"), _categoryMeta("cctv"), _categoryMeta("carpentry")];
+  const examples = (meta.examples || CATEGORY_META.all.examples || []).slice(0, 3).map(label => ({ icon: meta.icon, label, query: label, note: meta.slug ? `${meta.label} quick chip` : "trending service" }));
+  return [...examples, ...base.map(c => ({ icon: c.icon, label: c.label, query: c.examples?.[0] || c.label, note: c.slug ? "nearby category" : "all services" }))];
+}
+
 function _premiumInspectionPanel(category) {
   const price = UI.formatCurrency(_inspectionPrice(null, category));
   return `<div class="premium-inspection-panel">
     <div class="premium-inspection-mark">🛡️</div>
-    <div><strong>${_esc(price)} inspection</strong><p>Agent visit · diagnosis · worker assignment</p></div>
+    <div><strong>${_esc(price)} inspection</strong><p>Expert diagnosis first · scope clarity · right worker</p></div>
     <span>${_esc(price)}</span>
   </div>`;
 }
@@ -1236,9 +1251,9 @@ function _clearPendingBookingForm() {
 
 function _friendlyServiceError(error = "") {
   const msg = String(error || "").toLowerCase();
-  if (msg.includes("internal server") || msg.includes("500")) return "Live service data is being refreshed.";
-  if (msg.includes("network") || msg.includes("failed")) return "Network connection looks unstable.";
-  return "We could not refresh live services right now.";
+  if (msg.includes("internal server") || msg.includes("500")) return "Live worker list is being coordinated.";
+  if (msg.includes("network") || msg.includes("failed")) return "Worker matching can continue through confirmation.";
+  return "Worker matching is available through booking confirmation.";
 }
 
 function _savePendingBookingIntent(service, form = {}) {

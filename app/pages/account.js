@@ -26,7 +26,13 @@ export async function render(container) {
           <div class="profile-info">
             <h3>${_escapeHtml(profile.name || "WorkToGo Customer")}</h3>
             <p class="phone-number">${_escapeHtml(_phoneLabel(profile.phone))}</p>
+            <span class="account-role-pill">Customer operations center</span>
           </div>
+        </div>
+
+        <div class="account-ops-card">
+          <strong>Local service tracking</strong>
+          <p>Bookings, worker confirmation, inspection updates and saved address details stay together here.</p>
         </div>
 
         <!-- Menu Items -->
@@ -34,8 +40,26 @@ export async function render(container) {
           <div class="menu-item" onclick="ROUTER.go('bookings')">
             <div class="menu-icon bookings-icon">📅</div>
             <div class="menu-body">
-              <span>My Bookings</span>
-              <p class="menu-sub">Track requests and booking status</p>
+              <span>Bookings & request tracking</span>
+              <p class="menu-sub">Worker confirmation, inspection and status updates</p>
+            </div>
+            <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+
+          <div class="menu-item" onclick="ROUTER.go('home')">
+            <div class="menu-icon">🧰</div>
+            <div class="menu-body">
+              <span>Start a local request</span>
+              <p class="menu-sub">Free booking or inspection from Home</p>
+            </div>
+            <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+
+          <div class="menu-item" onclick="UI.openSupport('selector')">
+            <div class="menu-icon">💬</div>
+            <div class="menu-body">
+              <span>Operational support</span>
+              <p class="menu-sub">Help with booking ID, worker timing or saved details</p>
             </div>
             <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
           </div>

@@ -1008,12 +1008,12 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 .service-hero {
   margin: 0 var(--sp-md) 10px;
-  padding: 15px;
-  border: 1px solid rgba(255,107,0,0.16);
-  border-radius: 22px;
+  padding: 14px;
+  border: 1px solid rgba(255,107,0,0.14);
+  border-radius: 20px;
   background:
-    radial-gradient(circle at 92% 4%, rgba(255,255,255,0.95), transparent 30%),
-    linear-gradient(135deg, #171717 0%, #2a190d 50%, #ff6b00 130%);
+    radial-gradient(circle at 92% 4%, rgba(255,255,255,0.88), transparent 34%),
+    linear-gradient(135deg, #fffdf8 0%, #fff2df 46%, #dcfce7 132%);
   display: grid;
   gap: var(--sp-sm);
   box-shadow: 0 14px 30px rgba(17,17,17,0.12);
@@ -1026,7 +1026,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .service-hero-copy { max-width: 620px; }
 
 .service-hero-kicker {
-  color: #86efac;
+  color: var(--market-green);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -1035,30 +1035,37 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 
 .service-hero h1 {
-  color: #fff;
-  font-size: clamp(1.32rem, 6.4vw, 2rem);
-  line-height: 1.05;
+  color: var(--market-text);
+  font-size: clamp(1.22rem, 5.7vw, 1.78rem);
+  line-height: 1.08;
   margin-bottom: 7px;
   letter-spacing: -0.035em;
 }
 
 .service-hero p {
-  color: rgba(255,255,255,0.78);
+  color: var(--market-muted);
   font-size: 0.84rem;
   line-height: 1.35;
 }
 
-.inspection-line {
+.inspection-line,
+.booking-distinction-grid {
   display: grid;
-  gap: 2px;
+  gap: 8px;
   margin: 10px 0;
-  padding: 10px 12px;
-  border: 1px solid rgba(255,255,255,0.14);
-  border-radius: 16px;
-  background: rgba(255,255,255,0.08);
+  grid-template-columns: 1fr 1fr;
 }
-.inspection-line strong { color: #fff; font-size: 0.9rem; }
-.inspection-line span { color: rgba(255,255,255,0.72); font-size: 0.74rem; }
+.booking-distinction-grid div,
+.inspection-line {
+  padding: 10px;
+  border: 1px solid var(--market-line);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.78);
+}
+.inspection-line strong,
+.booking-distinction-grid strong { display: block; color: var(--market-text); font-size: 0.84rem; }
+.inspection-line span,
+.booking-distinction-grid span { display: block; color: var(--market-muted); font-size: 0.7rem; line-height: 1.25; margin-top: 2px; }
 
 .hero-live-strip {
   display: flex;
@@ -1098,9 +1105,9 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   min-height: 44px;
   padding: 0 13px;
   border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.22);
-  background: rgba(255,255,255,0.10);
-  color: #fff;
+  border: 1px solid rgba(22,163,74,0.24);
+  background: rgba(255,255,255,0.82);
+  color: var(--market-green);
   font-size: 0.78rem;
   font-weight: 900;
   white-space: nowrap;
@@ -1254,7 +1261,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .instant-search-head strong { font-size: 0.86rem; }
 .instant-search-head span { color: var(--market-green); font-size: 0.72rem; font-weight: 900; }
 .instant-result-list { display: grid; gap: 8px; }
-.instant-result-list button {
+.instant-result-list button,
+.search-placeholder-grid button {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
@@ -1267,6 +1275,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   text-align: left;
 }
 .instant-result-list small { color: var(--market-orange); font-weight: 900; }
+.search-placeholder-grid { display: grid; gap: 8px; }
+.search-placeholder-grid button small { color: var(--market-muted); font-size: 0.68rem; font-weight: 800; }
 
 .section-header.compact { padding-bottom: var(--sp-xs); }
 .section-note { color: var(--clr-text-2); font-size: 0.72rem; }
@@ -1508,6 +1518,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   margin-bottom: 10px;
 }
 .operating-head h3 { color: var(--market-text); font-size: 1rem; line-height: 1.15; }
+.operating-head p { color: var(--market-muted); font-size: 0.74rem; line-height: 1.35; margin-top: 3px; }
 .ops-ticker {
   display: flex;
   gap: 8px;
@@ -1841,6 +1852,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 .fallback-help-card {
   grid-column: 1 / -1;
+  color: var(--market-text);
+  background: linear-gradient(145deg, rgba(22,163,74,0.10), rgba(255,255,255,0.86));
 }
 
 .fallback-help-card h3,
@@ -2038,6 +2051,28 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   padding: var(--sp-lg);
   margin-bottom: var(--sp-lg);
 }
+
+.account-role-pill {
+  display: inline-flex;
+  padding: 4px 9px;
+  border-radius: var(--r-full);
+  background: rgba(34,197,94,0.12);
+  color: var(--clr-success);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.account-ops-card {
+  display: grid;
+  gap: 4px;
+  margin: calc(var(--sp-lg) * -0.55) 0 var(--sp-lg);
+  padding: var(--sp-md);
+  border: 1px solid rgba(108,99,255,0.18);
+  border-radius: var(--r-md);
+  background: rgba(108,99,255,0.08);
+}
+.account-ops-card strong { font-size: 0.88rem; }
+.account-ops-card p { color: var(--clr-text-2); font-size: 0.78rem; line-height: 1.4; }
 
 .account-profile-freeze-card {
   display: grid;
