@@ -87,6 +87,12 @@ body {
   touch-action: manipulation;
 }
 
+body.modal-open {
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
 a { text-decoration: none; color: inherit; }
 button { font-family: inherit; cursor: pointer; border: none; background: none; }
 img { max-width: 100%; display: block; }
@@ -1435,7 +1441,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .ecosystem-visual-rail::-webkit-scrollbar,
 .proof-rail::-webkit-scrollbar,
 .vendor-feed::-webkit-scrollbar { display: none; }
-.ecosystem-visual-rail button {
+.ecosystem-visual-rail button,
+.ecosystem-info-chip {
   flex: 0 0 132px;
   min-height: 118px;
   padding: 14px;
@@ -1445,6 +1452,10 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   color: var(--market-text);
   text-align: left;
   box-shadow: 0 12px 28px rgba(17,17,17,0.07);
+}
+.ecosystem-info-chip {
+  cursor: default;
+  user-select: none;
 }
 .ecosystem-visual-rail button.active,
 .ecosystem-tag-row button.active {
@@ -1460,7 +1471,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 
 .ecosystem-tag-row { display: flex; gap: 8px; overflow-x: auto; padding-top: 8px; scrollbar-width: none; }
 .ecosystem-tag-row::-webkit-scrollbar { display: none; }
-.ecosystem-tag-row button {
+.ecosystem-tag-row button,
+.ecosystem-tag-row span {
   flex: 0 0 auto;
   min-height: 34px;
   padding: 0 12px;
@@ -1471,6 +1483,11 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   font-weight: 800;
   font-size: 0.76rem;
 }
+.ecosystem-tag-row span {
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+}
 
 .ecosystem-local-grid {
   display: grid;
@@ -1478,7 +1495,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   gap: 8px;
   margin-top: 14px;
 }
-.ecosystem-local-grid button {
+.ecosystem-local-grid button,
+.ecosystem-local-grid div {
   min-height: 58px;
   padding: 10px;
 
@@ -1490,6 +1508,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   -webkit-tap-highlight-color: transparent;
   overflow-wrap: anywhere;
 }
+.ecosystem-local-grid div { cursor: default; }
 .ecosystem-local-grid button:active { transform: scale(0.985); }
 .ecosystem-local-grid strong { display: block; font-size: 0.76rem; margin-bottom: 5px; }
 .ecosystem-local-grid span { color: var(--market-muted); font-size: 0.7rem; line-height: 1.35; }
@@ -1528,7 +1547,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   -webkit-overflow-scrolling: touch;
 }
 .ops-ticker::-webkit-scrollbar { display: none; }
-.ops-ticker button {
+.ops-ticker button,
+.ops-status-pill {
   flex: 0 0 auto;
   min-height: 38px;
   display: inline-flex;
@@ -1542,6 +1562,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   border: 1px solid var(--market-line);
   box-shadow: 0 8px 18px rgba(17,17,17,0.05);
 }
+.ops-status-pill { cursor: default; user-select: none; }
 .ops-ticker strong { display: block; font-size: 0.76rem; line-height: 1.15; }
 .ops-ticker small { color: var(--market-muted); font-size: 0.68rem; }
 .ops-supply-row {
@@ -1646,9 +1667,9 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   border: 1px solid rgba(24,24,24,0.06);
   box-shadow: 0 12px 28px rgba(17,17,17,0.08);
   -webkit-tap-highlight-color: transparent;
-  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+  transition: box-shadow var(--dur) var(--ease);
 }
-.vendor-card:active { transform: scale(0.985); box-shadow: 0 10px 28px rgba(17,17,17,0.10); }
+.vendor-card:active { box-shadow: 0 10px 28px rgba(17,17,17,0.10); }
 .vendor-card.vendor-live { outline: 2px solid rgba(22,163,74,0.32); }
 .vendor-card.vendor-featured { outline: 2px solid rgba(245,158,11,0.32); }
 .vendor-card.vendor-trusted { outline: 2px solid rgba(37,99,235,0.22); }
@@ -1706,8 +1727,9 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   background: var(--market-orange);
   color: #fff;
   font-weight: 900;
-  pointer-events: none;
+  pointer-events: auto;
 }
+.vendor-book-btn:active { transform: scale(0.98); }
 
 .category-visual-proof { margin-bottom: var(--sp-xl); }
 .proof-tile {
@@ -1953,6 +1975,18 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .booking-context-strip strong { font-size: 0.9rem; }
 .booking-context-strip small,
 .upload-readiness-field small { color: var(--clr-text-2); font-size: 0.72rem; line-height: 1.35; }
+.booking-login-nudge,
+.photo-placeholder {
+  margin-bottom: var(--sp-md);
+  padding: 12px;
+  border-radius: var(--r-md);
+  border: 1px dashed rgba(108,99,255,0.35);
+  background: rgba(108,99,255,0.08);
+}
+.booking-login-nudge strong { display: block; color: var(--clr-text); font-size: 0.84rem; margin-bottom: 3px; }
+.booking-login-nudge span,
+.photo-placeholder { color: var(--clr-text-2); font-size: 0.76rem; line-height: 1.35; }
+.photo-placeholder { margin-bottom: 0; min-height: 48px; display: flex; align-items: center; }
 .fast-booking-trust {
   grid-template-columns: 1fr;
   gap: 6px;
@@ -2497,7 +2531,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
     overflow: visible;
   }
 
-  .ops-ticker button { flex-basis: auto; }
+  .ops-ticker button,
+  .ops-status-pill { flex-basis: auto; }
 
   .ops-supply-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2543,6 +2578,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   align-items: flex-end;
   justify-content: center;
   padding: 0;
+  overscroll-behavior: contain;
+  touch-action: none;
 }
 
 .modal-overlay.hidden {
@@ -2555,10 +2592,13 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   padding: var(--sp-md) var(--sp-lg) calc(var(--sp-xl) + env(safe-area-inset-bottom));
   width: 100%;
   max-width: 480px;
-  max-height: calc(92dvh - env(safe-area-inset-bottom, 0px));
+  max-height: min(92dvh, calc(100dvh - env(safe-area-inset-top, 0px) - 8px));
   overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   animation: slideUp 0.28s var(--ease);
+  scroll-padding-bottom: 104px;
 }
 
 .modal-actions {
@@ -2662,6 +2702,12 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   border-color: var(--clr-primary);
 }
 
+.modal-input.field-invalid,
+.modal-textarea.field-invalid {
+  border-color: var(--clr-danger);
+  box-shadow: 0 0 0 2px rgba(239,68,68,0.12);
+}
+
 .modal-textarea {
   width: 100%;
   min-width: 0;
@@ -2709,6 +2755,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 @media (max-width: 420px) {
   .modal-sheet {
     padding: var(--sp-md) var(--sp-md) calc(var(--sp-xl) + env(safe-area-inset-bottom));
+    max-height: 94dvh;
   }
   .modal-actions {
     position: sticky;
@@ -2719,6 +2766,16 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   }
   .otp-inputs { gap: 6px; }
   .otp-digit { width: 42px; height: 48px; }
+}
+
+@media (max-height: 640px) {
+  .modal-sheet {
+    max-height: 96dvh;
+    padding-top: var(--sp-sm);
+  }
+  .modal-handle { margin-bottom: var(--sp-sm); }
+  .modal-sheet h3 { margin-bottom: var(--sp-sm); }
+  .modal-field { margin-bottom: var(--sp-sm); }
 }
 
 /* Qty control */

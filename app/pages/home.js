@@ -329,6 +329,8 @@ export async function render(container) {
 window.HomeModals = (() => {
   let _currentProduct = null;
   let _currentService = null;
+  let _isBookingSubmitting = false;
+  let _bookingOpenToken = 0;
 
   function openOrder(product) {
     if (CONFIG.FEATURES?.SERVICE_ONLY_MODE) {
@@ -417,25 +419,32 @@ window.HomeModals = (() => {
     }
   }
 
-  function openBooking(service) {
-    if (!AUTH.isLoggedIn()) {
-      UI.toast("Login with mobile OTP to book this service", "info");
-      _savePendingBookingIntent(service, _pendingBookingForm());
-      ROUTER.go("login");
-      return;
-    }
-    _currentService = service;
+  function openBooking(service = {}) {
+    if (!service || typeof service !== "object") return;
+    _persistPendingBookingForm();
+    _bookingOpenToken += 1;
+    _isBookingSubmitting = false;
+    const token = _bookingOpenToken;
     const profile = _customerProfile();
     const category = _categoryMeta(service.category_slug || service.category || _activeCategory);
+    const selectedService = service.quick_service || service.selected_service || service.name || category.examples?.[0] || category.label;
+    _currentService = {
+      ...service,
+      category_slug: category.slug || _activeCategory || service.category_slug || service.category || "",
+      category_label: category.label,
+      selected_service: selectedService,
+    };
     const restored = _pendingBookingForm();
-    const defaultMode = restored.booking_mode || service.booking_mode || (service.vendor_id ? "direct_vendor" : "free_lead");
-    const inspectionPrice = _inspectionPrice(service, category);
-    document.getElementById("booking-modal-title").textContent = `Book ${category.label}`;
+    const sameRestoredContext = !restored.service_context || restored.service_context === selectedService;
+    const defaultMode = _canonicalBookingMode(service.booking_mode || (sameRestoredContext ? restored.booking_mode : "") || (service.vendor_id ? "direct_vendor" : "free_lead"), _currentService, category);
+    const inspectionPrice = _inspectionPrice(_currentService, category);
+    document.getElementById("booking-modal-title").textContent = defaultMode === "inspection" ? `Inspection for ${category.label}` : `Book ${category.label}`;
     document.getElementById("booking-modal-body").innerHTML = `
-      <div class="modal-product-info">
+      <div class="modal-product-info booking-sheet-summary">
         <div class="modal-product-placeholder">${service.icon || "🔧"}</div>
         <div>
-          <p class="modal-price">${_esc(category.label)}</p>
+          <p class="modal-price">${_esc(selectedService)}</p>
+          <p class="modal-desc">${_esc(category.label)} · ${_esc(defaultMode === "inspection" ? "diagnosis first" : "direct request")}</p>
           ${service.description ? `<p class="modal-desc">${_esc(service.description)}</p>` : ""}
           <p class="service-note">Choose a visit option. WorkToGo confirms the right worker before arrival.</p>
         </div>
@@ -448,9 +457,10 @@ window.HomeModals = (() => {
       </div>
       <div class="booking-context-strip">
         <span>${category.icon}</span>
-        <strong>${_esc(category.label)} request</strong>
-        <small>WorkToGo confirms worker and timing</small>
+        <strong>${_esc(selectedService)} request</strong>
+        <small>${_esc(category.label)} context · WorkToGo confirms worker and timing</small>
       </div>
+      ${!AUTH.isLoggedIn() ? `<div class="booking-login-nudge"><strong>Phone verification needed at submit</strong><span>You can fill this now. We will send you to mobile OTP only when you request service.</span></div>` : ""}
       <div class="trust-panel booking-trust-panel fast-booking-trust">
         <span>✓ Inspection = expert diagnosis first</span>
         <span>✓ Free booking = nearby worker confirmation</span>
@@ -468,12 +478,13 @@ window.HomeModals = (() => {
         <label for="booking-date">When can worker visit?</label>
         <input type="datetime-local" id="booking-date" class="modal-input"
           min="${_isoNow()}"
-          value="${_defaultScheduledLocal()}"
+          value="${_esc((sameRestoredContext && restored.scheduled_at) || _defaultScheduledLocal())}"
+          onchange="HomePage.persistPendingBookingForm?.()"
         />
       </div>
       <div class="modal-field">
         <label for="booking-area">Area / Landmark</label>
-        <input type="text" id="booking-area" class="modal-input" placeholder="e.g. Mukhani, Kusumkhera, near canal road" autocomplete="address-level2" value="${_esc(restored.locality || profile.locality || profile.area || "")}" oninput="HomePage.persistPendingBookingForm?.()" />
+        <input type="text" id="booking-area" class="modal-input" placeholder="e.g. Mukhani, Kusumkhera, near canal road" autocomplete="address-level2" value="${_esc((sameRestoredContext && restored.locality) || profile.locality || profile.area || "")}" oninput="HomePage.persistPendingBookingForm?.()" />
       </div>
       <div class="modal-field">
         <label for="booking-address">Full Address</label>
@@ -481,15 +492,27 @@ window.HomeModals = (() => {
       </div>
       <div class="modal-field">
         <label for="booking-notes">Problem note (optional)</label>
-        <textarea id="booking-notes" class="modal-textarea" placeholder="Example: ${_esc(_activeChipFilter || category.examples?.[0] || "problem details")}, call before coming…" rows="2" oninput="HomePage.persistPendingBookingForm?.()">${_esc(restored.notes || "")}</textarea>
+        <textarea id="booking-notes" class="modal-textarea" placeholder="Example: ${_esc(_activeChipFilter || category.examples?.[0] || "problem details")}, call before coming…" rows="2" oninput="HomePage.persistPendingBookingForm?.()">${_esc((sameRestoredContext && restored.notes) || "")}</textarea>
+      </div>
+      <div class="modal-field">
+        <label for="booking-photos">Photos (optional)</label>
+        <div id="booking-photos" class="photo-placeholder" aria-label="Photo upload placeholder">📷 Photo upload will be added before backend connection</div>
       </div>
       <input type="hidden" id="booking-mode" value="${_esc(defaultMode)}" />
+      <input type="hidden" id="booking-service-context" value="${_esc(selectedService)}" />
       <p class="service-note">After submission you can track status in Bookings. Inspection starts after payment; free booking enters worker matching.</p>
     `;
-    document.getElementById("booking-modal").classList.remove("hidden");
+    if (token !== _bookingOpenToken) return;
+    document.getElementById("btn-confirm-booking")?.classList.remove("loading");
+    const modal = document.getElementById("booking-modal");
+    modal?.classList.remove("hidden");
+    modal?.querySelector(".modal-sheet")?.scrollTo({ top: 0, behavior: "instant" });
+    _lockModalBody("booking");
+    _persistPendingBookingForm();
   }
 
   async function confirmBooking() {
+    if (_isBookingSubmitting) return;
     if (!AUTH.isLoggedIn()) {
       UI.toast("Login with mobile OTP to request this service", "info");
       _savePendingBookingIntent(_currentService, _pendingBookingForm());
@@ -504,49 +527,56 @@ window.HomeModals = (() => {
     const area    = document.getElementById("booking-area")?.value?.trim() || "";
     const address = document.getElementById("booking-address")?.value?.trim() || "";
     const notes   = document.getElementById("booking-notes")?.value?.trim() || "";
+    const serviceContext = document.getElementById("booking-service-context")?.value?.trim() || _currentService.quick_service || _currentService.name || "";
     const category = _categoryMeta(_currentService.category_slug || _currentService.category || _activeCategory);
     const bookingMode = _canonicalBookingMode(document.getElementById("booking-mode")?.value, _currentService, category);
 
-    if (!dateVal) { UI.toast("Please choose preferred date and time", "error"); return; }
+    if (!dateVal) { _markInvalid("booking-date", "Please choose preferred date and time"); return; }
     if (Number.isNaN(new Date(dateVal).getTime()) || new Date(dateVal).getTime() <= Date.now()) {
-      UI.toast("Please choose a future date and time", "error");
+      _markInvalid("booking-date", "Please choose a future date and time");
       return;
     }
-    if (!name) { UI.toast("Please enter your name", "error"); return; }
-    if (!mobile) { UI.toast("Please enter mobile number", "error"); return; }
+    if (!name) { _markInvalid("booking-name", "Please enter your name"); return; }
+    if (!mobile) { _markInvalid("booking-mobile", "Please enter mobile number"); return; }
     const mobileDigits = mobile.replace(/\D/g, "");
-    if (mobileDigits.length !== 10) { UI.toast("Please enter a valid 10-digit mobile number", "error"); return; }
-    if (!area) { UI.toast("Please enter area or landmark", "error"); return; }
-    if (!address) { UI.toast("Please enter full address", "error"); return; }
+    if (mobileDigits.length !== 10) { _markInvalid("booking-mobile", "Please enter a valid 10-digit mobile number"); return; }
+    if (!area) { _markInvalid("booking-area", "Please enter area or landmark"); return; }
+    if (!address) { _markInvalid("booking-address", "Please enter full address"); return; }
 
     const btn = document.getElementById("btn-confirm-booking");
+    _isBookingSubmitting = true;
     if (btn) { btn.disabled = true; btn.classList.add("loading"); }
 
     _persistCustomerProfile({ name, phone: mobile, locality: area, address });
 
     const res = await API.createBooking({
-      service_id: _currentService.id,
-      ...(dateVal ? { scheduled_at: new Date(dateVal).toISOString() } : {}),
-      booking_mode: bookingMode,
-      lifecycle_type: bookingMode,
-      payment_method: bookingMode === "inspection" ? "online" : "cod",
-      expected_payment_amount: bookingMode === "inspection" ? _inspectionPrice(_currentService, category) : 0,
-      payment_status: "unpaid",
-      category_slug: category.slug || _activeCategory,
-      category_label: category.label,
-      customer_name: name,
-      customer_mobile: mobileDigits,
-      customer_locality: area,
-      customer_address: address,
-      vendor_id: bookingMode === "direct_vendor" ? (_currentService.vendor_id || null) : null,
-      notes: [`Category: ${category.label}`, `Customer: ${name}`, `Mobile: ${mobile}`, `Area/Landmark: ${area}`, `Address: ${address}`, _activeChipFilter ? `Selected issue: ${_activeChipFilter}` : "", notes ? `Notes: ${notes}` : ""].filter(Boolean).join("\n"),
-    });
+        service_id: _currentService.id,
+        ...(dateVal ? { scheduled_at: new Date(dateVal).toISOString() } : {}),
+        booking_mode: bookingMode,
+        lifecycle_type: bookingMode,
+        payment_method: bookingMode === "inspection" ? "online" : "cod",
+        expected_payment_amount: bookingMode === "inspection" ? _inspectionPrice(_currentService, category) : 0,
+        payment_status: "unpaid",
+        category_slug: category.slug || _activeCategory,
+        category_label: category.label,
+        customer_name: name,
+        customer_mobile: mobileDigits,
+        customer_locality: area,
+        customer_address: address,
+        vendor_id: bookingMode === "direct_vendor" ? (_currentService.vendor_id || null) : null,
+        notes: [`Category: ${category.label}`, serviceContext ? `Selected service: ${serviceContext}` : "", `Customer: ${name}`, `Mobile: ${mobile}`, `Area/Landmark: ${area}`, `Address: ${address}`, _activeChipFilter ? `Selected issue: ${_activeChipFilter}` : "", notes ? `Notes: ${notes}` : ""].filter(Boolean).join("\n"),
+      }).catch(err => ({ ok: false, error: err?.message || "Network issue while sending booking." }));
 
-    if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
+      if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
+      _isBookingSubmitting = false;
 
     if (res.ok) {
       const paymentOk = await _handleInspectionCheckout(res.data, bookingMode);
-      if (!paymentOk) return;
+      if (!paymentOk) {
+        _isBookingSubmitting = false;
+        if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
+        return;
+      }
       closeBooking();
       _clearPendingBookingForm();
       UI.toast(bookingMode === "inspection" ? "Inspection booked. Diagnosis visit is being confirmed." : bookingMode === "direct_vendor" ? "Worker request sent for confirmation." : "Free booking opened worker matching.", "success");
@@ -559,11 +589,18 @@ window.HomeModals = (() => {
   function close() {
     document.getElementById("order-modal")?.classList.add("hidden");
     _currentProduct = null;
+    _unlockModalBody("order");
   }
 
   function closeBooking() {
+    _persistPendingBookingForm();
+    _bookingOpenToken += 1;
+    _isBookingSubmitting = false;
     document.getElementById("booking-modal")?.classList.add("hidden");
     _currentService = null;
+    const btn = document.getElementById("btn-confirm-booking");
+    if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
+    _unlockModalBody("booking");
   }
 
   function closeOnOverlay(e) {
@@ -580,6 +617,27 @@ window.HomeModals = (() => {
     const d = new Date(Date.now() + 2 * 60 * 60 * 1000);
     d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0);
     return d.toISOString().slice(0, 16);
+  }
+
+  function _markInvalid(id, message) {
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.add("field-invalid");
+      el.focus({ preventScroll: false });
+      el.addEventListener("input", () => el.classList.remove("field-invalid"), { once: true });
+    }
+    UI.toast(message, "error");
+  }
+
+  function _lockModalBody(kind) {
+    document.body.classList.add("modal-open");
+    document.body.dataset.modalOpen = kind;
+  }
+
+  function _unlockModalBody(kind) {
+    if (document.body.dataset.modalOpen && document.body.dataset.modalOpen !== kind) return;
+    document.body.classList.remove("modal-open");
+    delete document.body.dataset.modalOpen;
   }
 
   return { openOrder, changeQty, confirmOrder, openBooking, confirmBooking, close, closeBooking, closeOnOverlay };
@@ -877,14 +935,14 @@ function _categoryEcosystemHTML(slug = "") {
         </div>
       </div>
       <div class="ecosystem-visual-rail">
-        ${visuals.slice(0, 3).map(v => `<button class="${_activeChipFilter === String(v.query || v.label).toLowerCase() ? "active" : ""}" onclick="HomePage.filterEcosystem('${_esc(v.query || v.label)}')"><span>${_esc(v.emoji || meta.icon)}</span><strong>${_esc(v.label)}</strong><small>${_esc(v.note || "nearby")}</small></button>`).join("")}
+        ${visuals.slice(0, 3).map(v => `<div class="ecosystem-info-chip"><span>${_esc(v.emoji || meta.icon)}</span><strong>${_esc(v.label)}</strong><small>${_esc(v.note || "nearby")}</small></div>`).join("")}
       </div>
       <div class="ecosystem-tag-row">
-        ${tags.slice(0, 8).map(x => `<button class="${_activeChipFilter === String(x).toLowerCase() ? "active" : ""}" onclick="HomePage.filterEcosystem('${_esc(x)}')">${_esc(x)}</button>`).join("")}
+        ${tags.slice(0, 6).map(x => `<span>${_esc(x)}</span>`).join("")}
       </div>
       <div class="ecosystem-local-grid">
-        <button type="button" onclick="HomePage.ecosystemDiscover('materials', '${_esc(materials[0] || meta.label)}')"><strong>Materials after scope</strong><span>${_esc(materials.slice(0, 3).join(" · ") || "Parts support")}</span></button>
-        <button type="button" onclick="HomePage.ecosystemDiscover('dealers', '${_esc(dealers[0] || meta.label)}')"><strong>Dealer lane</strong><span>${_esc(dealers[0] || "Address + call support after worker check")}</span></button>
+        <div><strong>Materials after scope</strong><span>${_esc(materials.slice(0, 3).join(" · ") || "Parts support")}</span></div>
+        <div><strong>Dealer lane</strong><span>${_esc(dealers[0] || "Address + call support after worker check")}</span></div>
       </div>
     </details>`;
 }
@@ -900,8 +958,8 @@ function _operatingFeedHTML(slug = "") {
         <p>${_esc(slug ? `${meta.label} requests, worker confirmation and material support are handled as one local lane.` : "Local requests move through worker confirmation, scope clarity and support.")}</p>
       </div>
     </div>
-    <div class="ops-ticker">
-      ${jobs.map((job, i) => `<button onclick="HomePage.filterEcosystem('${_esc(job)}')"><strong>${_esc(job)}</strong><small>${_esc(places[i % places.length] || "nearby")}</small></button>`).join("")}
+    <div class="ops-ticker" aria-label="Nearby activity statuses">
+      ${jobs.map((job, i) => `<div class="ops-status-pill"><strong>${_esc(job)}</strong><small>${_esc(places[i % places.length] || "nearby")}</small></div>`).join("")}
     </div>`;
 }
 
@@ -996,11 +1054,8 @@ function _vendorCardHTML(service, support = false) {
   const completed = service.completed_jobs || service.jobs_completed || service.total_jobs || service.completed || "";
   const verified = service.is_verified || service.verified || semantics.visibility !== "normal";
   const activeState = semantics.visibility === "live" ? "Online now" : semantics.visibility === "quick" ? "Quick response" : "Available nearby";
-  const action = support
-    ? `UI.openSupport('selector', { category: ${_jsString(meta.label)}, service: ${_jsString(name)} })`
-    : `HomeModals.openBooking(${_jsonAttr({ ...service, category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon })})`;
   return `
-    <article class="vendor-card vendor-${_esc(semantics.visibility)}" data-vendor-state="${_esc(semantics.visibility)}" data-vendor-priority="${_esc(semantics.priority)}" onclick="${action}">
+    <article class="vendor-card vendor-${_esc(semantics.visibility)}" data-vendor-state="${_esc(semantics.visibility)}" data-vendor-priority="${_esc(semantics.priority)}">
       <div class="vendor-media ${photo ? "has-img" : ""}">
         ${photo ? `<img src="${_esc(photo)}" alt="${_esc(name)}" loading="lazy"/>` : `<span>${service.icon || meta.icon || "🔧"}</span>`}
         <em>${_esc(verified ? "Verified" : activeState)}</em>
@@ -1020,7 +1075,7 @@ function _vendorCardHTML(service, support = false) {
           ${exp ? `<span>${_esc(exp)} exp</span>` : ""}
           ${price ? `<span>${_esc(price)}</span>` : ""}
         </div>
-        <button class="vendor-book-btn">Request worker</button>
+        <button class="vendor-book-btn" onclick="HomeModals.openBooking(${_jsonAttr({ ...service, category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon })})">Request worker</button>
       </div>
     </article>`;
 }
@@ -1236,6 +1291,8 @@ function _persistPendingBookingForm() {
   try {
     sessionStorage.setItem("wtg_pending_booking_form", JSON.stringify({
       booking_mode: document.getElementById("booking-mode")?.value || "",
+      service_context: document.getElementById("booking-service-context")?.value?.trim() || "",
+      scheduled_at: document.getElementById("booking-date")?.value || "",
       name: document.getElementById("booking-name")?.value?.trim() || "",
       phone: document.getElementById("booking-mobile")?.value?.trim() || "",
       locality: document.getElementById("booking-area")?.value?.trim() || "",
@@ -1257,7 +1314,11 @@ function _friendlyServiceError(error = "") {
 }
 
 function _savePendingBookingIntent(service, form = {}) {
-  try { sessionStorage.setItem("wtg_pending_booking", JSON.stringify({ service, category: _activeCategory, form, ts: Date.now() })); } catch {}
+  if (!service) return;
+  try {
+    const category = service.category_slug || service.category || _activeCategory || "";
+    sessionStorage.setItem("wtg_pending_booking", JSON.stringify({ service: { ...service, category_slug: category }, category, form, ts: Date.now() }));
+  } catch {}
 }
 
 function _resumePendingBooking() {
