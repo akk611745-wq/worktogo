@@ -68,6 +68,15 @@ RewriteRule ^(.*)$ index.php [QSA,L]
     Header unset X-Powered-By
 </IfModule>
 
+# Customer app shell must revalidate so versioned assets can bust stale browser/proxy cache.
+<IfModule mod_headers.c>
+    <FilesMatch "^(index\.php|index\.html)$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+        Header set Pragma "no-cache"
+        Header set Expires "0"
+    </FilesMatch>
+</IfModule>
+
 # Block bad bots and scanners
 RewriteCond %{HTTP_USER_AGENT} (sqlmap|nikto|nmap|masscan|zgrab) [NC]
 RewriteRule . - [F,L]

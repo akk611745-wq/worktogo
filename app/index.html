@@ -10,7 +10,7 @@
   <title>WorkToGo</title>
 
   <!-- Styles -->
-  <link rel="stylesheet" href="css/main.css"/>
+  <link rel="stylesheet" href="css/main.css?v=20260524-customer-stabilization"/>
 
   <!-- Preconnect for fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -33,19 +33,20 @@
   -->
 
   <!-- Environment (set BASE_URL here) — MUST be first -->
-  <script src="env.js"></script>
+  <script src="env.js?v=20260524-customer-stabilization"></script>
 
   <!-- Core Scripts (order matters) -->
   <script>
     window.WTG_BASE_URL = "<?php echo rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?? 'https://worktogo.in', '/'); ?>";
+    window.WTG_ASSET_VERSION = "20260524-customer-stabilization";
   </script>
-  <script src="js/config.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/router.js"></script>
+  <script src="js/config.js?v=20260524-customer-stabilization"></script>
+  <script src="js/ui.js?v=20260524-customer-stabilization"></script>
+  <script src="js/api.js?v=20260524-customer-stabilization"></script>
+  <script src="js/auth.js?v=20260524-customer-stabilization"></script>
+  <script src="js/router.js?v=20260524-customer-stabilization"></script>
   <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
-  <script src="/app/pages/vendor-apply-modal.js"></script>
+  <script src="/app/pages/vendor-apply-modal.js?v=20260524-customer-stabilization"></script>
 
   <!-- Bootstrap -->
   <script>

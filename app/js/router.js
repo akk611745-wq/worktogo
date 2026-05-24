@@ -17,12 +17,15 @@
 
 const ROUTER = (() => {
 
+  const ASSET_VERSION = encodeURIComponent(window.WTG_ASSET_VERSION || CONFIG.APP_VERSION || "1.0.0");
+  const _pageModule = (path) => import(`${path}?v=${ASSET_VERSION}`);
+
   const PAGES = {
-    login:    () => import("../pages/login.js"),
-    home:     () => import("../pages/home.js"),
-    account:  () => import("../pages/account.js"),
-    orders:   () => import("../pages/orders.js"),
-    bookings: () => import("../pages/bookings.js"),
+    login:    () => _pageModule("../pages/login.js"),
+    home:     () => _pageModule("../pages/home.js"),
+    account:  () => _pageModule("../pages/account.js"),
+    orders:   () => _pageModule("../pages/orders.js"),
+    bookings: () => _pageModule("../pages/bookings.js"),
     // Phase 2: vendor: () => import('../pages/vendor.js'),
     // Phase 3: creator: () => import('../pages/creator.js'),
   };
