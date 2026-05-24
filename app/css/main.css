@@ -1279,7 +1279,13 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   background: var(--market-soft);
   color: var(--market-text);
   text-align: left;
+  cursor: pointer;
 }
+.instant-result-list button:active,
+.search-placeholder-grid button:active,
+.quick-service-card:active,
+.category-chips button:active,
+.free-booking-strip button:active { transform: scale(0.985); }
 .instant-result-list small { color: var(--market-orange); font-weight: 900; }
 .search-placeholder-grid { display: grid; gap: 8px; }
 .search-placeholder-grid button small { color: var(--market-muted); font-size: 0.68rem; font-weight: 800; }
@@ -1342,6 +1348,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   background: #fff;
   color: var(--market-text);
   text-align: left;
+  cursor: pointer;
   box-shadow: 0 10px 22px rgba(17,17,17,0.06);
 }
 .quick-service-card span { font-size: 1.35rem; }
@@ -1374,6 +1381,14 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   color: var(--market-green);
   font-weight: 900;
   border: 1px solid rgba(22,163,74,0.18);
+  cursor: pointer;
+}
+
+.action-hierarchy-note {
+  margin-top: 8px;
+  color: var(--market-muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 .category-chips button.active {
@@ -1399,6 +1414,15 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   border-top: 1px solid var(--market-line);
   list-style: none;
   cursor: pointer;
+}
+.ecosystem-summary::after {
+  content: "View lane";
+  grid-column: 2;
+  width: fit-content;
+  margin-top: 2px;
+  color: var(--market-orange);
+  font-size: 0.66rem;
+  font-weight: 900;
 }
 .ecosystem-summary::-webkit-details-marker { display: none; }
 .ecosystem-summary .ecosystem-icon { grid-row: span 2; }
@@ -1508,7 +1532,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   -webkit-tap-highlight-color: transparent;
   overflow-wrap: anywhere;
 }
-.ecosystem-local-grid div { cursor: default; }
+.ecosystem-local-grid div { cursor: default; box-shadow: none; }
+.ecosystem-local-grid button { cursor: pointer; box-shadow: 0 8px 18px rgba(17,17,17,0.05); }
 .ecosystem-local-grid button:active { transform: scale(0.985); }
 .ecosystem-local-grid strong { display: block; font-size: 0.76rem; margin-bottom: 5px; }
 .ecosystem-local-grid span { color: var(--market-muted); font-size: 0.7rem; line-height: 1.35; }

@@ -221,6 +221,14 @@ export async function render(container) {
       _activeDiscoveryKind = kind;
       HomePage.filterEcosystem(seed);
     },
+    viewMaterialNetwork(kind = "materials") {
+      const meta = _categoryMeta(_activeCategory);
+      const source = kind === "dealers" ? (meta.dealers || CATEGORY_META.all.dealers || []) : (meta.materials || CATEGORY_META.all.materials || []);
+      const seed = source[0] || meta.label;
+      _activeDiscoveryKind = kind;
+      HomePage.filterEcosystem(seed);
+      document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    },
     selectBookingMode(mode = "") {
       const selectedButton = [...document.querySelectorAll(".booking-mode-option")].find(btn => btn.dataset.mode === mode);
       if (!selectedButton || selectedButton.disabled || selectedButton.getAttribute("aria-disabled") === "true") return;
@@ -966,7 +974,7 @@ function _categoryMeta(slug = "") {
 function _categoryEcosystemHTML(slug = "") {
   const meta = _categoryMeta(slug);
   const contextLabel = _activeContextLabel(meta);
-  const visuals = meta.visuals || CATEGORY_META.all.visuals || [];
+  const visuals = (meta.visuals || CATEGORY_META.all.visuals || []).slice(0, 4);
   const tags = meta.tags || meta.examples || [];
   const dealers = meta.dealers || CATEGORY_META.all.dealers || [];
   const materials = meta.materials || CATEGORY_META.all.materials || [];
@@ -976,25 +984,27 @@ function _categoryEcosystemHTML(slug = "") {
     <details class="ecosystem-card ecosystem-world" ${slug ? "open" : ""}>
       <summary class="ecosystem-summary">
         <span class="ecosystem-icon">${meta.icon}</span>
-        <strong>${_esc(slug ? `${meta.label} material support` : "Material support after scope")}</strong>
-        <small>${_esc("Dealer help stays separate from worker execution")}</small>
+        <strong>${_esc(slug ? `${meta.label} nearby material network` : "Nearby material network")}</strong>
+        <small>${_esc("Informational supply lane · worker request stays separate")}</small>
       </summary>
       <div class="ecosystem-banner">
         <span class="ecosystem-icon">${meta.icon}</span>
         <div>
-          <h3>${_esc(contextLabel)} material lane near ${_esc(_pilotConfig.city)}</h3>
-          <p>${_esc("Worker handles service execution. Dealer support begins only after issue, quantity and scope are confirmed.")}</p>
+          <h3>${_esc(contextLabel)} supply lane near ${_esc(_activeLocalityFilter || _pilotConfig.city)}</h3>
+          <p>${_esc("Use this to understand nearby dealer/material context. WorkToGo confirms supply needs only after worker checks scope.")}</p>
         </div>
       </div>
       <div class="ecosystem-visual-rail">
-        ${visuals.slice(0, 3).map(v => `<div class="ecosystem-info-chip"><span>${_esc(v.emoji || meta.icon)}</span><strong>${_esc(v.label)}</strong><small>${_esc(v.note || "nearby")}</small></div>`).join("")}
+        ${visuals.map(v => `<div class="ecosystem-info-chip" aria-label="Informational supply context"><span>${_esc(v.emoji || meta.icon)}</span><strong>${_esc(v.label)}</strong><small>${_esc(v.note || "nearby lane")}</small></div>`).join("")}
       </div>
       <div class="ecosystem-tag-row">
         ${tags.slice(0, 6).map(x => `<span>${_esc(x)}</span>`).join("")}
       </div>
       <div class="ecosystem-local-grid">
-        <div><strong>Materials after scope</strong><span>${_esc(materials.slice(0, 3).join(" · ") || "Parts support")}</span></div>
-        <div><strong>Dealer lane</strong><span>${_esc(dealers[0] || "Address + call support after worker check")}</span></div>
+        <button type="button" onclick="HomePage.viewMaterialNetwork('materials')"><strong>Nearby materials</strong><span>${_esc(materials.slice(0, 3).join(" · ") || "Parts after worker check")}</span></button>
+        <button type="button" onclick="HomePage.viewMaterialNetwork('dealers')"><strong>Local dealer network</strong><span>${_esc(dealers.slice(0, 2).join(" · ") || "Dealer context after scope")}</span></button>
+        <div><strong>Locality context</strong><span>${_esc((_activeLocalityFilter || locality[0] || _pilotConfig.city) + " · no fake live stock")}</span></div>
+        <div><strong>Supply rule</strong><span>Worker confirms quantity before dealer help starts</span></div>
       </div>
     </details>`;
 }
@@ -1032,6 +1042,7 @@ function _heroHTML(slug = "") {
         <button class="btn-primary marketplace-cta hero-primary" id="hero-category-cta" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'inspection')">${_esc(primaryText)}</button>
         <button class="hero-secondary" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Free booking</button>
       </div>
+      <p class="action-hierarchy-note">Start with inspection for unclear work, or free booking when the job is clear.</p>
     </div>`;
 }
 
@@ -1040,7 +1051,7 @@ function _serviceCardsHTML(slug = "") {
   const cards = (meta.examples?.length ? meta.examples : CATEGORY_META.all.examples).slice(0, 4);
   return `
     <div class="quick-service-rail">
-      ${cards.map(name => `<button class="quick-service-card" onclick="HomePage.bookQuickService('${_esc(meta.slug || "")}', '${_esc(name)}')"><span>${meta.icon}</span><strong>${_esc(name)}</strong><small>${_esc(slug ? `${meta.label} lane` : "worker match")}</small></button>`).join("")}
+      ${cards.map(name => `<button class="quick-service-card" onclick="HomePage.bookQuickService('${_esc(meta.slug || "")}', '${_esc(name)}')"><span>${meta.icon}</span><strong>${_esc(name)}</strong><small>${_esc(slug ? `Request ${meta.label}` : "Start request")}</small></button>`).join("")}
     </div>`;
 }
 
@@ -1070,17 +1081,18 @@ function _visualProofHTML(slug = "") {
   return `
     <div class="section-header">
       <div>
-        <h3>Work proof</h3>
+        <h3>${_esc(meta.label)} work proof</h3>
+        <p class="section-note">Informational examples: service type, locality context and completed outcome.</p>
       </div>
     </div>
     <div class="proof-rail">
       ${beforeAfter.map((item, i) => `
-        <div class="proof-tile proof-tone-${i % 3}">
+        <div class="proof-tile proof-tone-${i % 3}" aria-label="Informational work proof">
           <div class="proof-split">
-            <span>Before</span>
-            <span>After</span>
+            <span>${_esc(item.locality || meta.locality?.[i % (meta.locality?.length || 1)] || _pilotConfig.city)}</span>
+            <span>Completed</span>
           </div>
-          <em>${_esc(meta.label)} proof</em>
+          <em>${_esc(meta.label)} · local work example</em>
           <strong>${_esc(item.title)}</strong>
           <p>${_esc(item.note)}</p>
         </div>
@@ -1139,7 +1151,7 @@ function _renderInstantSearch() {
     const suggestions = _searchSuggestionItems(meta).slice(0, 6);
     panel.classList.remove("hidden");
     panel.innerHTML = `
-      <div class="instant-search-head"><strong>Search the local operating network</strong><span>ready</span></div>
+      <div class="instant-search-head"><strong>Operational discovery feed</strong><span>tap to search</span></div>
       <div class="search-placeholder-grid">
         ${suggestions.map(item => `<button onclick="HomePage.searchServices('${_esc(item.query)}')"><span>${_esc(item.icon || meta.icon)}</span><strong>${_esc(item.label)}</strong><small>${_esc(item.note)}</small></button>`).join("")}
       </div>`;
@@ -1149,7 +1161,7 @@ function _renderInstantSearch() {
   const candidates = (_searchRemoteServices.length ? _searchRemoteServices : _allServices).filter(s => _searchText(s).includes(_searchQuery)).slice(0, 3);
   panel.classList.remove("hidden");
   panel.innerHTML = `
-    <div class="instant-search-head"><strong>${_esc(meta.label)} near ${_esc(_pilotConfig.city)}</strong><span>matching</span></div>
+    <div class="instant-search-head"><strong>${_esc(meta.label)} results near ${_esc(_activeLocalityFilter || _pilotConfig.city)}</strong><span>request-ready</span></div>
     <div class="instant-result-list">
       ${(candidates.length ? candidates : _categoryFallbackServices(meta.slug)).slice(0, 3).map(s => `
         <button onclick="HomePage.closeExploreOverlay(); ${s.id ? `HomeModals.openBooking(${_jsonAttr({ ...s, request_source: "search" })})` : `UI.openSupport('selector', { category: ${_jsString(meta.label)}, service: ${_jsString(s.name)} })`}">
