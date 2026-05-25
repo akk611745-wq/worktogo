@@ -10,14 +10,15 @@ export async function render(container) {
   const isLoggedIn = AUTH.isLoggedIn();
   await _loadPilotConfig();
   _restoreHomeState();
+  _restoreLocalityContext();
 
   container.innerHTML = `
     <div class="page home-page">
       <header class="top-bar marketplace-top-bar">
-        <button class="location-pill" onclick="HomePage.focusSearch('near me')" aria-label="Choose location">
+        <button class="location-pill" onclick="HomePage.openLocalitySelector()" aria-label="Change service locality">
           <span>📍</span>
-          <strong>${_esc(_pilotConfig.city)}</strong>
-          <small>near you</small>
+          <strong id="home-locality-label">${_esc(_resolvedLocality().label)}</strong>
+          <small id="home-locality-status">${_esc(_localityStatusLine())}</small>
         </button>
         <button class="support-entry" title="WhatsApp support" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })"><span>Help</span></button>
       </header>
@@ -64,7 +65,7 @@ export async function render(container) {
         <section class="home-section" id="services-section">
           <div class="section-header">
             <div>
-              <h3 id="vendor-feed-title">Workers near you</h3>
+              <h3 id="vendor-feed-title">${_esc(_resolvedLocality().label)} worker routing</h3>
             </div>
             <button class="see-all" onclick="HomePage.setCategory('')">All</button>
           </div>
@@ -105,6 +106,14 @@ export async function render(container) {
       <div class="explore-search-shell">
         <div id="explore-search-slot"></div>
         <button class="explore-close" type="button" onclick="HomePage.closeExploreOverlay()" aria-label="Close explore">×</button>
+      </div>
+    </div>
+
+    <div id="locality-modal" class="modal-overlay hidden locality-modal" onclick="HomePage.closeLocalitySelector(event)" role="dialog" aria-modal="true" aria-label="Choose service locality">
+      <div class="modal-sheet locality-sheet">
+        <div class="modal-handle"></div>
+        <h3>Choose service area</h3>
+        <div id="locality-selector-body">${_localitySelectorHTML()}</div>
       </div>
     </div>
 
@@ -160,6 +169,33 @@ export async function render(container) {
     closeExploreOverlay() {
       _closeExploreOverlay();
     },
+    openLocalitySelector() {
+      _openLocalitySelector();
+    },
+    closeLocalitySelector(event) {
+      if (event && event.target !== event.currentTarget) return;
+      _closeLocalitySelector();
+    },
+    chooseLocality(locality = "", source = "selected") {
+      _setManualLocality(locality, source);
+    },
+    saveTypedLocality() {
+      const input = document.getElementById("locality-manual-input");
+      const value = input?.value?.trim() || "";
+      if (!value) { UI.toast("Type an area or choose a nearby area", "error"); return; }
+      _setManualLocality(value, "typed");
+      _closeLocalitySelector();
+    },
+    clearLocalitySelection() {
+      _clearManualLocality();
+    },
+    useBrowserLocalityHint() {
+      _useBrowserLocalityHint();
+    },
+    onBookingAreaInput(value = "") {
+      _commitTypedLocality(value);
+      _persistPendingBookingForm();
+    },
     setCategory(slug = "") {
       HomeModals.discardBookingDraft?.("category_change");
       _activeCategory = slug;
@@ -201,15 +237,10 @@ export async function render(container) {
       _persistHomeState();
     },
     selectLocality(locality = "") {
-      _activeLocalityFilter = String(locality || "").trim();
+      _setManualLocality(locality, "selected", { silent: true, keepModalOpen: true });
       _activeChipFilter = "";
       _activeDiscoveryKind = "locality";
-      _renderOperatingFeed();
-      _renderCategoryEcosystem();
-      _renderContextProof();
-      _renderServices({ ok: true, data: { services: _allServices } });
-      _persistHomeState();
-      UI.toast(_activeLocalityFilter ? `${_activeLocalityFilter} context selected for routing` : "Local context cleared", "info");
+      UI.toast(_activeLocalityFilter ? `${_activeLocalityFilter} area active for request routing` : "Local context cleared", "info");
     },
     ecosystemDiscover(kind = "", value = "") {
       const meta = _categoryMeta(_activeCategory);
@@ -356,7 +387,7 @@ window.HomeModals = (() => {
   let _isBookingSubmitting = false;
   let _bookingOpenToken = 0;
 
-  function openOrder(product) {
+    function openOrder(product) {
     if (CONFIG.FEATURES?.SERVICE_ONLY_MODE) {
       UI.toast("Orders are disabled in service-only mode.", "info");
       return;
@@ -388,6 +419,11 @@ window.HomeModals = (() => {
       <div class="modal-field">
         <label for="order-address-input">Delivery Address</label>
         <textarea id="order-address-input" class="modal-textarea" placeholder="Enter full delivery address" required></textarea>
+      </div>
+      <div class="booking-context-strip order-locality-strip">
+        <span>📍</span>
+        <strong>${_esc(_localityRequestLine())}</strong>
+        <small>${_esc(_localitySourceLine())} · address remains exactly as typed</small>
       </div>
     `;
     document.getElementById("order-modal").classList.remove("hidden");
@@ -429,7 +465,7 @@ window.HomeModals = (() => {
     const orderResult = await API.createOrder({
       shipping_address: address,
       payment_method: 'cod',
-      notes: notes || ''
+      notes: [notes || "", `Locality context: ${_resolvedLocality().label}`, `Locality source: ${_resolvedLocality().source}`].filter(Boolean).join("\n")
     });
 
     if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
@@ -452,6 +488,7 @@ window.HomeModals = (() => {
     const profile = _customerProfile();
     const category = _categoryMeta(service.category_slug || service.category || _activeCategory);
     const selectedService = service.quick_service || service.selected_service || service.name || category.examples?.[0] || category.label;
+    const localityContext = _resolvedLocality();
     _currentService = {
       ...service,
       category_slug: category.slug || _activeCategory || service.category_slug || service.category || "",
@@ -483,7 +520,12 @@ window.HomeModals = (() => {
       <div class="booking-context-strip">
         <span>${category.icon}</span>
         <strong>${_esc(selectedService)} request</strong>
-        <small>${_esc(category.label)} context · WorkToGo confirms worker and timing</small>
+        <small>${_esc(category.label)} context · ${_esc(localityContext.label)} routing · WorkToGo confirms worker and timing</small>
+      </div>
+      <div class="booking-context-strip locality-routing-strip">
+        <span>📍</span>
+        <strong>${_esc(_localityRequestLine())}</strong>
+        <small>${_esc(_localitySourceLine())} · edit Area/Landmark only if this request is for another area</small>
       </div>
       ${!AUTH.isLoggedIn() ? `<div class="booking-login-nudge"><strong>Phone verification needed at submit</strong><span>You can fill this now. We will send you to mobile OTP only when you request service.</span></div>` : ""}
       <div class="trust-panel booking-trust-panel fast-booking-trust">
@@ -509,7 +551,7 @@ window.HomeModals = (() => {
       </div>
       <div class="modal-field">
         <label for="booking-area">Area / Landmark</label>
-        <input type="text" id="booking-area" class="modal-input" placeholder="e.g. Mukhani, Kusumkhera, near canal road" autocomplete="address-level2" value="${_esc((sameRestoredContext && restored.locality) || _activeLocalityFilter || profile.locality || profile.area || "")}" oninput="HomePage.persistPendingBookingForm?.()" />
+        <input type="text" id="booking-area" class="modal-input" placeholder="e.g. Mukhani, Kusumkhera, near canal road" autocomplete="address-level2" value="${_esc((sameRestoredContext && restored.locality) || localityContext.label || "")}" oninput="HomePage.onBookingAreaInput?.(this.value)" />
       </div>
       <div class="modal-field">
         <label for="booking-address">Full Address</label>
@@ -538,8 +580,9 @@ window.HomeModals = (() => {
     if (!AUTH.isLoggedIn()) {
       UI.toast("Login with mobile OTP to request this service", "info");
       const pendingArea = document.getElementById("booking-area")?.value?.trim() || _activeLocalityFilter;
-      if (pendingArea) _activeLocalityFilter = pendingArea;
+      if (pendingArea) _commitTypedLocality(pendingArea);
       _persistHomeState();
+      _persistLocalityContext();
       _savePendingBookingIntent(_currentService, _pendingBookingForm());
       closeBooking();
       ROUTER.go("login");
@@ -573,6 +616,7 @@ window.HomeModals = (() => {
     if (btn) { btn.disabled = true; btn.classList.add("loading"); }
 
     _persistCustomerProfile({ ...(name ? { name } : {}), phone: mobile, locality: area, address });
+    _commitTypedLocality(area);
 
     const requestType = _requestType(bookingMode);
     const requestSource = _currentService.request_source || "category";
@@ -586,7 +630,9 @@ window.HomeModals = (() => {
       category_label: category.label,
       subservice: serviceContext,
       locality: area,
-      selected_nearby_area: _activeLocalityFilter || area,
+      selected_nearby_area: _resolvedLocality().label || area,
+      locality_source: _resolvedLocality().source,
+      locality_confidence: _resolvedLocality().source === "fallback" ? "city" : "area",
       full_address: address,
       customer: {
         name: name || "WorkToGo Customer",
@@ -625,6 +671,8 @@ window.HomeModals = (() => {
         customer_name: name || "WorkToGo Customer",
         customer_mobile: mobileDigits,
         customer_locality: area,
+        selected_nearby_area: operationalPayload.selected_nearby_area,
+        locality_source: operationalPayload.locality_source,
         customer_address: address,
         vendor_id: selectedWorker?.vendor_id || null,
         notes: _adminRequestNotes(operationalPayload),
@@ -799,7 +847,8 @@ function _renderServices(res) {
   const el = document.getElementById("services-grid");
   if (!el) return;
   const title = document.getElementById("vendor-feed-title");
-  if (title) title.textContent = _activeCategory ? `${_categoryMeta(_activeCategory).label} workers near you` : "Workers near you";
+  const localityContext = _resolvedLocality();
+  if (title) title.textContent = _activeCategory ? `${_categoryMeta(_activeCategory).label} routing in ${localityContext.label}` : `${localityContext.label} worker routing`;
 
   if (!res.ok) {
     el.classList.remove("fallback-services-grid");
@@ -894,6 +943,18 @@ function _renderContextProof() {
 function _renderHeroForCategory() {
   const el = document.getElementById("category-hero");
   if (el) el.innerHTML = _heroHTML(_activeCategory);
+}
+
+function _renderLocalityHeader() {
+  const label = document.getElementById("home-locality-label");
+  const status = document.getElementById("home-locality-status");
+  if (label) label.textContent = _resolvedLocality().label;
+  if (status) status.textContent = _localityStatusLine();
+}
+
+function _renderLocalitySelector() {
+  const el = document.getElementById("locality-selector-body");
+  if (el) el.innerHTML = _localitySelectorHTML();
 }
 
 function _renderHeroStats() {
@@ -991,6 +1052,7 @@ function _categoryMeta(slug = "") {
 function _categoryEcosystemHTML(slug = "") {
   const meta = _categoryMeta(slug);
   const contextLabel = _activeContextLabel(meta);
+  const localityContext = _resolvedLocality();
   const visuals = (meta.visuals || CATEGORY_META.all.visuals || []).slice(0, 4);
   const tags = meta.tags || meta.examples || [];
   const dealers = meta.dealers || CATEGORY_META.all.dealers || [];
@@ -1007,7 +1069,7 @@ function _categoryEcosystemHTML(slug = "") {
       <div class="ecosystem-banner">
         <span class="ecosystem-icon">${meta.icon}</span>
         <div>
-          <h3>${_esc(contextLabel)} supply lane near ${_esc(_activeLocalityFilter || _pilotConfig.city)}</h3>
+          <h3>${_esc(contextLabel)} supply lane for ${_esc(localityContext.label)}</h3>
           <p>${_esc("Use this to understand nearby dealer/material context. WorkToGo confirms supply needs only after worker checks scope.")}</p>
         </div>
       </div>
@@ -1020,7 +1082,7 @@ function _categoryEcosystemHTML(slug = "") {
       <div class="ecosystem-local-grid">
         <button type="button" onclick="HomePage.viewMaterialNetwork('materials')"><strong>Nearby materials</strong><span>${_esc(materials.slice(0, 3).join(" · ") || "Parts after worker check")}</span></button>
         <button type="button" onclick="HomePage.viewMaterialNetwork('dealers')"><strong>Local dealer network</strong><span>${_esc(dealers.slice(0, 2).join(" · ") || "Dealer context after scope")}</span></button>
-        <div><strong>Locality context</strong><span>${_esc((_activeLocalityFilter || locality[0] || _pilotConfig.city) + " · no fake live stock")}</span></div>
+        <div><strong>Locality context</strong><span>${_esc(localityContext.label + " · " + _localitySourceLine())}</span></div>
         <div><strong>Supply rule</strong><span>Worker confirms quantity before dealer help starts</span></div>
       </div>
     </details>`;
@@ -1030,11 +1092,12 @@ function _operatingFeedHTML(slug = "") {
   const meta = _categoryMeta(slug);
   const jobs = _contextItems(meta, "jobs", meta.examples || []).slice(0, 4);
   const places = meta.locality || CATEGORY_META.all.locality || ["nearby"];
+  const localityContext = _resolvedLocality();
   return `
     <div class="operating-head">
       <div>
-        <h3>${_esc(_activeLocalityFilter ? `${_activeLocalityFilter} request context` : (slug ? `${meta.label} local routing` : `${_pilotConfig.city} service routing`))}</h3>
-        <p>${_esc(_activeLocalityFilter ? `Requests will carry ${_activeLocalityFilter} as area context for admin assignment.` : (slug ? `${meta.label} requests are sorted by issue, area and visit mode.` : "Choose an area bubble to add local routing context. No live map or fake worker count is shown."))}</p>
+        <h3>${_esc(`${localityContext.label} request context`)}</h3>
+        <p>${_esc(`Requests carry ${localityContext.label} as ${_localitySourceLine().toLowerCase()} for admin assignment. Area can be changed before booking.`)}</p>
       </div>
     </div>
     <div class="ops-ticker" aria-label="Nearby activity statuses">
@@ -1066,9 +1129,10 @@ function _heroHTML(slug = "") {
 function _serviceCardsHTML(slug = "") {
   const meta = _categoryMeta(slug);
   const cards = (meta.examples?.length ? meta.examples : CATEGORY_META.all.examples).slice(0, 4);
+  const localityContext = _resolvedLocality();
   return `
     <div class="quick-service-rail">
-      ${cards.map(name => `<button class="quick-service-card" onclick="HomePage.bookQuickService('${_esc(meta.slug || "")}', '${_esc(name)}')"><span>${meta.icon}</span><strong>${_esc(name)}</strong><small>${_esc(slug ? `Request ${meta.label}` : "Start request")}</small></button>`).join("")}
+      ${cards.map(name => `<button class="quick-service-card" onclick="HomePage.bookQuickService('${_esc(meta.slug || "")}', '${_esc(name)}')"><span>${meta.icon}</span><strong>${_esc(name)}</strong><small>${_esc(localityContext.label)} routing</small></button>`).join("")}
     </div>`;
 }
 
@@ -1083,8 +1147,9 @@ function _freeBookingStripHTML(slug = "") {
 
 function _trustProofHTML(slug = "") {
   const meta = _categoryMeta(slug);
+  const localityContext = _resolvedLocality();
   return `
-    <div><strong>After request</strong><span>WorkToGo checks service, area, issue note and visit mode before assignment</span></div>
+    <div><strong>After request</strong><span>WorkToGo checks service, ${_esc(localityContext.label)} area context, issue note and visit mode before assignment</span></div>
     <div><strong>Worker confirmation</strong><span>${_esc(meta.vendors || "Admin assigns a suitable local worker; cards are request entry points, not live profiles")}</span></div>
     <div><strong>Payment rule</strong><span>Normal jobs pay after service; inspection is used when diagnosis or estimate is needed first</span></div>`;
 }
@@ -1163,6 +1228,7 @@ function _vendorCardHTML(service, support = false) {
 function _renderInstantSearch() {
   const panel = document.getElementById("search-results-panel");
   if (!panel) return;
+  const localityContext = _resolvedLocality();
   if (!_searchQuery) {
     const meta = _categoryMeta(_activeCategory);
     const suggestions = _searchSuggestionItems(meta).slice(0, 6);
@@ -1178,7 +1244,7 @@ function _renderInstantSearch() {
   const candidates = (_searchRemoteServices.length ? _searchRemoteServices : _allServices).filter(s => _searchText(s).includes(_searchQuery)).slice(0, 3);
   panel.classList.remove("hidden");
   panel.innerHTML = `
-    <div class="instant-search-head"><strong>${_esc(meta.label)} results near ${_esc(_activeLocalityFilter || _pilotConfig.city)}</strong><span>request-ready</span></div>
+    <div class="instant-search-head"><strong>${_esc(meta.label)} results for ${_esc(localityContext.label)}</strong><span>request-ready</span></div>
     <div class="instant-result-list">
       ${(candidates.length ? candidates : _categoryFallbackServices(meta.slug)).slice(0, 3).map(s => `
         <button onclick="HomePage.closeExploreOverlay(); ${s.id ? `HomeModals.openBooking(${_jsonAttr({ ...s, request_source: "search" })})` : `UI.openSupport('selector', { category: ${_jsString(meta.label)}, service: ${_jsString(s.name)} })`}">
@@ -1220,6 +1286,203 @@ function _servicePriceLabel(service) {
   if (service?.price) return String(service.price);
   const amount = service?.base_price ?? service?.amount ?? service?.starting_price;
   return amount ? UI.formatCurrency(amount) : "";
+}
+
+function _openLocalitySelector() {
+  _renderLocalitySelector();
+  document.getElementById("locality-modal")?.classList.remove("hidden");
+  document.body.classList.add("modal-open");
+  document.body.dataset.modalOpen = "locality";
+  setTimeout(() => document.getElementById("locality-manual-input")?.focus({ preventScroll: true }), 40);
+}
+
+function _closeLocalitySelector() {
+  document.getElementById("locality-modal")?.classList.add("hidden");
+  if (document.body.dataset.modalOpen === "locality") {
+    document.body.classList.remove("modal-open");
+    delete document.body.dataset.modalOpen;
+  }
+}
+
+function _localitySelectorHTML() {
+  const meta = _categoryMeta(_activeCategory);
+  const active = _resolvedLocality();
+  const areas = _localityOptions(meta);
+  return `
+    <div class="locality-current-card">
+      <span>📍</span>
+      <div><strong>${_esc(_localityRequestLine())}</strong><small>${_esc(_localitySourceLine())}</small></div>
+    </div>
+    <div class="locality-option-grid">
+      ${areas.map(area => `<button type="button" class="locality-option ${_slug(active.label) === _slug(area) ? "active" : ""}" onclick="HomePage.chooseLocality('${_esc(area)}', 'selected')"><strong>${_esc(area)}</strong><small>${_esc(_slug(active.label) === _slug(area) ? "Active routing area" : "Use for routing")}</small></button>`).join("")}
+    </div>
+    <div class="modal-field locality-manual-field">
+      <label for="locality-manual-input">Type area manually</label>
+      <input id="locality-manual-input" class="modal-input" type="text" placeholder="e.g. Mukhani, Kusumkhera, near canal road" value="${_esc(active.source === "fallback" ? "" : active.label)}" onkeydown="if(event.key==='Enter'){HomePage.saveTypedLocality()}" />
+    </div>
+    <div class="locality-actions">
+      <button type="button" class="btn-secondary" onclick="HomePage.clearLocalitySelection()">Use ${_esc(_pilotConfig.city)}</button>
+      <button type="button" class="btn-secondary" onclick="HomePage.useBrowserLocalityHint()">Use browser hint</button>
+      <button type="button" class="btn-primary" onclick="HomePage.saveTypedLocality()">Save area</button>
+    </div>
+    <p class="service-note">This sets request routing context only. It does not change the full address you type in the booking form.</p>`;
+}
+
+function _localityOptions(meta = {}) {
+  const profile = _customerProfile();
+  const saved = _readSavedLocality();
+  const values = [
+    _activeLocalityFilter,
+    saved?.label,
+    profile.locality,
+    profile.area,
+    ...(meta.locality || []),
+    ...(CATEGORY_META.all.locality || []),
+    _pilotConfig.city,
+  ].map(v => String(v || "").trim()).filter(Boolean);
+  const seen = new Set();
+  return values.filter(v => {
+    const key = _slug(v);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 8);
+}
+
+function _setManualLocality(locality = "", source = "selected", opts = {}) {
+  const label = _cleanLocality(locality);
+  if (!label) return;
+  _activeLocalityFilter = label;
+  _localityContext = { label, source: source === "typed" ? "manual_typed" : "manual_selected", updated_at: Date.now() };
+  _persistLocalityContext();
+  _persistHomeState();
+  _refreshLocalitySurfaces();
+  if (!opts.keepModalOpen) _closeLocalitySelector();
+  if (!opts.silent) UI.toast(`${label} area active for request routing`, "success");
+}
+
+function _clearManualLocality() {
+  _activeLocalityFilter = "";
+  _localityContext = null;
+  try { localStorage.removeItem("wtg_locality_context"); } catch {}
+  _persistHomeState();
+  _refreshLocalitySurfaces();
+  _renderLocalitySelector();
+  UI.toast(`${_pilotConfig.city} fallback city active`, "info");
+}
+
+function _useBrowserLocalityHint() {
+  const hint = _browserLocalityHint(false);
+  if (!hint?.label) {
+    UI.toast("No browser locality hint is available. Please choose or type an area.", "info");
+    return;
+  }
+  _activeLocalityFilter = hint.label;
+  _localityContext = hint;
+  _persistLocalityContext();
+  _persistHomeState();
+  _refreshLocalitySurfaces();
+  _renderLocalitySelector();
+  UI.toast(`${hint.label} browser hint active`, "info");
+}
+
+function _commitTypedLocality(value = "") {
+  const label = _cleanLocality(value);
+  if (!label) return;
+  _activeLocalityFilter = label;
+  _localityContext = { label, source: "typed", updated_at: Date.now() };
+  _persistLocalityContext();
+  _persistHomeState();
+  _renderLocalityHeader();
+}
+
+function _refreshLocalitySurfaces() {
+  _renderLocalityHeader();
+  _renderOperatingFeed();
+  _renderCategoryEcosystem();
+  _renderQuickServiceCards();
+  _renderContextProof();
+  _renderInstantSearch();
+  _renderServices({ ok: true, data: { services: _allServices } });
+}
+
+function _resolvedLocality() {
+  const selected = _cleanLocality(_activeLocalityFilter || _localityContext?.label);
+  if (selected) return { label: selected, source: _localityContext?.source || "manual_selected" };
+  const saved = _readSavedLocality();
+  if (saved?.label) return saved;
+  const hint = _browserLocalityHint(false);
+  if (hint?.label) return hint;
+  return { label: _pilotConfig.city || "Haldwani", source: "fallback" };
+}
+
+function _readSavedLocality() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("wtg_locality_context") || "{}");
+    if (saved?.label) return { label: _cleanLocality(saved.label), source: saved.source || "saved" };
+  } catch {}
+  const profile = _customerProfile();
+  const label = _cleanLocality(profile.locality || profile.area);
+  return label ? { label, source: "saved" } : null;
+}
+
+function _browserLocalityHint(create = true) {
+  try {
+    const raw = sessionStorage.getItem("wtg_browser_locality_hint");
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed?.label) return { label: _cleanLocality(parsed.label), source: "browser_hint" };
+  } catch {}
+  if (!create) return null;
+  const label = _cleanLocality(_pilotConfig.browser_hint || CONFIG.SERVICE_ONLY?.BROWSER_LOCALITY_HINT || "");
+  if (!label) return null;
+  const hint = { label, source: "browser_hint", updated_at: Date.now() };
+  try { sessionStorage.setItem("wtg_browser_locality_hint", JSON.stringify(hint)); } catch {}
+  return hint;
+}
+
+function _restoreLocalityContext() {
+  const saved = _readSavedLocality();
+  const sessionLabel = _cleanLocality(_activeLocalityFilter);
+  if (sessionLabel) {
+    _localityContext = { label: sessionLabel, source: "manual_selected", updated_at: Date.now() };
+    return;
+  }
+  if (saved?.label) {
+    _activeLocalityFilter = saved.label;
+    _localityContext = saved;
+  }
+}
+
+function _persistLocalityContext() {
+  const current = _resolvedLocality();
+  if (current.source === "fallback") return;
+  try { localStorage.setItem("wtg_locality_context", JSON.stringify({ ...current, updated_at: Date.now() })); } catch {}
+}
+
+function _localityStatusLine() {
+  const current = _resolvedLocality();
+  if (current.source === "manual_selected") return `Serving ${current.label}`;
+  if (current.source === "manual_typed" || current.source === "typed") return `${current.label} area active`;
+  if (current.source === "saved") return `Saved area routing active`;
+  if (current.source === "browser_hint") return `Browser hint routing active`;
+  return `Fallback city routing`;
+}
+
+function _localityRequestLine() {
+  return `${_resolvedLocality().label} area active`;
+}
+
+function _localitySourceLine() {
+  const source = _resolvedLocality().source;
+  if (source === "manual_selected") return "Manual area selected";
+  if (source === "manual_typed" || source === "typed") return "Typed area saved";
+  if (source === "saved") return "Saved customer area";
+  if (source === "browser_hint") return "Browser locality hint";
+  return "Fallback city";
+}
+
+function _cleanLocality(value = "") {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
 function _inferSearchMeta(query) {
@@ -1332,12 +1595,14 @@ function _initialTrackingState(mode = "") {
 }
 
 function _sessionContext() {
+  const locality = _resolvedLocality();
   return {
     home_state: _safeSessionJSON("wtg_home_state"),
     pending_booking_form: _safeSessionJSON("wtg_pending_booking_form"),
     active_category: _activeCategory,
     selected_issue: _activeChipFilter,
-    selected_locality: _activeLocalityFilter,
+    selected_locality: locality.label,
+    locality_source: locality.source,
     discovery_kind: _activeDiscoveryKind,
     search_query: _searchQuery,
   };
@@ -1408,6 +1673,7 @@ function _restoreHomeState() {
     _activeCategory = state.category || _activeCategory || "";
     _activeChipFilter = state.chip || "";
     _activeLocalityFilter = state.locality || "";
+    if (state.locality_source && _activeLocalityFilter) _localityContext = { label: _activeLocalityFilter, source: state.locality_source };
     _activeDiscoveryKind = state.discovery || "";
     _searchQuery = state.query || "";
   } catch {}
@@ -1415,7 +1681,8 @@ function _restoreHomeState() {
 
 function _persistHomeState() {
   try {
-    sessionStorage.setItem("wtg_home_state", JSON.stringify({ category: _activeCategory, chip: _activeChipFilter, locality: _activeLocalityFilter, discovery: _activeDiscoveryKind, query: _searchQuery }));
+    const locality = _resolvedLocality();
+    sessionStorage.setItem("wtg_home_state", JSON.stringify({ category: _activeCategory, chip: _activeChipFilter, locality: locality.source === "fallback" ? "" : locality.label, locality_source: locality.source, discovery: _activeDiscoveryKind, query: _searchQuery }));
   } catch {}
 }
 
@@ -1471,7 +1738,7 @@ function _savePendingBookingIntent(service, form = {}) {
   if (!service) return;
   try {
     const category = service.category_slug || service.category || _activeCategory || "";
-    sessionStorage.setItem("wtg_pending_booking", JSON.stringify({ service: { ...service, category_slug: category }, category, form, ts: Date.now(), token: _bookingOpenToken }));
+    sessionStorage.setItem("wtg_pending_booking", JSON.stringify({ service: { ...service, category_slug: category }, category, form, locality_context: _resolvedLocality(), ts: Date.now(), token: _bookingOpenToken }));
   } catch {}
 }
 
@@ -1484,7 +1751,10 @@ function _resumePendingBooking() {
     const pending = JSON.parse(raw);
     if (!pending?.service || Date.now() - Number(pending.ts || 0) > 30 * 60 * 1000) return;
     if (pending.form) sessionStorage.setItem("wtg_pending_booking_form", JSON.stringify(pending.form));
-    if (pending.form?.locality) _activeLocalityFilter = pending.form.locality;
+    if (pending.locality_context?.label) {
+      _activeLocalityFilter = pending.locality_context.label;
+      _localityContext = pending.locality_context;
+    } else if (pending.form?.locality) _commitTypedLocality(pending.form.locality);
     if (pending.category) {
       _activeCategory = pending.category;
       _renderCategoryChips();
@@ -1531,6 +1801,7 @@ let _activeCategory = "";
 let _searchQuery = "";
 let _activeChipFilter = "";
 let _activeLocalityFilter = "";
+let _localityContext = null;
 let _activeDiscoveryKind = "";
 let _searchTimer = null;
 let _searchRemoteServices = [];
@@ -1545,19 +1816,19 @@ let _pilotConfig = {
   support_label: "Need help?",
   support_phone: CONFIG.SERVICE_ONLY?.SUPPORT_PHONE || "",
   whatsapp_url: CONFIG.SERVICE_ONLY?.WHATSAPP_URL || "",
-  featured_services_label: "Services near you",
+  featured_services_label: "Area-based services",
   fallback_title: "Need another service?",
   fallback_text: "Tell us on WhatsApp. We are manually coordinating pilot requests.",
   manual_fallback_label: "Manual assistance",
 };
 
 const CATEGORY_META = {
-  all: { slug: "", icon: "🧰", label: "All services", hero: "Trusted Haldwani Services", subtitle: "Nearby verified workers for repairs, painting, waterproofing, CCTV and home jobs.", ecosystemTitle: "Local workers available now", examples: ["Electrician", "Plumber", "Painting", "CCTV"], tags: ["fan", "leakage", "painter", "CCTV", "carpenter", "waterproofing"], visuals: [{ emoji: "⚡", label: "Fan fixed", note: "from ₹199" }, { emoji: "🎨", label: "Room painted", note: "estimate visit" }, { emoji: "💧", label: "Leak stopped", note: "inspection" }], beforeAfter: [{ title: "Damp wall restored", note: "Seepage inspection, repair and repaint flow" }, { title: "Old room refresh", note: "Putty, primer and clean finish by local painters" }], dealers: ["Mukhani", "Kusumkhera", "Kaladhungi Road"], materials: ["repair parts", "paint", "pipes"], brands: ["Asian", "Dr Fixit", "Havells"], locality: ["Mukhani", "Dahariya", "Lalpur Nayak"], trust: "Local coordination · pay after service · human confirmation", vendors: "Verified local provider network", inspection: true },
-  electrician: { icon: "⚡", label: "Electrical", aliases: ["electrical", "electrician", "wiring"], hero: "Electrical workers near you", subtitle: "Fan, switch, MCB, wiring and light installation with quick local confirmation.", examples: ["Fan repair", "Switch board", "MCB issue", "Light installation"], tags: ["fan", "switch", "MCB", "wiring", "geyser", "inverter"], visuals: [{ emoji: "🌀", label: "Fan repair", note: "from ₹199" }, { emoji: "🔌", label: "Switch board", note: "same day" }, { emoji: "💡", label: "Lights", note: "install" }], beforeAfter: [{ title: "Dead fan running", note: "Local electrician visit with quick diagnosis" }, { title: "Unsafe board cleaned", note: "Switch replacement and wiring check" }], dealers: ["Havells point", "Kaladhungi Road electrical", "Mukhani hardware"], materials: ["switch", "MCB", "wire", "fan capacitor"], brands: ["Havells", "Anchor", "Polycab", "Syska"], locality: ["Mukhani", "Kusumkhera", "Nainital Road"], trust: "Safety-first local electricians · pay after service", vendors: "Electrician provider assignment", inspection: false },
+  all: { slug: "", icon: "🧰", label: "All services", hero: "Trusted Haldwani Services", subtitle: "Area-based verified workers for repairs, painting, waterproofing, CCTV and home jobs.", ecosystemTitle: "Local workers available now", examples: ["Electrician", "Plumber", "Painting", "CCTV"], tags: ["fan", "leakage", "painter", "CCTV", "carpenter", "waterproofing"], visuals: [{ emoji: "⚡", label: "Fan fixed", note: "from ₹199" }, { emoji: "🎨", label: "Room painted", note: "estimate visit" }, { emoji: "💧", label: "Leak stopped", note: "inspection" }], beforeAfter: [{ title: "Damp wall restored", note: "Seepage inspection, repair and repaint flow" }, { title: "Old room refresh", note: "Putty, primer and clean finish by local painters" }], dealers: ["Mukhani", "Kusumkhera", "Kaladhungi Road"], materials: ["repair parts", "paint", "pipes"], brands: ["Asian", "Dr Fixit", "Havells"], locality: ["Mukhani", "Dahariya", "Lalpur Nayak"], trust: "Local coordination · pay after service · human confirmation", vendors: "Verified local provider network", inspection: true },
+  electrician: { icon: "⚡", label: "Electrical", aliases: ["electrical", "electrician", "wiring"], hero: "Electrical workers for your selected area", subtitle: "Fan, switch, MCB, wiring and light installation with quick local confirmation.", examples: ["Fan repair", "Switch board", "MCB issue", "Light installation"], tags: ["fan", "switch", "MCB", "wiring", "geyser", "inverter"], visuals: [{ emoji: "🌀", label: "Fan repair", note: "from ₹199" }, { emoji: "🔌", label: "Switch board", note: "same day" }, { emoji: "💡", label: "Lights", note: "install" }], beforeAfter: [{ title: "Dead fan running", note: "Local electrician visit with quick diagnosis" }, { title: "Unsafe board cleaned", note: "Switch replacement and wiring check" }], dealers: ["Havells point", "Kaladhungi Road electrical", "Mukhani hardware"], materials: ["switch", "MCB", "wire", "fan capacitor"], brands: ["Havells", "Anchor", "Polycab", "Syska"], locality: ["Mukhani", "Kusumkhera", "Nainital Road"], trust: "Safety-first local electricians · pay after service", vendors: "Electrician provider assignment", inspection: false },
   plumber: { icon: "🚰", label: "Plumbing", aliases: ["plumber", "plumbing", "pipe", "tap"], hero: "Plumbers for leakage and fittings", subtitle: "Tap, pipe, bathroom and kitchen plumbing help from nearby workers.", examples: ["Leakage repair", "Tap fitting", "Pipe blockage", "Bathroom fitting"], tags: ["tap leak", "pipe", "flush", "basin", "bathroom", "motor"], visuals: [{ emoji: "🚿", label: "Tap leak", note: "from ₹199" }, { emoji: "🧰", label: "Pipe fix", note: "nearby" }, { emoji: "🚽", label: "Bathroom", note: "fitting" }], beforeAfter: [{ title: "Leakage stopped", note: "Tap and joint repair by local plumber" }, { title: "Bathroom fitting done", note: "Clear scope confirmation before visit" }], dealers: ["Sanitary market", "Mukhani hardware", "Rampur Road pipes"], materials: ["CPVC pipe", "flush kit", "tap", "basin waste"], brands: ["Jaquar", "Astral", "Ashirvad", "Supreme"], locality: ["Kusumkhera", "Dahariya", "Mukhani"], trust: "Local plumbers · clear visit confirmation", vendors: "Plumber provider assignment", inspection: false },
   painting: { icon: "🎨", label: "Painting", aliases: ["paint", "painter", "painting"], hero: "Painting ecosystem for homes and shops", subtitle: "Painters, wall textures, putty, before/after work and expert visit for estimates.", examples: ["Room painting", "Wall putty", "Exterior painting", "Color consultation"], tags: ["texture", "putty", "primer", "room paint", "exterior", "rental repaint"], visuals: [{ emoji: "🧱", label: "Wall texture", note: "trending" }, { emoji: "🏠", label: "Room paint", note: "quote" }, { emoji: "🪣", label: "Putty repair", note: "before/after" }], beforeAfter: [{ title: "Bedroom repaint", note: "Old patches to clean warm finish" }, { title: "Texture wall upgrade", note: "Accent wall with painter estimate" }, { title: "Exterior refresh", note: "Weather coat and crack prep" }], dealers: ["Paint shop Mukhani", "Kusumkhera colors", "Nainital Road paint"], materials: ["putty", "primer", "emulsion", "texture"], brands: ["Asian Paints", "Nerolac", "Berger", "Dulux"], locality: ["Mukhani", "Lalpur Nayak", "Kaladhungi Road"], trust: "Site inspection option · local painters · estimate before work", vendors: "Painting teams and local contractors", inspection: true },
   waterproofing: { icon: "💧", label: "Waterproofing", aliases: ["waterproofing", "leakage", "seepage", "damp"], hero: "Leakage and seepage protection", subtitle: "Terrace, wall seepage, bathroom leakage and monsoon protection with inspection offers.", examples: ["Roof seepage", "Wall dampness", "Bathroom leakage", "Crack sealing"], tags: ["terrace", "seepage", "monsoon", "bathroom leak", "damp wall", "crack seal"], visuals: [{ emoji: "🌧️", label: "Monsoon cover", note: "inspection" }, { emoji: "🏚️", label: "Damp wall", note: "diagnosis" }, { emoji: "🧪", label: "Coating", note: "terrace" }], beforeAfter: [{ title: "Terrace leakage sealed", note: "Inspection-led waterproof coating" }, { title: "Seepage wall treated", note: "Dampness source checked before repair" }, { title: "Bathroom leak fixed", note: "Joint sealing and slope check" }], dealers: ["Waterproofing dealer Mukhani", "Paint chemical shop", "Hardware Kaladhungi Road"], materials: ["roof coat", "crack filler", "membrane", "sealant"], brands: ["Dr Fixit", "Sika", "Asian SmartCare", "Nerolac"], locality: ["Dahariya", "Kusumkhera", "Mukhani"], trust: "Inspection-led scope · local repair teams", vendors: "Waterproofing specialists", inspection: true },
-  cctv: { icon: "📹", label: "CCTV", hero: "CCTV installation near you", subtitle: "Camera setup, wiring, DVR/NVR, shop and home security visits by local technicians.", examples: ["Camera install", "DVR setup", "Wiring", "Shop security"], tags: ["camera", "DVR", "NVR", "home CCTV", "shop CCTV", "wiring"], visuals: [{ emoji: "📹", label: "Camera install", note: "quote" }, { emoji: "🖥️", label: "DVR setup", note: "fast" }, { emoji: "🏪", label: "Shop CCTV", note: "nearby" }], beforeAfter: [{ title: "Shop camera live", note: "Camera angle and DVR configured" }, { title: "Home entry covered", note: "Wiring and mobile view setup" }], trust: "Security technician confirmation · clear install scope", vendors: "CCTV installers", inspection: true },
+  cctv: { icon: "📹", label: "CCTV", hero: "CCTV installation for your selected area", subtitle: "Camera setup, wiring, DVR/NVR, shop and home security visits by local technicians.", examples: ["Camera install", "DVR setup", "Wiring", "Shop security"], tags: ["camera", "DVR", "NVR", "home CCTV", "shop CCTV", "wiring"], visuals: [{ emoji: "📹", label: "Camera install", note: "quote" }, { emoji: "🖥️", label: "DVR setup", note: "fast" }, { emoji: "🏪", label: "Shop CCTV", note: "nearby" }], beforeAfter: [{ title: "Shop camera live", note: "Camera angle and DVR configured" }, { title: "Home entry covered", note: "Wiring and mobile view setup" }], trust: "Security technician confirmation · clear install scope", vendors: "CCTV installers", inspection: true },
   carpentry: { icon: "🪚", label: "Carpentry", hero: "Carpenters for repair and renovation", subtitle: "Door, wardrobe, modular fixes, polish and furniture repair from local carpenters.", examples: ["Door repair", "Wardrobe", "Furniture fix", "Polish work"], tags: ["door", "wardrobe", "hinge", "modular", "polish", "furniture"], visuals: [{ emoji: "🚪", label: "Door repair", note: "from ₹249" }, { emoji: "🪵", label: "Furniture", note: "fix" }, { emoji: "🧱", label: "Wardrobe", note: "quote" }], beforeAfter: [{ title: "Door alignment fixed", note: "Hinge repair and smooth closing" }, { title: "Furniture restored", note: "Polish and repair work proof" }, { title: "Wardrobe repair", note: "Local carpenter estimate and visit" }], trust: "Local carpenters · inspection for custom work", vendors: "Carpentry workers", inspection: true },
   cleaning: { icon: "🧹", label: "Cleaning", hero: "Cleaning services in Haldwani", subtitle: "Home, shop, kitchen and deep cleaning requests with local coordination.", examples: ["Home cleaning", "Kitchen cleaning", "Shop cleaning", "Move-in cleaning"], trust: "Clear scope confirmation · pay after service", vendors: "Cleaning partners", inspection: false },
   "ac-repair": { icon: "❄️", label: "AC repair", hero: "AC service and repair", subtitle: "AC checkup, service, cooling issue and installation support with verified local help.", examples: ["AC service", "Cooling issue", "Gas check", "Installation"], trust: "Technician confirmation · pay after service", vendors: "AC technicians", inspection: true },
