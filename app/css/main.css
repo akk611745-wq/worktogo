@@ -980,6 +980,14 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .locality-current-card > span { font-size: 1.35rem; }
 .locality-current-card strong { display: block; font-size: 0.95rem; color: var(--market-text); }
 .locality-current-card small { color: var(--market-muted); font-size: 0.74rem; }
+.locality-selector-label {
+  margin: 12px 0 6px;
+  color: var(--market-muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 .locality-option-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

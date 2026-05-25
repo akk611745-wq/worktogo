@@ -5,6 +5,7 @@
 
 export async function render(container) {
   const serviceOnly = Boolean(CONFIG.FEATURES?.SERVICE_ONLY_MODE);
+  const locality = _loginLocalityContext();
   container.innerHTML = `
     <div class="login-page">
       <div class="login-glow"></div>
@@ -18,7 +19,7 @@ export async function render(container) {
           </svg>
         </div>
         <h1 class="app-title">WorkToGo</h1>
-        <p class="app-tagline">Trusted local services in Haldwani</p>
+        <p class="app-tagline">Trusted local services for ${_esc(locality.label)}</p>
       </header>
 
       <div class="login-card">
@@ -51,7 +52,7 @@ export async function render(container) {
           </button>
           <p class="login-note">We'll send a 6-digit OTP. No password needed.</p>
           <div class="trust-panel">
-            <span>✅ Haldwani service pilot</span>
+            <span>✅ ${_esc(locality.label)} service routing</span>
             <span>🛠️ Verified local providers</span>
             <span>💬 Human support available</span>
           </div>
@@ -135,6 +136,24 @@ export async function render(container) {
   `;
 
   LoginPage._init();
+}
+
+function _esc(str) {
+  return UI.escapeHtml(str);
+}
+
+function _loginLocalityContext() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("wtg_locality_context") || "{}");
+    if (saved?.label) return { label: String(saved.label).trim() };
+  } catch {}
+  try {
+    const homeState = JSON.parse(sessionStorage.getItem("wtg_home_state") || "{}");
+    if (homeState?.locality) return { label: String(homeState.locality).trim() };
+    if (homeState?.city) return { label: String(homeState.city).trim() };
+  } catch {}
+  const city = CONFIG.SERVICE_ONLY?.CITY || "your area";
+  return { label: city };
 }
 
 window.LoginPage = (() => {
@@ -223,7 +242,7 @@ window.LoginPage = (() => {
 
   function switchAuthTab(tab) {
     if (tab === "email" && CONFIG.FEATURES?.SERVICE_ONLY_MODE) {
-      UI.toast("Use Mobile OTP during the Haldwani service pilot.", "info");
+      UI.toast("Use Mobile OTP for service booking support.", "info");
       return;
     }
     const showEmail = tab === "email";
@@ -244,7 +263,7 @@ window.LoginPage = (() => {
 
   function showRegister() {
     if (CONFIG.FEATURES?.SERVICE_ONLY_MODE) {
-      UI.toast("Use Mobile OTP during the Haldwani service pilot.", "info");
+      UI.toast("Use Mobile OTP for service booking support.", "info");
       return;
     }
     document.getElementById("step-email")?.classList.remove("active");
@@ -348,7 +367,7 @@ window.LoginPage = (() => {
 
   function googleLogin() {
     if (CONFIG.FEATURES?.SERVICE_ONLY_MODE) {
-      UI.toast("Use Mobile OTP during the Haldwani service pilot.", "info");
+      UI.toast("Use Mobile OTP for service booking support.", "info");
       return;
     }
     const googleClientId = window.WTG_GOOGLE_CLIENT_ID || CONFIG.GOOGLE_CLIENT_ID || "";

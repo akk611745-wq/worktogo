@@ -95,7 +95,7 @@ window.BookingsPage = (() => {
           </div>
           <div class="item-row muted small"><span>Category: ${_esc(b.category_label || b.category_name || b.service_name || "Service")}</span></div>
           ${b.subservice ? `<div class="item-row muted small"><span>Service: ${_esc(b.subservice)}</span></div>` : ""}
-          ${b.locality ? `<div class="item-row muted small"><span>Area routing: ${_esc(b.locality)}${b.locality_source ? ` · ${_esc(_localitySourceLabel(b.locality_source))}` : ""}</span></div>` : ""}
+          ${b.locality ? `<div class="item-row muted small"><span>Area routing: ${_esc(b.locality)}${b.city ? ` · ${_esc(b.city)}` : ""}${b.locality_source ? ` · ${_esc(_localitySourceLabel(b.locality_source))}` : ""}</span></div>` : ""}
           <div class="item-row muted small"><span>Mode: ${_esc(_modeLabel(b.booking_mode))}</span></div>
           <div class="item-row muted small"><span>Now: ${_esc(state.label)}</span></div>
           <div class="item-row muted small"><span>Next: ${_esc(state.next)}</span></div>
@@ -207,6 +207,7 @@ window.BookingsPage = (() => {
       request_type: b.request_type || _requestTypeFromMode(b.booking_mode || _modeFromNotes(b.notes)),
       subservice: b.subservice || b.selected_service || _fieldFromNotes(b.notes, "Subservice") || _fieldFromNotes(b.notes, "Selected service"),
       locality: b.customer_locality || b.locality || b.selected_nearby_area || _fieldFromNotes(b.notes, "Locality") || _fieldFromNotes(b.notes, "Selected nearby area"),
+      city: b.selected_city || b.city || _fieldFromNotes(b.notes, "Selected city"),
       locality_source: b.locality_source || _fieldFromNotes(b.notes, "Locality source"),
       request_source: b.request_source || _fieldFromNotes(b.notes, "Request source"),
       operational_tracking_state: b.operational_tracking_state || b.tracking_state || _fieldFromNotes(b.notes, "Tracking state"),
@@ -251,7 +252,7 @@ window.BookingsPage = (() => {
   }
 
   function _localitySourceLabel(source = "") {
-    const map = { manual_selected: "manual selection", manual_typed: "typed area", typed: "typed area", saved: "saved area", browser_hint: "browser hint", fallback: "fallback city" };
+    const map = { manual_selected: "manual selection", manual_city: "manual city", manual_typed: "typed area", typed: "typed area", saved: "saved area", browser_hint: "browser hint", fallback: "fallback city" };
     return map[String(source || "").toLowerCase()] || _title(source);
   }
 
@@ -316,7 +317,7 @@ window.BookingsPage = (() => {
   function _shortNotes(notes) {
     return String(notes || "")
       .split("\n")
-      .filter(line => !/^(Lifecycle mode|Category slug|Category label|Customer name|Customer mobile|Customer locality|Customer address|Vendor route|Request type|Booking mode|Booking mode meaning|Tracking state|Request source|Mobile|Locality|Selected nearby area|Locality source|Address|Preferred time|Selected worker):/i.test(line.trim()))
+      .filter(line => !/^(Lifecycle mode|Category slug|Category label|Customer name|Customer mobile|Customer locality|Customer address|Vendor route|Request type|Booking mode|Booking mode meaning|Tracking state|Request source|Mobile|Locality|Selected nearby area|Selected city|Locality source|Address|Preferred time|Selected worker):/i.test(line.trim()))
       .slice(0, 2)
       .join(" · ")
       .slice(0, 140);

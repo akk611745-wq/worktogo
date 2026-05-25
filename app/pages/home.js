@@ -179,6 +179,9 @@ export async function render(container) {
     chooseLocality(locality = "", source = "selected") {
       _setManualLocality(locality, source);
     },
+    chooseCity(city = "") {
+      _setManualCity(city);
+    },
     saveTypedLocality() {
       const input = document.getElementById("locality-manual-input");
       const value = input?.value?.trim() || "";
@@ -220,7 +223,6 @@ export async function render(container) {
     filterEcosystem(term = "") {
       HomeModals.discardBookingDraft?.("discovery_change");
       _activeChipFilter = String(term || "").trim().toLowerCase();
-      _activeLocalityFilter = "";
       _searchQuery = "";
       _searchRemoteServices = [];
       const inp = document.getElementById("service-search");
@@ -631,6 +633,7 @@ window.HomeModals = (() => {
       subservice: serviceContext,
       locality: area,
       selected_nearby_area: _resolvedLocality().label || area,
+      selected_city: _resolvedLocality().city || _activeCity(),
       locality_source: _resolvedLocality().source,
       locality_confidence: _resolvedLocality().source === "fallback" ? "city" : "area",
       full_address: address,
@@ -672,6 +675,7 @@ window.HomeModals = (() => {
         customer_mobile: mobileDigits,
         customer_locality: area,
         selected_nearby_area: operationalPayload.selected_nearby_area,
+        selected_city: operationalPayload.selected_city,
         locality_source: operationalPayload.locality_source,
         customer_address: address,
         vendor_id: selectedWorker?.vendor_id || null,
@@ -854,7 +858,7 @@ function _renderServices(res) {
     el.classList.remove("fallback-services-grid");
     el.innerHTML = `
       <div class="fallback-help-card service-recovery-card">
-        <h3>Nearby worker confirmation active</h3>
+        <h3>Area-based worker confirmation active</h3>
         <p>${_esc(_friendlyServiceError(res.error))} Requests are still routed through WorkToGo confirmation.</p>
         <div class="recovery-actions">
           <button class="btn-ghost-inline" onclick="HomePage.bookCategoryCta('', 'free_lead')">Open worker matching</button>
@@ -883,8 +887,8 @@ function _renderServices(res) {
       el.classList.remove("fallback-services-grid");
       el.innerHTML = `
       <div class="fallback-help-card">
-        <h3>${_esc(_activeCategory ? `${_categoryMeta(_activeCategory).label} worker matching ready` : "Nearby worker matching ready")}</h3>
-        <p>${_esc(_searchQuery || _activeChipFilter ? "Exact live card is not shown yet. Submit the request and WorkToGo will route it after confirmation." : "Booking opens matching with nearby workers after confirmation.")}</p>
+        <h3>${_esc(_activeCategory ? `${_categoryMeta(_activeCategory).label} worker matching ready` : "Area-based worker matching ready")}</h3>
+        <p>${_esc(_searchQuery || _activeChipFilter ? "Exact worker card is not shown yet. Submit the request and WorkToGo will route it after confirmation." : "Booking opens area-based worker matching after confirmation.")}</p>
         <button class="btn-ghost-inline" onclick="HomePage.bookCategoryCta('', 'free_lead')">Free booking</button>
       </div>`;
       return;
@@ -1045,7 +1049,7 @@ function _mergeCategories(dynamic, base) {
 function _categoryMeta(slug = "") {
   const key = _slug(slug);
   if (!key) return CATEGORY_META.all;
-  const meta = CATEGORY_META[key] || { icon: "🔧", label: _title(key), hero: `${_title(key)} services in ${_pilotConfig.city}`, subtitle: "Choose a local service and WorkToGo will confirm before visit.", examples: ["Inspection", "Repair", "Installation"], trust: "Verified local support", vendors: "Local provider assignment", inspection: true };
+  const meta = CATEGORY_META[key] || { icon: "🔧", label: _title(key), hero: `${_title(key)} services for selected area`, subtitle: "Choose a local service and WorkToGo will confirm before visit.", examples: ["Inspection", "Repair", "Installation"], trust: "Verified local support", vendors: "Local provider assignment", inspection: true };
   return { slug: key, ...meta };
 }
 
@@ -1107,13 +1111,14 @@ function _operatingFeedHTML(slug = "") {
 
 function _heroHTML(slug = "") {
   const meta = _categoryMeta(slug);
+  const localityContext = _resolvedLocality();
   const price = UI.formatCurrency(_inspectionPrice(null, meta));
   const primaryText = `${price} Inspection`;
   return `
     <div class="service-hero-copy">
-      <p class="service-hero-kicker">${_esc(slug ? `${meta.label} operating lane` : `${_pilotConfig.city} local operating network`)}</p>
-      <h1>${_esc(meta.hero || _pilotConfig.hero_title)}</h1>
-      <p>${_esc(meta.subtitle || _pilotConfig.hero_subtitle)}</p>
+      <p class="service-hero-kicker">${_esc(slug ? `${meta.label} lane · ${localityContext.label}` : `${localityContext.label} local operating network`)}</p>
+      <h1>${_esc(slug ? `${meta.label} services for ${localityContext.label}` : `Trusted services for ${localityContext.label}`)}</h1>
+      <p>${_esc(meta.subtitle || _pilotConfig.hero_subtitle)} ${_esc(`Active routing area: ${localityContext.label}.`)}</p>
       <div class="booking-distinction-grid">
         <div><strong>Inspection</strong><span>${_esc(`${price} · expert diagnosis first`)}</span></div>
         <div><strong>Free booking</strong><span>Nearby worker confirmation</span></div>
@@ -1156,6 +1161,7 @@ function _trustProofHTML(slug = "") {
 
 function _visualProofHTML(slug = "") {
   const meta = _categoryMeta(slug);
+  const localityContext = _resolvedLocality();
   const baseProof = meta.beforeAfter || CATEGORY_META.all.beforeAfter;
   const beforeAfter = _activeChipFilter
     ? [...baseProof].sort((a, b) => Number(_proofMatches(b)) - Number(_proofMatches(a)))
@@ -1163,18 +1169,18 @@ function _visualProofHTML(slug = "") {
   return `
     <div class="section-header">
       <div>
-        <h3>${_esc(meta.label)} work proof</h3>
-        <p class="section-note">Informational examples: service type, locality context and completed outcome.</p>
+        <h3>${_esc(meta.label)} work proof for ${_esc(localityContext.label)}</h3>
+        <p class="section-note">Informational examples: service type, selected locality context and completed outcome.</p>
       </div>
     </div>
     <div class="proof-rail">
       ${beforeAfter.map((item, i) => `
         <div class="proof-tile proof-tone-${i % 3}" aria-label="Informational work proof">
           <div class="proof-split">
-            <span>${_esc(item.locality || meta.locality?.[i % (meta.locality?.length || 1)] || _pilotConfig.city)}</span>
+            <span>${_esc(localityContext.label)}</span>
             <span>Completed</span>
           </div>
-          <em>${_esc(meta.label)} · local work example</em>
+          <em>${_esc(meta.label)} · ${_esc(localityContext.label)} context example</em>
           <strong>${_esc(item.title)}</strong>
           <p>${_esc(item.note)}</p>
         </div>
@@ -1189,10 +1195,11 @@ function _proofMatches(item) {
 
 function _vendorCardHTML(service, support = false) {
   const meta = _categoryMeta(service.category_slug || service.slug || service.category || _activeCategory);
+  const localityContext = _resolvedLocality();
   const name = service.vendor_name || service.name || "Worker available after confirmation";
   const price = _servicePriceLabel(service);
   const rating = service.rating && service.rating_is_verified ? service.rating : "";
-  const locality = service.locality || service.vendor_locality || service.area || meta.locality?.[0] || _pilotConfig.city;
+  const locality = service.locality || service.vendor_locality || service.area || localityContext.label;
   const exp = service.experience || "";
   const photo = service.image || service.photo || "";
   const semantics = _vendorSemantics(service, meta);
@@ -1210,7 +1217,7 @@ function _vendorCardHTML(service, support = false) {
           <div class="vendor-avatar">${service.icon || meta.icon || "🔧"}</div>
             <div>
               <h4>${_esc(name)}</h4>
-              <p>${[locality, "request routed by admin"].filter(Boolean).map(_esc).join(" · ")}</p>
+              <p>${[locality, `${localityContext.label} routing context`, "request routed by admin"].filter(Boolean).map(_esc).join(" · ")}</p>
             </div>
           </div>
           <div class="vendor-stats">
@@ -1307,12 +1314,19 @@ function _closeLocalitySelector() {
 function _localitySelectorHTML() {
   const meta = _categoryMeta(_activeCategory);
   const active = _resolvedLocality();
+  const city = _activeCity();
+  const cities = _cityOptions();
   const areas = _localityOptions(meta);
   return `
     <div class="locality-current-card">
       <span>📍</span>
-      <div><strong>${_esc(_localityRequestLine())}</strong><small>${_esc(_localitySourceLine())}</small></div>
+      <div><strong>${_esc(_localityRequestLine())}</strong><small>${_esc(city)} city · ${_esc(_localitySourceLine())}</small></div>
     </div>
+    <div class="locality-selector-label">City</div>
+    <div class="locality-option-grid city-option-grid">
+      ${cities.map(name => `<button type="button" class="locality-option city-option ${_slug(city) === _slug(name) ? "active" : ""}" onclick="HomePage.chooseCity('${_esc(name)}')"><strong>${_esc(name)}</strong><small>${_esc(_slug(city) === _slug(name) ? "Active city" : "Switch city")}</small></button>`).join("")}
+    </div>
+    <div class="locality-selector-label">Area / locality</div>
     <div class="locality-option-grid">
       ${areas.map(area => `<button type="button" class="locality-option ${_slug(active.label) === _slug(area) ? "active" : ""}" onclick="HomePage.chooseLocality('${_esc(area)}', 'selected')"><strong>${_esc(area)}</strong><small>${_esc(_slug(active.label) === _slug(area) ? "Active routing area" : "Use for routing")}</small></button>`).join("")}
     </div>
@@ -1331,14 +1345,16 @@ function _localitySelectorHTML() {
 function _localityOptions(meta = {}) {
   const profile = _customerProfile();
   const saved = _readSavedLocality();
+  const city = _activeCity();
   const values = [
     _activeLocalityFilter,
     saved?.label,
     profile.locality,
     profile.area,
+    ...(_cityLocalities(city) || []),
     ...(meta.locality || []),
     ...(CATEGORY_META.all.locality || []),
-    _pilotConfig.city,
+    city,
   ].map(v => String(v || "").trim()).filter(Boolean);
   const seen = new Set();
   return values.filter(v => {
@@ -1349,11 +1365,24 @@ function _localityOptions(meta = {}) {
   }).slice(0, 8);
 }
 
+function _setManualCity(city = "") {
+  const label = _cleanLocality(city);
+  if (!label) return;
+  const defaultArea = _cityLocalities(label)[0] || label;
+  _activeLocalityFilter = defaultArea;
+  _localityContext = { label: defaultArea, city: label, source: "manual_city", updated_at: Date.now() };
+  _persistLocalityContext();
+  _persistHomeState();
+  _refreshLocalitySurfaces();
+  _renderLocalitySelector();
+  UI.toast(`${label} city active with ${defaultArea} routing context`, "success");
+}
+
 function _setManualLocality(locality = "", source = "selected", opts = {}) {
   const label = _cleanLocality(locality);
   if (!label) return;
   _activeLocalityFilter = label;
-  _localityContext = { label, source: source === "typed" ? "manual_typed" : "manual_selected", updated_at: Date.now() };
+  _localityContext = { label, city: _inferCityForLocality(label), source: source === "typed" ? "manual_typed" : "manual_selected", updated_at: Date.now() };
   _persistLocalityContext();
   _persistHomeState();
   _refreshLocalitySurfaces();
@@ -1390,7 +1419,7 @@ function _commitTypedLocality(value = "") {
   const label = _cleanLocality(value);
   if (!label) return;
   _activeLocalityFilter = label;
-  _localityContext = { label, source: "typed", updated_at: Date.now() };
+  _localityContext = { label, city: _inferCityForLocality(label), source: "typed", updated_at: Date.now() };
   _persistLocalityContext();
   _persistHomeState();
   _renderLocalityHeader();
@@ -1408,34 +1437,35 @@ function _refreshLocalitySurfaces() {
 
 function _resolvedLocality() {
   const selected = _cleanLocality(_activeLocalityFilter || _localityContext?.label);
-  if (selected) return { label: selected, source: _localityContext?.source || "manual_selected" };
+  if (selected) return { label: selected, city: _localityContext?.city || _inferCityForLocality(selected), source: _localityContext?.source || "manual_selected" };
   const saved = _readSavedLocality();
   if (saved?.label) return saved;
   const hint = _browserLocalityHint(false);
   if (hint?.label) return hint;
-  return { label: _pilotConfig.city || "Haldwani", source: "fallback" };
+  const fallbackCity = _pilotConfig.city || "your area";
+  return { label: fallbackCity, city: fallbackCity, source: "fallback" };
 }
 
 function _readSavedLocality() {
   try {
     const saved = JSON.parse(localStorage.getItem("wtg_locality_context") || "{}");
-    if (saved?.label) return { label: _cleanLocality(saved.label), source: saved.source || "saved" };
+    if (saved?.label) return { label: _cleanLocality(saved.label), city: _cleanLocality(saved.city) || _inferCityForLocality(saved.label), source: saved.source || "saved" };
   } catch {}
   const profile = _customerProfile();
   const label = _cleanLocality(profile.locality || profile.area);
-  return label ? { label, source: "saved" } : null;
+  return label ? { label, city: _inferCityForLocality(label), source: "saved" } : null;
 }
 
 function _browserLocalityHint(create = true) {
   try {
     const raw = sessionStorage.getItem("wtg_browser_locality_hint");
     const parsed = raw ? JSON.parse(raw) : null;
-    if (parsed?.label) return { label: _cleanLocality(parsed.label), source: "browser_hint" };
+    if (parsed?.label) return { label: _cleanLocality(parsed.label), city: _cleanLocality(parsed.city) || _inferCityForLocality(parsed.label), source: "browser_hint" };
   } catch {}
   if (!create) return null;
   const label = _cleanLocality(_pilotConfig.browser_hint || CONFIG.SERVICE_ONLY?.BROWSER_LOCALITY_HINT || "");
   if (!label) return null;
-  const hint = { label, source: "browser_hint", updated_at: Date.now() };
+  const hint = { label, city: _inferCityForLocality(label), source: "browser_hint", updated_at: Date.now() };
   try { sessionStorage.setItem("wtg_browser_locality_hint", JSON.stringify(hint)); } catch {}
   return hint;
 }
@@ -1444,7 +1474,12 @@ function _restoreLocalityContext() {
   const saved = _readSavedLocality();
   const sessionLabel = _cleanLocality(_activeLocalityFilter);
   if (sessionLabel) {
-    _localityContext = { label: sessionLabel, source: "manual_selected", updated_at: Date.now() };
+    _localityContext = {
+      label: sessionLabel,
+      city: _localityContext?.city || saved?.city || _inferCityForLocality(sessionLabel),
+      source: _localityContext?.source || "manual_selected",
+      updated_at: Date.now(),
+    };
     return;
   }
   if (saved?.label) {
@@ -1462,6 +1497,7 @@ function _persistLocalityContext() {
 function _localityStatusLine() {
   const current = _resolvedLocality();
   if (current.source === "manual_selected") return `Serving ${current.label}`;
+  if (current.source === "manual_city") return `${current.city || current.label} city active`;
   if (current.source === "manual_typed" || current.source === "typed") return `${current.label} area active`;
   if (current.source === "saved") return `Saved area routing active`;
   if (current.source === "browser_hint") return `Browser hint routing active`;
@@ -1475,6 +1511,7 @@ function _localityRequestLine() {
 function _localitySourceLine() {
   const source = _resolvedLocality().source;
   if (source === "manual_selected") return "Manual area selected";
+  if (source === "manual_city") return "Manual city selected";
   if (source === "manual_typed" || source === "typed") return "Typed area saved";
   if (source === "saved") return "Saved customer area";
   if (source === "browser_hint") return "Browser locality hint";
@@ -1483,6 +1520,47 @@ function _localitySourceLine() {
 
 function _cleanLocality(value = "") {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+function _activeCity() {
+  return _cleanLocality(_resolvedLocality().city || _pilotConfig.city || "your area");
+}
+
+function _cityOptions() {
+  const configured = Array.isArray(_pilotConfig.cities) ? _pilotConfig.cities : [];
+  const base = ["Haldwani", "Almora", "Delhi", "Rudrapur", "Noida"];
+  const values = [...configured, ...base, _pilotConfig.city].map(_cleanLocality).filter(Boolean);
+  const seen = new Set();
+  return values.filter(city => {
+    const key = _slug(city);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 8);
+}
+
+function _cityLocalities(city = "") {
+  const key = _slug(city);
+  const configured = _pilotConfig.city_localities?.[city] || _pilotConfig.city_localities?.[key] || [];
+  const defaults = {
+    haldwani: ["Mukhani", "Kusumkhera", "Dahariya", "Lalpur Nayak", "Kaladhungi Road"],
+    almora: ["Mall Road Almora", "Dharanaula", "Khatyari", "Nanda Devi", "Dugalkhola"],
+    delhi: ["Lajpat Nagar", "Karol Bagh", "Dwarka", "Rohini", "Saket"],
+    rudrapur: ["Awas Vikas", "Transit Camp", "Model Colony", "Kichha Road", "Civil Lines"],
+    noida: ["Sector 18", "Sector 62", "Sector 76", "Sector 137", "Greater Noida West"],
+  };
+  return (Array.isArray(configured) && configured.length ? configured : defaults[key] || []).map(_cleanLocality).filter(Boolean);
+}
+
+function _inferCityForLocality(locality = "") {
+  const label = _cleanLocality(locality);
+  const labelKey = _slug(label);
+  for (const city of _cityOptions()) {
+    const cityKey = _slug(city);
+    if (labelKey === cityKey) return city;
+    if (_cityLocalities(city).some(area => _slug(area) === labelKey)) return city;
+  }
+  return _pilotConfig.city || "your area";
 }
 
 function _inferSearchMeta(query) {
@@ -1602,6 +1680,7 @@ function _sessionContext() {
     active_category: _activeCategory,
     selected_issue: _activeChipFilter,
     selected_locality: locality.label,
+    selected_city: locality.city || _activeCity(),
     locality_source: locality.source,
     discovery_kind: _activeDiscoveryKind,
     search_query: _searchQuery,
@@ -1626,6 +1705,8 @@ function _adminRequestNotes(payload = {}) {
     `Mobile: ${payload.customer?.phone || ""}`,
     `Locality: ${payload.locality || ""}`,
     `Selected nearby area: ${payload.selected_nearby_area || ""}`,
+    `Selected city: ${payload.selected_city || ""}`,
+    `Locality source: ${payload.locality_source || ""}`,
     `Address: ${payload.full_address || ""}`,
     `Preferred time: ${payload.preferred_time || ""}`,
     `Selected worker: ${worker}`,
@@ -1673,7 +1754,7 @@ function _restoreHomeState() {
     _activeCategory = state.category || _activeCategory || "";
     _activeChipFilter = state.chip || "";
     _activeLocalityFilter = state.locality || "";
-    if (state.locality_source && _activeLocalityFilter) _localityContext = { label: _activeLocalityFilter, source: state.locality_source };
+    if (state.locality_source && _activeLocalityFilter) _localityContext = { label: _activeLocalityFilter, city: state.city || _inferCityForLocality(_activeLocalityFilter), source: state.locality_source };
     _activeDiscoveryKind = state.discovery || "";
     _searchQuery = state.query || "";
   } catch {}
@@ -1682,7 +1763,7 @@ function _restoreHomeState() {
 function _persistHomeState() {
   try {
     const locality = _resolvedLocality();
-    sessionStorage.setItem("wtg_home_state", JSON.stringify({ category: _activeCategory, chip: _activeChipFilter, locality: locality.source === "fallback" ? "" : locality.label, locality_source: locality.source, discovery: _activeDiscoveryKind, query: _searchQuery }));
+    sessionStorage.setItem("wtg_home_state", JSON.stringify({ category: _activeCategory, chip: _activeChipFilter, locality: locality.source === "fallback" ? "" : locality.label, city: locality.city || _activeCity(), locality_source: locality.source, discovery: _activeDiscoveryKind, query: _searchQuery }));
   } catch {}
 }
 
@@ -1729,7 +1810,7 @@ function _clearPendingBookingIntent() {
 
 function _friendlyServiceError(error = "") {
   const msg = String(error || "").toLowerCase();
-  if (msg.includes("internal server") || msg.includes("500")) return "Live worker list is being coordinated.";
+  if (msg.includes("internal server") || msg.includes("500")) return "Worker list is being coordinated.";
   if (msg.includes("network") || msg.includes("failed")) return "Worker matching can continue through confirmation.";
   return "Worker matching is available through booking confirmation.";
 }
@@ -1809,8 +1890,8 @@ let _showAllCategories = false;
 let _allServices = [];
 let _serviceCategories = [];
 let _pilotConfig = {
-  city: CONFIG.SERVICE_ONLY?.CITY || "Haldwani",
-  hero_title: "Book trusted local services in Haldwani",
+  city: CONFIG.SERVICE_ONLY?.CITY || "your area",
+  hero_title: "Book trusted local services for your area",
   hero_subtitle: "Browse local services first. Login only when you request or track a booking.",
   trust_badges: ["Local providers", "Pay after service", "Manual confirmation"],
   support_label: "Need help?",
@@ -1823,14 +1904,14 @@ let _pilotConfig = {
 };
 
 const CATEGORY_META = {
-  all: { slug: "", icon: "🧰", label: "All services", hero: "Trusted Haldwani Services", subtitle: "Area-based verified workers for repairs, painting, waterproofing, CCTV and home jobs.", ecosystemTitle: "Local workers available now", examples: ["Electrician", "Plumber", "Painting", "CCTV"], tags: ["fan", "leakage", "painter", "CCTV", "carpenter", "waterproofing"], visuals: [{ emoji: "⚡", label: "Fan fixed", note: "from ₹199" }, { emoji: "🎨", label: "Room painted", note: "estimate visit" }, { emoji: "💧", label: "Leak stopped", note: "inspection" }], beforeAfter: [{ title: "Damp wall restored", note: "Seepage inspection, repair and repaint flow" }, { title: "Old room refresh", note: "Putty, primer and clean finish by local painters" }], dealers: ["Mukhani", "Kusumkhera", "Kaladhungi Road"], materials: ["repair parts", "paint", "pipes"], brands: ["Asian", "Dr Fixit", "Havells"], locality: ["Mukhani", "Dahariya", "Lalpur Nayak"], trust: "Local coordination · pay after service · human confirmation", vendors: "Verified local provider network", inspection: true },
+  all: { slug: "", icon: "🧰", label: "All services", hero: "Trusted services for your area", subtitle: "Area-based verified workers for repairs, painting, waterproofing, CCTV and home jobs.", ecosystemTitle: "Local workers available now", examples: ["Electrician", "Plumber", "Painting", "CCTV"], tags: ["fan", "leakage", "painter", "CCTV", "carpenter", "waterproofing"], visuals: [{ emoji: "⚡", label: "Fan fixed", note: "from ₹199" }, { emoji: "🎨", label: "Room painted", note: "estimate visit" }, { emoji: "💧", label: "Leak stopped", note: "inspection" }], beforeAfter: [{ title: "Damp wall restored", note: "Seepage inspection, repair and repaint flow" }, { title: "Old room refresh", note: "Putty, primer and clean finish by local painters" }], dealers: ["Mukhani", "Kusumkhera", "Kaladhungi Road"], materials: ["repair parts", "paint", "pipes"], brands: ["Asian", "Dr Fixit", "Havells"], locality: ["Mukhani", "Dahariya", "Lalpur Nayak"], trust: "Local coordination · pay after service · human confirmation", vendors: "Verified local provider network", inspection: true },
   electrician: { icon: "⚡", label: "Electrical", aliases: ["electrical", "electrician", "wiring"], hero: "Electrical workers for your selected area", subtitle: "Fan, switch, MCB, wiring and light installation with quick local confirmation.", examples: ["Fan repair", "Switch board", "MCB issue", "Light installation"], tags: ["fan", "switch", "MCB", "wiring", "geyser", "inverter"], visuals: [{ emoji: "🌀", label: "Fan repair", note: "from ₹199" }, { emoji: "🔌", label: "Switch board", note: "same day" }, { emoji: "💡", label: "Lights", note: "install" }], beforeAfter: [{ title: "Dead fan running", note: "Local electrician visit with quick diagnosis" }, { title: "Unsafe board cleaned", note: "Switch replacement and wiring check" }], dealers: ["Havells point", "Kaladhungi Road electrical", "Mukhani hardware"], materials: ["switch", "MCB", "wire", "fan capacitor"], brands: ["Havells", "Anchor", "Polycab", "Syska"], locality: ["Mukhani", "Kusumkhera", "Nainital Road"], trust: "Safety-first local electricians · pay after service", vendors: "Electrician provider assignment", inspection: false },
   plumber: { icon: "🚰", label: "Plumbing", aliases: ["plumber", "plumbing", "pipe", "tap"], hero: "Plumbers for leakage and fittings", subtitle: "Tap, pipe, bathroom and kitchen plumbing help from nearby workers.", examples: ["Leakage repair", "Tap fitting", "Pipe blockage", "Bathroom fitting"], tags: ["tap leak", "pipe", "flush", "basin", "bathroom", "motor"], visuals: [{ emoji: "🚿", label: "Tap leak", note: "from ₹199" }, { emoji: "🧰", label: "Pipe fix", note: "nearby" }, { emoji: "🚽", label: "Bathroom", note: "fitting" }], beforeAfter: [{ title: "Leakage stopped", note: "Tap and joint repair by local plumber" }, { title: "Bathroom fitting done", note: "Clear scope confirmation before visit" }], dealers: ["Sanitary market", "Mukhani hardware", "Rampur Road pipes"], materials: ["CPVC pipe", "flush kit", "tap", "basin waste"], brands: ["Jaquar", "Astral", "Ashirvad", "Supreme"], locality: ["Kusumkhera", "Dahariya", "Mukhani"], trust: "Local plumbers · clear visit confirmation", vendors: "Plumber provider assignment", inspection: false },
   painting: { icon: "🎨", label: "Painting", aliases: ["paint", "painter", "painting"], hero: "Painting ecosystem for homes and shops", subtitle: "Painters, wall textures, putty, before/after work and expert visit for estimates.", examples: ["Room painting", "Wall putty", "Exterior painting", "Color consultation"], tags: ["texture", "putty", "primer", "room paint", "exterior", "rental repaint"], visuals: [{ emoji: "🧱", label: "Wall texture", note: "trending" }, { emoji: "🏠", label: "Room paint", note: "quote" }, { emoji: "🪣", label: "Putty repair", note: "before/after" }], beforeAfter: [{ title: "Bedroom repaint", note: "Old patches to clean warm finish" }, { title: "Texture wall upgrade", note: "Accent wall with painter estimate" }, { title: "Exterior refresh", note: "Weather coat and crack prep" }], dealers: ["Paint shop Mukhani", "Kusumkhera colors", "Nainital Road paint"], materials: ["putty", "primer", "emulsion", "texture"], brands: ["Asian Paints", "Nerolac", "Berger", "Dulux"], locality: ["Mukhani", "Lalpur Nayak", "Kaladhungi Road"], trust: "Site inspection option · local painters · estimate before work", vendors: "Painting teams and local contractors", inspection: true },
   waterproofing: { icon: "💧", label: "Waterproofing", aliases: ["waterproofing", "leakage", "seepage", "damp"], hero: "Leakage and seepage protection", subtitle: "Terrace, wall seepage, bathroom leakage and monsoon protection with inspection offers.", examples: ["Roof seepage", "Wall dampness", "Bathroom leakage", "Crack sealing"], tags: ["terrace", "seepage", "monsoon", "bathroom leak", "damp wall", "crack seal"], visuals: [{ emoji: "🌧️", label: "Monsoon cover", note: "inspection" }, { emoji: "🏚️", label: "Damp wall", note: "diagnosis" }, { emoji: "🧪", label: "Coating", note: "terrace" }], beforeAfter: [{ title: "Terrace leakage sealed", note: "Inspection-led waterproof coating" }, { title: "Seepage wall treated", note: "Dampness source checked before repair" }, { title: "Bathroom leak fixed", note: "Joint sealing and slope check" }], dealers: ["Waterproofing dealer Mukhani", "Paint chemical shop", "Hardware Kaladhungi Road"], materials: ["roof coat", "crack filler", "membrane", "sealant"], brands: ["Dr Fixit", "Sika", "Asian SmartCare", "Nerolac"], locality: ["Dahariya", "Kusumkhera", "Mukhani"], trust: "Inspection-led scope · local repair teams", vendors: "Waterproofing specialists", inspection: true },
   cctv: { icon: "📹", label: "CCTV", hero: "CCTV installation for your selected area", subtitle: "Camera setup, wiring, DVR/NVR, shop and home security visits by local technicians.", examples: ["Camera install", "DVR setup", "Wiring", "Shop security"], tags: ["camera", "DVR", "NVR", "home CCTV", "shop CCTV", "wiring"], visuals: [{ emoji: "📹", label: "Camera install", note: "quote" }, { emoji: "🖥️", label: "DVR setup", note: "fast" }, { emoji: "🏪", label: "Shop CCTV", note: "nearby" }], beforeAfter: [{ title: "Shop camera live", note: "Camera angle and DVR configured" }, { title: "Home entry covered", note: "Wiring and mobile view setup" }], trust: "Security technician confirmation · clear install scope", vendors: "CCTV installers", inspection: true },
   carpentry: { icon: "🪚", label: "Carpentry", hero: "Carpenters for repair and renovation", subtitle: "Door, wardrobe, modular fixes, polish and furniture repair from local carpenters.", examples: ["Door repair", "Wardrobe", "Furniture fix", "Polish work"], tags: ["door", "wardrobe", "hinge", "modular", "polish", "furniture"], visuals: [{ emoji: "🚪", label: "Door repair", note: "from ₹249" }, { emoji: "🪵", label: "Furniture", note: "fix" }, { emoji: "🧱", label: "Wardrobe", note: "quote" }], beforeAfter: [{ title: "Door alignment fixed", note: "Hinge repair and smooth closing" }, { title: "Furniture restored", note: "Polish and repair work proof" }, { title: "Wardrobe repair", note: "Local carpenter estimate and visit" }], trust: "Local carpenters · inspection for custom work", vendors: "Carpentry workers", inspection: true },
-  cleaning: { icon: "🧹", label: "Cleaning", hero: "Cleaning services in Haldwani", subtitle: "Home, shop, kitchen and deep cleaning requests with local coordination.", examples: ["Home cleaning", "Kitchen cleaning", "Shop cleaning", "Move-in cleaning"], trust: "Clear scope confirmation · pay after service", vendors: "Cleaning partners", inspection: false },
+  cleaning: { icon: "🧹", label: "Cleaning", hero: "Cleaning services for your selected area", subtitle: "Home, shop, kitchen and deep cleaning requests with local coordination.", examples: ["Home cleaning", "Kitchen cleaning", "Shop cleaning", "Move-in cleaning"], trust: "Clear scope confirmation · pay after service", vendors: "Cleaning partners", inspection: false },
   "ac-repair": { icon: "❄️", label: "AC repair", hero: "AC service and repair", subtitle: "AC checkup, service, cooling issue and installation support with verified local help.", examples: ["AC service", "Cooling issue", "Gas check", "Installation"], trust: "Technician confirmation · pay after service", vendors: "AC technicians", inspection: true },
   appliance: { icon: "🔧", label: "Appliance", hero: "Appliance repair support", subtitle: "Fridge, washing machine, RO and common appliance checks coordinated locally.", examples: ["RO service", "Washer issue", "Fridge check", "Geyser repair"], trust: "Diagnosis-first support · local technicians", vendors: "Appliance technicians", inspection: true },
   tutor: { icon: "📚", label: "Tutor", hero: "Local tutor requests", subtitle: "Tell WorkToGo your class, subject and area. Team will help connect locally.", examples: ["Math tutor", "Science tutor", "Home tuition", "Spoken English"], trust: "Manual matching during pilot", vendors: "Local tutor coordination", inspection: false },
