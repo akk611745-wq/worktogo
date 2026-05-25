@@ -243,12 +243,23 @@ window.BookingsPage = (() => {
   }
 
   function _paymentLabel(method, status, mode) {
+    const state = _normalizePaymentState(status);
     if (mode === "inspection") {
-      if (status === "paid" || status === "verified") return "Inspection payment verified";
-      if (status === "failed") return "Inspection payment not completed";
+      if (state === "paid") return "Inspection payment verified";
+      if (state === "failed" || state === "cancelled") return "Inspection payment not completed";
       return "Inspection payment pending verification";
     }
     return String(method).toLowerCase() === "online" ? "Online" : "Pay after service";
+  }
+
+  function _normalizePaymentState(value = "") {
+    const raw = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+    if (["paid", "success", "successful", "completed", "verified", "captured", "payment_success"].includes(raw)) return "paid";
+    if (["failed", "failure", "declined", "error", "payment_failed"].includes(raw)) return "failed";
+    if (["cancelled", "canceled", "user_dropped", "aborted", "dropped"].includes(raw)) return "cancelled";
+    if (["refunded", "refund", "reversed"].includes(raw)) return "refunded";
+    if (["unpaid", "pending", "created", "active", "initiated", "processing", "requires_payment", "payment_pending", "verifying", "flagged", ""].includes(raw)) return "pending";
+    return raw.includes("paid") && !raw.includes("un") ? "paid" : raw.includes("fail") ? "failed" : raw.includes("cancel") ? "cancelled" : "pending";
   }
 
   function _localitySourceLabel(source = "") {
@@ -266,7 +277,8 @@ window.BookingsPage = (() => {
   function _trackingState(b) {
     const mode = String(b.booking_mode || "free_lead").toLowerCase();
     const raw = String(b.operational_tracking_state || b.status || "pending").toLowerCase();
-    const paid = ["paid", "verified"].includes(String(b.payment_status || "").toLowerCase());
+    const paymentState = _normalizePaymentState(b.payment_status || "");
+    const paid = paymentState === "paid";
     const key = mode === "inspection" && !paid && ["pending", "open", "payment_pending"].includes(raw) ? "payment_pending" : raw;
     const table = {
       payment_pending: ["Payment pending", "Complete inspection payment so the visit can be confirmed", "Inspection request is saved. Payment must be verified before visit assignment."],

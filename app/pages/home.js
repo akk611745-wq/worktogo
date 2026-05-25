@@ -134,8 +134,9 @@ export async function render(container) {
 
     <!-- Booking Modal -->
     <div id="booking-modal" class="modal-overlay hidden" onclick="HomeModals.closeOnOverlay(event)">
-      <div class="modal-sheet">
+      <div class="modal-sheet booking-bottom-sheet">
         <div class="modal-handle"></div>
+        <button class="modal-close-icon" type="button" onclick="HomeModals.closeBooking()" aria-label="Close inspection request">×</button>
         <h3 id="booking-modal-title">Book Service</h3>
         <div id="booking-modal-body"></div>
         <div class="modal-actions">
@@ -284,6 +285,12 @@ export async function render(container) {
       if (confirm) confirm.textContent = mode === "inspection" ? `Pay ${UI.formatCurrency(_inspectionPrice())} Inspection` : mode === "direct_vendor" ? "Book Vendor" : "Submit Free Lead";
       _persistPendingBookingForm();
     },
+    selectInspectionCategory(slug = "") {
+      HomeModals.selectInspectionCategory?.(slug);
+    },
+    selectInspectionIssue(issue = "") {
+      HomeModals.selectInspectionIssue?.(issue);
+    },
     persistPendingBookingForm() {
       _persistPendingBookingForm();
     },
@@ -350,7 +357,7 @@ export async function render(container) {
         HomeModals.openBooking({ ...service, booking_mode: mode || service.booking_mode, request_source: source, category_slug: service.category_slug || meta.slug, icon: service.icon || meta.icon });
         return;
       }
-      UI.openSupport('selector', { category: meta.label, service: meta.examples?.[0] || meta.label });
+      UI.toast("Inspection request is loading. Please choose a service category again.", "info");
     },
     bookQuickService(slug = "", serviceName = "") {
       const meta = _categoryMeta(slug || _activeCategory);
@@ -388,6 +395,7 @@ export async function render(container) {
   _setupExploreOverlay();
   _syncOperatingMode();
   _renderInstantSearch();
+  _restoreInspectionPaymentReturn();
 }
 
 // ── Modal Controller ────────────────────────────────────────────────────────
@@ -397,6 +405,7 @@ window.HomeModals = (() => {
   let _currentService = null;
   let _isBookingSubmitting = false;
   let _bookingOpenToken = 0;
+  let _swipeCleanup = null;
 
     function openOrder(product) {
     if (CONFIG.FEATURES?.SERVICE_ONLY_MODE) {
@@ -500,6 +509,14 @@ window.HomeModals = (() => {
     const category = _categoryMeta(service.category_slug || service.category || _activeCategory);
     const selectedService = service.quick_service || service.selected_service || service.name || category.examples?.[0] || category.label;
     const localityContext = _resolvedLocality();
+    const intendedMode = _canonicalBookingMode(service.booking_mode || (service.vendor_id ? "direct_vendor" : "free_lead"), service, category);
+    const savedInspectionPayment = intendedMode === "inspection" ? _readInspectionPaymentReturn() : null;
+    if (savedInspectionPayment?.booking && _normalizePaymentState(savedInspectionPayment.status_state || savedInspectionPayment.booking.payment_status) !== "paid") {
+      _currentService = null;
+      _showInspectionVerificationState(savedInspectionPayment, { forceOpen: true });
+      _continueInspectionVerification(savedInspectionPayment);
+      return;
+    }
     _currentService = {
       ...service,
       category_slug: category.slug || _activeCategory || service.category_slug || service.category || "",
@@ -511,8 +528,9 @@ window.HomeModals = (() => {
     const sameRestoredContext = _sameBookingContext(restored, selectedService, category);
     const defaultMode = _canonicalBookingMode(service.booking_mode || (sameRestoredContext ? restored.booking_mode : "") || (service.vendor_id ? "direct_vendor" : "free_lead"), _currentService, category);
     const inspectionPrice = _inspectionPrice(_currentService, category);
+    _resetBookingActions(defaultMode, inspectionPrice);
     document.getElementById("booking-modal-title").textContent = defaultMode === "inspection" ? `Inspection for ${category.label}` : `Book ${category.label}`;
-    document.getElementById("booking-modal-body").innerHTML = `
+    document.getElementById("booking-modal-body").innerHTML = defaultMode === "inspection" ? _inspectionRequestHTML({ service: _currentService, category, selectedService, restored, sameRestoredContext, inspectionPrice }) : `
       <div class="modal-product-info booking-sheet-summary">
         <div class="modal-product-placeholder">${service.icon || "🔧"}</div>
         <div>
@@ -583,13 +601,22 @@ window.HomeModals = (() => {
     modal?.classList.remove("hidden");
     modal?.querySelector(".modal-sheet")?.scrollTo({ top: 0, behavior: "instant" });
     _lockModalBody("booking");
+    _bindSwipeToClose(modal?.querySelector(".modal-sheet"));
     _persistPendingBookingForm();
   }
 
   async function confirmBooking() {
     if (_isBookingSubmitting) return;
+    let bookingMode = _canonicalBookingMode(document.getElementById("booking-mode")?.value, _currentService, _categoryMeta(document.getElementById("booking-category-context")?.value || _activeCategory));
+    if (bookingMode === "inspection") _syncCurrentServiceForCategory(document.getElementById("booking-category-context")?.value || _activeCategory);
     if (!AUTH.isLoggedIn()) {
-      UI.toast("Login with mobile OTP to request this service", "info");
+      const preName = document.getElementById("booking-name")?.value?.trim() || "";
+      const preMobile = document.getElementById("booking-mobile")?.value?.trim() || "";
+      const preDigits = preMobile.replace(/\D/g, "");
+      if (!preName) { _markInvalid("booking-name", "Please enter name"); return; }
+      if (preDigits.length !== 10) { _markInvalid("booking-mobile", "Please enter a valid 10-digit mobile number"); return; }
+      _persistCustomerProfile({ name: preName, phone: preDigits });
+      UI.toast("Verify mobile once to send request", "info");
       const pendingArea = document.getElementById("booking-area")?.value?.trim() || _activeLocalityFilter;
       if (pendingArea) _commitTypedLocality(pendingArea);
       _persistHomeState();
@@ -600,15 +627,23 @@ window.HomeModals = (() => {
       return;
     }
     if (!_currentService) return;
-    const dateVal = document.getElementById("booking-date")?.value;
+    let dateVal = document.getElementById("booking-date")?.value;
     const name    = document.getElementById("booking-name")?.value?.trim() || "";
     const mobile  = document.getElementById("booking-mobile")?.value?.trim() || "";
-    const area    = document.getElementById("booking-area")?.value?.trim() || "";
+    const area    = document.getElementById("booking-area")?.value?.trim() || _resolvedLocality().label || "";
     const address = document.getElementById("booking-address")?.value?.trim() || "";
     const notes   = document.getElementById("booking-notes")?.value?.trim() || "";
     const serviceContext = document.getElementById("booking-service-context")?.value?.trim() || _currentService.quick_service || _currentService.name || "";
-    const category = _categoryMeta(_currentService.category_slug || _currentService.category || _activeCategory);
-    const bookingMode = _canonicalBookingMode(document.getElementById("booking-mode")?.value, _currentService, category);
+    const category = _categoryMeta(document.getElementById("booking-category-context")?.value || _currentService.category_slug || _currentService.category || _activeCategory);
+    bookingMode = _canonicalBookingMode(document.getElementById("booking-mode")?.value, _currentService, category);
+    const savedInspectionPayment = bookingMode === "inspection" ? _readInspectionPaymentReturn() : null;
+    if (savedInspectionPayment?.booking && _normalizePaymentState(savedInspectionPayment.status_state || savedInspectionPayment.booking.payment_status) !== "paid") {
+      _showInspectionVerificationState(savedInspectionPayment, { forceOpen: true, checking: true });
+      _continueInspectionVerification(savedInspectionPayment);
+      UI.toast("Your existing inspection request is safely saved. No duplicate request was created.", "info", 5000);
+      return;
+    }
+    if (bookingMode === "inspection" && !dateVal) dateVal = _defaultScheduledLocal();
 
     if (!dateVal) { _markInvalid("booking-date", "Please choose preferred date and time"); return; }
     if (Number.isNaN(new Date(dateVal).getTime()) || new Date(dateVal).getTime() <= Date.now()) {
@@ -620,7 +655,8 @@ window.HomeModals = (() => {
     if (mobileDigits.length !== 10) { _markInvalid("booking-mobile", "Please enter a valid 10-digit mobile number"); return; }
     if (!area) { _markInvalid("booking-area", "Please enter area or landmark"); return; }
     if (!address) { _markInvalid("booking-address", "Please enter full address"); return; }
-    if (!notes) { _markInvalid("booking-notes", "Please add a short issue note"); return; }
+    if (bookingMode !== "inspection" && !notes) { _markInvalid("booking-notes", "Please add a short issue note"); return; }
+    if (bookingMode === "inspection" && !serviceContext) { _markInvalid("booking-service-context", "Please choose issue type"); return; }
 
     const btn = document.getElementById("btn-confirm-booking");
     _isBookingSubmitting = true;
@@ -640,6 +676,7 @@ window.HomeModals = (() => {
       category: category.slug || _activeCategory,
       category_label: category.label,
       subservice: serviceContext,
+      issue_type: serviceContext,
       locality: area,
       selected_nearby_area: _resolvedLocality().label || area,
       selected_city: _resolvedLocality().city || _activeCity(),
@@ -670,6 +707,7 @@ window.HomeModals = (() => {
         request_type: requestType,
         request_source: requestSource,
         subservice: serviceContext,
+        issue_type: serviceContext,
         issue_note: notes,
         preferred_time: new Date(dateVal).toISOString(),
         booking_mode_label: _bookingModeMeaning(bookingMode),
@@ -691,22 +729,29 @@ window.HomeModals = (() => {
         notes: _adminRequestNotes(operationalPayload),
       }).catch(err => ({ ok: false, error: err?.message || "Network issue while sending booking." }));
 
-      if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
-      _isBookingSubmitting = false;
-
     if (res.ok) {
-      const paymentOk = await _handleInspectionCheckout(res.data, bookingMode);
-      if (!paymentOk) {
+      const paymentOk = await _handleInspectionCheckout(res.data, bookingMode, operationalPayload);
+      if (paymentOk !== true && bookingMode !== "inspection") {
         _isBookingSubmitting = false;
         if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
         return;
       }
-      closeBooking();
       _clearPendingBookingForm();
       _clearPendingBookingIntent();
+      if (bookingMode === "inspection") {
+        _isBookingSubmitting = false;
+        if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
+        if (paymentOk === true) _showInspectionConfirmation(res.data, operationalPayload);
+        return;
+      }
+      _isBookingSubmitting = false;
+      if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
+      closeBooking();
       UI.toast(bookingMode === "inspection" ? "Inspection booked. Diagnosis visit is being confirmed." : bookingMode === "direct_vendor" ? "Worker request sent for confirmation." : "Free booking opened worker matching.", "success");
       setTimeout(() => ROUTER.go("bookings"), 800);
     } else {
+      _isBookingSubmitting = false;
+      if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
       UI.toast(res.error || "Booking request is in coordination. Please use support if confirmation does not appear.", "error");
     }
   }
@@ -723,6 +768,7 @@ window.HomeModals = (() => {
     _isBookingSubmitting = false;
     document.getElementById("booking-modal")?.classList.add("hidden");
     _currentService = null;
+    if (_swipeCleanup) { _swipeCleanup(); _swipeCleanup = null; }
     const btn = document.getElementById("btn-confirm-booking");
     if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
     _unlockModalBody("booking");
@@ -735,6 +781,7 @@ window.HomeModals = (() => {
     _isBookingSubmitting = false;
     modal.classList.add("hidden");
     _currentService = null;
+    if (_swipeCleanup) { _swipeCleanup(); _swipeCleanup = null; }
     const btn = document.getElementById("btn-confirm-booking");
     if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
     if (reason === "category_change" || reason === "discovery_change") _clearPendingBookingForm();
@@ -745,6 +792,163 @@ window.HomeModals = (() => {
     if (e.target !== e.currentTarget) return;
     if (e.currentTarget?.id === "booking-modal") closeBooking();
     else close();
+  }
+
+  function selectInspectionCategory(slug = "") {
+    const category = _categoryMeta(slug || "electrician");
+    _syncCurrentServiceForCategory(category.slug);
+    const hidden = document.getElementById("booking-category-context");
+    if (hidden) hidden.value = category.slug;
+    document.querySelectorAll(".inspection-category-chip").forEach(btn => btn.classList.toggle("active", btn.dataset.category === category.slug));
+    const issue = _inspectionIssues(category.slug)[0] || "inspection";
+    const issueWrap = document.getElementById("inspection-issue-chips");
+    if (issueWrap) issueWrap.innerHTML = _inspectionIssueChips(category.slug, issue);
+    selectInspectionIssue(issue);
+    _persistPendingBookingForm();
+  }
+
+  function selectInspectionIssue(issue = "") {
+    const clean = String(issue || "").trim();
+    const hidden = document.getElementById("booking-service-context");
+    if (hidden) hidden.value = clean;
+    document.querySelectorAll(".inspection-issue-chip").forEach(btn => btn.classList.toggle("active", btn.dataset.issue === clean));
+    _persistPendingBookingForm();
+  }
+
+  function _inspectionRequestHTML({ category, selectedService, restored, sameRestoredContext, inspectionPrice }) {
+    const profile = _customerProfile();
+    const locality = _resolvedLocality();
+    const activeCategory = _inspectionCategorySlug(restored.category || category.slug || _activeCategory);
+    const issues = _inspectionIssues(activeCategory);
+    const restoredIssue = restored.service_context || selectedService || "";
+    const activeIssue = issues.includes(restoredIssue) ? restoredIssue : issues[0];
+    const authUser = AUTH.getUser?.() || {};
+    const nameValue = restored.name || profile.name || authUser.name || "";
+    const phoneValue = restored.phone || profile.phone || authUser.phone || authUser.mobile || "";
+    return `
+      <div class="inspection-flow" data-flow="inspection-request">
+        <div class="inspection-summary-row">
+          <strong>${UI.formatCurrency(inspectionPrice)} Inspection</strong>
+          <span>${_esc(locality.label)}</span>
+        </div>
+        <section class="inspection-step compact-customer-step">
+          <h4>Customer</h4>
+          <div class="inspection-two-field">
+            <div class="modal-field">
+              <label for="booking-name">Name</label>
+              <input type="text" id="booking-name" class="modal-input" placeholder="Name" autocomplete="name" value="${_esc(nameValue)}" oninput="HomePage.persistPendingBookingForm?.()" />
+            </div>
+            <div class="modal-field">
+              <label for="booking-mobile">Mobile</label>
+              <input type="tel" id="booking-mobile" class="modal-input" placeholder="Mobile" autocomplete="tel" value="${_esc(phoneValue)}" oninput="HomePage.persistPendingBookingForm?.()" />
+            </div>
+          </div>
+        </section>
+        <section class="inspection-step">
+          <h4>Service</h4>
+          <div class="inspection-chip-row" role="radiogroup" aria-label="Inspection category">
+            ${_inspectionCategoryChips(activeCategory)}
+          </div>
+        </section>
+        <section class="inspection-step">
+          <h4>Issue type</h4>
+          <div class="inspection-chip-row" id="inspection-issue-chips" role="radiogroup" aria-label="Issue type">
+            ${_inspectionIssueChips(activeCategory, activeIssue)}
+          </div>
+        </section>
+        <section class="inspection-step">
+          <h4>Address</h4>
+          <div class="inspection-location-pills">
+            <span>City: ${_esc(locality.city || _activeCity())}</span>
+            <span>Locality: ${_esc(locality.label)}</span>
+          </div>
+          <input type="hidden" id="booking-area" value="${_esc(locality.label)}" />
+          <div class="modal-field">
+            <label for="booking-address">Full address</label>
+            <textarea id="booking-address" class="modal-textarea" placeholder="House / street / landmark" rows="2" autocomplete="street-address" oninput="HomePage.persistPendingBookingForm?.()">${_esc(restored.address || profile.address || "")}</textarea>
+          </div>
+        </section>
+        <section class="inspection-step">
+          <div class="modal-field">
+            <label for="booking-notes">Describe issue</label>
+            <textarea id="booking-notes" class="modal-textarea" placeholder="Optional" rows="2" oninput="HomePage.persistPendingBookingForm?.()">${_esc((sameRestoredContext && restored.notes) || "")}</textarea>
+          </div>
+        </section>
+        <p class="inspection-payment-note">UPI apps and UPI ID are supported at payment.</p>
+      </div>
+      <input type="hidden" id="booking-date" value="${_esc((sameRestoredContext && restored.scheduled_at) || _defaultScheduledLocal())}" />
+      <input type="hidden" id="booking-mode" value="inspection" />
+      <input type="hidden" id="booking-service-context" value="${_esc(activeIssue)}" />
+      <input type="hidden" id="booking-category-context" value="${_esc(activeCategory)}" />
+    `;
+  }
+
+  function _resetBookingActions(mode, inspectionPrice = 299) {
+    const actions = document.querySelector("#booking-modal .modal-actions");
+    if (!actions) return;
+    const isInspection = mode === "inspection";
+    actions.innerHTML = isInspection
+      ? `<button class="btn-primary inspection-pay-cta" id="btn-confirm-booking" onclick="HomeModals.confirmBooking()"><span class="btn-label">Proceed to ${UI.formatCurrency(inspectionPrice)} inspection</span></button>`
+      : `<button class="btn-secondary" onclick="HomeModals.closeBooking()">Cancel</button><button class="btn-primary" id="btn-confirm-booking" onclick="HomeModals.confirmBooking()"><span class="btn-label">Request Service</span></button>`;
+  }
+
+  function _showInspectionConfirmation(booking = {}, payload = {}) {
+    const bookingId = booking?.booking_number || booking?.booking_id || booking?.id || "WTG";
+    const locality = payload.locality || _resolvedLocality().label;
+    document.getElementById("booking-modal-title").textContent = "Request received";
+    document.getElementById("booking-modal-body").innerHTML = `
+      <div class="inspection-confirmation-state">
+        <div class="inspection-success-mark">✓</div>
+        <h4>Inspection request received.</h4>
+        <p>Nearby verification and worker assignment will begin shortly.</p>
+        <div class="inspection-confirmation-list">
+          <span><strong>Request ID</strong>${_esc(String(bookingId))}</span>
+          <span><strong>Service</strong>${_esc(payload.category_label || payload.category || "Inspection")}</span>
+          <span><strong>Area</strong>${_esc(locality)}</span>
+        </div>
+      </div>`;
+    const actions = document.querySelector("#booking-modal .modal-actions");
+    if (actions) actions.innerHTML = `
+      <button class="btn-primary" onclick="HomeModals.closeBooking(); ROUTER.go('bookings')">Track request</button>
+      <button class="btn-secondary" onclick="UI.sendSupport('service', { requestType: 'inspection', bookingId: '${_esc(String(bookingId))}' })">WhatsApp support</button>
+      <button class="btn-secondary" onclick="HomeModals.closeBooking(); ROUTER.go('home')">Back to home</button>`;
+    UI.toast("Inspection request received", "success");
+  }
+
+  function _bindSwipeToClose(sheet) {
+    if (!sheet) return;
+    if (_swipeCleanup) _swipeCleanup();
+    let startY = 0;
+    let currentY = 0;
+    let dragging = false;
+    const onDown = e => { startY = e.touches?.[0]?.clientY ?? e.clientY; currentY = startY; dragging = sheet.scrollTop <= 0; };
+    const onMove = e => {
+      if (!dragging) return;
+      currentY = e.touches?.[0]?.clientY ?? e.clientY;
+      const delta = Math.max(0, currentY - startY);
+      if (delta > 8 && sheet.scrollTop <= 0) sheet.style.transform = `translateY(${Math.min(delta, 120)}px)`;
+    };
+    const onUp = () => {
+      if (!dragging) return;
+      const delta = currentY - startY;
+      sheet.style.transform = "";
+      dragging = false;
+      if (delta > 90 && sheet.scrollTop <= 2) closeBooking();
+    };
+    sheet.addEventListener("touchstart", onDown, { passive: true });
+    sheet.addEventListener("touchmove", onMove, { passive: true });
+    sheet.addEventListener("touchend", onUp, { passive: true });
+    _swipeCleanup = () => {
+      sheet.removeEventListener("touchstart", onDown);
+      sheet.removeEventListener("touchmove", onMove);
+      sheet.removeEventListener("touchend", onUp);
+      sheet.style.transform = "";
+    };
+  }
+
+  function _syncCurrentServiceForCategory(slug = "") {
+    const next = _allServices.find(s => _matchesCategory(s, slug)) || _currentService;
+    if (next) _currentService = { ..._currentService, ...next, category_slug: slug || next.category_slug || next.category };
   }
 
   function _isoNow() {
@@ -778,66 +982,234 @@ window.HomeModals = (() => {
     delete document.body.dataset.modalOpen;
   }
 
-  return { openOrder, changeQty, confirmOrder, openBooking, confirmBooking, close, closeBooking, discardBookingDraft, closeOnOverlay };
+  return { openOrder, changeQty, confirmOrder, openBooking, confirmBooking, close, closeBooking, discardBookingDraft, closeOnOverlay, selectInspectionCategory, selectInspectionIssue, showInspectionConfirmation: _showInspectionConfirmation, checkInspectionPaymentStatus: _checkInspectionPaymentStatus, resumeInspectionPayment: _resumeInspectionPayment };
 })();
 
-async function _handleInspectionCheckout(booking, bookingMode) {
+async function _handleInspectionCheckout(booking, bookingMode, payload = {}) {
   const paymentData = booking?.payment_data || booking?.paymentData || null;
   const bookingId = booking?.booking_id || booking?.id || paymentData?.booking_id || null;
   if (bookingMode !== "inspection" || !paymentData) return true;
   if (paymentData.success === false) {
-    UI.toast(paymentData.message || "Payment session could not be created. Booking remains pending.", "error", 5000);
-    return false;
+    const saved = _saveInspectionPaymentReturn(booking, { payload, state: "failed", message: paymentData.message || "Payment session could not be created. Your request is safely saved." });
+    _showInspectionVerificationState(saved, { forceOpen: true });
+    UI.toast(paymentData.message || "Payment session could not be created. Your request is safely saved.", "error", 6000);
+    return "pending";
   }
   const gatewayData = paymentData.gateway_data || paymentData.gatewayData || {};
   const sessionId = paymentData.payment_session_id || paymentData.paymentSessionId || paymentData.session_id || gatewayData.payment_session_id || gatewayData.paymentSessionId;
   const redirectUrl = paymentData.payment_link || paymentData.payment_url || paymentData.redirect_url || paymentData.url || gatewayData.payment_link || gatewayData.payment_url;
+  let saved = _saveInspectionPaymentReturn(booking, { payload, state: "pending" });
   try {
     if (window.Cashfree && sessionId) {
+      if (!_markInspectionPaymentOpening(saved)) return "pending";
+      _showInspectionVerificationState(saved, { forceOpen: true, checking: true });
       const cashfree = typeof window.Cashfree === "function" ? window.Cashfree({ mode: paymentData.mode || "production" }) : window.Cashfree;
-      const result = await cashfree.checkout({ paymentSessionId: sessionId, redirectTarget: "_modal" });
-      const status = String(result?.paymentDetails?.payment_status || result?.paymentDetails?.status || result?.status || "").toUpperCase();
-      if (result?.error || status === "FAILED" || status === "CANCELLED") {
-        UI.toast("Payment was not completed. Your inspection booking remains pending.", "error", 5000);
-        return false;
+      const result = await cashfree.checkout({ paymentSessionId: sessionId, redirectTarget: "_modal", components: ["order-details", "card", "netbanking", "app", "upi"] });
+      const status = _normalizePaymentState(result?.paymentDetails?.payment_status || result?.paymentDetails?.status || result?.status || (result?.error ? "failed" : "pending"));
+      if (status === "failed" || status === "cancelled") {
+        saved = _saveInspectionPaymentReturn(booking, { payload, state: status, message: "Payment was not completed. Your request is safely saved." });
+        _showInspectionVerificationState(saved, { forceOpen: true });
+        UI.toast("Payment was not completed. Your inspection request is safely saved.", "error", 6000);
+        return "pending";
       }
-      if (!status) {
-        UI.toast("Payment result is pending verification. Your inspection booking remains pending.", "info", 5000);
-        return false;
-      }
-      if (status && !["SUCCESS", "PAID", "COMPLETED"].includes(status)) {
-        UI.toast("Payment is still pending. You can retry from Bookings if needed.", "info", 5000);
-        return false;
-      }
-      const verified = await _waitForBookingPaymentTruth(bookingId);
-      if (!verified) {
-        UI.toast("Payment is pending backend verification. Booking remains pending until Cashfree confirms it.", "info", 6000);
-        return false;
-      }
-      return true;
+      saved = _saveInspectionPaymentReturn(booking, { payload, state: "verifying" });
+      _showInspectionVerificationState(saved, { forceOpen: true, checking: true });
+      const verified = await _waitForBookingPaymentTruth(bookingId, { onPending: state => _showInspectionVerificationState({ ...saved, status_state: state }, { checking: true }) });
+      if (verified === "paid") return true;
+      UI.toast("Payment verification is still in progress. Your request is safely saved.", "info", 7000);
+      _continueInspectionVerification(saved);
+      return "pending";
     }
     if (redirectUrl) {
+      saved = _saveInspectionPaymentReturn(booking, { payload, state: "redirecting" });
       window.location.href = redirectUrl;
-      return false;
+      return "pending";
     }
-    UI.toast("Inspection booking is saved. Payment confirmation can be completed from Bookings/support.", "info", 5000);
-    return false;
+    saved = _saveInspectionPaymentReturn(booking, { payload, state: "pending", message: "Payment session is not available yet. Your request is safely saved." });
+    _showInspectionVerificationState(saved, { forceOpen: true });
+    UI.toast("Inspection request is saved. Payment confirmation can be checked from here or My Requests.", "info", 6000);
+    return "pending";
   } catch (err) {
-    UI.toast("Inspection booking remains saved for payment verification.", "info", 5000);
-    return false;
+    saved = _saveInspectionPaymentReturn(booking, { payload, state: "verifying", message: "Payment app was interrupted. Your request is safely saved." });
+    _showInspectionVerificationState(saved, { forceOpen: true, checking: true });
+    _continueInspectionVerification(saved);
+    UI.toast("Payment check is continuing. Your inspection request is safely saved.", "info", 6000);
+    return "pending";
   }
 }
 
-async function _waitForBookingPaymentTruth(bookingId) {
+function _saveInspectionPaymentReturn(booking = {}, meta = {}) {
+  const current = _readInspectionPaymentReturn() || {};
+  const record = {
+    ...current,
+    booking: { ...(current.booking || {}), ...booking },
+    payload: meta.payload || current.payload || {},
+    locality: meta.locality || current.locality || _resolvedLocality(),
+    status_state: meta.state || current.status_state || "pending",
+    message: meta.message || current.message || "Payment verification in progress. Your request is safely saved.",
+    ts: Date.now(),
+  };
+  try {
+    sessionStorage.setItem("wtg_inspection_payment_return", JSON.stringify(record));
+    localStorage.setItem("wtg_inspection_payment_return", JSON.stringify(record));
+  } catch {}
+  return record;
+}
+
+async function _restoreInspectionPaymentReturn() {
+  try {
+    const saved = _readInspectionPaymentReturn();
+    if (!saved || !AUTH.isLoggedIn()) return;
+    if (!saved?.booking || Date.now() - Number(saved.ts || 0) > 24 * 60 * 60 * 1000) return;
+    const bookingId = saved.booking.booking_id || saved.booking.id;
+    if (!bookingId) return;
+    _showInspectionVerificationState(saved, { forceOpen: true, checking: true });
+    const verified = await _waitForBookingPaymentTruth(bookingId, { onPending: state => _showInspectionVerificationState({ ...saved, status_state: state }, { checking: true }) });
+    if (verified !== "paid") {
+      _continueInspectionVerification(saved);
+      return;
+    }
+    _clearInspectionPaymentReturn();
+    const payload = {
+      category_label: saved.payload?.category_label || saved.booking.service || "Inspection",
+      subservice: saved.payload?.subservice || saved.payload?.issue_type || saved.booking.service || "Inspection",
+      locality: saved.locality?.label || _resolvedLocality().label,
+    };
+    HomeModals.showInspectionConfirmation?.(saved.booking, payload);
+    document.getElementById("booking-modal")?.classList.remove("hidden");
+  } catch {}
+}
+
+async function _waitForBookingPaymentTruth(bookingId, opts = {}) {
   if (!bookingId || !API.getPaymentStatus) return false;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  for (let attempt = 0; attempt < (opts.attempts || 8); attempt += 1) {
     const res = await API.getPaymentStatus({ booking_id: bookingId }).catch(() => null);
-    const status = String(res?.data?.payment_status || "").toLowerCase();
-    if (status === "paid") return true;
-    if (["failed", "refunded"].includes(status)) return false;
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    const status = _normalizePaymentState(res?.data?.payment_status || res?.data?.status || res?.payment_status);
+    if (status === "paid") return "paid";
+    if (["failed", "cancelled", "refunded"].includes(status)) return status;
+    opts.onPending?.(status || "pending", attempt);
+    await new Promise(resolve => setTimeout(resolve, opts.delayMs || 1500));
   }
-  return false;
+  return "pending";
+}
+
+function _readInspectionPaymentReturn() {
+  try {
+    const raw = sessionStorage.getItem("wtg_inspection_payment_return") || localStorage.getItem("wtg_inspection_payment_return");
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function _clearInspectionPaymentReturn() {
+  try {
+    sessionStorage.removeItem("wtg_inspection_payment_return");
+    localStorage.removeItem("wtg_inspection_payment_return");
+  } catch {}
+}
+
+function _normalizePaymentState(value = "") {
+  const raw = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (["paid", "success", "successful", "completed", "verified", "captured", "payment_success"].includes(raw)) return "paid";
+  if (["failed", "failure", "declined", "error", "payment_failed"].includes(raw)) return "failed";
+  if (["cancelled", "canceled", "user_dropped", "aborted", "dropped"].includes(raw)) return "cancelled";
+  if (["refunded", "refund", "reversed"].includes(raw)) return "refunded";
+  if (["unpaid", "pending", "created", "active", "initiated", "processing", "requires_payment", "payment_pending", "verifying", "flagged", ""].includes(raw)) return "pending";
+  return raw.includes("paid") && !raw.includes("un") ? "paid" : raw.includes("fail") ? "failed" : raw.includes("cancel") ? "cancelled" : "pending";
+}
+
+function _showInspectionVerificationState(saved = {}, opts = {}) {
+  const booking = saved.booking || {};
+  const bookingId = booking.booking_number || booking.booking_id || booking.id || "WTG";
+  const payload = saved.payload || {};
+  const state = _normalizePaymentState(saved.status_state || saved.payment_status || "pending");
+  const locality = saved.locality?.label || payload.locality || _resolvedLocality().label;
+  const service = payload.subservice || payload.issue_type || payload.category_label || booking.service || "Inspection";
+  const title = state === "paid" ? "Payment verified" : opts.checking || state === "pending" ? "Payment verification in progress" : state === "cancelled" ? "Payment not completed" : "Payment needs attention";
+  const note = state === "paid"
+    ? "Your inspection payment is verified. WorkToGo will confirm the next operational step."
+    : state === "failed" || state === "cancelled"
+      ? "Your request is safely saved. Payment is not verified yet, so assignment will wait until payment is resolved."
+      : "Your request is safely saved. We are checking payment confirmation from the gateway.";
+  const modal = document.getElementById("booking-modal");
+  const body = document.getElementById("booking-modal-body");
+  if (!modal || !body) return;
+  document.getElementById("booking-modal-title").textContent = title;
+  body.innerHTML = `
+    <div class="inspection-confirmation-state inspection-verification-state">
+      <div class="inspection-success-mark">${state === "paid" ? "✓" : "…"}</div>
+      <h4>${_esc(title)}</h4>
+      <p>${_esc(note)}</p>
+      <div class="inspection-confirmation-list">
+        <span><strong>Request ID</strong>${_esc(String(bookingId))}</span>
+        <span><strong>Service</strong>${_esc(service)}</span>
+        <span><strong>Area</strong>${_esc(locality)}</span>
+        <span><strong>Next step</strong>${state === "paid" ? "Inspection visit confirmation" : "Payment verification, then inspection assignment"}</span>
+      </div>
+      <p class="inspection-payment-note">No duplicate request is needed. Use Check status to continue verification safely.</p>
+    </div>`;
+  const actions = document.querySelector("#booking-modal .modal-actions");
+  if (actions) actions.innerHTML = `
+    <button class="btn-primary" onclick="HomeModals.checkInspectionPaymentStatus()">Check status</button>
+    ${state === "pending" ? `<button class="btn-secondary" onclick="HomeModals.resumeInspectionPayment()">Continue payment</button>` : ""}
+    <button class="btn-secondary" onclick="HomeModals.closeBooking(); ROUTER.go('bookings')">My Requests</button>`;
+  if (opts.forceOpen) {
+    modal.classList.remove("hidden");
+    document.body.classList.add("modal-open");
+    document.body.dataset.modalOpen = "booking";
+  }
+}
+
+async function _checkInspectionPaymentStatus() {
+  const saved = _readInspectionPaymentReturn();
+  const bookingId = saved?.booking?.booking_id || saved?.booking?.id;
+  if (!bookingId) { UI.toast("No saved inspection payment check found.", "info"); return; }
+  _showInspectionVerificationState(saved, { forceOpen: true, checking: true });
+  const status = await _waitForBookingPaymentTruth(bookingId, { attempts: 5, delayMs: 1200, onPending: state => _showInspectionVerificationState({ ...saved, status_state: state }, { checking: true }) });
+  if (status === "paid") {
+    _clearInspectionPaymentReturn();
+    HomeModals.showInspectionConfirmation?.(saved.booking, { ...(saved.payload || {}), locality: saved.locality?.label || _resolvedLocality().label });
+    return;
+  }
+  const updated = _saveInspectionPaymentReturn(saved.booking, { payload: saved.payload, locality: saved.locality, state: status, message: "Payment verification is still in progress. Your request is safely saved." });
+  _showInspectionVerificationState(updated, { forceOpen: true });
+  UI.toast(status === "failed" || status === "cancelled" ? "Payment is not verified. Your request is saved." : "Still verifying payment. Your request is saved.", "info", 5000);
+}
+
+async function _resumeInspectionPayment() {
+  const saved = _readInspectionPaymentReturn();
+  if (!saved?.booking) { UI.toast("No saved payment session found.", "info"); return; }
+  await _handleInspectionCheckout(saved.booking, "inspection", saved.payload || {});
+}
+
+function _markInspectionPaymentOpening(saved = {}) {
+  const now = Date.now();
+  if (Number(saved.checkout_lock_until || 0) > now) {
+    UI.toast("Payment window is already opening. Please wait.", "info", 3500);
+    return false;
+  }
+  const next = { ...saved, checkout_lock_until: now + 12000, ts: now };
+  try {
+    sessionStorage.setItem("wtg_inspection_payment_return", JSON.stringify(next));
+    localStorage.setItem("wtg_inspection_payment_return", JSON.stringify(next));
+  } catch {}
+  return true;
+}
+
+function _continueInspectionVerification(saved = {}) {
+  const bookingId = saved?.booking?.booking_id || saved?.booking?.id;
+  if (!bookingId || window.__wtgInspectionPaymentPoll === bookingId) return;
+  window.__wtgInspectionPaymentPoll = bookingId;
+  setTimeout(async () => {
+    const status = await _waitForBookingPaymentTruth(bookingId, { attempts: 12, delayMs: 5000 });
+    window.__wtgInspectionPaymentPoll = null;
+    if (status === "paid") {
+      _clearInspectionPaymentReturn();
+      HomeModals.showInspectionConfirmation?.(saved.booking, { ...(saved.payload || {}), locality: saved.locality?.label || _resolvedLocality().label });
+      document.getElementById("booking-modal")?.classList.remove("hidden");
+    } else {
+      _saveInspectionPaymentReturn(saved.booking, { payload: saved.payload, locality: saved.locality, state: status });
+    }
+  }, 3000);
 }
 
 // ── Loaders ─────────────────────────────────────────────────────────────────
@@ -1693,6 +2065,45 @@ function _bookingModeOption(value, label, note, selected, disabled = false, tone
   </button>`;
 }
 
+function _inspectionCategorySlug(slug = "") {
+  const normalized = _slug(slug);
+  const allowed = _inspectionCategories().map(c => c.slug);
+  if (allowed.includes(normalized)) return normalized;
+  if (normalized === "carpenter") return "carpentry";
+  return _activeCategory && allowed.includes(_slug(_activeCategory)) ? _slug(_activeCategory) : "electrician";
+}
+
+function _inspectionCategories() {
+  return [
+    { slug: "electrician", label: "Electrician" },
+    { slug: "plumber", label: "Plumbing" },
+    { slug: "painting", label: "Painting" },
+    { slug: "cctv", label: "CCTV" },
+    { slug: "waterproofing", label: "Waterproofing" },
+    { slug: "carpentry", label: "Carpenter" },
+  ];
+}
+
+function _inspectionIssues(slug = "") {
+  const map = {
+    plumber: ["leakage", "tap issue", "blockage", "motor issue"],
+    electrician: ["fan issue", "wiring", "switch board", "inverter"],
+    painting: ["wall repaint", "seepage marks", "putty issue"],
+    cctv: ["camera install", "DVR setup", "wiring", "not working"],
+    waterproofing: ["roof seepage", "wall dampness", "bathroom leakage", "crack sealing"],
+    carpentry: ["door repair", "wardrobe", "furniture fix", "polish work"],
+  };
+  return map[_inspectionCategorySlug(slug)] || map.electrician;
+}
+
+function _inspectionCategoryChips(active = "") {
+  return _inspectionCategories().map(c => `<button type="button" class="inspection-category-chip ${active === c.slug ? "active" : ""}" data-category="${_esc(c.slug)}" onclick="HomePage.selectInspectionCategory('${_esc(c.slug)}')">${_esc(c.label)}</button>`).join("");
+}
+
+function _inspectionIssueChips(category = "", active = "") {
+  return _inspectionIssues(category).map(issue => `<button type="button" class="inspection-issue-chip ${active === issue ? "active" : ""}" data-issue="${_esc(issue)}" onclick="HomePage.selectInspectionIssue('${_esc(issue)}')">${_esc(issue)}</button>`).join("");
+}
+
 function _requestType(mode = "") {
   if (mode === "inspection") return "inspection";
   if (mode === "direct_vendor") return "direct_worker";
@@ -1700,7 +2111,7 @@ function _requestType(mode = "") {
 }
 
 function _bookingModeMeaning(mode = "") {
-  if (mode === "inspection") return "Inspection: technician checks the issue first, then final work is confirmed";
+  if (mode === "inspection") return "Inspection request: paid visit, issue verification and worker assignment";
   if (mode === "direct_vendor") return "Direct worker request: WorkToGo asks the selected worker and confirms availability";
   return "Free match: WorkToGo starts nearby worker matching for a clear job";
 }
@@ -1736,6 +2147,7 @@ function _adminRequestNotes(payload = {}) {
     `Request type: ${payload.request_type}`,
     `Category: ${payload.category_label || payload.category}`,
     `Subservice: ${payload.subservice || "Not specified"}`,
+    `Issue type: ${payload.issue_type || payload.subservice || "Not specified"}`,
     `Booking mode: ${payload.booking_mode}`,
     `Booking mode meaning: ${payload.booking_mode_label}`,
     `Tracking state: ${payload.tracking_state}`,
@@ -1832,6 +2244,7 @@ function _persistPendingBookingForm() {
       locality: document.getElementById("booking-area")?.value?.trim() || "",
       address: document.getElementById("booking-address")?.value?.trim() || "",
       notes: document.getElementById("booking-notes")?.value?.trim() || "",
+      locality_context: _resolvedLocality(),
     }));
   } catch {}
 }
