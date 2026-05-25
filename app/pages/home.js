@@ -18,7 +18,7 @@ export async function render(container) {
         <button class="location-pill" onclick="HomePage.openLocalitySelector()" aria-label="Change service locality">
           <span>📍</span>
           <strong id="home-locality-label">${_esc(_resolvedLocality().label)}</strong>
-          <small id="home-locality-status">${_esc(_localityStatusLine())}</small>
+          <small id="home-locality-status">near you</small>
         </button>
         <button class="support-entry" title="WhatsApp support" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })"><span>Help</span></button>
       </header>
@@ -112,7 +112,7 @@ export async function render(container) {
     <div id="locality-modal" class="modal-overlay hidden locality-modal" onclick="HomePage.closeLocalitySelector(event)" role="dialog" aria-modal="true" aria-label="Choose service locality">
       <div class="modal-sheet locality-sheet">
         <div class="modal-handle"></div>
-        <h3>Choose service area</h3>
+        <h3>Change area</h3>
         <div id="locality-selector-body">${_localitySelectorHTML()}</div>
       </div>
     </div>
@@ -182,6 +182,15 @@ export async function render(container) {
     chooseCity(city = "") {
       _setManualCity(city);
     },
+    filterLocalitySuggestions(query = "") {
+      _renderLocalitySelector(query);
+    },
+    submitLocalitySearch() {
+      const input = document.getElementById("locality-manual-input");
+      const value = input?.value?.trim() || "";
+      if (!value) return;
+      _setManualLocality(value, "typed");
+    },
     saveTypedLocality() {
       const input = document.getElementById("locality-manual-input");
       const value = input?.value?.trim() || "";
@@ -242,7 +251,7 @@ export async function render(container) {
       _setManualLocality(locality, "selected", { silent: true, keepModalOpen: true });
       _activeChipFilter = "";
       _activeDiscoveryKind = "locality";
-      UI.toast(_activeLocalityFilter ? `${_activeLocalityFilter} area active for request routing` : "Local context cleared", "info");
+      UI.toast(_activeLocalityFilter ? `${_activeLocalityFilter} near you` : "Area cleared", "info");
     },
     ecosystemDiscover(kind = "", value = "") {
       const meta = _categoryMeta(_activeCategory);
@@ -953,12 +962,12 @@ function _renderLocalityHeader() {
   const label = document.getElementById("home-locality-label");
   const status = document.getElementById("home-locality-status");
   if (label) label.textContent = _resolvedLocality().label;
-  if (status) status.textContent = _localityStatusLine();
+  if (status) status.textContent = "near you";
 }
 
-function _renderLocalitySelector() {
+function _renderLocalitySelector(query = "") {
   const el = document.getElementById("locality-selector-body");
-  if (el) el.innerHTML = _localitySelectorHTML();
+  if (el) el.innerHTML = _localitySelectorHTML(query);
 }
 
 function _renderHeroStats() {
@@ -1118,7 +1127,7 @@ function _heroHTML(slug = "") {
     <div class="service-hero-copy">
       <p class="service-hero-kicker">${_esc(slug ? `${meta.label} lane · ${localityContext.label}` : `${localityContext.label} local operating network`)}</p>
       <h1>${_esc(slug ? `${meta.label} services for ${localityContext.label}` : `Trusted services for ${localityContext.label}`)}</h1>
-      <p>${_esc(meta.subtitle || _pilotConfig.hero_subtitle)} ${_esc(`Active routing area: ${localityContext.label}.`)}</p>
+      <p>${_esc(meta.subtitle || _pilotConfig.hero_subtitle)} ${_esc(`${localityContext.label} near you.`)}</p>
       <div class="booking-distinction-grid">
         <div><strong>Inspection</strong><span>${_esc(`${price} · expert diagnosis first`)}</span></div>
         <div><strong>Free booking</strong><span>Nearby worker confirmation</span></div>
@@ -1300,6 +1309,18 @@ function _openLocalitySelector() {
   document.getElementById("locality-modal")?.classList.remove("hidden");
   document.body.classList.add("modal-open");
   document.body.dataset.modalOpen = "locality";
+  const current = _resolvedLocality();
+  if (current.source === "fallback") {
+    const hint = _browserLocalityHint(false);
+    if (hint?.label) {
+      _activeLocalityFilter = hint.label;
+      _localityContext = hint;
+      _persistLocalityContext();
+      _persistHomeState();
+      _refreshLocalitySurfaces();
+      _renderLocalitySelector();
+    }
+  }
   setTimeout(() => document.getElementById("locality-manual-input")?.focus({ preventScroll: true }), 40);
 }
 
@@ -1311,35 +1332,31 @@ function _closeLocalitySelector() {
   }
 }
 
-function _localitySelectorHTML() {
+function _localitySelectorHTML(query = "") {
   const meta = _categoryMeta(_activeCategory);
   const active = _resolvedLocality();
   const city = _activeCity();
-  const cities = _cityOptions();
-  const areas = _localityOptions(meta);
+  const search = _cleanLocality(query).toLowerCase();
+  const options = _localitySearchOptions(meta, search).slice(0, search ? 8 : 6);
+  const recent = _recentLocalityLabel();
   return `
     <div class="locality-current-card">
       <span>📍</span>
-      <div><strong>${_esc(_localityRequestLine())}</strong><small>${_esc(city)} city · ${_esc(_localitySourceLine())}</small></div>
+      <div><strong>${_esc(active.label)} near you</strong><small>${_esc(city)} · Change anytime</small></div>
     </div>
-    <div class="locality-selector-label">City</div>
-    <div class="locality-option-grid city-option-grid">
-      ${cities.map(name => `<button type="button" class="locality-option city-option ${_slug(city) === _slug(name) ? "active" : ""}" onclick="HomePage.chooseCity('${_esc(name)}')"><strong>${_esc(name)}</strong><small>${_esc(_slug(city) === _slug(name) ? "Active city" : "Switch city")}</small></button>`).join("")}
+    <div class="locality-search-box">
+      <span>⌕</span>
+      <input id="locality-manual-input" class="modal-input" type="search" placeholder="Search city or area" value="${_esc(query)}" autocomplete="off" oninput="HomePage.filterLocalitySuggestions(this.value)" onkeydown="if(event.key==='Enter'){HomePage.submitLocalitySearch()}" />
     </div>
-    <div class="locality-selector-label">Area / locality</div>
-    <div class="locality-option-grid">
-      ${areas.map(area => `<button type="button" class="locality-option ${_slug(active.label) === _slug(area) ? "active" : ""}" onclick="HomePage.chooseLocality('${_esc(area)}', 'selected')"><strong>${_esc(area)}</strong><small>${_esc(_slug(active.label) === _slug(area) ? "Active routing area" : "Use for routing")}</small></button>`).join("")}
+    <div class="locality-mini-row">
+      ${recent ? `<button type="button" onclick="HomePage.chooseLocality('${_esc(recent)}', 'selected')"><strong>${_esc(recent)}</strong><small>Recent area</small></button>` : ""}
+      <button type="button" onclick="HomePage.chooseCity('${_esc(city)}')"><strong>${_esc(city)}</strong><small>Current area</small></button>
     </div>
-    <div class="modal-field locality-manual-field">
-      <label for="locality-manual-input">Type area manually</label>
-      <input id="locality-manual-input" class="modal-input" type="text" placeholder="e.g. Mukhani, Kusumkhera, near canal road" value="${_esc(active.source === "fallback" ? "" : active.label)}" onkeydown="if(event.key==='Enter'){HomePage.saveTypedLocality()}" />
+    <div class="locality-suggestion-list">
+      ${options.map(item => `<button type="button" class="locality-suggestion ${_slug(active.label) === _slug(item.label) ? "active" : ""}" onclick="${item.type === "city" ? `HomePage.chooseCity('${_esc(item.label)}')` : `HomePage.chooseLocality('${_esc(item.label)}', 'selected')`}"><span>${item.type === "city" ? "🏙️" : "📍"}</span><strong>${_esc(item.label)}</strong><small>${_esc(_slug(active.label) === _slug(item.label) ? "Current area" : item.note)}</small></button>`).join("")}
+      ${search && !options.some(item => _slug(item.label) === _slug(query)) ? `<button type="button" class="locality-suggestion typed-suggestion" onclick="HomePage.chooseLocality('${_esc(query)}', 'typed')"><span>＋</span><strong>${_esc(query)}</strong><small>Use typed area</small></button>` : ""}
     </div>
-    <div class="locality-actions">
-      <button type="button" class="btn-secondary" onclick="HomePage.clearLocalitySelection()">Use ${_esc(_pilotConfig.city)}</button>
-      <button type="button" class="btn-secondary" onclick="HomePage.useBrowserLocalityHint()">Use browser hint</button>
-      <button type="button" class="btn-primary" onclick="HomePage.saveTypedLocality()">Save area</button>
-    </div>
-    <p class="service-note">This sets request routing context only. It does not change the full address you type in the booking form.</p>`;
+    <p class="service-note">Pick an area and keep browsing. Full address stays separate during booking.</p>`;
 }
 
 function _localityOptions(meta = {}) {
@@ -1365,6 +1382,34 @@ function _localityOptions(meta = {}) {
   }).slice(0, 8);
 }
 
+function _localitySearchOptions(meta = {}, search = "") {
+  const active = _resolvedLocality();
+  const values = [
+    { label: active.label, type: "area", note: "Current area" },
+    { label: active.city || _activeCity(), type: "city", note: "Current city" },
+    ..._cityOptions().map(label => ({ label, type: "city", note: "Search your city" })),
+    ..._localityOptions(meta).map(label => ({ label, type: "area", note: "Nearby area" })),
+    ..._cityOptions().flatMap(city => _cityLocalities(city).map(label => ({ label, type: "area", note: city }))),
+  ];
+  const seen = new Set();
+  return values
+    .map(item => ({ ...item, label: _cleanLocality(item.label) }))
+    .filter(item => {
+      const key = _slug(item.label);
+      if (!key || seen.has(key)) return false;
+      if (search && !`${item.label} ${item.note}`.toLowerCase().includes(search)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function _recentLocalityLabel() {
+  const saved = _readSavedLocality();
+  const active = _resolvedLocality();
+  if (saved?.label && _slug(saved.label) !== _slug(active.label)) return saved.label;
+  return "";
+}
+
 function _setManualCity(city = "") {
   const label = _cleanLocality(city);
   if (!label) return;
@@ -1374,8 +1419,8 @@ function _setManualCity(city = "") {
   _persistLocalityContext();
   _persistHomeState();
   _refreshLocalitySurfaces();
-  _renderLocalitySelector();
-  UI.toast(`${label} city active with ${defaultArea} routing context`, "success");
+  _closeLocalitySelector();
+  UI.toast(`${defaultArea} near you`, "success");
 }
 
 function _setManualLocality(locality = "", source = "selected", opts = {}) {
@@ -1387,7 +1432,7 @@ function _setManualLocality(locality = "", source = "selected", opts = {}) {
   _persistHomeState();
   _refreshLocalitySurfaces();
   if (!opts.keepModalOpen) _closeLocalitySelector();
-  if (!opts.silent) UI.toast(`${label} area active for request routing`, "success");
+  if (!opts.silent) UI.toast(`${label} near you`, "success");
 }
 
 function _clearManualLocality() {
@@ -1496,12 +1541,7 @@ function _persistLocalityContext() {
 
 function _localityStatusLine() {
   const current = _resolvedLocality();
-  if (current.source === "manual_selected") return `Serving ${current.label}`;
-  if (current.source === "manual_city") return `${current.city || current.label} city active`;
-  if (current.source === "manual_typed" || current.source === "typed") return `${current.label} area active`;
-  if (current.source === "saved") return `Saved area routing active`;
-  if (current.source === "browser_hint") return `Browser hint routing active`;
-  return `Fallback city routing`;
+  return `${current.label} near you`;
 }
 
 function _localityRequestLine() {
@@ -1510,12 +1550,11 @@ function _localityRequestLine() {
 
 function _localitySourceLine() {
   const source = _resolvedLocality().source;
-  if (source === "manual_selected") return "Manual area selected";
-  if (source === "manual_city") return "Manual city selected";
-  if (source === "manual_typed" || source === "typed") return "Typed area saved";
-  if (source === "saved") return "Saved customer area";
-  if (source === "browser_hint") return "Browser locality hint";
-  return "Fallback city";
+  if (source === "manual_selected" || source === "manual_typed" || source === "typed") return "Current area";
+  if (source === "manual_city") return "Current city";
+  if (source === "saved") return "Recent area";
+  if (source === "browser_hint") return "Approximate city";
+  return "Current area";
 }
 
 function _cleanLocality(value = "") {

@@ -965,7 +965,16 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   font-weight: 900;
 }
 
-.locality-sheet { gap: 12px; }
+.locality-modal {
+  align-items: flex-start;
+  padding-top: calc(70px + env(safe-area-inset-top, 0px));
+}
+.locality-sheet {
+  width: min(92vw, 420px);
+  gap: 10px;
+  padding: 14px;
+  border-radius: 22px;
+}
 .locality-current-card {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -980,43 +989,62 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .locality-current-card > span { font-size: 1.35rem; }
 .locality-current-card strong { display: block; font-size: 0.95rem; color: var(--market-text); }
 .locality-current-card small { color: var(--market-muted); font-size: 0.74rem; }
-.locality-selector-label {
-  margin: 12px 0 6px;
-  color: var(--market-muted);
-  font-size: 0.72rem;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.locality-option-grid {
+.locality-search-box {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: auto 1fr;
+  align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
-}
-.locality-option {
-  padding: 10px;
+  min-height: 44px;
+  padding: 0 10px;
   border: 1px solid var(--market-line);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-full);
+  background: #fff;
+  margin-bottom: 8px;
+}
+.locality-search-box .modal-input {
+  border: 0;
+  background: #fff;
+  padding: 10px 0;
+  min-height: 42px;
+}
+.locality-mini-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.locality-mini-row button {
+  flex: 0 0 auto;
+  padding: 8px 11px;
+  border: 1px solid var(--market-line);
+  border-radius: var(--r-full);
   background: #fff;
   text-align: left;
   color: var(--market-text);
 }
-.locality-option strong { display: block; font-size: 0.82rem; }
-.locality-option small { color: var(--market-muted); font-size: 0.68rem; }
-.locality-option.active {
+.locality-mini-row strong { display: block; font-size: 0.78rem; }
+.locality-mini-row small { color: var(--market-muted); font-size: 0.66rem; }
+.locality-suggestion-list { display: grid; gap: 6px; margin-top: 6px; }
+.locality-suggestion {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 9px;
+  align-items: center;
+  padding: 10px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-lg);
+  background: #fff;
+  color: var(--market-text);
+  text-align: left;
+}
+.locality-suggestion span { font-size: 1rem; }
+.locality-suggestion strong { font-size: 0.86rem; }
+.locality-suggestion small { color: var(--market-muted); font-size: 0.68rem; }
+.locality-suggestion.active {
   border-color: rgba(255,107,0,0.5);
   box-shadow: 0 10px 22px rgba(255,107,0,0.12);
 }
-.locality-option.active small { color: var(--market-orange); font-weight: 900; }
-.locality-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
-  align-items: center;
-}
-.locality-actions .btn-secondary,
-.locality-actions .btn-primary { min-height: 42px; font-size: 0.78rem; padding-inline: 10px; }
+.locality-suggestion.active small { color: var(--market-orange); font-weight: 900; }
 .order-locality-strip,
 .locality-routing-strip { margin-bottom: var(--sp-md); }
 
@@ -2855,8 +2883,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .btn-secondary:hover { opacity: 0.8; }
 
 @media (max-width: 420px) {
-  .locality-option-grid,
-  .locality-actions { grid-template-columns: 1fr; }
+  .locality-modal { padding-top: calc(62px + env(safe-area-inset-top, 0px)); }
 
   .modal-sheet {
     padding: var(--sp-md) var(--sp-md) calc(var(--sp-xl) + env(safe-area-inset-bottom));
