@@ -534,7 +534,7 @@ if ($method === 'POST' && $uri === '/api/service/request') {
             require_once SYSTEM_ROOT . '/core/helpers/Payment.php';
             try {
                 $paymentData = Payment::createOrder('cashfree', $bookingTotal, $bookingNum, [
-                    'return_url' => (defined('APP_URL') ? APP_URL : '') . '/api/payment/return?booking_id=' . $bookingId,
+                    'return_url' => (defined('APP_URL') ? APP_URL : '') . '/app/#home?payment_return=inspection&booking_id=' . $bookingId,
                     'notify_url' => (defined('APP_URL') ? APP_URL : '') . '/api/payment/webhook',
                     'customer' => [
                         'id' => (int)$auth['user_id'],

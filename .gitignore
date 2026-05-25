@@ -1,1 +1,10 @@
 .env
+
+# Local verification artifacts — never deploy/commit
+logs/
+AUTHENTICATED_FLOW_TEST_GUIDE.md
+FIXES_APPLIED.md
+FIX_VERIFICATION_REPORT.md
+ROOT_CAUSE_AUDIT.md
+admin/test-auth-flow.html
+admin/test-url-fix.html

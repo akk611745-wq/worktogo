@@ -2760,6 +2760,75 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   text-align: center;
 }
 
+.modal-close-icon {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-full);
+  background: var(--clr-surface-2);
+  color: var(--clr-text);
+  font-size: 1.35rem;
+  line-height: 1;
+  z-index: 3;
+}
+
+.booking-bottom-sheet { position: relative; transition: transform 0.18s var(--ease); }
+.inspection-flow { display: grid; gap: 12px; padding-bottom: 4px; }
+.inspection-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: rgba(255,107,0,0.10);
+  border: 1px solid rgba(255,107,0,0.20);
+}
+.inspection-summary-row strong { font-size: 0.95rem; color: var(--market-orange); }
+.inspection-summary-row span { font-size: 0.78rem; color: var(--clr-text-2); }
+.inspection-step { display: grid; gap: 8px; }
+.inspection-step h4 { font-size: 0.86rem; margin: 0; color: var(--clr-text); }
+.inspection-two-field { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.inspection-two-field .modal-field,
+.inspection-step .modal-field { margin-bottom: 0; }
+.inspection-chip-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.inspection-chip-row::-webkit-scrollbar { display: none; }
+.inspection-category-chip,
+.inspection-issue-chip {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 9px 12px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--clr-border);
+  background: var(--clr-surface-2);
+  color: var(--clr-text);
+  font-weight: 800;
+  font-size: 0.82rem;
+}
+.inspection-category-chip.active,
+.inspection-issue-chip.active { border-color: var(--market-orange); background: rgba(255,107,0,0.14); color: var(--market-orange); }
+.inspection-location-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.inspection-location-pills span,
+.inspection-payment-note {
+  font-size: 0.74rem;
+  color: var(--clr-text-2);
+  background: var(--clr-surface-2);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--r-full);
+  padding: 7px 10px;
+}
+.inspection-payment-note { border-radius: var(--r-md); text-align: center; margin: 0; }
+.inspection-pay-cta { width: 100%; min-height: 52px; font-size: 1rem; }
+.inspection-confirmation-state { text-align: center; display: grid; gap: 10px; padding: 10px 0; }
+.inspection-success-mark { width: 56px; height: 56px; border-radius: var(--r-full); margin: 0 auto; display: grid; place-items: center; background: rgba(34,197,94,0.14); color: var(--clr-success); font-size: 1.5rem; font-weight: 900; }
+.inspection-confirmation-state h4 { margin: 0; font-size: 1.05rem; }
+.inspection-confirmation-state p { margin: 0; color: var(--clr-text-2); font-size: 0.86rem; line-height: 1.4; }
+.inspection-confirmation-list { display: grid; gap: 8px; text-align: left; }
+.inspection-confirmation-list span { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: var(--r-md); background: var(--clr-surface-2); font-size: 0.82rem; }
+.inspection-confirmation-list strong { color: var(--clr-text-2); }
+
 .modal-product-info {
   display: flex;
   align-items: center;
@@ -2889,6 +2958,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
     padding: var(--sp-md) var(--sp-md) calc(var(--sp-xl) + env(safe-area-inset-bottom));
     max-height: 94dvh;
   }
+  .inspection-two-field { grid-template-columns: 1fr; gap: 6px; }
   .modal-actions {
     position: sticky;
     bottom: calc(-1 * var(--sp-md));

@@ -79,6 +79,7 @@ const CONFIG = {
 
   SERVICE_ONLY: {
     CITY: "Haldwani",
+    INSPECTION_PRICE: 299,
     SUPPORT_LABEL: "Help",
     ROUTE_MESSAGE: "This feature is hidden during the Haldwani service pilot.",
     SUPPORT_PHONE: "+91 95285 44548",
