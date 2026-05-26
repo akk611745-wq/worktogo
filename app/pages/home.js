@@ -376,11 +376,11 @@ export async function render(container) {
       const match = _allServices.find(s => _matchesCategory(s, meta.slug) && _searchText(s).includes(String(serviceName || "").toLowerCase()))
         || _allServices.find(s => _matchesCategory(s, meta.slug));
       if (match?.id) {
-        HomeModals.openBooking({ ...match, request_source: "service_chip", category_slug: match.category_slug || meta.slug, icon: match.icon || meta.icon, quick_service: serviceName });
+        HomeModals.openBooking({ ...match, booking_mode: "free_lead", request_source: "service_chip", category_slug: match.category_slug || meta.slug, category: match.category || meta.slug, icon: match.icon || meta.icon, quick_service: serviceName, selected_issues: [serviceName].filter(Boolean) });
         return;
       }
       _activeChipFilter = String(serviceName || "").trim().toLowerCase();
-      HomePage.bookCategoryCta(meta.slug || "", "free_lead");
+      HomeModals.openBooking({ id: `quick-${meta.slug || "all"}-${_slug(serviceName)}`, name: serviceName || meta.examples?.[0] || meta.label, booking_mode: "free_lead", request_source: "service_chip", category_slug: meta.slug || "", category: meta.slug || "", icon: meta.icon || "🔧", quick_service: serviceName, selected_issues: [serviceName].filter(Boolean) });
     }
   };
 
@@ -646,7 +646,8 @@ window.HomeModals = (() => {
     const area    = document.getElementById("booking-area")?.value?.trim() || _resolvedLocality().label || "";
     const address = document.getElementById("booking-address")?.value?.trim() || "";
     const notes   = document.getElementById("booking-notes")?.value?.trim() || "";
-    const serviceContext = document.getElementById("booking-service-context")?.value?.trim() || _currentService.quick_service || _currentService.name || "";
+    const issueList = _normalizeIssueList(document.getElementById("booking-service-context")?.value || _currentService.selected_issues || _currentService.quick_service || _currentService.name || "");
+    const serviceContext = issueList.join(", ") || _currentService.quick_service || _currentService.name || "";
     const submittedCategorySlug = document.getElementById("booking-category-context")?.value || _currentService.category_slug || _currentService.category || _activeCategory || _inspectionCategorySlug("");
     const category = _categoryMeta(submittedCategorySlug);
     bookingMode = _canonicalBookingMode(document.getElementById("booking-mode")?.value, _currentService, category);
@@ -688,6 +689,7 @@ window.HomeModals = (() => {
       request_type: requestType,
       category: category.slug || _activeCategory,
       category_label: category.label,
+      issue_list: issueList,
       subservice: serviceContext,
       issue_type: serviceContext,
       locality: area,
@@ -723,6 +725,7 @@ window.HomeModals = (() => {
         request_source: requestSource,
         subservice: serviceContext,
         issue_type: serviceContext,
+        issue_list: issueList,
         issue_note: notes,
         preferred_time: new Date(dateVal).toISOString(),
         booking_mode_label: _bookingModeMeaning(bookingMode),
@@ -819,13 +822,12 @@ window.HomeModals = (() => {
     document.querySelectorAll(".inspection-category-chip").forEach(btn => btn.classList.toggle("active", btn.dataset.category === category.slug));
     const issue = _inspectionIssues(category.slug)[0] || "inspection";
     const issueWrap = document.getElementById("inspection-issue-chips");
-    if (issueWrap) issueWrap.innerHTML = _inspectionIssueChips(category.slug, issue);
-    selectInspectionIssue(issue);
+    if (issueWrap) issueWrap.innerHTML = _inspectionIssueChips(category.slug, [issue]);
+    _setSelectedIssues([issue]);
     _persistPendingBookingForm();
   }
 
   function _initialIntakeCategory(category = {}, restored = {}, service = {}) {
-    if (restored.category && !["all", "inspection"].includes(_slug(restored.category))) return _inspectionCategorySlug(restored.category);
     const candidate = category.slug || service.category_slug || service.category || _activeCategory || "";
     if (!candidate || candidate === "all" || candidate === "inspection" || service.intake_category_required) return "";
     return _inspectionCategorySlug(candidate);
@@ -833,10 +835,18 @@ window.HomeModals = (() => {
 
   function selectInspectionIssue(issue = "") {
     const clean = String(issue || "").trim();
-    const hidden = document.getElementById("booking-service-context");
-    if (hidden) hidden.value = clean;
-    document.querySelectorAll(".inspection-issue-chip").forEach(btn => btn.classList.toggle("active", btn.dataset.issue === clean));
+    if (!clean) return;
+    const current = _selectedIssuesFromValue(document.getElementById("booking-service-context")?.value || "");
+    const next = current.includes(clean) ? current.filter(item => item !== clean) : [...current, clean];
+    _setSelectedIssues(next.length ? next : [clean]);
     _persistPendingBookingForm();
+  }
+
+  function _setSelectedIssues(issues = []) {
+    const normalized = _normalizeIssueList(issues);
+    const hidden = document.getElementById("booking-service-context");
+    if (hidden) hidden.value = normalized.join(", ");
+    document.querySelectorAll(".inspection-issue-chip").forEach(btn => btn.classList.toggle("active", normalized.includes(btn.dataset.issue)));
   }
 
   function _intakeRequestHTML({ mode = "inspection", category, selectedService, restored, sameRestoredContext, inspectionPrice, service = {} }) {
@@ -844,8 +854,9 @@ window.HomeModals = (() => {
     const locality = _resolvedLocality();
     const activeCategory = _initialIntakeCategory(category, restored, service);
     const issues = activeCategory ? _inspectionIssues(activeCategory) : [];
-    const restoredIssue = restored.service_context || selectedService || "";
-    const activeIssue = issues.includes(restoredIssue) ? restoredIssue : (issues[0] || "");
+    const restoredIssues = _normalizeIssueList(restored.issue_list || restored.service_context || service.selected_issues || selectedService || "");
+    const matchingRestoredIssues = restoredIssues.filter(issue => issues.includes(issue));
+    const activeIssues = _normalizeIssueList(matchingRestoredIssues.length ? matchingRestoredIssues : (selectedService && issues.includes(selectedService) ? [selectedService] : issues.includes(service.quick_service) ? [service.quick_service] : (issues[0] ? [issues[0]] : [])));
     const authUser = AUTH.getUser?.() || {};
     const nameValue = restored.name || profile.name || authUser.name || "";
     const phoneValue = restored.phone || profile.phone || authUser.phone || authUser.mobile || "";
@@ -877,8 +888,8 @@ window.HomeModals = (() => {
         </section>
         <section class="inspection-step">
           <h4>Issue type</h4>
-          <div class="inspection-chip-row" id="inspection-issue-chips" role="radiogroup" aria-label="Issue type">
-            ${activeCategory ? _inspectionIssueChips(activeCategory, activeIssue) : `<span class="service-note">Choose a service category above to see matching issue chips.</span>`}
+          <div class="inspection-chip-row issue-multi-chip-row" id="inspection-issue-chips" role="group" aria-label="Issue types">
+            ${activeCategory ? _inspectionIssueChips(activeCategory, activeIssues) : `<span class="service-note">Choose a service category above to see matching issue chips.</span>`}
           </div>
         </section>
         <section class="inspection-step">
@@ -887,7 +898,10 @@ window.HomeModals = (() => {
             <span>City: ${_esc(locality.city || _activeCity())}</span>
             <span>Locality: ${_esc(locality.label)}</span>
           </div>
-          <input type="hidden" id="booking-area" value="${_esc(locality.label)}" />
+          <div class="modal-field">
+            <label for="booking-area">Area / locality</label>
+            <input type="text" id="booking-area" class="modal-input" placeholder="Search or type locality" autocomplete="address-level2" value="${_esc((sameRestoredContext && restored.locality) || locality.label)}" oninput="HomePage.onBookingAreaInput?.(this.value)" />
+          </div>
           <div class="modal-field">
             <label for="booking-address">Full address</label>
             <textarea id="booking-address" class="modal-textarea" placeholder="House / street / landmark" rows="2" autocomplete="street-address" oninput="HomePage.persistPendingBookingForm?.()">${_esc(restored.address || profile.address || "")}</textarea>
@@ -903,7 +917,7 @@ window.HomeModals = (() => {
       </div>
       <input type="hidden" id="booking-date" value="${_esc((sameRestoredContext && restored.scheduled_at) || _defaultScheduledLocal())}" />
       <input type="hidden" id="booking-mode" value="${_esc(isInspection ? "inspection" : "free_lead")}" />
-      <input type="hidden" id="booking-service-context" value="${_esc(activeIssue)}" />
+      <input type="hidden" id="booking-service-context" value="${_esc(activeIssues.join(", "))}" />
       <input type="hidden" id="booking-category-context" value="${_esc(activeCategory)}" />
     `;
   }
@@ -2125,8 +2139,24 @@ function _inspectionCategoryChips(active = "") {
   return _inspectionCategories().map(c => `<button type="button" class="inspection-category-chip ${active === c.slug ? "active" : ""}" data-category="${_esc(c.slug)}" onclick="HomePage.selectInspectionCategory('${_esc(c.slug)}')">${_esc(c.label)}</button>`).join("");
 }
 
-function _inspectionIssueChips(category = "", active = "") {
-  return _inspectionIssues(category).map(issue => `<button type="button" class="inspection-issue-chip ${active === issue ? "active" : ""}" data-issue="${_esc(issue)}" onclick="HomePage.selectInspectionIssue('${_esc(issue)}')">${_esc(issue)}</button>`).join("");
+function _inspectionIssueChips(category = "", active = []) {
+  const activeIssues = _normalizeIssueList(active);
+  return _inspectionIssues(category).map(issue => `<button type="button" class="inspection-issue-chip ${activeIssues.includes(issue) ? "active" : ""}" data-issue="${_esc(issue)}" aria-pressed="${activeIssues.includes(issue) ? "true" : "false"}" onclick="HomePage.selectInspectionIssue('${_esc(issue)}')">${_esc(issue)}</button>`).join("");
+}
+
+function _selectedIssuesFromValue(value = "") {
+  return _normalizeIssueList(value);
+}
+
+function _normalizeIssueList(value = "") {
+  const source = Array.isArray(value) ? value : String(value || "").split(/[,|]/);
+  const seen = new Set();
+  return source.map(item => String(item || "").replace(/\s+/g, " ").trim()).filter(item => {
+    const key = item.toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function _requestType(mode = "") {
@@ -2168,11 +2198,13 @@ function _safeSessionJSON(key) {
 
 function _adminRequestNotes(payload = {}) {
   const worker = payload.selected_worker?.vendor_id ? `${payload.selected_worker.vendor_name || "Selected worker"} (#${payload.selected_worker.vendor_id})` : "Not selected";
+  const issueList = _normalizeIssueList(payload.issue_list || payload.issue_type || payload.subservice).join(", ");
   return [
     `Request type: ${payload.request_type}`,
     `Category: ${payload.category_label || payload.category}`,
     `Subservice: ${payload.subservice || "Not specified"}`,
     `Issue type: ${payload.issue_type || payload.subservice || "Not specified"}`,
+    `Issue list: ${issueList || "Not specified"}`,
     `Booking mode: ${payload.booking_mode}`,
     `Booking mode meaning: ${payload.booking_mode_label}`,
     `Payment required: ${payload.payment_required ? "yes" : "no"}`,
@@ -2265,6 +2297,7 @@ function _persistPendingBookingForm() {
       category: document.getElementById("booking-category-context")?.value?.trim() || "",
       booking_mode: document.getElementById("booking-mode")?.value || "",
       service_context: document.getElementById("booking-service-context")?.value?.trim() || "",
+      issue_list: _normalizeIssueList(document.getElementById("booking-service-context")?.value || ""),
       scheduled_at: document.getElementById("booking-date")?.value || "",
       name: document.getElementById("booking-name")?.value?.trim() || "",
       phone: document.getElementById("booking-mobile")?.value?.trim() || "",

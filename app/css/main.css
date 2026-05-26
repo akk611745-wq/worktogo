@@ -87,11 +87,7 @@ body {
   touch-action: manipulation;
 }
 
-body.modal-open {
-  overflow: hidden;
-  overscroll-behavior: none;
-  touch-action: none;
-}
+body.modal-open { overflow: hidden; overscroll-behavior: none; }
 
 a { text-decoration: none; color: inherit; }
 button { font-family: inherit; cursor: pointer; border: none; background: none; }
@@ -2793,22 +2789,23 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .inspection-two-field { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .inspection-two-field .modal-field,
 .inspection-step .modal-field { margin-bottom: 0; }
-.inspection-chip-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.inspection-chip-row { display: flex; gap: 6px; overflow-x: auto; padding: 1px 0 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .inspection-chip-row::-webkit-scrollbar { display: none; }
 .inspection-category-chip,
 .inspection-issue-chip {
   flex: 0 0 auto;
-  min-height: 40px;
-  padding: 9px 12px;
+  min-height: 32px;
+  padding: 6px 10px;
   border-radius: var(--r-full);
   border: 1px solid var(--clr-border);
   background: var(--clr-surface-2);
   color: var(--clr-text);
-  font-weight: 800;
-  font-size: 0.82rem;
+  font-weight: 750;
+  font-size: 0.76rem;
+  white-space: nowrap;
 }
 .inspection-category-chip.active,
-.inspection-issue-chip.active { border-color: var(--market-orange); background: rgba(255,107,0,0.14); color: var(--market-orange); }
+.inspection-issue-chip.active { border-color: var(--market-orange); background: rgba(255,107,0,0.12); color: var(--market-orange); box-shadow: inset 0 0 0 1px rgba(255,107,0,0.08); }
 .inspection-location-pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .inspection-location-pills span,
 .inspection-payment-note {
