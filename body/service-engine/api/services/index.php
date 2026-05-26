@@ -174,6 +174,7 @@ function serviceLifecycleNote(array $input, string $bookingMode, array $service)
         'Timeline: ' . json_encode($operational['timeline'], JSON_UNESCAPED_SLASHES),
         'Assignment metadata: ' . json_encode($operational['assignment'], JSON_UNESCAPED_SLASHES),
         'Inspection metadata: ' . json_encode($operational['inspection'], JSON_UNESCAPED_SLASHES),
+        'Vendor execution metadata: ' . json_encode($operational['vendor_execution'], JSON_UNESCAPED_SLASHES),
         'Escalation metadata: ' . json_encode($operational['escalation'], JSON_UNESCAPED_SLASHES),
         'Routing context: ' . json_encode($operational['routing_context'], JSON_UNESCAPED_SLASHES),
         'Sorting keys: ' . json_encode($operational['sorting_keys'], JSON_UNESCAPED_SLASHES),
@@ -187,7 +188,7 @@ function serviceLifecycleNote(array $input, string $bookingMode, array $service)
 
 function serviceFreeformOperationalNotes(string $notes): string
 {
-    $blocked = '/^(Request ID|Client request ID|Request schema version|Request type|Category|Issue list|Issue summary|Locality|City|Payment required|Payment route|Priority|Priority score|Assignment state|Lifecycle state|Timeline|Assignment metadata|Inspection metadata|Escalation metadata|Routing context|Sorting keys|Operational tags|Booking mode|Vendor route|Customer|Mobile|Address|Preferred time|Selected worker):/i';
+    $blocked = '/^(Request ID|Client request ID|Request schema version|Request type|Category|Issue list|Issue summary|Locality|City|Payment required|Payment route|Priority|Priority score|Assignment state|Lifecycle state|Timeline|Assignment metadata|Inspection metadata|Vendor execution metadata|Escalation metadata|Routing context|Sorting keys|Operational tags|Booking mode|Vendor route|Customer|Mobile|Address|Preferred time|Selected worker):/i';
     $lines = [];
     foreach (preg_split('/\R/', $notes) ?: [] as $line) {
         $line = trim($line);
@@ -308,12 +309,45 @@ function serviceTimelineSnapshot(array $timeline): array
 
 function serviceDefaultAssignmentMetadata(array $provided = []): array
 {
+    $assignedVendorId = $provided['assigned_vendor_id'] ?? $provided['vendor_id'] ?? null;
+    $assignedVendorName = $provided['assigned_vendor_name'] ?? $provided['vendor_name'] ?? null;
+    $assignedAt = $provided['vendor_assigned_at'] ?? $provided['assigned_at'] ?? null;
     return [
-        'assigned_vendor_id' => isset($provided['assigned_vendor_id']) && $provided['assigned_vendor_id'] !== '' ? (int)$provided['assigned_vendor_id'] : null,
-        'assigned_vendor_name' => trim((string)($provided['assigned_vendor_name'] ?? '')) ?: null,
+        'assigned_vendor_id' => isset($assignedVendorId) && $assignedVendorId !== '' ? (int)$assignedVendorId : null,
+        'assigned_vendor_name' => trim((string)($assignedVendorName ?? '')) ?: null,
+        'vendor_assignment_status' => serviceSlug((string)($provided['vendor_assignment_status'] ?? (empty($assignedVendorId) ? 'unassigned' : 'assigned'))),
+        'vendor_response_status' => serviceSlug((string)($provided['vendor_response_status'] ?? (empty($assignedVendorId) ? 'not_requested' : 'awaiting_vendor_response'))),
+        'vendor_assigned_at' => trim((string)($assignedAt ?? '')) ?: null,
         'assigned_by' => trim((string)($provided['assigned_by'] ?? '')) ?: null,
-        'assigned_at' => trim((string)($provided['assigned_at'] ?? '')) ?: null,
+        'assigned_at' => trim((string)($assignedAt ?? '')) ?: null,
         'assignment_notes' => trim((string)($provided['assignment_notes'] ?? '')) ?: null,
+    ];
+}
+
+function serviceDefaultVendorExecutionMetadata(array $provided = []): array
+{
+    $response = serviceSlug((string)($provided['vendor_response_status'] ?? 'not_requested'));
+    $allowedResponse = ['not_requested', 'awaiting_vendor_response', 'vendor_accepted', 'vendor_rejected', 'vendor_unreachable', 'reassignment_required'];
+    if (!in_array($response, $allowedResponse, true)) $response = 'not_requested';
+    $execution = serviceSlug((string)($provided['execution_state'] ?? 'not_started'));
+    $allowedExecution = ['not_started', 'worker_on_route', 'worker_arrived', 'service_in_progress', 'service_completed'];
+    if (!in_array($execution, $allowedExecution, true)) $execution = 'not_started';
+    return [
+        'vendor_response_status' => $response,
+        'response_timer_started_at' => trim((string)($provided['response_timer_started_at'] ?? '')) ?: null,
+        'response_deadline_at' => trim((string)($provided['response_deadline_at'] ?? '')) ?: null,
+        'reassignment_required' => (bool)($provided['reassignment_required'] ?? in_array($response, ['vendor_rejected', 'vendor_unreachable', 'reassignment_required'], true)),
+        'reassignment_reason' => trim((string)($provided['reassignment_reason'] ?? '')) ?: null,
+        'execution_state' => $execution,
+        'vendor_notes' => trim((string)($provided['vendor_notes'] ?? '')) ?: null,
+        'completion_notes' => trim((string)($provided['completion_notes'] ?? '')) ?: null,
+        'completion_timestamp' => trim((string)($provided['completion_timestamp'] ?? '')) ?: null,
+        'automation_context' => is_array($provided['automation_context'] ?? null) ? $provided['automation_context'] : [
+            'auto_routing_ready' => true,
+            'timeout_reassignment_ready' => true,
+            'vendor_scoring_ready' => true,
+            'sla_tracking_ready' => true,
+        ],
     ];
 }
 
@@ -393,6 +427,13 @@ function serviceOperationalActionConfig(string $action, string $bookingMode): ar
         'assign_vendor' => ['lifecycle' => $bookingMode === 'inspection' ? 'inspection_assigned' : 'worker_assigned', 'assignment' => $bookingMode === 'inspection' ? 'inspection_assigned' : 'worker_assigned', 'event' => 'vendor_assigned'],
         'unassign_vendor' => ['lifecycle' => $bookingMode === 'inspection' ? 'inspection_queued' : 'searching_worker', 'assignment' => $bookingMode === 'inspection' ? 'inspection_unassigned' : 'unassigned_searching', 'event' => 'vendor_unassigned'],
         'reassign_vendor' => ['lifecycle' => $bookingMode === 'inspection' ? 'inspection_assigned' : 'worker_assigned', 'assignment' => $bookingMode === 'inspection' ? 'inspection_assigned' : 'worker_assigned', 'event' => 'vendor_reassigned'],
+        'vendor_accepted' => ['lifecycle' => $bookingMode === 'inspection' ? 'inspection_assigned' : 'worker_assigned', 'assignment' => $bookingMode === 'inspection' ? 'inspection_assigned' : 'worker_assigned', 'vendor_response' => 'vendor_accepted', 'event' => 'vendor_accepted'],
+        'vendor_rejected' => ['lifecycle' => $bookingMode === 'inspection' ? 'inspection_queued' : 'searching_worker', 'assignment' => $bookingMode === 'inspection' ? 'inspection_unassigned' : 'unassigned_searching', 'vendor_response' => 'vendor_rejected', 'event' => 'vendor_rejected'],
+        'vendor_unreachable' => ['lifecycle' => $bookingMode === 'inspection' ? 'inspection_queued' : 'searching_worker', 'assignment' => $bookingMode === 'inspection' ? 'inspection_unassigned' : 'unassigned_searching', 'vendor_response' => 'vendor_unreachable', 'event' => 'vendor_unreachable'],
+        'worker_on_route' => ['lifecycle' => 'service_in_progress', 'execution' => 'worker_on_route', 'event' => 'worker_on_route'],
+        'worker_arrived' => ['lifecycle' => 'service_in_progress', 'execution' => 'worker_arrived', 'event' => 'worker_arrived'],
+        'service_started' => ['lifecycle' => 'service_in_progress', 'execution' => 'service_in_progress', 'event' => 'service_started'],
+        'service_completed' => ['lifecycle' => 'completed', 'execution' => 'service_completed', 'event' => 'service_completed'],
         'mark_worker_contacted' => ['lifecycle' => $bookingMode === 'inspection' ? 'coordinator_review' : 'searching_worker', 'assignment' => 'worker_contacted', 'event' => 'worker_contacted'],
         'mark_worker_confirmed' => ['lifecycle' => $bookingMode === 'inspection' ? 'inspection_assigned' : 'worker_assigned', 'assignment' => $bookingMode === 'inspection' ? 'inspection_assigned' : 'worker_assigned', 'event' => 'worker_confirmed'],
         'inspection_queued' => ['lifecycle' => 'inspection_queued', 'assignment' => 'inspection_unassigned', 'inspection' => 'inspection_queued', 'event' => 'inspection_queued'],
@@ -448,6 +489,7 @@ function serviceNormalizeOperationalRequest(array $input, string $bookingMode, a
     if ($priorityScore >= 60 || $priority === 'high_priority') $baseTags[] = 'urgent';
     $tags = array_values(array_unique(array_filter(array_map('serviceSlug', array_merge($baseTags, $tags)))));
     $assignmentMetadata = serviceDefaultAssignmentMetadata(is_array($provided['assignment'] ?? null) ? $provided['assignment'] : []);
+    $vendorExecutionMetadata = serviceDefaultVendorExecutionMetadata(is_array($provided['vendor_execution'] ?? null) ? $provided['vendor_execution'] : []);
     $inspectionMetadata = serviceDefaultInspectionMetadata($bookingMode, is_array($provided['inspection'] ?? null) ? $provided['inspection'] : []);
     $escalationMetadata = serviceDefaultEscalationMetadata(is_array($provided['escalation'] ?? null) ? $provided['escalation'] : []);
     $sortingKeys = ['city' => serviceSlug($city), 'locality' => serviceSlug($locality), 'category' => serviceSlug($category), 'payment_route' => $paymentRequired ? 'paid_inspection' : 'free_request', 'payment_required' => $paymentRequired ? 'yes' : 'no', 'priority' => $priority, 'assignment_state' => $assignmentState, 'lifecycle_state' => $lifecycleState, 'inspection_status' => $inspectionMetadata['inspection_status']];
@@ -473,6 +515,7 @@ function serviceNormalizeOperationalRequest(array $input, string $bookingMode, a
         'priority' => $priority,
         'priority_score' => max(0, min(100, $priorityScore)),
         'assignment' => $assignmentMetadata,
+        'vendor_execution' => $vendorExecutionMetadata,
         'inspection' => $inspectionMetadata,
         'escalation' => $escalationMetadata,
         'routing_context' => is_array($provided['routing_context'] ?? null) ? $provided['routing_context'] : ['assignment_mode' => 'admin_queue', 'category_slug' => serviceSlug($category), 'city' => serviceSlug($city), 'locality' => serviceSlug($locality), 'route_ready' => true, 'vendor_acceptance_ready' => true, 'vendor_rejection_ready' => true, 'reassignment_ready' => true],
@@ -543,6 +586,11 @@ function serviceAttachOperationalView(array $booking, bool $adminView = false): 
         if (!empty($booking['vendor_id']) && empty($booking['assignment']['assigned_vendor_id'])) {
             $booking['assignment']['assigned_vendor_id'] = (int)$booking['vendor_id'];
             $booking['assignment']['assigned_vendor_name'] = $booking['vendor_name'] ?? null;
+            $booking['assignment']['vendor_assignment_status'] = 'assigned';
+        }
+        $booking['vendor_execution'] = serviceDefaultVendorExecutionMetadata(serviceJsonField($booking['notes'] ?? null, 'Vendor execution metadata'));
+        if (!empty($booking['assignment']['vendor_response_status']) && $booking['assignment']['vendor_response_status'] !== 'not_requested') {
+            $booking['vendor_execution']['vendor_response_status'] = $booking['assignment']['vendor_response_status'];
         }
         $booking['inspection'] = serviceDefaultInspectionMetadata($mode, serviceJsonField($booking['notes'] ?? null, 'Inspection metadata'));
         $booking['escalation'] = serviceDefaultEscalationMetadata(serviceJsonField($booking['notes'] ?? null, 'Escalation metadata'));
@@ -572,7 +620,7 @@ function serviceAttachOperationalView(array $booking, bool $adminView = false): 
         ];
         $booking['admin_request_view'] = serviceBuildAdminRequestView($booking);
     } else {
-        unset($booking['operational_tags'], $booking['priority'], $booking['priority_score'], $booking['routing_context'], $booking['sorting_keys'], $booking['assignment'], $booking['inspection'], $booking['escalation'], $booking['timeline_snapshot'], $booking['admin_queue'], $booking['admin_request_view']);
+        unset($booking['operational_tags'], $booking['priority'], $booking['priority_score'], $booking['routing_context'], $booking['sorting_keys'], $booking['assignment'], $booking['vendor_execution'], $booking['inspection'], $booking['escalation'], $booking['timeline_snapshot'], $booking['admin_queue'], $booking['admin_request_view']);
     }
     return $booking;
 }
@@ -1155,7 +1203,7 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/ops$#', $ur
         ? (json_decode($GLOBALS['HEART_PAYLOAD'] ?? '{}', true)['data'] ?? [])
         : (json_decode(file_get_contents('php://input'), true) ?? []);
     $action = serviceSlug((string)($input['action'] ?? ''));
-    $allowedActions = ['assign_vendor', 'unassign_vendor', 'reassign_vendor', 'mark_worker_contacted', 'mark_worker_confirmed', 'inspection_queued', 'coordinator_assigned', 'inspection_scheduled', 'inspection_completed', 'mark_escalated'];
+    $allowedActions = ['assign_vendor', 'unassign_vendor', 'reassign_vendor', 'vendor_accepted', 'vendor_rejected', 'vendor_unreachable', 'worker_on_route', 'worker_arrived', 'service_started', 'service_completed', 'mark_worker_contacted', 'mark_worker_confirmed', 'inspection_queued', 'coordinator_assigned', 'inspection_scheduled', 'inspection_completed', 'mark_escalated'];
     if (!in_array($action, $allowedActions, true)) {
         Response::validation('Unsupported admin operation action');
     }
@@ -1203,14 +1251,29 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/ops$#', $ur
     }
 
     $assignmentMetadata = serviceDefaultAssignmentMetadata(serviceJsonField($booking['notes'] ?? null, 'Assignment metadata'));
-    if (in_array($action, ['assign_vendor', 'reassign_vendor', 'unassign_vendor', 'mark_worker_contacted', 'mark_worker_confirmed'], true)) {
+    if (in_array($action, ['assign_vendor', 'reassign_vendor', 'unassign_vendor', 'mark_worker_contacted', 'mark_worker_confirmed', 'vendor_accepted', 'vendor_rejected', 'vendor_unreachable'], true)) {
         $assignmentMetadata = serviceDefaultAssignmentMetadata([
             'assigned_vendor_id' => $vendorId > 0 ? $vendorId : null,
             'assigned_vendor_name' => $vendorName,
+            'vendor_assignment_status' => $vendorId > 0 ? ($action === 'unassign_vendor' ? 'unassigned' : 'assigned') : 'unassigned',
+            'vendor_response_status' => $config['vendor_response'] ?? ($vendorId > 0 ? 'awaiting_vendor_response' : 'not_requested'),
             'assigned_by' => 'admin:' . (int)($auth['user_id'] ?? 0),
             'assigned_at' => $vendorId > 0 ? $now : null,
             'assignment_notes' => trim((string)($input['notes'] ?? $input['assignment_notes'] ?? '')) ?: null,
         ]);
+    }
+
+    $vendorExecutionMetadata = serviceDefaultVendorExecutionMetadata(serviceJsonField($booking['notes'] ?? null, 'Vendor execution metadata'));
+    if (isset($config['vendor_response']) || isset($config['execution'])) {
+        $vendorExecutionMetadata = serviceDefaultVendorExecutionMetadata(array_replace($vendorExecutionMetadata, [
+            'vendor_response_status' => $config['vendor_response'] ?? $vendorExecutionMetadata['vendor_response_status'],
+            'reassignment_required' => in_array(($config['vendor_response'] ?? ''), ['vendor_rejected', 'vendor_unreachable'], true),
+            'reassignment_reason' => in_array(($config['vendor_response'] ?? ''), ['vendor_rejected', 'vendor_unreachable'], true) ? trim((string)($input['notes'] ?? $config['event'])) : $vendorExecutionMetadata['reassignment_reason'],
+            'execution_state' => $config['execution'] ?? $vendorExecutionMetadata['execution_state'],
+            'vendor_notes' => trim((string)($input['vendor_notes'] ?? $input['notes'] ?? $vendorExecutionMetadata['vendor_notes'] ?? '')) ?: null,
+            'completion_notes' => ($config['execution'] ?? '') === 'service_completed' ? trim((string)($input['completion_notes'] ?? $input['notes'] ?? '')) : $vendorExecutionMetadata['completion_notes'],
+            'completion_timestamp' => ($config['execution'] ?? '') === 'service_completed' ? $now : $vendorExecutionMetadata['completion_timestamp'],
+        ]));
     }
 
     $inspectionMetadata = serviceDefaultInspectionMetadata($bookingMode, serviceJsonField($booking['notes'] ?? null, 'Inspection metadata'));
@@ -1249,18 +1312,19 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/ops$#', $ur
     $nextNotes = serviceAppendNoteField($booking['notes'] ?? null, 'Lifecycle state', $nextLifecycle);
     $nextNotes = serviceAppendNoteField($nextNotes, 'Assignment state', $nextAssignment);
     $nextNotes = serviceAppendNoteField($nextNotes, 'Assignment metadata', json_encode($assignmentMetadata, JSON_UNESCAPED_SLASHES));
+    $nextNotes = serviceAppendNoteField($nextNotes, 'Vendor execution metadata', json_encode($vendorExecutionMetadata, JSON_UNESCAPED_SLASHES));
     $nextNotes = serviceAppendNoteField($nextNotes, 'Inspection metadata', json_encode($inspectionMetadata, JSON_UNESCAPED_SLASHES));
     $nextNotes = serviceAppendNoteField($nextNotes, 'Escalation metadata', json_encode($escalationMetadata, JSON_UNESCAPED_SLASHES));
     $nextNotes = serviceAppendNoteField($nextNotes, 'Timeline', json_encode($timeline, JSON_UNESCAPED_SLASHES));
 
     $bookingUpdates = ['notes = :notes'];
     $bookingBind = [':notes' => $nextNotes, ':id' => $bookingId];
-    if (in_array($action, ['assign_vendor', 'reassign_vendor', 'unassign_vendor'], true)) {
+    if (in_array($action, ['assign_vendor', 'reassign_vendor', 'unassign_vendor', 'vendor_rejected', 'vendor_unreachable'], true)) {
         $bookingUpdates[] = 'vendor_id = :vendor_id';
         $bookingBind[':vendor_id'] = $vendorId > 0 ? $vendorId : null;
         if (serviceTableHasColumn($db, 'bookings', 'vendor_route')) {
             $bookingUpdates[] = 'vendor_route = :vendor_route';
-            $bookingBind[':vendor_route'] = $vendorId > 0 ? 'admin_assigned' : 'admin_queue';
+            $bookingBind[':vendor_route'] = in_array($action, ['vendor_rejected', 'vendor_unreachable', 'unassign_vendor'], true) ? 'admin_queue' : 'admin_assigned';
         }
     }
     if (serviceTableHasColumn($db, 'bookings', 'updated_at')) {
@@ -1270,7 +1334,7 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/ops$#', $ur
     try {
         $db->beginTransaction();
         $db->prepare("UPDATE bookings SET " . implode(', ', $bookingUpdates) . " WHERE id = :id")->execute($bookingBind);
-        if (in_array($action, ['assign_vendor', 'reassign_vendor', 'unassign_vendor'], true)) {
+        if (in_array($action, ['assign_vendor', 'reassign_vendor', 'unassign_vendor', 'vendor_rejected', 'vendor_unreachable'], true)) {
             $jobUpdates = ['vendor_id = :vendor_id'];
             $jobBind = [':vendor_id' => $vendorId > 0 ? $vendorId : null, ':booking_id' => $bookingId];
             if (serviceTableHasColumn($db, 'jobs', 'updated_at')) $jobUpdates[] = 'updated_at = NOW()';
@@ -1288,6 +1352,7 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/ops$#', $ur
         'lifecycle_state' => $nextLifecycle,
         'assignment_state' => $nextAssignment,
         'assignment' => $assignmentMetadata,
+        'vendor_execution' => $vendorExecutionMetadata,
         'inspection' => $inspectionMetadata,
         'escalation' => $escalationMetadata,
         'timeline_snapshot' => serviceTimelineSnapshot($timeline),
@@ -1365,9 +1430,16 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/assign$#', 
     $assignmentMetadata = serviceDefaultAssignmentMetadata([
         'assigned_vendor_id' => $effectiveVendorId,
         'assigned_vendor_name' => $newJobStatus === 'open' ? null : $vendor['business_name'],
+        'vendor_assignment_status' => $newJobStatus === 'open' ? 'unassigned' : 'assigned',
+        'vendor_response_status' => $newJobStatus === 'open' ? 'not_requested' : 'awaiting_vendor_response',
         'assigned_by' => 'admin:' . (int)($auth['user_id'] ?? 0),
         'assigned_at' => $newJobStatus === 'open' ? null : $assignedAt,
         'assignment_notes' => trim((string)($input['assignment_notes'] ?? $input['notes'] ?? '')) ?: null,
+    ]);
+    $vendorExecutionMetadata = serviceDefaultVendorExecutionMetadata([
+        'vendor_response_status' => $newJobStatus === 'open' ? 'not_requested' : 'awaiting_vendor_response',
+        'response_timer_started_at' => $newJobStatus === 'open' ? null : $assignedAt,
+        'reassignment_required' => false,
     ]);
     $timeline = serviceNormalizeTimeline(serviceJsonField($booking['notes'] ?? null, 'Timeline'), (string)($booking['created_at'] ?? $assignedAt), $currentLifecycle);
     $timeline[] = [
@@ -1382,6 +1454,7 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/assign$#', 
     $nextNotes = serviceAppendNoteField($booking['notes'] ?? null, 'Lifecycle state', $nextLifecycle);
     $nextNotes = serviceAppendNoteField($nextNotes, 'Assignment state', $newJobStatus === 'open' ? ($bookingMode === 'inspection' ? 'inspection_unassigned' : 'unassigned_searching') : ($bookingMode === 'inspection' ? 'inspection_assigned' : 'worker_assigned'));
     $nextNotes = serviceAppendNoteField($nextNotes, 'Assignment metadata', json_encode($assignmentMetadata, JSON_UNESCAPED_SLASHES));
+    $nextNotes = serviceAppendNoteField($nextNotes, 'Vendor execution metadata', json_encode($vendorExecutionMetadata, JSON_UNESCAPED_SLASHES));
     $nextNotes = serviceAppendNoteField($nextNotes, 'Timeline', json_encode($timeline, JSON_UNESCAPED_SLASHES));
     $bookingUpdates = ['vendor_id = :vendor_id', 'status = :status'];
     $bookingBind = [':vendor_id' => $effectiveVendorId, ':status' => $bookingStatus, ':notes' => $nextNotes, ':id' => $bookingId];
