@@ -100,7 +100,7 @@ window.BookingsPage = (() => {
             <span class="request-mini-pill ${_esc(paymentBadge.tone)}">${_esc(paymentBadge.label)}</span>
           </div>
           <div class="item-row muted small"><span>Category: ${_esc(b.category_label || b.category_name || b.service_name || "Service")}</span></div>
-          ${issues.length ? `<div class="item-row muted small"><span>Issues: ${_esc(issues.join(", "))}</span></div>` : b.subservice ? `<div class="item-row muted small"><span>Service: ${_esc(b.subservice)}</span></div>` : ""}
+          ${b.issue_summary ? `<div class="item-row muted small"><span>Issues: ${_esc(b.issue_summary)}</span></div>` : issues.length ? `<div class="item-row muted small"><span>Issues: ${_esc(issues.join(", "))}</span></div>` : b.subservice ? `<div class="item-row muted small"><span>Service: ${_esc(b.subservice)}</span></div>` : ""}
           ${b.locality ? `<div class="item-row muted small"><span>Area routing: ${_esc(b.locality)}${b.city ? ` · ${_esc(b.city)}` : ""}${b.locality_source ? ` · ${_esc(_localitySourceLabel(b.locality_source))}` : ""}</span></div>` : ""}
           <div class="item-row muted small"><span>Mode: ${_esc(_modeLabel(b.booking_mode))}</span></div>
           <div class="item-row muted small"><span>Now: ${_esc(state.label)}</span></div>
@@ -212,6 +212,7 @@ window.BookingsPage = (() => {
       status: map[status] || status,
       request_type: b.request_type || _requestTypeFromMode(b.booking_mode || _modeFromNotes(b.notes)),
       issue_list: _normalizeIssueList(b.issue_list || b.operational_request?.issue_list || _fieldFromNotes(b.notes, "Issue list") || b.subservice || b.issue_type),
+      issue_summary: b.issue_summary || b.operational_request?.issue_summary || _fieldFromNotes(b.notes, "Issue summary") || _issueSummary(b.issue_list || b.operational_request?.issue_list || _fieldFromNotes(b.notes, "Issue list") || b.subservice || b.issue_type),
       priority: b.priority || b.operational_request?.priority || _fieldFromNotes(b.notes, "Priority") || "normal_priority",
       lifecycle_state: b.lifecycle_state || b.operational_request?.lifecycle_state || _fieldFromNotes(b.notes, "Lifecycle state"),
       assignment_state: b.assignment_state || b.operational_request?.assignment_state || _fieldFromNotes(b.notes, "Assignment state"),
@@ -377,8 +378,6 @@ window.BookingsPage = (() => {
 
   function _modeFromNotes(notes = "") {
     const text = String(notes || "").toLowerCase();
-    if (text.includes("lifecycle mode: inspection")) return "inspection";
-    if (text.includes("lifecycle mode: direct_vendor")) return "direct_vendor";
     if (text.includes("booking mode: inspection")) return "inspection";
     if (text.includes("booking mode: direct_vendor")) return "direct_vendor";
     return "free_lead";
@@ -392,10 +391,18 @@ window.BookingsPage = (() => {
   function _shortNotes(notes) {
     return String(notes || "")
       .split("\n")
-      .filter(line => !/^(Lifecycle mode|Category slug|Category label|Customer name|Customer mobile|Customer locality|Customer address|Vendor route|Request type|Booking mode|Booking mode meaning|Tracking state|Request source|Mobile|Locality|Selected nearby area|Selected city|Locality source|Address|Preferred time|Selected worker):/i.test(line.trim()))
+      .filter(line => !/^(Request ID|Client request ID|Request schema version|Request type|Category|Issue list|Issue summary|Locality|City|Payment required|Payment route|Priority|Priority score|Assignment state|Lifecycle state|Timeline|Operational tags|Booking mode|Vendor route|Customer|Mobile|Address|Preferred time|Selected worker):/i.test(line.trim()))
       .slice(0, 2)
       .join(" · ")
       .slice(0, 140);
+  }
+
+  function _issueSummary(value = "") {
+    return _normalizeIssueList(value)
+      .map(item => item.replace(/\b(issue|problem|service|work)\b$/i, "").replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .slice(0, 4)
+      .join(" + ");
   }
 
   return { _load, setFilter, openSupport };

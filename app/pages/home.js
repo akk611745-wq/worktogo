@@ -648,6 +648,7 @@ window.HomeModals = (() => {
     const notes   = document.getElementById("booking-notes")?.value?.trim() || "";
     const issueList = _normalizeIssueList(document.getElementById("booking-service-context")?.value || _currentService.selected_issues || _currentService.quick_service || _currentService.name || "");
     const serviceContext = issueList.join(", ") || _currentService.quick_service || _currentService.name || "";
+    const issueSummary = _issueSummary(issueList.length ? issueList : serviceContext);
     const submittedCategorySlug = document.getElementById("booking-category-context")?.value || _currentService.category_slug || _currentService.category || _activeCategory || _inspectionCategorySlug("");
     const category = _categoryMeta(submittedCategorySlug);
     bookingMode = _canonicalBookingMode(document.getElementById("booking-mode")?.value, _currentService, category);
@@ -692,10 +693,12 @@ window.HomeModals = (() => {
     const operationalPayload = {
       request_id: clientRequestId,
       client_request_id: clientRequestId,
+      request_schema_version: 1,
       request_type: requestType,
       category: category.slug || _activeCategory,
       category_label: category.label,
       issue_list: issueList,
+      issue_summary: issueSummary,
       subservice: serviceContext,
       issue_type: serviceContext,
       priority: priority.level,
@@ -713,6 +716,8 @@ window.HomeModals = (() => {
         phone: mobileDigits,
         auth_user_id: AUTH.getUser?.()?.id || null,
       },
+      customer_name: name || "WorkToGo Customer",
+      customer_mobile: mobileDigits,
       booking_mode: bookingMode,
       booking_mode_label: _bookingModeMeaning(bookingMode),
       payment_required: bookingMode === "inspection",
@@ -730,7 +735,15 @@ window.HomeModals = (() => {
       timeline: _initialRequestTimeline({ mode: bookingMode, state: trackingState, createdAt, paymentRequired: bookingMode === "inspection" }),
       sorting_keys: _requestSortingKeys({ category, issueList, area, bookingMode, priority, trackingState }),
       routing_context: _routingContext({ category, issueList, area, selectedWorker, priority, bookingMode }),
+      operational_tags: _operationalTags({ bookingMode, category, issueList, area, priority }),
     };
+
+    if (!_isValidOperationalRequest(operationalPayload)) {
+      UI.toast("Request structure is incomplete. Please review the form and try again.", "error");
+      _isBookingSubmitting = false;
+      if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
+      return;
+    }
 
     const res = await API.createBooking({
         service_id: _currentService.id,
@@ -744,6 +757,9 @@ window.HomeModals = (() => {
         subservice: serviceContext,
         issue_type: serviceContext,
         issue_list: issueList,
+        issue_summary: operationalPayload.issue_summary,
+        request_schema_version: operationalPayload.request_schema_version,
+        operational_tags: operationalPayload.operational_tags,
         priority: priority.level,
         priority_score: priority.score,
         lifecycle_state: trackingState,
@@ -2212,6 +2228,43 @@ function _normalizeIssueList(value = "") {
   });
 }
 
+function _issueSummary(value = "") {
+  return _normalizeIssueList(value)
+    .map(item => item.replace(/\b(issue|problem|service|work)\b$/i, "").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(" + ");
+}
+
+function _operationalTags({ bookingMode = "", category = {}, issueList = [], area = "", priority = {} } = {}) {
+  const tags = new Set(["local_request"]);
+  tags.add(bookingMode === "inspection" ? "paid" : "free");
+  if (bookingMode === "inspection") tags.add("inspection");
+  const categoryTag = _slug(category.slug || category.label);
+  if (categoryTag) tags.add(categoryTag);
+  if ((priority.score || 0) >= 60 || priority.level === "high_priority") tags.add("urgent");
+  _normalizeIssueList(issueList).map(_slug).filter(Boolean).forEach(tag => tags.add(tag));
+  const localityTag = _slug(area || _resolvedLocality().label);
+  if (localityTag) tags.add(`area_${localityTag}`);
+  return [...tags].filter(tag => /^[a-z0-9_]+$/.test(tag));
+}
+
+function _isValidOperationalRequest(payload = {}) {
+  const requiredScalar = [
+    "request_id", "client_request_id", "created_at", "request_type", "lifecycle_state", "assignment_state",
+    "customer_name", "customer_mobile", "category", "category_label", "issue_summary", "city", "locality", "full_address",
+    "payment_route", "priority", "priority_score", "request_schema_version"
+  ];
+  if (!requiredScalar.every(key => payload[key] !== undefined && payload[key] !== null && String(payload[key]).trim() !== "")) return false;
+  if (!Array.isArray(payload.issue_list) || payload.issue_list.length < 1) return false;
+  if (typeof payload.payment_required !== "boolean") return false;
+  if (!payload.routing_context || typeof payload.routing_context !== "object") return false;
+  if (!payload.sorting_keys || typeof payload.sorting_keys !== "object") return false;
+  if (!Array.isArray(payload.timeline) || payload.timeline.length < 1) return false;
+  if (!Array.isArray(payload.operational_tags) || payload.operational_tags.length < 1) return false;
+  return true;
+}
+
 function _requestType(mode = "") {
   if (mode === "inspection") return "inspection";
   if (mode === "direct_vendor") return "direct_worker";
@@ -2260,7 +2313,7 @@ function _initialRequestTimeline({ mode = "free_lead", state = "request_received
     base.push({ event: "payment_pending", state: "payment_pending", at: createdAt, actor: "system", visible_to_customer: true });
     return base;
   }
-  base.push({ event: "searching_worker", state: mode === "direct_vendor" ? "worker_requested" : "nearby_matching", at: createdAt, actor: "system", visible_to_customer: true });
+  base.push({ event: "searching_worker", state: mode === "direct_vendor" ? "worker_requested" : "searching_worker", at: createdAt, actor: "system", visible_to_customer: true });
   return base;
 }
 
@@ -2316,32 +2369,29 @@ function _adminRequestNotes(payload = {}) {
   const issueList = _normalizeIssueList(payload.issue_list || payload.issue_type || payload.subservice).join(", ");
   return [
     `Request ID: ${payload.request_id || payload.client_request_id || ""}`,
+    `Client request ID: ${payload.client_request_id || payload.request_id || ""}`,
+    `Request schema version: ${payload.request_schema_version || 1}`,
     `Request type: ${payload.request_type}`,
     `Category: ${payload.category_label || payload.category}`,
-    `Subservice: ${payload.subservice || "Not specified"}`,
-    `Issue type: ${payload.issue_type || payload.subservice || "Not specified"}`,
     `Issue list: ${issueList || "Not specified"}`,
+    `Issue summary: ${payload.issue_summary || issueList || "Not specified"}`,
     `Priority: ${payload.priority || "normal_priority"}`,
     `Priority score: ${payload.priority_score ?? ""}`,
-    `Priority reason: ${payload.priority_reason || ""}`,
     `Booking mode: ${payload.booking_mode}`,
-    `Booking mode meaning: ${payload.booking_mode_label}`,
     `Payment required: ${payload.payment_required ? "yes" : "no"}`,
     `Payment route: ${payload.payment_route || (payload.booking_mode === "inspection" ? "paid_inspection" : "free_request")}`,
     `Lifecycle state: ${payload.lifecycle_state || payload.tracking_state}`,
     `Assignment state: ${payload.assignment_state || ""}`,
-    `Tracking state: ${payload.tracking_state}`,
     `Request source: ${payload.request_source}`,
     `Customer: ${payload.customer?.name || "WorkToGo Customer"}`,
     `Mobile: ${payload.customer?.phone || ""}`,
     `Locality: ${payload.locality || ""}`,
-    `Selected nearby area: ${payload.selected_nearby_area || ""}`,
-    `Selected city: ${payload.selected_city || ""}`,
-    `Locality source: ${payload.locality_source || ""}`,
+    `City: ${payload.city || payload.selected_city || ""}`,
     `Address: ${payload.full_address || ""}`,
     `Preferred time: ${payload.preferred_time || ""}`,
     `Selected worker: ${worker}`,
     `Issue note: ${payload.issue_note || ""}`,
+    `Operational tags: ${(payload.operational_tags || []).join(", ")}`,
     `Timeline: ${JSON.stringify(payload.timeline || [])}`,
   ].filter(Boolean).join("\n");
 }

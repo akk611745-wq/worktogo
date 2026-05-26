@@ -153,19 +153,151 @@ function canonicalBookingMode(array $input, array $service): string
 
 function serviceLifecycleNote(array $input, string $bookingMode, array $service): string
 {
-    $notes = trim((string)($input['notes'] ?? ''));
+    $notes = serviceFreeformOperationalNotes((string)($input['notes'] ?? ''));
+    $operational = serviceNormalizeOperationalRequest($input, $bookingMode, $service);
     $lines = [
-        'Lifecycle mode: ' . $bookingMode,
-        'Category slug: ' . trim((string)($input['category_slug'] ?? '')),
-        'Category label: ' . trim((string)($input['category_label'] ?? '')),
-        'Customer name: ' . trim((string)($input['customer_name'] ?? '')),
-        'Customer mobile: ' . trim((string)($input['customer_mobile'] ?? '')),
-        'Customer locality: ' . trim((string)($input['customer_locality'] ?? '')),
-        'Customer address: ' . trim((string)($input['customer_address'] ?? '')),
+        'Request ID: ' . $operational['request_id'],
+        'Client request ID: ' . $operational['client_request_id'],
+        'Request schema version: ' . $operational['request_schema_version'],
+        'Request type: ' . $operational['request_type'],
+        'Category: ' . $operational['category_label'],
+        'Issue list: ' . implode(', ', $operational['issue_list']),
+        'Issue summary: ' . $operational['issue_summary'],
+        'Locality: ' . $operational['locality'],
+        'City: ' . $operational['city'],
+        'Payment required: ' . ($operational['payment_required'] ? 'yes' : 'no'),
+        'Payment route: ' . $operational['payment_route'],
+        'Priority: ' . $operational['priority'],
+        'Priority score: ' . $operational['priority_score'],
+        'Assignment state: ' . $operational['assignment_state'],
+        'Lifecycle state: ' . $operational['lifecycle_state'],
+        'Timeline: ' . json_encode($operational['timeline'], JSON_UNESCAPED_SLASHES),
+        'Operational tags: ' . implode(', ', $operational['operational_tags']),
+        'Booking mode: ' . $bookingMode,
         'Vendor route: ' . ($bookingMode === 'direct_vendor' ? ('direct:' . (int)($service['vendor_id'] ?? 0)) : 'admin_queue'),
         $notes,
     ];
     return trim(implode("\n", array_values(array_filter($lines, fn($line) => trim((string)$line) !== ''))));
+}
+
+function serviceFreeformOperationalNotes(string $notes): string
+{
+    $blocked = '/^(Request ID|Client request ID|Request schema version|Request type|Category|Issue list|Issue summary|Locality|City|Payment required|Payment route|Priority|Priority score|Assignment state|Lifecycle state|Timeline|Operational tags|Booking mode|Vendor route|Customer|Mobile|Address|Preferred time|Selected worker):/i';
+    $lines = [];
+    foreach (preg_split('/\R/', $notes) ?: [] as $line) {
+        $line = trim($line);
+        if ($line === '' || preg_match($blocked, $line)) continue;
+        $lines[] = $line;
+    }
+    return implode("\n", array_slice($lines, 0, 4));
+}
+
+function serviceNormalizeIssueList($value): array
+{
+    $source = is_array($value) ? $value : preg_split('/[,|]/', (string)$value);
+    $seen = [];
+    $out = [];
+    foreach ($source ?: [] as $item) {
+        $clean = trim(preg_replace('/\s+/', ' ', (string)$item));
+        $key = strtolower($clean);
+        if ($key === '' || isset($seen[$key])) continue;
+        $seen[$key] = true;
+        $out[] = $clean;
+    }
+    return $out;
+}
+
+function serviceSlug(string $value): string
+{
+    $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '_', trim($value)) ?? '');
+    return trim($slug, '_');
+}
+
+function serviceIssueSummary(array $issues): string
+{
+    $parts = [];
+    foreach ($issues as $issue) {
+        $clean = trim(preg_replace('/\b(issue|problem|service|work)\b$/i', '', $issue));
+        if ($clean !== '') $parts[] = $clean;
+        if (count($parts) >= 4) break;
+    }
+    return implode(' + ', serviceNormalizeIssueList($parts));
+}
+
+function serviceInitialLifecycleState(string $bookingMode, array $input): string
+{
+    $state = serviceSlug((string)($input['lifecycle_state'] ?? $input['operational_tracking_state'] ?? ''));
+    $allowed = $bookingMode === 'inspection'
+        ? ['payment_pending', 'payment_verified', 'inspection_queued', 'coordinator_review', 'inspection_assigned']
+        : ['request_received', 'searching_worker', 'worker_confirmation_pending', 'worker_assigned'];
+    if (in_array($state, $allowed, true)) return $state;
+    return $bookingMode === 'inspection' ? 'payment_pending' : 'request_received';
+}
+
+function serviceInitialAssignmentState(string $bookingMode, array $input): string
+{
+    $state = serviceSlug((string)($input['assignment_state'] ?? ''));
+    $allowed = $bookingMode === 'inspection'
+        ? ['payment_pending', 'inspection_unassigned', 'coordinator_review', 'inspection_assigned']
+        : ['unassigned_searching', 'worker_confirmation_pending', 'worker_assigned'];
+    if (in_array($state, $allowed, true)) return $state;
+    return $bookingMode === 'inspection' ? 'payment_pending' : 'unassigned_searching';
+}
+
+function serviceNormalizeOperationalRequest(array $input, string $bookingMode, array $service): array
+{
+    $provided = is_array($input['operational_request'] ?? null) ? $input['operational_request'] : [];
+    $requestId = trim((string)($input['request_id'] ?? $provided['request_id'] ?? $input['client_request_id'] ?? $provided['client_request_id'] ?? ''));
+    if ($requestId === '') $requestId = 'wtg-' . serviceSlug($bookingMode ?: 'request') . '-' . bin2hex(random_bytes(6));
+    $issues = serviceNormalizeIssueList($input['issue_list'] ?? $provided['issue_list'] ?? $input['issue_type'] ?? $input['subservice'] ?? $service['name'] ?? 'Service request');
+    if (!$issues) $issues = [trim((string)($service['name'] ?? 'Service request'))];
+    $category = trim((string)($input['category_slug'] ?? $provided['category'] ?? $service['category_slug'] ?? 'service'));
+    $categoryLabel = trim((string)($input['category_label'] ?? $provided['category_label'] ?? $service['category_name'] ?? $category));
+    $locality = trim((string)($input['customer_locality'] ?? $provided['locality'] ?? $input['selected_nearby_area'] ?? 'Local area'));
+    $city = trim((string)($input['selected_city'] ?? $provided['city'] ?? 'Local city'));
+    $priority = trim((string)($input['priority'] ?? $provided['priority'] ?? ($bookingMode === 'inspection' ? 'high_priority' : 'normal_priority')));
+    $priorityScore = (int)($input['priority_score'] ?? $provided['priority_score'] ?? ($bookingMode === 'inspection' ? 35 : 15));
+    $lifecycleState = serviceInitialLifecycleState($bookingMode, $input + $provided);
+    $assignmentState = serviceInitialAssignmentState($bookingMode, $input + $provided);
+    $paymentRequired = $bookingMode === 'inspection';
+    $createdAt = trim((string)($provided['created_at'] ?? $input['created_at'] ?? gmdate('c')));
+    $timeline = is_array($provided['timeline'] ?? null) ? $provided['timeline'] : (is_array($input['timeline'] ?? null) ? $input['timeline'] : []);
+    if (!$timeline) $timeline = [['event' => 'request_created', 'state' => $lifecycleState, 'at' => $createdAt, 'actor' => 'customer', 'visible_to_customer' => true]];
+    $tags = serviceNormalizeIssueList($input['operational_tags'] ?? $provided['operational_tags'] ?? []);
+    $baseTags = [$paymentRequired ? 'paid' : 'free', serviceSlug($category), 'local_request'];
+    if ($paymentRequired) $baseTags[] = 'inspection';
+    if ($priorityScore >= 60 || $priority === 'high_priority') $baseTags[] = 'urgent';
+    $tags = array_values(array_unique(array_filter(array_map('serviceSlug', array_merge($baseTags, $tags)))));
+    $normalized = [
+        'request_id' => $requestId,
+        'client_request_id' => trim((string)($input['client_request_id'] ?? $provided['client_request_id'] ?? $requestId)),
+        'created_at' => $createdAt,
+        'request_schema_version' => 1,
+        'request_type' => trim((string)($input['request_type'] ?? $provided['request_type'] ?? ($bookingMode === 'inspection' ? 'inspection' : 'free_match'))),
+        'lifecycle_state' => $lifecycleState,
+        'assignment_state' => $assignmentState,
+        'customer_name' => trim((string)($input['customer_name'] ?? $provided['customer_name'] ?? $provided['customer']['name'] ?? 'WorkToGo Customer')),
+        'customer_mobile' => preg_replace('/\D+/', '', (string)($input['customer_mobile'] ?? $provided['customer_mobile'] ?? $provided['customer']['phone'] ?? '')),
+        'category' => $category,
+        'category_label' => $categoryLabel,
+        'issue_list' => $issues,
+        'issue_summary' => serviceIssueSummary($issues),
+        'city' => $city,
+        'locality' => $locality,
+        'full_address' => trim((string)($input['customer_address'] ?? $provided['full_address'] ?? '')),
+        'payment_required' => $paymentRequired,
+        'payment_route' => $paymentRequired ? 'paid_inspection' : 'free_request',
+        'priority' => $priority,
+        'priority_score' => max(0, min(100, $priorityScore)),
+        'routing_context' => is_array($provided['routing_context'] ?? null) ? $provided['routing_context'] : ['assignment_mode' => 'admin_queue', 'category_slug' => serviceSlug($category), 'route_ready' => true],
+        'sorting_keys' => is_array($provided['sorting_keys'] ?? null) ? $provided['sorting_keys'] : ['city' => serviceSlug($city), 'locality' => serviceSlug($locality), 'category' => serviceSlug($category), 'priority' => $priority, 'assignment_state' => $assignmentState, 'lifecycle_state' => $lifecycleState],
+        'timeline' => $timeline,
+        'operational_tags' => $tags,
+    ];
+    foreach (['request_id', 'client_request_id', 'created_at', 'request_type', 'lifecycle_state', 'assignment_state', 'customer_name', 'customer_mobile', 'category', 'category_label', 'issue_summary', 'city', 'locality', 'full_address', 'payment_route', 'priority'] as $key) {
+        if (trim((string)($normalized[$key] ?? '')) === '') Response::validation('Malformed operational request: missing ' . $key);
+    }
+    return $normalized;
 }
 
 function servicePaymentStatusForMode(string $bookingMode, string $paymentMethod): string
@@ -186,6 +318,47 @@ function serviceModeFromNotes(?string $notes): string
     if (str_contains($notes, 'Lifecycle mode: inspection')) return 'inspection';
     if (str_contains($notes, 'Lifecycle mode: direct_vendor')) return 'direct_vendor';
     return 'free_lead';
+}
+
+function serviceNoteField(?string $notes, string $field): string
+{
+    $prefix = strtolower($field . ':');
+    foreach (preg_split('/\R/', (string)$notes) ?: [] as $line) {
+        $line = trim($line);
+        if (str_starts_with(strtolower($line), $prefix)) return trim(substr($line, strlen($field) + 1));
+    }
+    return '';
+}
+
+function serviceAttachOperationalView(array $booking, bool $adminView = false): array
+{
+    $mode = $booking['booking_mode'] ?: serviceModeFromNotes($booking['notes'] ?? null);
+    $paymentState = strtolower((string)($booking['payment_status'] ?? ''));
+    $lifecycle = serviceNoteField($booking['notes'] ?? null, 'Lifecycle state') ?: ($mode === 'inspection' ? ($paymentState === 'paid' ? 'inspection_queued' : 'payment_pending') : 'request_received');
+    $assignment = serviceNoteField($booking['notes'] ?? null, 'Assignment state') ?: ($mode === 'inspection' ? 'payment_pending' : 'unassigned_searching');
+    $booking['request_id'] = serviceNoteField($booking['notes'] ?? null, 'Request ID') ?: ($booking['booking_number'] ?? ('booking-' . ($booking['id'] ?? '')));
+    $booking['client_request_id'] = serviceNoteField($booking['notes'] ?? null, 'Client request ID') ?: $booking['request_id'];
+    $booking['request_schema_version'] = (int)(serviceNoteField($booking['notes'] ?? null, 'Request schema version') ?: 1);
+    $booking['request_type'] = serviceNoteField($booking['notes'] ?? null, 'Request type') ?: ($mode === 'inspection' ? 'inspection' : 'free_match');
+    $booking['category_label'] = serviceNoteField($booking['notes'] ?? null, 'Category') ?: ($booking['category_label'] ?? $booking['category_name'] ?? $booking['service_name'] ?? 'Service');
+    $booking['issue_list'] = serviceNormalizeIssueList(serviceNoteField($booking['notes'] ?? null, 'Issue list') ?: ($booking['subservice'] ?? $booking['service_name'] ?? 'Service request'));
+    $booking['issue_summary'] = serviceNoteField($booking['notes'] ?? null, 'Issue summary') ?: serviceIssueSummary($booking['issue_list']);
+    $booking['city'] = serviceNoteField($booking['notes'] ?? null, 'City') ?: ($booking['selected_city'] ?? null);
+    $booking['lifecycle_state'] = $lifecycle;
+    $booking['assignment_state'] = $assignment;
+    $booking['operational_tracking_state'] = $lifecycle;
+    if ($adminView) {
+        $booking['priority'] = serviceNoteField($booking['notes'] ?? null, 'Priority') ?: 'normal_priority';
+        $booking['priority_score'] = (int)(serviceNoteField($booking['notes'] ?? null, 'Priority score') ?: 0);
+        $booking['payment_route'] = serviceNoteField($booking['notes'] ?? null, 'Payment route') ?: ($mode === 'inspection' ? 'paid_inspection' : 'free_request');
+        $booking['operational_tags'] = serviceNormalizeIssueList(serviceNoteField($booking['notes'] ?? null, 'Operational tags'));
+        $timeline = serviceNoteField($booking['notes'] ?? null, 'Timeline');
+        $decoded = $timeline ? json_decode($timeline, true) : null;
+        $booking['timeline'] = is_array($decoded) ? $decoded : [];
+    } else {
+        unset($booking['operational_tags'], $booking['priority_score'], $booking['routing_context'], $booking['sorting_keys']);
+    }
+    return $booking;
 }
 
 function serviceBookingColumnSql(PDO $db, string $column, string $expr): string
@@ -475,6 +648,7 @@ if ($method === 'POST' && $uri === '/api/service/request') {
     if (!$service) Response::notFound('Service');
 
     $bookingMode = canonicalBookingMode($input, $service);
+    $operationalRequest = serviceNormalizeOperationalRequest($input, $bookingMode, $service);
     $paymentMethod = strtolower(trim($input['payment_method'] ?? 'cod'));
     $paymentMethod = ($bookingMode === 'inspection' && $paymentMethod === 'online') ? 'online' : 'cod';
     $paymentStatus = servicePaymentStatusForMode($bookingMode, $paymentMethod);
@@ -600,6 +774,12 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         'payment_status' => $paymentStatus,
         'vendor_route'   => $bookingMode === 'direct_vendor' ? 'direct_vendor' : 'admin_queue',
         'payment_data'   => $paymentData,
+        'request_id'     => $operationalRequest['request_id'],
+        'client_request_id' => $operationalRequest['client_request_id'],
+        'request_schema_version' => $operationalRequest['request_schema_version'],
+        'issue_summary'  => $operationalRequest['issue_summary'],
+        'lifecycle_state' => $operationalRequest['lifecycle_state'],
+        'assignment_state' => $operationalRequest['assignment_state'],
     ], 201);
 }
 
@@ -677,6 +857,7 @@ if ($method === 'GET' && $uri === '/api/service/bookings') {
         $booking['booking_mode'] = $booking['booking_mode'] ?: serviceModeFromNotes($booking['notes'] ?? null);
         $booking['vendor_route'] = $booking['vendor_route'] ?: ($booking['booking_mode'] === 'direct_vendor' ? 'direct_vendor' : 'admin_queue');
         $booking['customer_name'] = $booking['customer_name'] ?: ($booking['user_name'] ?? null);
+        $booking = serviceAttachOperationalView($booking, $auth['role'] === ROLE_ADMIN);
         $booking['support_hint'] = 'WorkToGo support can help with this booking ID.';
         if ($auth['role'] === ROLE_ADMIN) {
             $booking['vendor_eligibility'] = serviceBookingEligibility($db, $booking);
@@ -734,6 +915,7 @@ if ($method === 'GET' && preg_match('#^/api/service/bookings/(\d+)$#', $uri, $m)
     $booking['payment_method'] = $booking['payment_method'] ?: 'cod';
     $booking['booking_mode'] = $booking['booking_mode'] ?: serviceModeFromNotes($booking['notes'] ?? null);
     $booking['vendor_route'] = $booking['vendor_route'] ?: ($booking['booking_mode'] === 'direct_vendor' ? 'direct_vendor' : 'admin_queue');
+    $booking = serviceAttachOperationalView($booking, $auth['role'] === ROLE_ADMIN);
     $booking['support_hint'] = 'WorkToGo support can help with this booking ID.';
     if ($auth['role'] === ROLE_ADMIN) {
         $booking['vendor_eligibility'] = serviceBookingEligibility($db, $booking);
