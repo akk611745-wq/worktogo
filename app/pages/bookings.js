@@ -85,6 +85,8 @@ window.BookingsPage = (() => {
 
     el.innerHTML = list.map(b => {
       const state = _trackingState(b);
+      const issues = _issueList(b);
+      const paymentBadge = _paymentBadge(b);
       return `
       <div class="list-item booking-item">
         <div class="item-icon booking-icon">${_esc(b.service_icon || "🛠️")}</div>
@@ -93,8 +95,12 @@ window.BookingsPage = (() => {
             <span class="item-title">${_esc(b.category_label || b.category_name || b.service_name || b.name || "Service")}</span>
             ${UI.statusBadge(state.key)}
           </div>
+          <div class="request-status-pill-row">
+            <span class="request-mini-pill state-${_esc(state.key)}">${_esc(state.short)}</span>
+            <span class="request-mini-pill ${_esc(paymentBadge.tone)}">${_esc(paymentBadge.label)}</span>
+          </div>
           <div class="item-row muted small"><span>Category: ${_esc(b.category_label || b.category_name || b.service_name || "Service")}</span></div>
-          ${b.subservice ? `<div class="item-row muted small"><span>Service: ${_esc(b.subservice)}</span></div>` : ""}
+          ${issues.length ? `<div class="item-row muted small"><span>Issues: ${_esc(issues.join(", "))}</span></div>` : b.subservice ? `<div class="item-row muted small"><span>Service: ${_esc(b.subservice)}</span></div>` : ""}
           ${b.locality ? `<div class="item-row muted small"><span>Area routing: ${_esc(b.locality)}${b.city ? ` · ${_esc(b.city)}` : ""}${b.locality_source ? ` · ${_esc(_localitySourceLabel(b.locality_source))}` : ""}</span></div>` : ""}
           <div class="item-row muted small"><span>Mode: ${_esc(_modeLabel(b.booking_mode))}</span></div>
           <div class="item-row muted small"><span>Now: ${_esc(state.label)}</span></div>
@@ -205,6 +211,7 @@ window.BookingsPage = (() => {
       ...b,
       status: map[status] || status,
       request_type: b.request_type || _requestTypeFromMode(b.booking_mode || _modeFromNotes(b.notes)),
+      issue_list: _normalizeIssueList(b.issue_list || b.operational_request?.issue_list || _fieldFromNotes(b.notes, "Issue list") || b.subservice || b.issue_type),
       subservice: b.subservice || b.selected_service || _fieldFromNotes(b.notes, "Subservice") || _fieldFromNotes(b.notes, "Selected service"),
       locality: b.customer_locality || b.locality || b.selected_nearby_area || _fieldFromNotes(b.notes, "Locality") || _fieldFromNotes(b.notes, "Selected nearby area"),
       city: b.selected_city || b.city || _fieldFromNotes(b.notes, "Selected city"),
@@ -279,9 +286,13 @@ window.BookingsPage = (() => {
     const raw = String(b.operational_tracking_state || b.status || "pending").toLowerCase();
     const paymentState = _normalizePaymentState(b.payment_status || "");
     const paid = paymentState === "paid";
-    const key = mode === "inspection" && !paid && ["pending", "open", "payment_pending"].includes(raw) ? "payment_pending" : raw;
+    const key = mode === "inspection" && ["pending", "open", "payment_pending"].includes(raw)
+      ? (paid ? "inspection_queued" : "payment_pending")
+      : raw;
     const table = {
       payment_pending: ["Payment pending", "Complete inspection payment so the visit can be confirmed", "Inspection request is saved. Payment must be verified before visit assignment."],
+      inspection_queued: ["Inspection queued", "Coordinator is reviewing your inspection request", "Payment is verified and the inspection request is queued."],
+      coordinator_reviewing: ["Coordinator reviewing", "WorkToGo is checking issue details and area", "Your inspection is being reviewed for assignment."],
       inspection_requested: ["Inspection requested", "WorkToGo will assign an inspection technician", "Your issue details and address are with WorkToGo."],
       inspection_assigned: ["Inspection worker assigned", "Keep your phone available for timing confirmation", "A technician has been selected for the inspection."],
       inspection_scheduled: ["Inspection visit scheduled", "Technician will visit at the confirmed time", "Your inspection timing is confirmed."],
@@ -303,7 +314,55 @@ window.BookingsPage = (() => {
       in_progress: ["Service in progress", "Pay after service when work is complete", "Your service work has started."],
     };
     const row = table[key] || table.pending;
-    return { key, label: row[0], next: row[1], message: row[2] };
+    return { key, label: row[0], short: _statusShortLabel(key, row[0]), next: row[1], message: row[2] };
+  }
+
+  function _statusShortLabel(key = "", fallback = "Pending") {
+    const map = {
+      payment_pending: "Payment pending",
+      request_received: "Pending",
+      pending: "Pending",
+      nearby_matching: "Searching",
+      worker_contacting: "Searching",
+      worker_requested: "Pending",
+      awaiting_response: "Pending",
+      assigned: "Assigned",
+      confirmed: "Assigned",
+      worker_assigned: "Assigned",
+      worker_confirmed: "Assigned",
+      inspection_queued: "Inspection queued",
+      coordinator_reviewing: "Reviewing",
+      inspection_requested: "Inspection queued",
+      inspection_assigned: "Assigned",
+      in_progress: "In progress",
+      service_in_progress: "In progress",
+      done: "Completed",
+      completed: "Completed",
+      cancelled: "Cancelled",
+    };
+    return map[String(key || "").toLowerCase()] || fallback;
+  }
+
+  function _paymentBadge(b = {}) {
+    const mode = String(b.booking_mode || "free_lead").toLowerCase();
+    const state = _normalizePaymentState(b.payment_status || "");
+    if (mode === "inspection") return state === "paid" ? { label: "Paid inspection", tone: "paid" } : { label: "Payment pending", tone: "payment-pending" };
+    return { label: "Free request", tone: "free" };
+  }
+
+  function _issueList(b = {}) {
+    return _normalizeIssueList(b.issue_list || b.operational_request?.issue_list || _fieldFromNotes(b.notes, "Issue list") || b.subservice || b.issue_type);
+  }
+
+  function _normalizeIssueList(value = "") {
+    const source = Array.isArray(value) ? value : String(value || "").split(/[,|]/);
+    const seen = new Set();
+    return source.map(item => String(item || "").replace(/\s+/g, " ").trim()).filter(item => {
+      const key = item.toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   function _requestTypeFromMode(mode = "") {

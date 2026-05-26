@@ -766,9 +766,7 @@ window.HomeModals = (() => {
       }
       _isBookingSubmitting = false;
       if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
-      closeBooking();
-      UI.toast(bookingMode === "inspection" ? "Inspection booked. Diagnosis visit is being confirmed." : bookingMode === "direct_vendor" ? "Worker request sent for confirmation." : "Free booking opened worker matching.", "success");
-      setTimeout(() => ROUTER.go("bookings"), 800);
+      _showRequestSuccess(res.data, operationalPayload);
     } else {
       _isBookingSubmitting = false;
       if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
@@ -932,26 +930,58 @@ window.HomeModals = (() => {
   }
 
   function _showInspectionConfirmation(booking = {}, payload = {}) {
+    _showRequestSuccess(booking, { ...payload, booking_mode: "inspection", payment_required: true, payment_route: "paid_inspection", tracking_state: "inspection_queued" });
+  }
+
+  function _showRequestSuccess(booking = {}, payload = {}) {
+    const mode = _canonicalBookingMode(payload.booking_mode || booking.booking_mode, payload.selected_worker || {}, _categoryMeta(payload.category));
     const bookingId = booking?.booking_number || booking?.booking_id || booking?.id || "WTG";
-    const locality = payload.locality || _resolvedLocality().label;
+    const issues = _normalizeIssueList(payload.issue_list || payload.subservice || payload.issue_type || booking.subservice || booking.service);
+    const locality = payload.locality || payload.selected_nearby_area || _resolvedLocality().label;
+    const city = payload.selected_city || _resolvedLocality().city || _activeCity();
+    const state = _successStateForMode(mode, payload.payment_required);
     document.getElementById("booking-modal-title").textContent = "Request received";
     document.getElementById("booking-modal-body").innerHTML = `
-      <div class="inspection-confirmation-state">
+      <div class="inspection-confirmation-state request-success-state">
         <div class="inspection-success-mark">✓</div>
-        <h4>Inspection request received.</h4>
-        <p>Nearby verification and worker assignment will begin shortly.</p>
+        <h4>${_esc(state.title)}</h4>
+        <p>${_esc(state.message)}</p>
+        <div class="request-success-pill-row">
+          ${state.steps.map((step, i) => `<span class="request-state-pill ${i === 0 ? "active" : ""}">${_esc(step)}</span>`).join("")}
+        </div>
         <div class="inspection-confirmation-list">
           <span><strong>Request ID</strong>${_esc(String(bookingId))}</span>
-          <span><strong>Service</strong>${_esc(payload.category_label || payload.category || "Inspection")}</span>
-          <span><strong>Area</strong>${_esc(locality)}</span>
+          <span><strong>Service</strong>${_esc(payload.category_label || payload.category || booking.service || "Service")}</span>
+          <span><strong>Issues</strong>${_esc(issues.join(", ") || "Issue shared")}</span>
+          <span><strong>Area</strong>${_esc(locality)}${city ? ` · ${_esc(city)}` : ""}</span>
+          <span><strong>Next step</strong>${_esc(state.next)}</span>
         </div>
+        <p class="inspection-payment-note">Saved in My Requests. WorkToGo will update this request when assignment changes.</p>
       </div>`;
     const actions = document.querySelector("#booking-modal .modal-actions");
     if (actions) actions.innerHTML = `
       <button class="btn-primary" onclick="HomeModals.closeBooking(); ROUTER.go('bookings')">Track request</button>
-      <button class="btn-secondary" onclick="UI.sendSupport('service', { requestType: 'inspection', bookingId: '${_esc(String(bookingId))}' })">WhatsApp support</button>
+      <button class="btn-secondary" onclick="UI.sendSupport('service', { requestType: '${_esc(payload.request_type || _requestType(mode))}', bookingId: '${_esc(String(bookingId))}' })">WhatsApp support</button>
       <button class="btn-secondary" onclick="HomeModals.closeBooking(); ROUTER.go('home')">Back to home</button>`;
-    UI.toast("Inspection request received", "success");
+    const modal = document.getElementById("booking-modal");
+    modal?.classList.remove("hidden");
+    _lockModalBody("booking");
+    UI.toast(mode === "inspection" ? "Inspection payment verified. Request saved." : "Request saved. Worker matching started.", "success");
+  }
+
+  function _successStateForMode(mode = "free_lead", paymentRequired = false) {
+    if (mode === "inspection" || paymentRequired) return {
+      title: "Inspection request saved",
+      message: "Payment is verified. WorkToGo will review the issue and assign inspection support.",
+      next: "Inspection coordinator will contact shortly",
+      steps: ["Payment received", "Inspection queued", "Coordinator reviewing", "Inspection assigned"],
+    };
+    return {
+      title: "Request saved",
+      message: "WorkToGo is processing your request and checking nearby suitable workers.",
+      next: mode === "direct_vendor" ? "Selected worker confirmation pending" : "Nearby worker matching started",
+      steps: ["Request received", "Searching nearby worker", "Worker confirmation pending", "Worker assigned"],
+    };
   }
 
   function _bindSwipeToClose(sheet) {
