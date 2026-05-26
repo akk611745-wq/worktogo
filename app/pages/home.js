@@ -347,7 +347,7 @@ export async function render(container) {
         const inspection = _allServices.find(s => _matchesCategory(s, "inspection"))
           || _allServices.find(s => _categoryMeta(s.category_slug || s.category || "").inspection);
         if (inspection?.id) {
-          HomeModals.openBooking({ ...inspection, booking_mode: mode || "inspection", request_source: source, icon: inspection.icon || "🛡️" });
+          HomeModals.openBooking({ ...inspection, booking_mode: mode || "inspection", request_source: source, intake_category_required: true, category_slug: "", category: "", icon: inspection.icon || "🛡️" });
           return;
         }
       }
@@ -357,7 +357,19 @@ export async function render(container) {
         HomeModals.openBooking({ ...service, booking_mode: mode || service.booking_mode, request_source: source, category_slug: service.category_slug || meta.slug, icon: service.icon || meta.icon });
         return;
       }
-      UI.toast("Inspection request is loading. Please choose a service category again.", "info");
+      const fallbackCategory = meta.slug || "";
+      const fallbackService = _allServices.find(s => fallbackCategory ? _matchesCategory(s, fallbackCategory) : _matchesCategory(s, "inspection")) || _allServices[0] || {};
+      const fallbackId = fallbackService.id || `intake-${mode || "free_lead"}-${fallbackCategory || "all"}`;
+      HomeModals.openBooking({
+        ...fallbackService,
+        id: fallbackId,
+        name: mode === "inspection" ? "Inspection" : "Free booking",
+        booking_mode: mode || "free_lead",
+        request_source: source,
+        category_slug: fallbackCategory,
+        category: fallbackCategory,
+        icon: meta.icon || "🔧",
+      });
     },
     bookQuickService(slug = "", serviceName = "") {
       const meta = _categoryMeta(slug || _activeCategory);
@@ -529,8 +541,9 @@ window.HomeModals = (() => {
     const defaultMode = _canonicalBookingMode(service.booking_mode || (sameRestoredContext ? restored.booking_mode : "") || (service.vendor_id ? "direct_vendor" : "free_lead"), _currentService, category);
     const inspectionPrice = _inspectionPrice(_currentService, category);
     _resetBookingActions(defaultMode, inspectionPrice);
-    document.getElementById("booking-modal-title").textContent = defaultMode === "inspection" ? `Inspection for ${category.label}` : `Book ${category.label}`;
-    document.getElementById("booking-modal-body").innerHTML = defaultMode === "inspection" ? _inspectionRequestHTML({ service: _currentService, category, selectedService, restored, sameRestoredContext, inspectionPrice }) : `
+    const modalTitleCategory = category.slug ? category.label : "service";
+    document.getElementById("booking-modal-title").textContent = defaultMode === "inspection" ? `Inspection for ${modalTitleCategory}` : defaultMode === "free_lead" ? `Free ${modalTitleCategory} booking` : `Book ${category.label}`;
+    document.getElementById("booking-modal-body").innerHTML = (defaultMode === "inspection" || defaultMode === "free_lead") ? _intakeRequestHTML({ mode: defaultMode, service: _currentService, category, selectedService, restored, sameRestoredContext, inspectionPrice }) : `
       <div class="modal-product-info booking-sheet-summary">
         <div class="modal-product-placeholder">${service.icon || "🔧"}</div>
         <div>
@@ -634,7 +647,8 @@ window.HomeModals = (() => {
     const address = document.getElementById("booking-address")?.value?.trim() || "";
     const notes   = document.getElementById("booking-notes")?.value?.trim() || "";
     const serviceContext = document.getElementById("booking-service-context")?.value?.trim() || _currentService.quick_service || _currentService.name || "";
-    const category = _categoryMeta(document.getElementById("booking-category-context")?.value || _currentService.category_slug || _currentService.category || _activeCategory);
+    const submittedCategorySlug = document.getElementById("booking-category-context")?.value || _currentService.category_slug || _currentService.category || _activeCategory || _inspectionCategorySlug("");
+    const category = _categoryMeta(submittedCategorySlug);
     bookingMode = _canonicalBookingMode(document.getElementById("booking-mode")?.value, _currentService, category);
     const savedInspectionPayment = bookingMode === "inspection" ? _readInspectionPaymentReturn() : null;
     if (savedInspectionPayment?.booking && _normalizePaymentState(savedInspectionPayment.status_state || savedInspectionPayment.booking.payment_status) !== "paid") {
@@ -655,8 +669,7 @@ window.HomeModals = (() => {
     if (mobileDigits.length !== 10) { _markInvalid("booking-mobile", "Please enter a valid 10-digit mobile number"); return; }
     if (!area) { _markInvalid("booking-area", "Please enter area or landmark"); return; }
     if (!address) { _markInvalid("booking-address", "Please enter full address"); return; }
-    if (bookingMode !== "inspection" && !notes) { _markInvalid("booking-notes", "Please add a short issue note"); return; }
-    if (bookingMode === "inspection" && !serviceContext) { _markInvalid("booking-service-context", "Please choose issue type"); return; }
+    if (bookingMode !== "inspection" && !notes && !serviceContext) { _markInvalid("booking-notes", "Please add a short issue note"); return; }
 
     const btn = document.getElementById("btn-confirm-booking");
     _isBookingSubmitting = true;
@@ -690,6 +703,8 @@ window.HomeModals = (() => {
       },
       booking_mode: bookingMode,
       booking_mode_label: _bookingModeMeaning(bookingMode),
+      payment_required: bookingMode === "inspection",
+      payment_route: bookingMode === "inspection" ? "paid_inspection" : "free_request",
       issue_note: notes,
       preferred_time: new Date(dateVal).toISOString(),
       request_source: requestSource,
@@ -711,6 +726,8 @@ window.HomeModals = (() => {
         issue_note: notes,
         preferred_time: new Date(dateVal).toISOString(),
         booking_mode_label: _bookingModeMeaning(bookingMode),
+        payment_required: bookingMode === "inspection",
+        payment_route: bookingMode === "inspection" ? "paid_inspection" : "free_request",
         operational_tracking_state: operationalPayload.tracking_state,
         operational_request: operationalPayload,
         payment_method: bookingMode === "inspection" ? "online" : "cod",
@@ -807,6 +824,13 @@ window.HomeModals = (() => {
     _persistPendingBookingForm();
   }
 
+  function _initialIntakeCategory(category = {}, restored = {}, service = {}) {
+    if (restored.category && !["all", "inspection"].includes(_slug(restored.category))) return _inspectionCategorySlug(restored.category);
+    const candidate = category.slug || service.category_slug || service.category || _activeCategory || "";
+    if (!candidate || candidate === "all" || candidate === "inspection" || service.intake_category_required) return "";
+    return _inspectionCategorySlug(candidate);
+  }
+
   function selectInspectionIssue(issue = "") {
     const clean = String(issue || "").trim();
     const hidden = document.getElementById("booking-service-context");
@@ -815,20 +839,21 @@ window.HomeModals = (() => {
     _persistPendingBookingForm();
   }
 
-  function _inspectionRequestHTML({ category, selectedService, restored, sameRestoredContext, inspectionPrice }) {
+  function _intakeRequestHTML({ mode = "inspection", category, selectedService, restored, sameRestoredContext, inspectionPrice, service = {} }) {
     const profile = _customerProfile();
     const locality = _resolvedLocality();
-    const activeCategory = _inspectionCategorySlug(restored.category || category.slug || _activeCategory);
-    const issues = _inspectionIssues(activeCategory);
+    const activeCategory = _initialIntakeCategory(category, restored, service);
+    const issues = activeCategory ? _inspectionIssues(activeCategory) : [];
     const restoredIssue = restored.service_context || selectedService || "";
-    const activeIssue = issues.includes(restoredIssue) ? restoredIssue : issues[0];
+    const activeIssue = issues.includes(restoredIssue) ? restoredIssue : (issues[0] || "");
     const authUser = AUTH.getUser?.() || {};
     const nameValue = restored.name || profile.name || authUser.name || "";
     const phoneValue = restored.phone || profile.phone || authUser.phone || authUser.mobile || "";
+    const isInspection = mode === "inspection";
     return `
-      <div class="inspection-flow" data-flow="inspection-request">
+      <div class="inspection-flow" data-flow="${_esc(isInspection ? "inspection-request" : "free-booking-request")}">
         <div class="inspection-summary-row">
-          <strong>${UI.formatCurrency(inspectionPrice)} Inspection</strong>
+          <strong>${_esc(isInspection ? `${UI.formatCurrency(inspectionPrice)} Inspection` : "Free booking")}</strong>
           <span>${_esc(locality.label)}</span>
         </div>
         <section class="inspection-step compact-customer-step">
@@ -853,7 +878,7 @@ window.HomeModals = (() => {
         <section class="inspection-step">
           <h4>Issue type</h4>
           <div class="inspection-chip-row" id="inspection-issue-chips" role="radiogroup" aria-label="Issue type">
-            ${_inspectionIssueChips(activeCategory, activeIssue)}
+            ${activeCategory ? _inspectionIssueChips(activeCategory, activeIssue) : `<span class="service-note">Choose a service category above to see matching issue chips.</span>`}
           </div>
         </section>
         <section class="inspection-step">
@@ -874,10 +899,10 @@ window.HomeModals = (() => {
             <textarea id="booking-notes" class="modal-textarea" placeholder="Optional" rows="2" oninput="HomePage.persistPendingBookingForm?.()">${_esc((sameRestoredContext && restored.notes) || "")}</textarea>
           </div>
         </section>
-        <p class="inspection-payment-note">UPI apps and UPI ID are supported at payment.</p>
+        <p class="inspection-payment-note">${_esc(isInspection ? "UPI apps and UPI ID are supported at payment." : "Free request: admin receives category, issue, locality and contact details for worker matching.")}</p>
       </div>
       <input type="hidden" id="booking-date" value="${_esc((sameRestoredContext && restored.scheduled_at) || _defaultScheduledLocal())}" />
-      <input type="hidden" id="booking-mode" value="inspection" />
+      <input type="hidden" id="booking-mode" value="${_esc(isInspection ? "inspection" : "free_lead")}" />
       <input type="hidden" id="booking-service-context" value="${_esc(activeIssue)}" />
       <input type="hidden" id="booking-category-context" value="${_esc(activeCategory)}" />
     `;
@@ -2150,6 +2175,8 @@ function _adminRequestNotes(payload = {}) {
     `Issue type: ${payload.issue_type || payload.subservice || "Not specified"}`,
     `Booking mode: ${payload.booking_mode}`,
     `Booking mode meaning: ${payload.booking_mode_label}`,
+    `Payment required: ${payload.payment_required ? "yes" : "no"}`,
+    `Payment route: ${payload.payment_route || (payload.booking_mode === "inspection" ? "paid_inspection" : "free_request")}`,
     `Tracking state: ${payload.tracking_state}`,
     `Request source: ${payload.request_source}`,
     `Customer: ${payload.customer?.name || "WorkToGo Customer"}`,
