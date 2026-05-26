@@ -681,20 +681,30 @@ window.HomeModals = (() => {
 
     const requestType = _requestType(bookingMode);
     const requestSource = _currentService.request_source || "category";
+    const createdAt = new Date().toISOString();
+    const clientRequestId = _clientRequestId(bookingMode, category.slug || _activeCategory);
+    const trackingState = _initialTrackingState(bookingMode);
+    const priority = _deriveRequestPriority({ bookingMode, category, issueList, notes });
     const selectedWorker = bookingMode === "direct_vendor" ? {
       vendor_id: _currentService.vendor_id || null,
       vendor_name: _currentService.vendor_name || _currentService.name || "Requested worker",
     } : null;
     const operationalPayload = {
+      request_id: clientRequestId,
+      client_request_id: clientRequestId,
       request_type: requestType,
       category: category.slug || _activeCategory,
       category_label: category.label,
       issue_list: issueList,
       subservice: serviceContext,
       issue_type: serviceContext,
+      priority: priority.level,
+      priority_score: priority.score,
+      priority_reason: priority.reason,
       locality: area,
       selected_nearby_area: _resolvedLocality().label || area,
       selected_city: _resolvedLocality().city || _activeCity(),
+      city: _resolvedLocality().city || _activeCity(),
       locality_source: _resolvedLocality().source,
       locality_confidence: _resolvedLocality().source === "fallback" ? "city" : "area",
       full_address: address,
@@ -707,13 +717,19 @@ window.HomeModals = (() => {
       booking_mode_label: _bookingModeMeaning(bookingMode),
       payment_required: bookingMode === "inspection",
       payment_route: bookingMode === "inspection" ? "paid_inspection" : "free_request",
+      lifecycle_state: trackingState,
+      assignment_state: _initialAssignmentState(bookingMode),
       issue_note: notes,
       preferred_time: new Date(dateVal).toISOString(),
       request_source: requestSource,
       selected_worker: selectedWorker,
-      timestamp: new Date().toISOString(),
+      created_at: createdAt,
+      timestamp: createdAt,
       session_context: _sessionContext(),
-      tracking_state: _initialTrackingState(bookingMode),
+      tracking_state: trackingState,
+      timeline: _initialRequestTimeline({ mode: bookingMode, state: trackingState, createdAt, paymentRequired: bookingMode === "inspection" }),
+      sorting_keys: _requestSortingKeys({ category, issueList, area, bookingMode, priority, trackingState }),
+      routing_context: _routingContext({ category, issueList, area, selectedWorker, priority, bookingMode }),
     };
 
     const res = await API.createBooking({
@@ -723,9 +739,16 @@ window.HomeModals = (() => {
         lifecycle_type: bookingMode,
         request_type: requestType,
         request_source: requestSource,
+        request_id: clientRequestId,
+        client_request_id: clientRequestId,
         subservice: serviceContext,
         issue_type: serviceContext,
         issue_list: issueList,
+        priority: priority.level,
+        priority_score: priority.score,
+        lifecycle_state: trackingState,
+        assignment_state: operationalPayload.assignment_state,
+        timeline: operationalPayload.timeline,
         issue_note: notes,
         preferred_time: new Date(dateVal).toISOString(),
         booking_mode_label: _bookingModeMeaning(bookingMode),
@@ -2201,10 +2224,72 @@ function _bookingModeMeaning(mode = "") {
   return "Free match: WorkToGo starts nearby worker matching for a clear job";
 }
 
-function _initialTrackingState(mode = "") {
+  function _initialTrackingState(mode = "") {
+    if (mode === "inspection") return "payment_pending";
+    if (mode === "direct_vendor") return "worker_requested";
+    return "request_received";
+  }
+
+function _initialAssignmentState(mode = "") {
   if (mode === "inspection") return "payment_pending";
-  if (mode === "direct_vendor") return "worker_requested";
-  return "request_received";
+  if (mode === "direct_vendor") return "selected_worker_pending";
+  return "unassigned_searching";
+}
+
+function _clientRequestId(mode = "", category = "") {
+  const stamp = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 7);
+  return `wtg-${_slug(mode || "request")}-${_slug(category || "service")}-${stamp}-${rand}`;
+}
+
+function _deriveRequestPriority({ bookingMode = "", category = {}, issueList = [], notes = "" } = {}) {
+  const haystack = [..._normalizeIssueList(issueList), category.slug, category.label, notes].join(" ").toLowerCase();
+  let score = bookingMode === "inspection" ? 35 : 15;
+  if (/leak|leakage|seepage|bathroom leakage|roof seepage|pipe burst|water/.test(haystack)) score += 45;
+  if (/short circuit|sparking|spark|mcb|wiring|inverter down|inverter|electric shock|burn/.test(haystack)) score += 45;
+  if (/not working|blockage|motor issue|fan issue|geyser|camera not working/.test(haystack)) score += 20;
+  if (/painting|paint|repaint|decorative|consultation|color|texture|putty/.test(haystack)) score -= 10;
+  const level = score >= 60 ? "high_priority" : score >= 35 ? "medium_priority" : "normal_priority";
+  const reason = level === "high_priority" ? "service_issue_risk" : bookingMode === "inspection" ? "paid_inspection" : "standard_request";
+  return { level, score: Math.max(0, Math.min(score, 100)), reason };
+}
+
+function _initialRequestTimeline({ mode = "free_lead", state = "request_received", createdAt = new Date().toISOString(), paymentRequired = false } = {}) {
+  const base = [{ event: "request_created", state, at: createdAt, actor: "customer", visible_to_customer: true }];
+  if (mode === "inspection" || paymentRequired) {
+    base.push({ event: "payment_pending", state: "payment_pending", at: createdAt, actor: "system", visible_to_customer: true });
+    return base;
+  }
+  base.push({ event: "searching_worker", state: mode === "direct_vendor" ? "worker_requested" : "nearby_matching", at: createdAt, actor: "system", visible_to_customer: true });
+  return base;
+}
+
+function _requestSortingKeys({ category = {}, issueList = [], area = "", bookingMode = "", priority = {}, trackingState = "" } = {}) {
+  const locality = _cleanLocality(area || _resolvedLocality().label);
+  return {
+    city: _slug(_inferCityForLocality(locality)),
+    locality: _slug(locality),
+    category: _slug(category.slug || category.label),
+    issue_type: _normalizeIssueList(issueList).map(_slug).filter(Boolean).join("|"),
+    priority: priority.level || "normal_priority",
+    payment_type: bookingMode === "inspection" ? "paid_inspection" : "free_request",
+    assignment_state: _initialAssignmentState(bookingMode),
+    lifecycle_state: trackingState,
+  };
+}
+
+function _routingContext({ category = {}, issueList = [], area = "", selectedWorker = null, priority = {}, bookingMode = "" } = {}) {
+  return {
+    assignment_mode: selectedWorker?.vendor_id ? "selected_worker" : "admin_queue",
+    category_slug: _slug(category.slug || category.label),
+    issue_keys: _normalizeIssueList(issueList).map(_slug).filter(Boolean),
+    locality_key: _slug(area || _resolvedLocality().label),
+    city_key: _slug(_inferCityForLocality(area || _resolvedLocality().label)),
+    priority: priority.level || "normal_priority",
+    payment_route: bookingMode === "inspection" ? "paid_inspection" : "free_request",
+    vendor_id: selectedWorker?.vendor_id || null,
+    route_ready: true,
+  };
 }
 
 function _sessionContext() {
@@ -2230,15 +2315,21 @@ function _adminRequestNotes(payload = {}) {
   const worker = payload.selected_worker?.vendor_id ? `${payload.selected_worker.vendor_name || "Selected worker"} (#${payload.selected_worker.vendor_id})` : "Not selected";
   const issueList = _normalizeIssueList(payload.issue_list || payload.issue_type || payload.subservice).join(", ");
   return [
+    `Request ID: ${payload.request_id || payload.client_request_id || ""}`,
     `Request type: ${payload.request_type}`,
     `Category: ${payload.category_label || payload.category}`,
     `Subservice: ${payload.subservice || "Not specified"}`,
     `Issue type: ${payload.issue_type || payload.subservice || "Not specified"}`,
     `Issue list: ${issueList || "Not specified"}`,
+    `Priority: ${payload.priority || "normal_priority"}`,
+    `Priority score: ${payload.priority_score ?? ""}`,
+    `Priority reason: ${payload.priority_reason || ""}`,
     `Booking mode: ${payload.booking_mode}`,
     `Booking mode meaning: ${payload.booking_mode_label}`,
     `Payment required: ${payload.payment_required ? "yes" : "no"}`,
     `Payment route: ${payload.payment_route || (payload.booking_mode === "inspection" ? "paid_inspection" : "free_request")}`,
+    `Lifecycle state: ${payload.lifecycle_state || payload.tracking_state}`,
+    `Assignment state: ${payload.assignment_state || ""}`,
     `Tracking state: ${payload.tracking_state}`,
     `Request source: ${payload.request_source}`,
     `Customer: ${payload.customer?.name || "WorkToGo Customer"}`,
@@ -2251,6 +2342,7 @@ function _adminRequestNotes(payload = {}) {
     `Preferred time: ${payload.preferred_time || ""}`,
     `Selected worker: ${worker}`,
     `Issue note: ${payload.issue_note || ""}`,
+    `Timeline: ${JSON.stringify(payload.timeline || [])}`,
   ].filter(Boolean).join("\n");
 }
 
