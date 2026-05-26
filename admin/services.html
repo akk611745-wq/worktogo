@@ -28,8 +28,12 @@
           </div>
           <div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:10px">
             <input class="form-control" id="booking-search" placeholder="Booking ID, name, vendor…" style="max-width:220px">
-            <input class="form-control" id="booking-phone" placeholder="Customer phone" style="max-width:160px">
-            <input class="form-control" id="booking-vendor" placeholder="Vendor ID" style="max-width:110px">
+            <input class="form-control" id="ops-city" placeholder="City" style="max-width:120px">
+            <input class="form-control" id="ops-category" placeholder="Category" style="max-width:130px">
+            <select class="form-control" id="ops-payment" style="max-width:145px"><option value="">Payment</option><option value="free_request">Free</option><option value="paid_inspection">Inspection</option></select>
+            <select class="form-control" id="ops-priority" style="max-width:145px"><option value="">Priority</option><option value="normal_priority">Normal</option><option value="high_priority">High</option></select>
+            <select class="form-control" id="ops-assignment" style="max-width:165px"><option value="">Assignment</option><option value="unassigned_searching">Unassigned</option><option value="worker_contacted">Contacted</option><option value="worker_assigned">Assigned</option><option value="inspection_unassigned">Inspection unassigned</option><option value="inspection_assigned">Inspection assigned</option></select>
+            <select class="form-control" id="ops-lifecycle" style="max-width:165px"><option value="">Lifecycle</option><option value="request_received">Received</option><option value="searching_worker">Searching</option><option value="worker_assigned">Worker assigned</option><option value="service_in_progress">In progress</option><option value="payment_pending">Payment pending</option><option value="inspection_queued">Inspection queued</option><option value="inspection_assigned">Inspection assigned</option><option value="completed">Completed</option></select>
             <select class="form-control" id="booking-status" style="max-width:150px">
               <option value="">All Status</option><option value="pending">Pending</option><option value="confirmed">Confirmed</option><option value="in_progress">In Progress</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option>
             </select>
@@ -40,7 +44,7 @@
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>BOOKING</th><th>CUSTOMER</th><th>SERVICE</th><th>SCHEDULED</th><th>VENDOR</th><th>ELIGIBILITY</th><th>STATUS</th><th>PAYMENT</th><th>ACTIONS</th></tr>
+              <tr><th>REQUEST</th><th>CUSTOMER</th><th>ISSUE</th><th>LOCATION</th><th>PAYMENT</th><th>PRIORITY</th><th>STATE</th><th>LATEST</th><th>ACTIONS</th></tr>
             </thead>
             <tbody id="service-bookings-tbody">
               <tr class="loading-row"><td colspan="9"><div class="spinner" style="margin:auto"></div></td></tr>
@@ -92,6 +96,7 @@ Shell.init({ title: 'Service Control', active: 'services.html' });
 
 let currentPage = 1, totalPages = 1;
 let serviceVendors = [];
+let serviceBookingsCache = [];
 const SERVICE_STATUS_ALIASES = { open:'pending', pending:'pending', assigned:'confirmed', accepted:'confirmed', confirmed:'confirmed', started:'in_progress', ongoing:'in_progress', in_progress:'in_progress', delivered:'completed', completed:'completed', rejected:'cancelled', cancelled:'cancelled' };
 
 function normalizeServiceStatus(status) {
@@ -103,24 +108,43 @@ async function loadServiceBookings() {
   try {
     const params = {};
     const q = document.getElementById('booking-search')?.value.trim();
-    const phone = document.getElementById('booking-phone')?.value.trim();
-    const vendor = document.getElementById('booking-vendor')?.value.trim();
     const status = document.getElementById('booking-status')?.value;
     if (q) params.q = q;
-    if (phone) params.phone = phone;
-    if (vendor) params.vendor_id = vendor;
     if (status) params.status = status;
     const data = await API.get(CONFIG.ENDPOINTS.SERVICE_BOOKINGS, params);
-    const bookings = (data.bookings || data.data || []).map(b => ({ ...b, status: normalizeServiceStatus(b.status || b.job_status), amount: b.amount ?? b.total ?? b.price }));
-    document.getElementById('booking-count').textContent = `${bookings.length.toLocaleString()} recent service bookings`;
-    renderServiceBookings(bookings);
+    serviceBookingsCache = (data.bookings || data.data || []).map(b => ({ ...b, status: normalizeServiceStatus(b.status || b.job_status), amount: b.amount ?? b.total ?? b.price }));
+    renderServiceBookings(filterServiceBookings(serviceBookingsCache));
   } catch(e) {
     tableEmpty('service-bookings-tbody', 9, 'Failed to load service bookings: ' + (e.message || ''));
   }
 }
 
+function filterServiceBookings(bookings) {
+  const filters = {
+    city: document.getElementById('ops-city')?.value.trim().toLowerCase(),
+    category: document.getElementById('ops-category')?.value.trim().toLowerCase(),
+    payment: document.getElementById('ops-payment')?.value,
+    priority: document.getElementById('ops-priority')?.value,
+    assignment: document.getElementById('ops-assignment')?.value,
+    lifecycle: document.getElementById('ops-lifecycle')?.value,
+  };
+  return bookings.filter(b => {
+    const view = b.admin_request_view || {};
+    const keys = view.filter_keys || b.sorting_keys || {};
+    const location = view.location || {};
+    const issue = view.issue_summary || {};
+    if (filters.city && !String(location.city || b.city || keys.city || '').toLowerCase().includes(filters.city)) return false;
+    if (filters.category && !String(issue.category || issue.label || keys.category || '').toLowerCase().includes(filters.category)) return false;
+    if (filters.payment && String(view.payment_type || b.payment_route || keys.payment_route || '') !== filters.payment) return false;
+    if (filters.priority && String(view.priority || b.priority || keys.priority || '') !== filters.priority) return false;
+    if (filters.assignment && String(view.assignment_state || b.assignment_state || keys.assignment_state || '') !== filters.assignment) return false;
+    if (filters.lifecycle && String(view.lifecycle_state || b.lifecycle_state || keys.lifecycle_state || '') !== filters.lifecycle) return false;
+    return true;
+  });
+}
+
 function resetBookingFilters() {
-  ['booking-search','booking-phone','booking-vendor','booking-status'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['booking-search','booking-status','ops-city','ops-category','ops-payment','ops-priority','ops-assignment','ops-lifecycle'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   loadServiceBookings();
 }
 
@@ -176,31 +200,28 @@ function eligibilityCell(booking) {
 function renderServiceBookings(bookings) {
   const tbody = document.getElementById('service-bookings-tbody');
   if (!bookings.length) { tableEmpty('service-bookings-tbody', 9, 'No service bookings yet. Confirm pilot services/vendors are seeded before public testing.'); return; }
+  document.getElementById('booking-count').textContent = `${bookings.length.toLocaleString()} visible operational requests`;
   tbody.innerHTML = bookings.map(b => {
     const id = b.id || b._id;
-    const jobId = b.job_id || id;
-    const status = normalizeServiceStatus(b.status);
-    const canAdvance = !['completed','cancelled'].includes(status);
-    const createdAt = new Date(b.created_at || Date.now()).getTime();
-    const pendingTooLong = status === 'pending' && (Date.now() - createdAt) > 30 * 60 * 1000;
-    const phone = b.customer_phone || '';
-    const wa = phone ? 'https://wa.me/91' + String(phone).replace(/\D/g,'').replace(/^91/,'') + '?text=' + encodeURIComponent('Hi, this is WorkToGo support about booking #' + id) : '';
+    const view = b.admin_request_view || {};
+    const request = view.request_summary || {};
+    const customer = view.customer_summary || {};
+    const location = view.location || {};
+    const issue = view.issue_summary || {};
+    const latest = view.timeline_snapshot || b.timeline_snapshot || {};
     return `<tr>
-      <td><div style="font-size:12px;color:var(--text-primary)">#${escHtml(String(id))}</div><div style="font-size:10px;color:${pendingTooLong?'var(--red)':'var(--text-muted)'}">${pendingTooLong?'⚠ Pending >30m':escHtml(b.booking_number||'')}</div></td>
-      <td><div>${escHtml(b.customer_name||b.user_name||'—')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(b.customer_phone||'')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(b.customer_locality||'Locality not set')}</div></td>
-      <td>${escHtml(b.service_name||'Service')}</td>
-      <td>${Fmt.date(b.scheduled_at||b.created_at)}</td>
-      <td>${escHtml(b.vendor_name||'Unassigned')}</td>
-      <td>${eligibilityCell(b)}</td>
-      <td>${statusBadge(status)}</td>
-      <td><div>${escHtml(b.payment_method||'cod')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(b.payment_status||'unpaid')}</div></td>
+      <td><div style="font-size:12px;color:var(--text-primary)">${escHtml(request.request_id || b.request_id || ('#' + id))}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(request.booking_number || b.booking_number || '')}</div></td>
+      <td><div>${escHtml(customer.name || b.customer_name || b.user_name || '—')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(customer.mobile || b.customer_mobile || b.customer_phone || '')}</div></td>
+      <td><div>${escHtml(issue.label || b.category_label || b.service_name || 'Service')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(issue.summary || b.issue_summary || '—')}</div></td>
+      <td><div>${escHtml(location.city || b.city || '—')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(location.locality || b.locality || b.customer_locality || 'Locality not set')}</div></td>
+      <td>${escHtml(view.payment_type || b.payment_route || b.payment_method || 'cod')}</td>
+      <td>${escHtml(view.priority || b.priority || 'normal_priority')}</td>
+      <td><div>${escHtml(view.lifecycle_state || b.lifecycle_state || 'request_received')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(view.assignment_state || b.assignment_state || 'unassigned_searching')}</div></td>
+      <td><div>${escHtml(latest.latest_event || 'request_created')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(latest.latest_actor || 'system')} · ${escHtml(latest.latest_state || '')}</div></td>
       <td><div class="td-actions">
-        ${phone ? `<a class="btn btn-sm btn-ghost" href="tel:${escHtml(phone)}">Call</a><a class="btn btn-sm btn-ghost" href="${wa}" target="_blank" rel="noopener">WA</a>` : ''}
-        ${vendorAssignControl(b)}
-        ${canAdvance ? `<button class="btn btn-sm btn-ghost" onclick="adminSetJobStatus('${jobId}','confirmed')">Confirm</button>
-        <button class="btn btn-sm btn-ghost" onclick="adminSetJobStatus('${jobId}','in_progress')">Progress</button>
-        <button class="btn btn-sm btn-success" onclick="adminSetJobStatus('${jobId}','completed')">Complete</button>
-        <button class="btn btn-sm btn-warn" onclick="adminSetJobStatus('${jobId}','cancelled')">Cancel</button>` : '—'}
+        <button class="btn btn-sm btn-primary" onclick="openOpsDetail('${escHtml(String(id))}')">Details</button>
+        <button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(id))}','mark_worker_contacted')">Contacted</button>
+        <button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(id))}','mark_worker_confirmed')">Confirmed</button>
       </div></td>
     </tr>`;
   }).join('');
@@ -217,6 +238,52 @@ async function assignBookingVendor(bookingId) {
     Toast.success('Booking assignment updated.');
     loadServiceBookings();
   } catch(e) { Toast.error(e.message || 'Failed to assign vendor'); }
+}
+
+function openOpsDetail(bookingId) {
+  const booking = serviceBookingsCache.find(b => String(b.id || b._id) === String(bookingId));
+  if (!booking) { Toast.warn('Request not found in current list.'); return; }
+  const view = booking.admin_request_view || {};
+  const customer = view.customer_summary || {};
+  const location = view.location || {};
+  const issue = view.issue_summary || {};
+  const timeline = Array.isArray(booking.timeline) ? booking.timeline : [];
+  const vendors = ['<option value="">Select vendor</option>'].concat(serviceVendors.map(v => `<option value="${escHtml(String(v.id || v._id || ''))}">${escHtml(v.business_name || v.name || ('Vendor #' + (v.id || v._id)))}</option>`)).join('');
+  const html = `<div class="modal-backdrop" onclick="closeOpsDetail(event)">
+    <div class="modal" style="max-width:860px" onclick="event.stopPropagation()">
+      <div class="modal-header"><h3>Operational Request ${escHtml(view.request_summary?.request_id || booking.request_id || bookingId)}</h3><button class="btn btn-sm btn-ghost" onclick="closeOpsDetail()">Close</button></div>
+      <div class="modal-body" style="display:grid;gap:14px">
+        <div class="card"><div class="card-body"><b>Customer</b><div>${escHtml(customer.name || booking.customer_name || '—')} · ${escHtml(customer.mobile || booking.customer_mobile || booking.customer_phone || '')}</div><div style="color:var(--text-muted)">${escHtml(location.full_address || booking.customer_address || 'Address not set')}</div></div></div>
+        <div class="card"><div class="card-body"><b>Issue</b><div>${escHtml(issue.label || booking.category_label || 'Service')} — ${escHtml(issue.summary || booking.issue_summary || '—')}</div><div style="color:var(--text-muted)">${(issue.issues || booking.issue_list || []).map(escHtml).join(', ')}</div><div>${escHtml(location.city || booking.city || '—')} / ${escHtml(location.locality || booking.locality || booking.customer_locality || '—')}</div><div>Payment: ${escHtml(view.payment_type || booking.payment_route || 'cod')}</div></div></div>
+        <div class="card"><div class="card-body"><b>Routing</b><pre style="white-space:pre-wrap;font-size:11px">${escHtml(JSON.stringify({ routing_context: booking.routing_context, assignment: booking.assignment, inspection: booking.inspection }, null, 2))}</pre></div></div>
+        <div class="card"><div class="card-body"><b>Actions</b><div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:8px"><select class="form-control" id="ops-vendor-${escHtml(String(bookingId))}" style="max-width:220px">${vendors}</select><button class="btn btn-sm btn-primary" onclick="simulateOpsAction('${escHtml(String(bookingId))}','assign_vendor')">Assign</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','reassign_vendor')">Reassign</button><button class="btn btn-sm btn-warn" onclick="simulateOpsAction('${escHtml(String(bookingId))}','unassign_vendor')">Unassign</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','inspection_queued')">Inspection queued</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','coordinator_assigned')">Coordinator assigned</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','inspection_scheduled')">Scheduled</button><button class="btn btn-sm btn-success" onclick="simulateOpsAction('${escHtml(String(bookingId))}','inspection_completed')">Inspection done</button><button class="btn btn-sm btn-warn" onclick="simulateOpsAction('${escHtml(String(bookingId))}','mark_escalated')">Escalate</button></div></div></div>
+        <div class="card"><div class="card-body"><b>Timeline</b>${timeline.map(t => `<div style="border-left:2px solid var(--border);padding:6px 0 6px 10px"><b>${escHtml(t.event || 'update')}</b> <span style="color:var(--text-muted)">${escHtml(t.actor || 'system')} · ${escHtml(t.state || '')} · ${escHtml(t.at || '')}</span><div style="font-size:11px;color:var(--text-muted)">${escHtml(t.notes || '')}</div></div>`).join('') || '<div style="color:var(--text-muted)">No timeline entries.</div>'}</div></div>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function closeOpsDetail(event) {
+  if (event && event.target !== event.currentTarget) return;
+  document.querySelector('.modal-backdrop')?.remove();
+}
+
+async function simulateOpsAction(bookingId, action) {
+  const payload = { action };
+  const vendorEl = document.getElementById('ops-vendor-' + bookingId) || document.getElementById('assign-vendor-' + bookingId);
+  if (['assign_vendor','reassign_vendor'].includes(action)) {
+    if (!vendorEl?.value) { Toast.warn('Select a vendor first.'); return; }
+    payload.vendor_id = Number(vendorEl.value);
+  }
+  if (action === 'mark_escalated') payload.escalation_reason = 'Manual admin escalation';
+  if (!await confirmAction(`Run ${action.replaceAll('_',' ')} for request #${bookingId}?`)) return;
+  try {
+    await API.patch(CONFIG.ENDPOINTS.SERVICE_BOOKING_OPS(bookingId), payload);
+    Toast.success('Admin operation updated.');
+    closeOpsDetail();
+    loadServiceBookings();
+  } catch(e) { Toast.error(e.message || 'Admin operation failed'); }
 }
 
 async function adminSetJobStatus(jobId, status) {

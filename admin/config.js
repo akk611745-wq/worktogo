@@ -39,6 +39,7 @@ const CONFIG = {
     CATEGORIES:        "/categories",
     CATEGORY_DETAIL:   (id) => `/categories/${id}`,
     SERVICE_BOOKINGS:  "/service/bookings",
+    SERVICE_BOOKING_OPS:(id) => `/service/bookings/${id}/ops`,
     SERVICE_BOOKING_ASSIGN:(id) => `/service/bookings/${id}/assign`,
     SERVICE_JOB_STATUS:(id) => `/jobs/${id}/status`,
     SERVICE_STATUS:    (id) => `/services/${id}/status`,
