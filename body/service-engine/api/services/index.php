@@ -172,6 +172,10 @@ function serviceLifecycleNote(array $input, string $bookingMode, array $service)
         'Assignment state: ' . $operational['assignment_state'],
         'Lifecycle state: ' . $operational['lifecycle_state'],
         'Timeline: ' . json_encode($operational['timeline'], JSON_UNESCAPED_SLASHES),
+        'Assignment metadata: ' . json_encode($operational['assignment'], JSON_UNESCAPED_SLASHES),
+        'Inspection metadata: ' . json_encode($operational['inspection'], JSON_UNESCAPED_SLASHES),
+        'Routing context: ' . json_encode($operational['routing_context'], JSON_UNESCAPED_SLASHES),
+        'Sorting keys: ' . json_encode($operational['sorting_keys'], JSON_UNESCAPED_SLASHES),
         'Operational tags: ' . implode(', ', $operational['operational_tags']),
         'Booking mode: ' . $bookingMode,
         'Vendor route: ' . ($bookingMode === 'direct_vendor' ? ('direct:' . (int)($service['vendor_id'] ?? 0)) : 'admin_queue'),
@@ -182,7 +186,7 @@ function serviceLifecycleNote(array $input, string $bookingMode, array $service)
 
 function serviceFreeformOperationalNotes(string $notes): string
 {
-    $blocked = '/^(Request ID|Client request ID|Request schema version|Request type|Category|Issue list|Issue summary|Locality|City|Payment required|Payment route|Priority|Priority score|Assignment state|Lifecycle state|Timeline|Operational tags|Booking mode|Vendor route|Customer|Mobile|Address|Preferred time|Selected worker):/i';
+    $blocked = '/^(Request ID|Client request ID|Request schema version|Request type|Category|Issue list|Issue summary|Locality|City|Payment required|Payment route|Priority|Priority score|Assignment state|Lifecycle state|Timeline|Assignment metadata|Inspection metadata|Routing context|Sorting keys|Operational tags|Booking mode|Vendor route|Customer|Mobile|Address|Preferred time|Selected worker):/i';
     $lines = [];
     foreach (preg_split('/\R/', $notes) ?: [] as $line) {
         $line = trim($line);
@@ -224,12 +228,112 @@ function serviceIssueSummary(array $issues): string
     return implode(' + ', serviceNormalizeIssueList($parts));
 }
 
+function serviceJsonField(?string $notes, string $field, array $fallback = []): array
+{
+    $raw = serviceNoteField($notes, $field);
+    if ($raw === '') return $fallback;
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : $fallback;
+}
+
+function serviceLifecycleTransitions(string $bookingMode): array
+{
+    if ($bookingMode === 'inspection') {
+        return [
+            'payment_pending' => ['payment_verified'],
+            'payment_verified' => ['inspection_queued'],
+            'inspection_queued' => ['coordinator_review', 'inspection_assigned'],
+            'coordinator_review' => ['inspection_assigned', 'inspection_queued'],
+            'inspection_assigned' => ['service_in_progress', 'completed', 'cancelled'],
+            'service_in_progress' => ['completed', 'cancelled'],
+            'completed' => [],
+            'cancelled' => [],
+        ];
+    }
+
+    return [
+        'request_received' => ['searching_worker', 'worker_assigned', 'cancelled'],
+        'searching_worker' => ['worker_assigned', 'request_received', 'cancelled'],
+        'worker_confirmation_pending' => ['worker_assigned', 'searching_worker', 'cancelled'],
+        'worker_assigned' => ['service_in_progress', 'searching_worker', 'cancelled'],
+        'service_in_progress' => ['completed', 'cancelled'],
+        'completed' => [],
+        'cancelled' => [],
+    ];
+}
+
+function serviceCanTransitionLifecycle(string $bookingMode, string $from, string $to): bool
+{
+    if ($from === $to) return true;
+    $transitions = serviceLifecycleTransitions($bookingMode);
+    return in_array($to, $transitions[$from] ?? [], true);
+}
+
+function serviceNormalizeTimeline(array $timeline, string $createdAt, string $state): array
+{
+    $entries = [];
+    foreach ($timeline as $entry) {
+        if (!is_array($entry)) continue;
+        $event = serviceSlug((string)($entry['event'] ?? 'update')) ?: 'update';
+        $entryState = serviceSlug((string)($entry['state'] ?? $state)) ?: $state;
+        $at = trim((string)($entry['at'] ?? $createdAt));
+        $actor = serviceSlug((string)($entry['actor'] ?? 'system')) ?: 'system';
+        $entries[] = [
+            'event' => $event,
+            'state' => $entryState,
+            'at' => $at ?: $createdAt,
+            'actor' => $actor,
+            'source' => serviceSlug((string)($entry['source'] ?? $actor)) ?: $actor,
+            'visible_to_customer' => (bool)($entry['visible_to_customer'] ?? false),
+            'notes' => trim((string)($entry['notes'] ?? '')),
+        ];
+    }
+    if (!$entries) {
+        $entries[] = ['event' => 'request_created', 'state' => $state, 'at' => $createdAt, 'actor' => 'customer', 'source' => 'customer', 'visible_to_customer' => true, 'notes' => ''];
+    }
+    return array_slice($entries, 0, 80);
+}
+
+function serviceDefaultAssignmentMetadata(array $provided = []): array
+{
+    return [
+        'assigned_vendor_id' => isset($provided['assigned_vendor_id']) && $provided['assigned_vendor_id'] !== '' ? (int)$provided['assigned_vendor_id'] : null,
+        'assigned_vendor_name' => trim((string)($provided['assigned_vendor_name'] ?? '')) ?: null,
+        'assigned_by' => trim((string)($provided['assigned_by'] ?? '')) ?: null,
+        'assigned_at' => trim((string)($provided['assigned_at'] ?? '')) ?: null,
+        'assignment_notes' => trim((string)($provided['assignment_notes'] ?? '')) ?: null,
+    ];
+}
+
+function serviceDefaultInspectionMetadata(string $bookingMode, array $provided = []): array
+{
+    return [
+        'inspection_required' => (bool)($provided['inspection_required'] ?? ($bookingMode === 'inspection')),
+        'inspection_status' => serviceSlug((string)($provided['inspection_status'] ?? ($bookingMode === 'inspection' ? 'payment_pending' : 'not_required'))),
+        'inspection_assigned_to' => trim((string)($provided['inspection_assigned_to'] ?? '')) ?: null,
+        'inspection_scheduled_at' => trim((string)($provided['inspection_scheduled_at'] ?? '')) ?: null,
+        'inspection_notes' => trim((string)($provided['inspection_notes'] ?? '')) ?: null,
+    ];
+}
+
+function serviceAppendNoteField(?string $notes, string $field, string $value): string
+{
+    $prefix = strtolower($field . ':');
+    $lines = [];
+    foreach (preg_split('/\R/', (string)$notes) ?: [] as $line) {
+        if (str_starts_with(strtolower(trim($line)), $prefix)) continue;
+        $lines[] = rtrim($line);
+    }
+    $lines[] = $field . ': ' . $value;
+    return trim(implode("\n", array_filter($lines, fn($line) => trim((string)$line) !== '')));
+}
+
 function serviceInitialLifecycleState(string $bookingMode, array $input): string
 {
     $state = serviceSlug((string)($input['lifecycle_state'] ?? $input['operational_tracking_state'] ?? ''));
     $allowed = $bookingMode === 'inspection'
-        ? ['payment_pending', 'payment_verified', 'inspection_queued', 'coordinator_review', 'inspection_assigned']
-        : ['request_received', 'searching_worker', 'worker_confirmation_pending', 'worker_assigned'];
+        ? array_keys(serviceLifecycleTransitions('inspection'))
+        : array_keys(serviceLifecycleTransitions('free_lead'));
     if (in_array($state, $allowed, true)) return $state;
     return $bookingMode === 'inspection' ? 'payment_pending' : 'request_received';
 }
@@ -261,13 +365,15 @@ function serviceNormalizeOperationalRequest(array $input, string $bookingMode, a
     $assignmentState = serviceInitialAssignmentState($bookingMode, $input + $provided);
     $paymentRequired = $bookingMode === 'inspection';
     $createdAt = trim((string)($provided['created_at'] ?? $input['created_at'] ?? gmdate('c')));
-    $timeline = is_array($provided['timeline'] ?? null) ? $provided['timeline'] : (is_array($input['timeline'] ?? null) ? $input['timeline'] : []);
-    if (!$timeline) $timeline = [['event' => 'request_created', 'state' => $lifecycleState, 'at' => $createdAt, 'actor' => 'customer', 'visible_to_customer' => true]];
+    $timeline = serviceNormalizeTimeline(is_array($provided['timeline'] ?? null) ? $provided['timeline'] : (is_array($input['timeline'] ?? null) ? $input['timeline'] : []), $createdAt, $lifecycleState);
     $tags = serviceNormalizeIssueList($input['operational_tags'] ?? $provided['operational_tags'] ?? []);
     $baseTags = [$paymentRequired ? 'paid' : 'free', serviceSlug($category), 'local_request'];
     if ($paymentRequired) $baseTags[] = 'inspection';
     if ($priorityScore >= 60 || $priority === 'high_priority') $baseTags[] = 'urgent';
     $tags = array_values(array_unique(array_filter(array_map('serviceSlug', array_merge($baseTags, $tags)))));
+    $assignmentMetadata = serviceDefaultAssignmentMetadata(is_array($provided['assignment'] ?? null) ? $provided['assignment'] : []);
+    $inspectionMetadata = serviceDefaultInspectionMetadata($bookingMode, is_array($provided['inspection'] ?? null) ? $provided['inspection'] : []);
+    $sortingKeys = ['city' => serviceSlug($city), 'locality' => serviceSlug($locality), 'category' => serviceSlug($category), 'payment_route' => $paymentRequired ? 'paid_inspection' : 'free_request', 'payment_required' => $paymentRequired ? 'yes' : 'no', 'priority' => $priority, 'assignment_state' => $assignmentState, 'lifecycle_state' => $lifecycleState];
     $normalized = [
         'request_id' => $requestId,
         'client_request_id' => trim((string)($input['client_request_id'] ?? $provided['client_request_id'] ?? $requestId)),
@@ -289,8 +395,10 @@ function serviceNormalizeOperationalRequest(array $input, string $bookingMode, a
         'payment_route' => $paymentRequired ? 'paid_inspection' : 'free_request',
         'priority' => $priority,
         'priority_score' => max(0, min(100, $priorityScore)),
-        'routing_context' => is_array($provided['routing_context'] ?? null) ? $provided['routing_context'] : ['assignment_mode' => 'admin_queue', 'category_slug' => serviceSlug($category), 'route_ready' => true],
-        'sorting_keys' => is_array($provided['sorting_keys'] ?? null) ? $provided['sorting_keys'] : ['city' => serviceSlug($city), 'locality' => serviceSlug($locality), 'category' => serviceSlug($category), 'priority' => $priority, 'assignment_state' => $assignmentState, 'lifecycle_state' => $lifecycleState],
+        'assignment' => $assignmentMetadata,
+        'inspection' => $inspectionMetadata,
+        'routing_context' => is_array($provided['routing_context'] ?? null) ? $provided['routing_context'] : ['assignment_mode' => 'admin_queue', 'category_slug' => serviceSlug($category), 'city' => serviceSlug($city), 'locality' => serviceSlug($locality), 'route_ready' => true, 'vendor_acceptance_ready' => true, 'vendor_rejection_ready' => true, 'reassignment_ready' => true],
+        'sorting_keys' => is_array($provided['sorting_keys'] ?? null) ? array_replace($sortingKeys, $provided['sorting_keys']) : $sortingKeys,
         'timeline' => $timeline,
         'operational_tags' => $tags,
     ];
@@ -315,8 +423,8 @@ function serviceJobPriorityForMode(string $bookingMode, array $input): string
 function serviceModeFromNotes(?string $notes): string
 {
     $notes = (string)$notes;
-    if (str_contains($notes, 'Lifecycle mode: inspection')) return 'inspection';
-    if (str_contains($notes, 'Lifecycle mode: direct_vendor')) return 'direct_vendor';
+    if (str_contains($notes, 'Booking mode: inspection') || str_contains($notes, 'Lifecycle mode: inspection')) return 'inspection';
+    if (str_contains($notes, 'Booking mode: direct_vendor') || str_contains($notes, 'Lifecycle mode: direct_vendor')) return 'direct_vendor';
     return 'free_lead';
 }
 
@@ -344,6 +452,7 @@ function serviceAttachOperationalView(array $booking, bool $adminView = false): 
     $booking['issue_list'] = serviceNormalizeIssueList(serviceNoteField($booking['notes'] ?? null, 'Issue list') ?: ($booking['subservice'] ?? $booking['service_name'] ?? 'Service request'));
     $booking['issue_summary'] = serviceNoteField($booking['notes'] ?? null, 'Issue summary') ?: serviceIssueSummary($booking['issue_list']);
     $booking['city'] = serviceNoteField($booking['notes'] ?? null, 'City') ?: ($booking['selected_city'] ?? null);
+    $booking['locality'] = serviceNoteField($booking['notes'] ?? null, 'Locality') ?: ($booking['customer_locality'] ?? null);
     $booking['lifecycle_state'] = $lifecycle;
     $booking['assignment_state'] = $assignment;
     $booking['operational_tracking_state'] = $lifecycle;
@@ -352,11 +461,36 @@ function serviceAttachOperationalView(array $booking, bool $adminView = false): 
         $booking['priority_score'] = (int)(serviceNoteField($booking['notes'] ?? null, 'Priority score') ?: 0);
         $booking['payment_route'] = serviceNoteField($booking['notes'] ?? null, 'Payment route') ?: ($mode === 'inspection' ? 'paid_inspection' : 'free_request');
         $booking['operational_tags'] = serviceNormalizeIssueList(serviceNoteField($booking['notes'] ?? null, 'Operational tags'));
-        $timeline = serviceNoteField($booking['notes'] ?? null, 'Timeline');
-        $decoded = $timeline ? json_decode($timeline, true) : null;
-        $booking['timeline'] = is_array($decoded) ? $decoded : [];
+        $booking['assignment'] = serviceDefaultAssignmentMetadata(serviceJsonField($booking['notes'] ?? null, 'Assignment metadata'));
+        if (!empty($booking['vendor_id']) && empty($booking['assignment']['assigned_vendor_id'])) {
+            $booking['assignment']['assigned_vendor_id'] = (int)$booking['vendor_id'];
+            $booking['assignment']['assigned_vendor_name'] = $booking['vendor_name'] ?? null;
+        }
+        $booking['inspection'] = serviceDefaultInspectionMetadata($mode, serviceJsonField($booking['notes'] ?? null, 'Inspection metadata'));
+        $booking['routing_context'] = serviceJsonField($booking['notes'] ?? null, 'Routing context', ['assignment_mode' => $booking['vendor_route'] ?? 'admin_queue', 'route_ready' => true, 'vendor_acceptance_ready' => true, 'vendor_rejection_ready' => true, 'reassignment_ready' => true]);
+        $booking['sorting_keys'] = serviceJsonField($booking['notes'] ?? null, 'Sorting keys', ['city' => serviceSlug((string)($booking['city'] ?? '')), 'locality' => serviceSlug((string)($booking['locality'] ?? '')), 'category' => serviceSlug((string)($booking['category_label'] ?? 'service')), 'payment_route' => $booking['payment_route'], 'priority' => $booking['priority'], 'assignment_state' => $assignment, 'lifecycle_state' => $lifecycle]);
+        $booking['timeline'] = serviceNormalizeTimeline(serviceJsonField($booking['notes'] ?? null, 'Timeline'), (string)($booking['created_at'] ?? gmdate('c')), $lifecycle);
+        $booking['admin_queue'] = [
+            'request_id' => $booking['request_id'],
+            'created_at' => $booking['created_at'] ?? null,
+            'request_type' => $booking['request_type'],
+            'lifecycle_state' => $booking['lifecycle_state'],
+            'assignment_state' => $booking['assignment_state'],
+            'customer_name' => $booking['customer_name'] ?? $booking['user_name'] ?? null,
+            'customer_mobile' => $booking['customer_mobile'] ?? $booking['customer_phone'] ?? null,
+            'category' => serviceSlug((string)($booking['category_label'] ?? 'service')),
+            'issue_summary' => $booking['issue_summary'],
+            'issue_list' => $booking['issue_list'],
+            'city' => $booking['city'],
+            'locality' => $booking['locality'],
+            'full_address' => $booking['customer_address'] ?? null,
+            'priority' => $booking['priority'],
+            'operational_tags' => $booking['operational_tags'],
+            'payment_route' => $booking['payment_route'],
+            'payment_required' => $booking['payment_route'] === 'paid_inspection',
+        ];
     } else {
-        unset($booking['operational_tags'], $booking['priority_score'], $booking['routing_context'], $booking['sorting_keys']);
+        unset($booking['operational_tags'], $booking['priority'], $booking['priority_score'], $booking['routing_context'], $booking['sorting_keys'], $booking['assignment'], $booking['inspection'], $booking['admin_queue']);
     }
     return $booking;
 }
@@ -965,6 +1099,13 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/assign$#', 
         Response::validation('Completed or cancelled bookings cannot be reassigned');
     }
 
+    $bookingMode = $booking['booking_mode'] ?: serviceModeFromNotes($booking['notes'] ?? null);
+    $currentLifecycle = serviceNoteField($booking['notes'] ?? null, 'Lifecycle state') ?: ($bookingMode === 'inspection' ? 'inspection_queued' : 'searching_worker');
+    $nextLifecycle = $newJobStatus === 'open' ? ($bookingMode === 'inspection' ? 'inspection_queued' : 'searching_worker') : ($bookingMode === 'inspection' ? 'inspection_assigned' : 'worker_assigned');
+    if (!serviceCanTransitionLifecycle($bookingMode, $currentLifecycle, $nextLifecycle)) {
+        Response::validation('Invalid lifecycle transition from ' . $currentLifecycle . ' to ' . $nextLifecycle);
+    }
+
     $typeColumn = ServiceVendorEligibility::vendorTypeColumn($db);
     $vendorStmt = $db->prepare(
         "SELECT " . ServiceVendorEligibility::buildVendorSelect($db, 'v') . "
@@ -989,8 +1130,31 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/assign$#', 
     $bookingStatus = canonicalBookingStatusForJob($newJobStatus);
     $effectiveVendorId = $newJobStatus === 'open' ? null : $vendorId;
     $effectiveRoute = $newJobStatus === 'open' ? 'admin_queue' : 'admin_assigned';
+    $assignedAt = gmdate('c');
+    $assignmentMetadata = serviceDefaultAssignmentMetadata([
+        'assigned_vendor_id' => $effectiveVendorId,
+        'assigned_vendor_name' => $newJobStatus === 'open' ? null : $vendor['business_name'],
+        'assigned_by' => 'admin:' . (int)($auth['user_id'] ?? 0),
+        'assigned_at' => $newJobStatus === 'open' ? null : $assignedAt,
+        'assignment_notes' => trim((string)($input['assignment_notes'] ?? $input['notes'] ?? '')) ?: null,
+    ]);
+    $timeline = serviceNormalizeTimeline(serviceJsonField($booking['notes'] ?? null, 'Timeline'), (string)($booking['created_at'] ?? $assignedAt), $currentLifecycle);
+    $timeline[] = [
+        'event' => $newJobStatus === 'open' ? 'assignment_reopened' : 'vendor_assigned',
+        'state' => $nextLifecycle,
+        'at' => $assignedAt,
+        'actor' => 'admin',
+        'source' => 'admin_assignment',
+        'visible_to_customer' => false,
+        'notes' => trim((string)($input['assignment_notes'] ?? '')),
+    ];
+    $nextNotes = serviceAppendNoteField($booking['notes'] ?? null, 'Lifecycle state', $nextLifecycle);
+    $nextNotes = serviceAppendNoteField($nextNotes, 'Assignment state', $newJobStatus === 'open' ? ($bookingMode === 'inspection' ? 'inspection_unassigned' : 'unassigned_searching') : ($bookingMode === 'inspection' ? 'inspection_assigned' : 'worker_assigned'));
+    $nextNotes = serviceAppendNoteField($nextNotes, 'Assignment metadata', json_encode($assignmentMetadata, JSON_UNESCAPED_SLASHES));
+    $nextNotes = serviceAppendNoteField($nextNotes, 'Timeline', json_encode($timeline, JSON_UNESCAPED_SLASHES));
     $bookingUpdates = ['vendor_id = :vendor_id', 'status = :status'];
-    $bookingBind = [':vendor_id' => $effectiveVendorId, ':status' => $bookingStatus, ':id' => $bookingId];
+    $bookingBind = [':vendor_id' => $effectiveVendorId, ':status' => $bookingStatus, ':notes' => $nextNotes, ':id' => $bookingId];
+    $bookingUpdates[] = 'notes = :notes';
     if (serviceTableHasColumn($db, 'bookings', 'vendor_route')) {
         $bookingUpdates[] = 'vendor_route = :vendor_route';
         $bookingBind[':vendor_route'] = $effectiveRoute;
@@ -1090,6 +1254,28 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
             Response::validation('Completed or cancelled jobs cannot be rejected for reassignment');
         }
 
+        $bookingForNotes = null;
+        $nextBookingNotes = null;
+        if ($jobRow['booking_id']) {
+            $notesStmt = $db->prepare("SELECT id, booking_mode, notes, created_at FROM bookings WHERE id = ? LIMIT 1");
+            $notesStmt->execute([(int)$jobRow['booking_id']]);
+            $bookingForNotes = $notesStmt->fetch(PDO::FETCH_ASSOC);
+            if ($bookingForNotes) {
+                $mode = $bookingForNotes['booking_mode'] ?: serviceModeFromNotes($bookingForNotes['notes'] ?? null);
+                $fromLifecycle = serviceNoteField($bookingForNotes['notes'] ?? null, 'Lifecycle state') ?: 'worker_assigned';
+                $toLifecycle = $mode === 'inspection' ? 'inspection_queued' : 'searching_worker';
+                if (!serviceCanTransitionLifecycle($mode, $fromLifecycle, $toLifecycle)) {
+                    Response::validation('Invalid lifecycle transition from ' . $fromLifecycle . ' to ' . $toLifecycle);
+                }
+                $timeline = serviceNormalizeTimeline(serviceJsonField($bookingForNotes['notes'] ?? null, 'Timeline'), (string)($bookingForNotes['created_at'] ?? gmdate('c')), $fromLifecycle);
+                $timeline[] = ['event' => 'vendor_rejected', 'state' => $toLifecycle, 'at' => gmdate('c'), 'actor' => 'vendor', 'source' => 'vendor_update', 'visible_to_customer' => false, 'notes' => trim((string)($input['notes'] ?? ''))];
+                $nextBookingNotes = serviceAppendNoteField($bookingForNotes['notes'] ?? null, 'Lifecycle state', $toLifecycle);
+                $nextBookingNotes = serviceAppendNoteField($nextBookingNotes, 'Assignment state', $mode === 'inspection' ? 'inspection_unassigned' : 'unassigned_searching');
+                $nextBookingNotes = serviceAppendNoteField($nextBookingNotes, 'Assignment metadata', json_encode(serviceDefaultAssignmentMetadata(['assignment_notes' => 'Returned to admin queue after vendor rejection']), JSON_UNESCAPED_SLASHES));
+                $nextBookingNotes = serviceAppendNoteField($nextBookingNotes, 'Timeline', json_encode($timeline, JSON_UNESCAPED_SLASHES));
+            }
+        }
+
         try {
             $db->beginTransaction();
 
@@ -1110,6 +1296,10 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
                 }
                 if (serviceTableHasColumn($db, 'bookings', 'updated_at')) {
                     $bookingUpdates[] = 'updated_at = NOW()';
+                }
+                if ($nextBookingNotes !== null) {
+                    $bookingUpdates[] = 'notes = :notes';
+                    $bookingBind[':notes'] = $nextBookingNotes;
                 }
                 $db->prepare("UPDATE bookings SET " . implode(', ', $bookingUpdates) . " WHERE id = :id")
                    ->execute($bookingBind);
