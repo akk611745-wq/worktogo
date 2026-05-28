@@ -242,6 +242,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   align-items: flex-start;  /* align to top so safe-area padding pushes items up */
   padding-top: 12px;        /* visually centre icons in the 70px icon zone */
   z-index: 100;
+  transition: transform 180ms var(--ease), opacity 180ms var(--ease);
 }
 
 .nav-item {
@@ -954,7 +955,11 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   background: rgba(255,250,243,0.88);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
+  transition: transform 180ms var(--ease), opacity 180ms var(--ease);
 }
+
+body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { transform: translateY(-110%); opacity: 0.02; pointer-events: none; }
+body.chrome-hidden:not(.modal-open):not(.explore-open) .bottom-nav { transform: translate(-50%, 110%); opacity: 0.02; pointer-events: none; }
 
 .location-pill {
   display: inline-grid;

@@ -25,6 +25,7 @@ const CONFIG = {
     VENDOR_ANALYTICS: false,
     VENDOR_REALTIME_LABEL: false,
     VENDOR_ONBOARDING: false,
+    SERVICE_PROOF_UPLOAD: false,
   },
 
   // Role constants
@@ -37,7 +38,7 @@ const CONFIG = {
   ORDER_STATUSES: ["pending", "confirmed", "in_progress", "delivered", "cancelled"],
 
   // Job status options (service)
-  JOB_STATUSES: ["pending", "confirmed", "in_progress", "completed", "cancelled"],
+  JOB_STATUSES: ["confirmed", "in_progress", "completed", "cancelled"],
 };
 
 // Freeze so nothing accidentally mutates config

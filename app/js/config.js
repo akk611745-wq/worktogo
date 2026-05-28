@@ -78,7 +78,14 @@ const CONFIG = {
   },
 
   SERVICE_ONLY: {
+    PILOT_MODE: true,
     CITY: "Haldwani",
+    ENABLED_CITIES: ["Haldwani"],
+    ENABLED_CATEGORIES: ["electrician", "plumber", "painting", "waterproofing", "cctv"],
+    INSPECTION_REQUIRED_CATEGORIES: ["painting", "waterproofing", "cctv"],
+    DISABLE_FAKE_NETWORKS: true,
+    DISABLE_PROOF_TILES: true,
+    DISABLE_MATERIAL_ACTIONS: true,
     INSPECTION_PRICE: 299,
     SUPPORT_LABEL: "Help",
     ROUTE_MESSAGE: "This feature is hidden during the Haldwani service pilot.",

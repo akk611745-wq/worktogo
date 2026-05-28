@@ -267,6 +267,10 @@ export async function render(container) {
       HomePage.filterEcosystem(seed);
     },
     viewMaterialNetwork(kind = "materials") {
+      if (CONFIG.SERVICE_ONLY?.DISABLE_MATERIAL_ACTIONS !== false) {
+        UI.toast("Material help starts after worker confirms scope.", "info");
+        return;
+      }
       const meta = _categoryMeta(_activeCategory);
       const source = kind === "dealers" ? (meta.dealers || CATEGORY_META.all.dealers || []) : (meta.materials || CATEGORY_META.all.materials || []);
       const seed = source[0] || meta.label;
@@ -405,6 +409,7 @@ export async function render(container) {
   _loadServices();
   if (!serviceOnly && CONFIG.FEATURES?.SHOPPING_UI) _loadProducts();
   _setupExploreOverlay();
+  _setupMobileChromeMotion();
   _syncOperatingMode();
   _renderInstantSearch();
   _restoreInspectionPaymentReturn();
@@ -1543,6 +1548,25 @@ function _categoryMeta(slug = "") {
 }
 
 function _categoryEcosystemHTML(slug = "") {
+  if (CONFIG.SERVICE_ONLY?.DISABLE_FAKE_NETWORKS !== false) {
+    const meta = _categoryMeta(slug);
+    const localityContext = _resolvedLocality();
+    return `
+      <details class="ecosystem-card ecosystem-world" ${slug ? "open" : ""}>
+        <summary class="ecosystem-summary">
+          <span class="ecosystem-icon">${meta.icon}</span>
+          <strong>${_esc("Material support after visit")}</strong>
+          <small>${_esc("Informational only · no live dealer routing")}</small>
+        </summary>
+        <div class="ecosystem-banner">
+          <span class="ecosystem-icon">${meta.icon}</span>
+          <div>
+            <h3>${_esc(`${meta.label} material context for ${localityContext.label}`)}</h3>
+            <p>${_esc("Worker first checks quantity and fit. WorkToGo can guide material help after scope is confirmed.")}</p>
+          </div>
+        </div>
+      </details>`;
+  }
   const meta = _categoryMeta(slug);
   const contextLabel = _activeContextLabel(meta);
   const localityContext = _resolvedLocality();
@@ -1616,7 +1640,7 @@ function _heroHTML(slug = "") {
         <button class="btn-primary marketplace-cta hero-primary" id="hero-category-cta" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'inspection')">${_esc(primaryText)}</button>
         <button class="hero-secondary" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Free booking</button>
       </div>
-      <p class="action-hierarchy-note">Start with inspection for unclear work, or free booking when the job is clear.</p>
+      <p class="action-hierarchy-note">Unclear issue? choose inspection. Clear job? choose free booking.</p>
     </div>`;
 }
 
@@ -1631,6 +1655,7 @@ function _serviceCardsHTML(slug = "") {
 }
 
 function _freeBookingStripHTML(slug = "") {
+  if (_activeCategory || CONFIG.SERVICE_ONLY?.PILOT_MODE) return "";
   const meta = _categoryMeta(slug);
   return `<div>
     <strong>${_esc(slug ? `Free ${meta.label} booking` : "Free booking")}</strong>
@@ -1649,6 +1674,7 @@ function _trustProofHTML(slug = "") {
 }
 
 function _visualProofHTML(slug = "") {
+  if (CONFIG.SERVICE_ONLY?.DISABLE_PROOF_TILES !== false) return "";
   const meta = _categoryMeta(slug);
   const localityContext = _resolvedLocality();
   const baseProof = meta.beforeAfter || CATEGORY_META.all.beforeAfter;
@@ -1759,6 +1785,26 @@ function _setupExploreOverlay() {
   section.classList.remove("top-search-hidden");
   section.removeAttribute("aria-hidden");
   overlay.addEventListener("click", e => { if (e.target === overlay) _closeExploreOverlay(); });
+}
+
+function _setupMobileChromeMotion() {
+  if (window.__wtgChromeMotionBound) return;
+  window.__wtgChromeMotionBound = true;
+  let lastY = window.scrollY || 0;
+  let ticking = false;
+  window.addEventListener("scroll", () => {
+    if (document.body.classList.contains("modal-open") || document.body.classList.contains("explore-open")) return;
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      const y = window.scrollY || 0;
+      const down = y > lastY + 8 && y > 90;
+      const up = y < lastY - 8 || y < 40;
+      document.body.classList.toggle("chrome-hidden", down && !up);
+      lastY = y;
+      ticking = false;
+    });
+  }, { passive: true });
 }
 
 function _openExploreOverlay() {

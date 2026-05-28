@@ -20,7 +20,7 @@
 <script>
 let allBookings   = [];
 let currentFilter = "all";
-const STATUS_ALIASES = { open:'pending', pending:'pending', assigned:'confirmed', accepted:'confirmed', confirmed:'confirmed', started:'in_progress', ongoing:'in_progress', in_progress:'in_progress', delivered:'completed', completed:'completed', rejected:'cancelled', cancelled:'cancelled' };
+const STATUS_ALIASES = { open:'pending', pending:'pending', assigned:'confirmed', accepted:'confirmed', confirmed:'confirmed', vendor_accepted:'confirmed', started:'in_progress', ongoing:'in_progress', in_progress:'in_progress', delivered:'completed', completed:'completed', rejected:'requeued', requeued:'requeued', cancelled:'cancelled' };
 
 document.addEventListener("DOMContentLoaded", async () => {
   const user = initShell("Bookings");
@@ -216,14 +216,14 @@ function renderBookingRows(list) {
       '<div class="text-sm"><strong>Customer:</strong> ' + escHtml(b.customer_name || b.user?.name || '—') + ' · ' + escHtml(b.customer_phone || b.user?.phone || '—') + '</div>' +
       (b.notes ? '<div class="text-sm" style="background:var(--surface-2);padding:0.5rem;border-radius:6px;white-space:pre-wrap;">' + escHtml(b.notes).slice(0,220) + '</div>' : '') +
       '<div class="td-actions" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.3rem;"><button class="btn btn-ghost btn-sm" onclick="viewBooking(\'' + id + '\')">View</button>' +
-      (status === 'pending' ? '<button class="btn btn-accept btn-sm" onclick="quickAccept(\'' + id + '\',\'' + jobId + '\')">Accept</button><button class="btn btn-reject btn-sm" onclick="quickReject(\'' + id + '\',\'' + jobId + '\')">Reject</button>' : '<button class="btn btn-primary btn-sm" onclick="openStatusModal(\'' + id + '\',\'' + jobId + '\')">Update</button>') +
+      (status === 'pending' ? '<button class="btn btn-accept btn-sm" onclick="quickAccept(\'' + id + '\',\'' + jobId + '\')">Accept</button><button class="btn btn-reject btn-sm" onclick="quickReject(\'' + id + '\',\'' + jobId + '\')">Reject</button>' : (status === 'requeued' ? '<span class="text-muted text-sm">Returned to WorkToGo queue</span>' : '<button class="btn btn-primary btn-sm" onclick="openStatusModal(\'' + id + '\',\'' + jobId + '\')">Update</button>')) +
       '</div></div></div>';
   }).join('');
   tbody.innerHTML = list.map(b => {
     const id = b.id || b._id;
     const status = normalizeStatus(b.status);
     const jobId = b.job_id || b.id || b._id;
-    const actionBtns = status === 'pending'
+    const actionBtns = status === 'requeued' ? '<span class="text-muted text-sm">Returned to queue</span>' : status === 'pending'
       ? '<button class="btn btn-accept btn-sm" onclick="quickAccept(\'' + id + '\',\'' + jobId + '\')">Accept</button><button class="btn btn-reject btn-sm" onclick="quickReject(\'' + id + '\',\'' + jobId + '\')">Reject</button>'
       : '<button class="btn btn-ghost btn-sm" onclick="openStatusModal(\'' + id + '\',\'' + jobId + '\')">Update</button>';
     return '<tr>' +
@@ -305,9 +305,9 @@ async function quickReject(id, jobId = null) {
   if (!confirmAction("Reject this booking?")) return;
   const res = await API.Bookings.reject(jobId || id);
   if (!res.ok) { showToast(res.data?.message || "Failed to reject.", "error"); return; }
-  showToast("Booking rejected.", "info");
+  showToast("Request returned to WorkToGo queue.", "info");
   const idx = allBookings.findIndex(x => (x.id || x._id) == id);
-  if (idx !== -1) allBookings[idx].status = "cancelled";
+  if (idx !== -1) allBookings[idx].status = "requeued";
   _updateAnalytics(); renderChips(); applyFilter();
 }
 

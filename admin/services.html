@@ -177,6 +177,19 @@ function vendorAssignControl(booking) {
   </div>`;
 }
 
+function requestTruthPanel(booking) {
+  const lifecycle = booking.lifecycle_state || booking.admin_request_view?.lifecycle_state || 'pending';
+  const payment = booking.payment_status || booking.payment_route || 'unpaid';
+  const assignment = booking.assignment_state || booking.admin_request_view?.assignment_state || 'unassigned';
+  const vendor = booking.vendor_response_status || booking.vendor_execution?.vendor_response_status || 'not_requested';
+  return `<div style="display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px">
+    <div class="card"><div class="card-body"><b>Booking</b><div>${escHtml(lifecycle)}</div></div></div>
+    <div class="card"><div class="card-body"><b>Payment</b><div>${escHtml(payment)}</div></div></div>
+    <div class="card"><div class="card-body"><b>Assignment</b><div>${escHtml(assignment)}</div></div></div>
+    <div class="card"><div class="card-body"><b>Vendor</b><div>${escHtml(vendor)}</div></div></div>
+  </div>`;
+}
+
 function eligibilityCell(booking) {
   const summary = booking.vendor_eligibility || {};
   const vendors = Array.isArray(summary.vendors) ? summary.vendors : [];
@@ -253,6 +266,7 @@ function openOpsDetail(bookingId) {
     <div class="modal" style="max-width:860px" onclick="event.stopPropagation()">
       <div class="modal-header"><h3>Operational Request ${escHtml(view.request_summary?.request_id || booking.request_id || bookingId)}</h3><button class="btn btn-sm btn-ghost" onclick="closeOpsDetail()">Close</button></div>
       <div class="modal-body" style="display:grid;gap:14px">
+        ${requestTruthPanel(booking)}
         <div class="card"><div class="card-body"><b>Customer</b><div>${escHtml(customer.name || booking.customer_name || '—')} · ${escHtml(customer.mobile || booking.customer_mobile || booking.customer_phone || '')}</div><div style="color:var(--text-muted)">${escHtml(location.full_address || booking.customer_address || 'Address not set')}</div></div></div>
         <div class="card"><div class="card-body"><b>Issue</b><div>${escHtml(issue.label || booking.category_label || 'Service')} — ${escHtml(issue.summary || booking.issue_summary || '—')}</div><div style="color:var(--text-muted)">${(issue.issues || booking.issue_list || []).map(escHtml).join(', ')}</div><div>${escHtml(location.city || booking.city || '—')} / ${escHtml(location.locality || booking.locality || booking.customer_locality || '—')}</div><div>Payment: ${escHtml(view.payment_type || booking.payment_route || 'cod')}</div></div></div>
         <div class="card"><div class="card-body"><b>Routing</b><pre style="white-space:pre-wrap;font-size:11px">${escHtml(JSON.stringify({ routing_context: booking.routing_context, assignment: booking.assignment, inspection: booking.inspection }, null, 2))}</pre></div></div>
@@ -280,7 +294,7 @@ async function simulateOpsAction(bookingId, action) {
   if (!await confirmAction(`Run ${action.replaceAll('_',' ')} for request #${bookingId}?`)) return;
   try {
     await API.patch(CONFIG.ENDPOINTS.SERVICE_BOOKING_OPS(bookingId), payload);
-    Toast.success('Admin operation updated.');
+    Toast.success('Operational action updated.');
     closeOpsDetail();
     loadServiceBookings();
   } catch(e) { Toast.error(e.message || 'Admin operation failed'); }
@@ -341,7 +355,7 @@ function renderServices(services) {
       <td>${statusBadge(status)}</td>
       <td>
         <div class="td-actions">
-          <button class="btn btn-sm ${status === 'active' ? 'btn-warn' : 'btn-success'}" onclick="toggleService('${id}','${status === 'active' ? 'inactive' : 'active'}')">${status === 'active' ? 'Disable' : 'Enable'}</button>
+          ${CONFIG.PILOT_CONTROLS?.disable_service_status_toggle ? '<button class="btn btn-sm btn-ghost" disabled>Pilot locked</button>' : `<button class="btn btn-sm ${status === 'active' ? 'btn-warn' : 'btn-success'}" onclick="toggleService('${id}','${status === 'active' ? 'inactive' : 'active'}')">${status === 'active' ? 'Disable' : 'Enable'}</button>`}
         </div>
       </td>
     </tr>`;

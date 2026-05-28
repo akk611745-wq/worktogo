@@ -80,10 +80,40 @@ function servicePublicSetting(PDO $db, string $key, mixed $fallback): mixed
     }
 }
 
+function serviceColumnOrNull(PDO $db, string $table, string $column, string $bindKey, mixed $value, array &$columns, array &$bind): bool
+{
+    if (!serviceTableHasColumn($db, $table, $column)) return false;
+    $columns[] = $column;
+    $bind[$bindKey] = $value;
+    return true;
+}
+
+function serviceUpdateBookingOperationalColumns(PDO $db, int $bookingId, array $values): void
+{
+    $sets = [];
+    $bind = [':id' => $bookingId];
+    foreach (['client_request_id', 'lifecycle_state', 'assignment_state', 'vendor_response_status', 'operational_timeline'] as $column) {
+        if (array_key_exists($column, $values) && serviceTableHasColumn($db, 'bookings', $column)) {
+            $sets[] = "{$column} = :{$column}";
+            $bind[':' . $column] = is_array($values[$column]) ? json_encode($values[$column], JSON_UNESCAPED_SLASHES) : $values[$column];
+        }
+    }
+    if (!$sets) return;
+    if (serviceTableHasColumn($db, 'bookings', 'updated_at')) $sets[] = 'updated_at = NOW()';
+    $db->prepare('UPDATE bookings SET ' . implode(', ', $sets) . ' WHERE id = :id')->execute($bind);
+}
+
 function servicePilotConfig(PDO $db): array
 {
     $fallback = [
+        'pilot_mode' => true,
         'city' => 'Haldwani',
+        'enabled_cities' => ['Haldwani'],
+        'enabled_categories' => ['electrician', 'plumber', 'painting', 'waterproofing', 'cctv'],
+        'inspection_required_categories' => ['painting', 'waterproofing', 'cctv'],
+        'disable_fake_networks' => true,
+        'disable_proof_tiles' => true,
+        'disable_material_actions' => true,
         'hero_title' => 'Book trusted local services in Haldwani',
         'hero_subtitle' => 'Browse first. Login is needed only when you send a booking request or track it.',
         'trust_badges' => ['Local providers', 'Pay after service', 'Manual confirmation'],
@@ -219,6 +249,94 @@ function serviceSlug(string $value): string
     return trim($slug, '_');
 }
 
+function serviceCanonicalLifecycle(string $state, string $bookingMode = 'free_lead'): string
+{
+    $state = serviceSlug($state);
+    $map = [
+        'open' => 'pending',
+        'request_received' => 'pending',
+        'payment_pending' => 'inspection_pending',
+        'payment_verified' => 'inspection_paid',
+        'inspection_queued' => 'inspection_paid',
+        'coordinator_review' => 'inspection_paid',
+        'inspection_assigned' => 'assigned',
+        'searching_worker' => 'awaiting_assignment',
+        'nearby_matching' => 'awaiting_assignment',
+        'worker_contacting' => 'awaiting_assignment',
+        'worker_confirmation_pending' => 'awaiting_assignment',
+        'worker_requested' => 'awaiting_assignment',
+        'awaiting_response' => 'awaiting_assignment',
+        'worker_assigned' => 'assigned',
+        'confirmed' => 'assigned',
+        'accepted' => 'vendor_accepted',
+        'vendor_accepted' => 'vendor_accepted',
+        'service_in_progress' => 'in_progress',
+        'started' => 'in_progress',
+        'done' => 'completed',
+        'delivered' => 'completed',
+        'vendor_rejected' => 'requeued',
+        'reassignment_required' => 'requeued',
+        'unassigned_searching' => 'awaiting_assignment',
+        'selected_worker_pending' => 'awaiting_assignment',
+    ];
+    $canonical = $map[$state] ?? $state;
+    $allowed = ['pending', 'awaiting_assignment', 'assigned', 'vendor_accepted', 'inspection_pending', 'inspection_paid', 'in_progress', 'completed', 'cancelled', 'rejected', 'requeued'];
+    if (in_array($canonical, $allowed, true)) return $canonical;
+    return $bookingMode === 'inspection' ? 'inspection_pending' : 'pending';
+}
+
+function serviceCanonicalAssignment(string $state, string $lifecycle = ''): string
+{
+    $state = serviceSlug($state);
+    $map = [
+        'payment_pending' => 'unassigned',
+        'inspection_unassigned' => 'unassigned',
+        'unassigned_searching' => 'unassigned',
+        'selected_worker_pending' => 'awaiting_vendor',
+        'worker_confirmation_pending' => 'awaiting_vendor',
+        'worker_contacted' => 'awaiting_vendor',
+        'worker_assigned' => 'assigned',
+        'inspection_assigned' => 'assigned',
+        'assigned' => 'assigned',
+    ];
+    if (isset($map[$state])) return $map[$state];
+    if ($lifecycle === 'assigned' || $lifecycle === 'vendor_accepted' || $lifecycle === 'in_progress' || $lifecycle === 'completed') return 'assigned';
+    if ($lifecycle === 'awaiting_assignment' || $lifecycle === 'requeued') return 'unassigned';
+    return $state ?: 'unassigned';
+}
+
+function serviceCanonicalTimelineEvent(string $event): string
+{
+    $event = serviceSlug($event);
+    $map = [
+        'request_created' => 'booking_created',
+        'payment_verified' => 'payment_success',
+        'vendor_assigned' => 'assigned',
+        'worker_confirmed' => 'assigned',
+        'vendor_rejected' => 'vendor_rejected',
+        'assignment_reopened' => 'requeued',
+        'service_started' => 'in_progress',
+        'worker_on_route' => 'in_progress',
+        'worker_arrived' => 'in_progress',
+        'service_completed' => 'completed',
+    ];
+    return $map[$event] ?? ($event ?: 'update');
+}
+
+function serviceAppendTimelineEntry(array $timeline, string $event, string $state, string $actor, string $source, string $notes = '', bool $visibleToCustomer = false): array
+{
+    $timeline[] = [
+        'event' => serviceCanonicalTimelineEvent($event),
+        'state' => serviceCanonicalLifecycle($state),
+        'at' => gmdate('c'),
+        'actor' => serviceSlug($actor) ?: 'system',
+        'source' => serviceSlug($source) ?: 'service_engine',
+        'visible_to_customer' => $visibleToCustomer,
+        'notes' => trim($notes),
+    ];
+    return array_slice($timeline, -120);
+}
+
 function serviceIssueSummary(array $issues): string
 {
     $parts = [];
@@ -242,6 +360,12 @@ function serviceLifecycleTransitions(string $bookingMode): array
 {
     if ($bookingMode === 'inspection') {
         return [
+            'inspection_pending' => ['inspection_paid', 'cancelled'],
+            'inspection_paid' => ['assigned', 'in_progress', 'completed', 'cancelled'],
+            'assigned' => ['vendor_accepted', 'in_progress', 'requeued', 'cancelled'],
+            'vendor_accepted' => ['in_progress', 'completed', 'cancelled'],
+            'requeued' => ['awaiting_assignment', 'assigned', 'cancelled'],
+            'in_progress' => ['completed', 'cancelled'],
             'payment_pending' => ['payment_verified'],
             'payment_verified' => ['inspection_queued'],
             'inspection_queued' => ['coordinator_review', 'inspection_assigned'],
@@ -254,6 +378,12 @@ function serviceLifecycleTransitions(string $bookingMode): array
     }
 
     return [
+        'pending' => ['awaiting_assignment', 'assigned', 'cancelled'],
+        'awaiting_assignment' => ['assigned', 'requeued', 'cancelled'],
+        'assigned' => ['vendor_accepted', 'in_progress', 'requeued', 'cancelled'],
+        'vendor_accepted' => ['in_progress', 'completed', 'cancelled'],
+        'requeued' => ['awaiting_assignment', 'assigned', 'cancelled'],
+        'in_progress' => ['completed', 'cancelled'],
         'request_received' => ['searching_worker', 'worker_assigned', 'cancelled'],
         'searching_worker' => ['worker_assigned', 'request_received', 'cancelled'],
         'worker_confirmation_pending' => ['worker_assigned', 'searching_worker', 'cancelled'],
@@ -266,6 +396,11 @@ function serviceLifecycleTransitions(string $bookingMode): array
 
 function serviceCanTransitionLifecycle(string $bookingMode, string $from, string $to): bool
 {
+    $fromCanonical = serviceCanonicalLifecycle($from, $bookingMode);
+    $toCanonical = serviceCanonicalLifecycle($to, $bookingMode);
+    if ($fromCanonical === $toCanonical) return true;
+    $canonicalTransitions = serviceLifecycleTransitions($bookingMode);
+    if (in_array($toCanonical, $canonicalTransitions[$fromCanonical] ?? [], true)) return true;
     if ($from === $to) return true;
     $transitions = serviceLifecycleTransitions($bookingMode);
     return in_array($to, $transitions[$from] ?? [], true);
@@ -281,8 +416,8 @@ function serviceNormalizeTimeline(array $timeline, string $createdAt, string $st
         $at = trim((string)($entry['at'] ?? $createdAt));
         $actor = serviceSlug((string)($entry['actor'] ?? 'system')) ?: 'system';
         $entries[] = [
-            'event' => $event,
-            'state' => $entryState,
+            'event' => serviceCanonicalTimelineEvent($event),
+            'state' => serviceCanonicalLifecycle($entryState),
             'at' => $at ?: $createdAt,
             'actor' => $actor,
             'source' => serviceSlug((string)($entry['source'] ?? $actor)) ?: $actor,
@@ -291,7 +426,7 @@ function serviceNormalizeTimeline(array $timeline, string $createdAt, string $st
         ];
     }
     if (!$entries) {
-        $entries[] = ['event' => 'request_created', 'state' => $state, 'at' => $createdAt, 'actor' => 'customer', 'source' => 'customer', 'visible_to_customer' => true, 'notes' => ''];
+        $entries[] = ['event' => 'booking_created', 'state' => serviceCanonicalLifecycle($state), 'at' => $createdAt, 'actor' => 'customer', 'source' => 'customer', 'visible_to_customer' => true, 'notes' => ''];
     }
     return array_slice($entries, 0, 80);
 }
@@ -448,21 +583,23 @@ function serviceOperationalActionConfig(string $action, string $bookingMode): ar
 function serviceInitialLifecycleState(string $bookingMode, array $input): string
 {
     $state = serviceSlug((string)($input['lifecycle_state'] ?? $input['operational_tracking_state'] ?? ''));
+    if ($state !== '') return serviceCanonicalLifecycle($state, $bookingMode);
     $allowed = $bookingMode === 'inspection'
         ? array_keys(serviceLifecycleTransitions('inspection'))
         : array_keys(serviceLifecycleTransitions('free_lead'));
     if (in_array($state, $allowed, true)) return $state;
-    return $bookingMode === 'inspection' ? 'payment_pending' : 'request_received';
+    return $bookingMode === 'inspection' ? 'inspection_pending' : 'pending';
 }
 
 function serviceInitialAssignmentState(string $bookingMode, array $input): string
 {
     $state = serviceSlug((string)($input['assignment_state'] ?? ''));
+    if ($state !== '') return serviceCanonicalAssignment($state, serviceCanonicalLifecycle((string)($input['lifecycle_state'] ?? $input['operational_tracking_state'] ?? ''), $bookingMode));
     $allowed = $bookingMode === 'inspection'
         ? ['payment_pending', 'inspection_unassigned', 'coordinator_review', 'inspection_assigned']
         : ['unassigned_searching', 'worker_confirmation_pending', 'worker_assigned'];
     if (in_array($state, $allowed, true)) return $state;
-    return $bookingMode === 'inspection' ? 'payment_pending' : 'unassigned_searching';
+    return 'unassigned';
 }
 
 function serviceNormalizeOperationalRequest(array $input, string $bookingMode, array $service): array
@@ -563,8 +700,10 @@ function serviceAttachOperationalView(array $booking, bool $adminView = false): 
 {
     $mode = $booking['booking_mode'] ?: serviceModeFromNotes($booking['notes'] ?? null);
     $paymentState = strtolower((string)($booking['payment_status'] ?? ''));
-    $lifecycle = serviceNoteField($booking['notes'] ?? null, 'Lifecycle state') ?: ($mode === 'inspection' ? ($paymentState === 'paid' ? 'inspection_queued' : 'payment_pending') : 'request_received');
-    $assignment = serviceNoteField($booking['notes'] ?? null, 'Assignment state') ?: ($mode === 'inspection' ? 'payment_pending' : 'unassigned_searching');
+    $lifecycle = $booking['lifecycle_state'] ?? serviceNoteField($booking['notes'] ?? null, 'Lifecycle state') ?: ($mode === 'inspection' ? ($paymentState === 'paid' ? 'inspection_paid' : 'inspection_pending') : 'pending');
+    $lifecycle = serviceCanonicalLifecycle($lifecycle, $mode);
+    $assignment = $booking['assignment_state'] ?? serviceNoteField($booking['notes'] ?? null, 'Assignment state') ?: 'unassigned';
+    $assignment = serviceCanonicalAssignment($assignment, $lifecycle);
     $booking['request_id'] = serviceNoteField($booking['notes'] ?? null, 'Request ID') ?: ($booking['booking_number'] ?? ('booking-' . ($booking['id'] ?? '')));
     $booking['client_request_id'] = serviceNoteField($booking['notes'] ?? null, 'Client request ID') ?: $booking['request_id'];
     $booking['request_schema_version'] = (int)(serviceNoteField($booking['notes'] ?? null, 'Request schema version') ?: 1);
@@ -596,7 +735,12 @@ function serviceAttachOperationalView(array $booking, bool $adminView = false): 
         $booking['escalation'] = serviceDefaultEscalationMetadata(serviceJsonField($booking['notes'] ?? null, 'Escalation metadata'));
         $booking['routing_context'] = serviceJsonField($booking['notes'] ?? null, 'Routing context', ['assignment_mode' => $booking['vendor_route'] ?? 'admin_queue', 'route_ready' => true, 'vendor_acceptance_ready' => true, 'vendor_rejection_ready' => true, 'reassignment_ready' => true]);
         $booking['sorting_keys'] = serviceJsonField($booking['notes'] ?? null, 'Sorting keys', ['city' => serviceSlug((string)($booking['city'] ?? '')), 'locality' => serviceSlug((string)($booking['locality'] ?? '')), 'category' => serviceSlug((string)($booking['category_label'] ?? 'service')), 'payment_route' => $booking['payment_route'], 'priority' => $booking['priority'], 'assignment_state' => $assignment, 'lifecycle_state' => $lifecycle, 'inspection_status' => $booking['inspection']['inspection_status']]);
-        $booking['timeline'] = serviceNormalizeTimeline(serviceJsonField($booking['notes'] ?? null, 'Timeline'), (string)($booking['created_at'] ?? gmdate('c')), $lifecycle);
+        $storedTimeline = [];
+        if (!empty($booking['operational_timeline'])) {
+            $decodedTimeline = json_decode((string)$booking['operational_timeline'], true);
+            if (is_array($decodedTimeline)) $storedTimeline = $decodedTimeline;
+        }
+        $booking['timeline'] = serviceNormalizeTimeline($storedTimeline ?: serviceJsonField($booking['notes'] ?? null, 'Timeline'), (string)($booking['created_at'] ?? gmdate('c')), $lifecycle);
         $booking['timeline_snapshot'] = serviceTimelineSnapshot($booking['timeline']);
         $booking['admin_queue'] = [
             'request_id' => $booking['request_id'],
@@ -921,6 +1065,45 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         ? (float)($input['expected_payment_amount'] ?? servicePublicSetting($db, 'inspection_price', $service['inspection_price'] ?? 299))
         : (float)$service['base_price'];
     $jobPriority = serviceJobPriorityForMode($bookingMode, $input);
+    $existingBooking = null;
+    if (serviceTableHasColumn($db, 'bookings', 'client_request_id')) {
+        $existingStmt = $db->prepare(
+            "SELECT b.*, j.job_number
+             FROM bookings b
+             LEFT JOIN jobs j ON j.booking_id = b.id
+             WHERE b.client_request_id = ? AND b.user_id = ?
+             LIMIT 1"
+        );
+        $existingStmt->execute([$operationalRequest['client_request_id'], (int)$auth['user_id']]);
+        $existingBooking = $existingStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    } else {
+        $existingStmt = $db->prepare("SELECT b.*, j.job_number FROM bookings b LEFT JOIN jobs j ON j.booking_id = b.id WHERE b.user_id = ? AND b.notes LIKE ? LIMIT 1");
+        $existingStmt->execute([(int)$auth['user_id'], '%Client request ID: ' . $operationalRequest['client_request_id'] . '%']);
+        $existingBooking = $existingStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+    if ($existingBooking) {
+        Response::success([
+            'message' => 'Existing request returned safely. No duplicate booking was created.',
+            'booking_id' => (int)$existingBooking['id'],
+            'booking_number' => $existingBooking['booking_number'] ?? null,
+            'job_number' => $existingBooking['job_number'] ?? null,
+            'service' => $service['name'],
+            'booking_mode' => $existingBooking['booking_mode'] ?? $bookingMode,
+            'scheduled_at' => $existingBooking['scheduled_at'] ?? null,
+            'total' => $existingBooking['total'] ?? $bookingTotal,
+            'status' => normalizeServiceJobStatus((string)($existingBooking['status'] ?? 'pending')),
+            'payment_status' => $existingBooking['payment_status'] ?? 'unpaid',
+            'vendor_route' => $existingBooking['vendor_route'] ?? 'admin_queue',
+            'payment_data' => null,
+            'request_id' => $operationalRequest['request_id'],
+            'client_request_id' => $operationalRequest['client_request_id'],
+            'request_schema_version' => $operationalRequest['request_schema_version'],
+            'issue_summary' => $operationalRequest['issue_summary'],
+            'lifecycle_state' => $existingBooking['lifecycle_state'] ?? serviceCanonicalLifecycle((string)serviceNoteField($existingBooking['notes'] ?? null, 'Lifecycle state'), $bookingMode),
+            'assignment_state' => $existingBooking['assignment_state'] ?? serviceCanonicalAssignment((string)serviceNoteField($existingBooking['notes'] ?? null, 'Assignment state')),
+            'duplicate_prevented' => true,
+        ], 200);
+    }
 
     // Generate collision-resistant unique reference numbers
     $bookingNum = 'WTG-BKG-' . strtoupper(bin2hex(random_bytes(4)));
@@ -932,19 +1115,9 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         $initialVendorId = !empty($service['vendor_id']) ? (int)$service['vendor_id'] : null;
 
         // Create booking
-        $bStmt = $db->prepare(
-            "INSERT INTO bookings
-                (booking_number, user_id, vendor_id, service_id, status, payment_status, payment_method,
-                 booking_mode, scheduled_at, duration_minutes, total, address_id, notes,
-                 customer_name, customer_mobile, customer_locality, customer_address, vendor_route,
-                 created_at)
-             VALUES
-                (:bnum, :uid, :vid, :sid, 'pending', :pstatus, :pmethod,
-                 :booking_mode, :sched, :dur, :price, :addr, :notes,
-                 :customer_name, :customer_mobile, :customer_locality, :customer_address, :vendor_route,
-                 NOW())"
-        );
-        $bStmt->execute([
+        $bookingColumns = ['booking_number', 'user_id', 'vendor_id', 'service_id', 'status', 'payment_status', 'payment_method', 'booking_mode', 'scheduled_at', 'duration_minutes', 'total', 'address_id', 'notes', 'customer_name', 'customer_mobile', 'customer_locality', 'customer_address', 'vendor_route', 'created_at'];
+        $bookingValues = [':bnum', ':uid', ':vid', ':sid', "'pending'", ':pstatus', ':pmethod', ':booking_mode', ':sched', ':dur', ':price', ':addr', ':notes', ':customer_name', ':customer_mobile', ':customer_locality', ':customer_address', ':vendor_route', 'NOW()'];
+        $bookingBind = [
             ':bnum'  => $bookingNum,
             ':uid'   => (int)$auth['user_id'],
             ':vid'   => $initialVendorId,
@@ -962,7 +1135,14 @@ if ($method === 'POST' && $uri === '/api/service/request') {
             ':customer_locality' => trim((string)($input['customer_locality'] ?? '')) ?: null,
             ':customer_address' => trim((string)($input['customer_address'] ?? '')) ?: null,
             ':vendor_route' => $bookingMode === 'direct_vendor' ? 'direct_vendor' : 'admin_queue',
-        ]);
+        ];
+        if (serviceColumnOrNull($db, 'bookings', 'client_request_id', ':client_request_id', $operationalRequest['client_request_id'], $bookingColumns, $bookingBind)) $bookingValues[] = ':client_request_id';
+        if (serviceColumnOrNull($db, 'bookings', 'lifecycle_state', ':lifecycle_state', $operationalRequest['lifecycle_state'], $bookingColumns, $bookingBind)) $bookingValues[] = ':lifecycle_state';
+        if (serviceColumnOrNull($db, 'bookings', 'assignment_state', ':assignment_state', $operationalRequest['assignment_state'], $bookingColumns, $bookingBind)) $bookingValues[] = ':assignment_state';
+        if (serviceColumnOrNull($db, 'bookings', 'vendor_response_status', ':vendor_response_status', 'not_requested', $bookingColumns, $bookingBind)) $bookingValues[] = ':vendor_response_status';
+        if (serviceColumnOrNull($db, 'bookings', 'operational_timeline', ':operational_timeline', json_encode($operationalRequest['timeline'], JSON_UNESCAPED_SLASHES), $bookingColumns, $bookingBind)) $bookingValues[] = ':operational_timeline';
+        $bStmt = $db->prepare("INSERT INTO bookings (" . implode(', ', $bookingColumns) . ") VALUES (" . implode(', ', $bookingValues) . ")");
+        $bStmt->execute($bookingBind);
 
         $bookingId = (int)$db->lastInsertId();
 
@@ -997,6 +1177,15 @@ if ($method === 'POST' && $uri === '/api/service/request') {
                 $db->prepare("UPDATE bookings SET payment_status = 'failed' WHERE id = ?")->execute([$bookingId]);
                 $paymentStatus = 'failed';
             }
+        }
+        $operationalTimeline = $operationalRequest['timeline'];
+        if ($bookingMode === 'inspection') {
+            $operationalTimeline = serviceAppendTimelineEntry($operationalTimeline, $paymentStatus === 'paid' ? 'payment_success' : 'payment_pending', $paymentStatus === 'paid' ? 'inspection_paid' : 'inspection_pending', 'system', 'payment', '', true);
+            serviceUpdateBookingOperationalColumns($db, $bookingId, [
+                'lifecycle_state' => $paymentStatus === 'paid' ? 'inspection_paid' : 'inspection_pending',
+                'assignment_state' => 'unassigned',
+                'operational_timeline' => $operationalTimeline,
+            ]);
         }
 
         // Auto-create linked job so job_number constraint is always satisfied
@@ -1194,8 +1383,8 @@ if ($method === 'GET' && preg_match('#^/api/service/bookings/(\d+)$#', $uri, $m)
 }
 
 // ── PATCH /api/service/bookings/{id}/ops ───────────────────────────────────────
-// Lightweight admin workflow simulation actions. Persists metadata in canonical
-// booking notes so future admin UI can execute operations without schema redesign.
+// Admin operational workflow actions. Persists canonical lifecycle metadata and
+// timeline continuity while preserving the existing notes compatibility path.
 if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/ops$#', $uri, $m)) {
     $auth = AuthMiddleware::requireRole(ROLE_ADMIN);
     $bookingId = (int)$m[1];
@@ -1228,8 +1417,13 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/ops$#', $ur
     }
 
     $now = gmdate('c');
-    $currentLifecycle = serviceNoteField($booking['notes'] ?? null, 'Lifecycle state') ?: ($bookingMode === 'inspection' ? 'payment_pending' : 'request_received');
-    $nextLifecycle = (string)($config['lifecycle'] ?? $currentLifecycle);
+    $currentLifecycle = serviceCanonicalLifecycle((string)($booking['lifecycle_state'] ?? serviceNoteField($booking['notes'] ?? null, 'Lifecycle state') ?: ($bookingMode === 'inspection' ? 'inspection_pending' : 'pending')), $bookingMode);
+    $nextLifecycle = serviceCanonicalLifecycle((string)($config['lifecycle'] ?? $currentLifecycle), $bookingMode);
+    $paymentState = strtolower((string)($booking['payment_status'] ?? ''));
+    $override = !empty($input['admin_override_payment']);
+    if ($bookingMode === 'inspection' && in_array($action, ['assign_vendor', 'reassign_vendor', 'inspection_scheduled'], true) && !in_array($paymentState, ['paid', 'verified', 'success', 'captured'], true) && !$override) {
+        Response::validation('Inspection payment must be verified before assignment. Use admin_override_payment only after manual verification.');
+    }
     if (!serviceCanTransitionLifecycle($bookingMode, $currentLifecycle, $nextLifecycle)) {
         Response::validation('Invalid lifecycle transition from ' . $currentLifecycle . ' to ' . $nextLifecycle);
     }
@@ -1297,18 +1491,15 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/ops$#', $ur
         ]);
     }
 
-    $timeline = serviceNormalizeTimeline(serviceJsonField($booking['notes'] ?? null, 'Timeline'), (string)($booking['created_at'] ?? $now), $currentLifecycle);
-    $timeline[] = [
-        'event' => (string)($config['event'] ?? $action),
-        'state' => $nextLifecycle,
-        'at' => $now,
-        'actor' => 'admin',
-        'source' => 'admin_ops_simulation',
-        'visible_to_customer' => false,
-        'notes' => trim((string)($input['notes'] ?? '')),
-    ];
+    $storedTimeline = [];
+    if (!empty($booking['operational_timeline'])) {
+        $decodedTimeline = json_decode((string)$booking['operational_timeline'], true);
+        if (is_array($decodedTimeline)) $storedTimeline = $decodedTimeline;
+    }
+    $timeline = serviceNormalizeTimeline($storedTimeline ?: serviceJsonField($booking['notes'] ?? null, 'Timeline'), (string)($booking['created_at'] ?? $now), $currentLifecycle);
+    $timeline = serviceAppendTimelineEntry($timeline, (string)($config['event'] ?? $action), $nextLifecycle, 'admin', 'admin_ops', trim((string)($input['notes'] ?? '')), false);
 
-    $nextAssignment = (string)($config['assignment'] ?? serviceNoteField($booking['notes'] ?? null, 'Assignment state') ?: ($bookingMode === 'inspection' ? 'inspection_unassigned' : 'unassigned_searching'));
+    $nextAssignment = serviceCanonicalAssignment((string)($config['assignment'] ?? serviceNoteField($booking['notes'] ?? null, 'Assignment state') ?: 'unassigned'), $nextLifecycle);
     $nextNotes = serviceAppendNoteField($booking['notes'] ?? null, 'Lifecycle state', $nextLifecycle);
     $nextNotes = serviceAppendNoteField($nextNotes, 'Assignment state', $nextAssignment);
     $nextNotes = serviceAppendNoteField($nextNotes, 'Assignment metadata', json_encode($assignmentMetadata, JSON_UNESCAPED_SLASHES));
@@ -1330,6 +1521,10 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/ops$#', $ur
     if (serviceTableHasColumn($db, 'bookings', 'updated_at')) {
         $bookingUpdates[] = 'updated_at = NOW()';
     }
+    if (serviceTableHasColumn($db, 'bookings', 'lifecycle_state')) { $bookingUpdates[] = 'lifecycle_state = :lifecycle_state'; $bookingBind[':lifecycle_state'] = $nextLifecycle; }
+    if (serviceTableHasColumn($db, 'bookings', 'assignment_state')) { $bookingUpdates[] = 'assignment_state = :assignment_state'; $bookingBind[':assignment_state'] = $nextAssignment; }
+    if (serviceTableHasColumn($db, 'bookings', 'vendor_response_status')) { $bookingUpdates[] = 'vendor_response_status = :vendor_response_status'; $bookingBind[':vendor_response_status'] = $vendorExecutionMetadata['vendor_response_status']; }
+    if (serviceTableHasColumn($db, 'bookings', 'operational_timeline')) { $bookingUpdates[] = 'operational_timeline = :operational_timeline'; $bookingBind[':operational_timeline'] = json_encode($timeline, JSON_UNESCAPED_SLASHES); }
 
     try {
         $db->beginTransaction();
@@ -1343,7 +1538,7 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/ops$#', $ur
         $db->commit();
     } catch (Throwable $e) {
         if ($db->inTransaction()) $db->rollBack();
-        Response::error('Admin operation could not be simulated', 500);
+        Response::error('Admin operation could not be updated', 500);
     }
 
     Response::success([
@@ -1356,7 +1551,7 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/ops$#', $ur
         'inspection' => $inspectionMetadata,
         'escalation' => $escalationMetadata,
         'timeline_snapshot' => serviceTimelineSnapshot($timeline),
-    ], 200, 'Admin operation simulated');
+    ], 200, 'Admin operation updated');
 }
 
 // ── PATCH /api/service/bookings/{id}/assign ───────────────────────────────────
@@ -1396,8 +1591,12 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/assign$#', 
     }
 
     $bookingMode = $booking['booking_mode'] ?: serviceModeFromNotes($booking['notes'] ?? null);
-    $currentLifecycle = serviceNoteField($booking['notes'] ?? null, 'Lifecycle state') ?: ($bookingMode === 'inspection' ? 'inspection_queued' : 'searching_worker');
-    $nextLifecycle = $newJobStatus === 'open' ? ($bookingMode === 'inspection' ? 'inspection_queued' : 'searching_worker') : ($bookingMode === 'inspection' ? 'inspection_assigned' : 'worker_assigned');
+    $currentLifecycle = serviceCanonicalLifecycle((string)($booking['lifecycle_state'] ?? serviceNoteField($booking['notes'] ?? null, 'Lifecycle state') ?: ($bookingMode === 'inspection' ? 'inspection_paid' : 'awaiting_assignment')), $bookingMode);
+    $nextLifecycle = $newJobStatus === 'open' ? 'requeued' : 'assigned';
+    $paymentState = strtolower((string)($booking['payment_status'] ?? ''));
+    if ($bookingMode === 'inspection' && $newJobStatus !== 'open' && !in_array($paymentState, ['paid', 'verified', 'success', 'captured'], true) && empty($input['admin_override_payment'])) {
+        Response::validation('Inspection payment must be verified before assignment. Use admin_override_payment only after manual verification.');
+    }
     if (!serviceCanTransitionLifecycle($bookingMode, $currentLifecycle, $nextLifecycle)) {
         Response::validation('Invalid lifecycle transition from ' . $currentLifecycle . ' to ' . $nextLifecycle);
     }
@@ -1441,18 +1640,16 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/assign$#', 
         'response_timer_started_at' => $newJobStatus === 'open' ? null : $assignedAt,
         'reassignment_required' => false,
     ]);
-    $timeline = serviceNormalizeTimeline(serviceJsonField($booking['notes'] ?? null, 'Timeline'), (string)($booking['created_at'] ?? $assignedAt), $currentLifecycle);
-    $timeline[] = [
-        'event' => $newJobStatus === 'open' ? 'assignment_reopened' : 'vendor_assigned',
-        'state' => $nextLifecycle,
-        'at' => $assignedAt,
-        'actor' => 'admin',
-        'source' => 'admin_assignment',
-        'visible_to_customer' => false,
-        'notes' => trim((string)($input['assignment_notes'] ?? '')),
-    ];
+    $storedTimeline = [];
+    if (!empty($booking['operational_timeline'])) {
+        $decodedTimeline = json_decode((string)$booking['operational_timeline'], true);
+        if (is_array($decodedTimeline)) $storedTimeline = $decodedTimeline;
+    }
+    $timeline = serviceNormalizeTimeline($storedTimeline ?: serviceJsonField($booking['notes'] ?? null, 'Timeline'), (string)($booking['created_at'] ?? $assignedAt), $currentLifecycle);
+    $timeline = serviceAppendTimelineEntry($timeline, $newJobStatus === 'open' ? 'assignment_reopened' : 'vendor_assigned', $nextLifecycle, 'admin', 'admin_assignment', trim((string)($input['assignment_notes'] ?? '')), false);
     $nextNotes = serviceAppendNoteField($booking['notes'] ?? null, 'Lifecycle state', $nextLifecycle);
-    $nextNotes = serviceAppendNoteField($nextNotes, 'Assignment state', $newJobStatus === 'open' ? ($bookingMode === 'inspection' ? 'inspection_unassigned' : 'unassigned_searching') : ($bookingMode === 'inspection' ? 'inspection_assigned' : 'worker_assigned'));
+    $nextAssignment = serviceCanonicalAssignment($newJobStatus === 'open' ? 'unassigned' : 'assigned', $nextLifecycle);
+    $nextNotes = serviceAppendNoteField($nextNotes, 'Assignment state', $nextAssignment);
     $nextNotes = serviceAppendNoteField($nextNotes, 'Assignment metadata', json_encode($assignmentMetadata, JSON_UNESCAPED_SLASHES));
     $nextNotes = serviceAppendNoteField($nextNotes, 'Vendor execution metadata', json_encode($vendorExecutionMetadata, JSON_UNESCAPED_SLASHES));
     $nextNotes = serviceAppendNoteField($nextNotes, 'Timeline', json_encode($timeline, JSON_UNESCAPED_SLASHES));
@@ -1466,6 +1663,10 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/assign$#', 
     if (serviceTableHasColumn($db, 'bookings', 'updated_at')) {
         $bookingUpdates[] = 'updated_at = NOW()';
     }
+    if (serviceTableHasColumn($db, 'bookings', 'lifecycle_state')) { $bookingUpdates[] = 'lifecycle_state = :lifecycle_state'; $bookingBind[':lifecycle_state'] = $nextLifecycle; }
+    if (serviceTableHasColumn($db, 'bookings', 'assignment_state')) { $bookingUpdates[] = 'assignment_state = :assignment_state'; $bookingBind[':assignment_state'] = $nextAssignment; }
+    if (serviceTableHasColumn($db, 'bookings', 'vendor_response_status')) { $bookingUpdates[] = 'vendor_response_status = :vendor_response_status'; $bookingBind[':vendor_response_status'] = $vendorExecutionMetadata['vendor_response_status']; }
+    if (serviceTableHasColumn($db, 'bookings', 'operational_timeline')) { $bookingUpdates[] = 'operational_timeline = :operational_timeline'; $bookingBind[':operational_timeline'] = json_encode($timeline, JSON_UNESCAPED_SLASHES); }
 
     try {
         $db->beginTransaction();
@@ -1561,21 +1762,27 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
         $bookingForNotes = null;
         $nextBookingNotes = null;
         if ($jobRow['booking_id']) {
-            $notesStmt = $db->prepare("SELECT id, booking_mode, notes, created_at FROM bookings WHERE id = ? LIMIT 1");
+            $notesStmt = $db->prepare("SELECT * FROM bookings WHERE id = ? LIMIT 1");
             $notesStmt->execute([(int)$jobRow['booking_id']]);
             $bookingForNotes = $notesStmt->fetch(PDO::FETCH_ASSOC);
             if ($bookingForNotes) {
                 $mode = $bookingForNotes['booking_mode'] ?: serviceModeFromNotes($bookingForNotes['notes'] ?? null);
-                $fromLifecycle = serviceNoteField($bookingForNotes['notes'] ?? null, 'Lifecycle state') ?: 'worker_assigned';
-                $toLifecycle = $mode === 'inspection' ? 'inspection_queued' : 'searching_worker';
+                $fromLifecycle = serviceCanonicalLifecycle((string)($bookingForNotes['lifecycle_state'] ?? serviceNoteField($bookingForNotes['notes'] ?? null, 'Lifecycle state') ?: 'assigned'), $mode);
+                $toLifecycle = 'requeued';
                 if (!serviceCanTransitionLifecycle($mode, $fromLifecycle, $toLifecycle)) {
                     Response::validation('Invalid lifecycle transition from ' . $fromLifecycle . ' to ' . $toLifecycle);
                 }
-                $timeline = serviceNormalizeTimeline(serviceJsonField($bookingForNotes['notes'] ?? null, 'Timeline'), (string)($bookingForNotes['created_at'] ?? gmdate('c')), $fromLifecycle);
-                $timeline[] = ['event' => 'vendor_rejected', 'state' => $toLifecycle, 'at' => gmdate('c'), 'actor' => 'vendor', 'source' => 'vendor_update', 'visible_to_customer' => false, 'notes' => trim((string)($input['notes'] ?? ''))];
+                $storedTimeline = [];
+                if (!empty($bookingForNotes['operational_timeline'])) {
+                    $decodedTimeline = json_decode((string)$bookingForNotes['operational_timeline'], true);
+                    if (is_array($decodedTimeline)) $storedTimeline = $decodedTimeline;
+                }
+                $timeline = serviceNormalizeTimeline($storedTimeline ?: serviceJsonField($bookingForNotes['notes'] ?? null, 'Timeline'), (string)($bookingForNotes['created_at'] ?? gmdate('c')), $fromLifecycle);
+                $timeline = serviceAppendTimelineEntry($timeline, 'vendor_rejected', $toLifecycle, 'vendor', 'vendor_update', trim((string)($input['notes'] ?? '')), false);
                 $nextBookingNotes = serviceAppendNoteField($bookingForNotes['notes'] ?? null, 'Lifecycle state', $toLifecycle);
-                $nextBookingNotes = serviceAppendNoteField($nextBookingNotes, 'Assignment state', $mode === 'inspection' ? 'inspection_unassigned' : 'unassigned_searching');
-                $nextBookingNotes = serviceAppendNoteField($nextBookingNotes, 'Assignment metadata', json_encode(serviceDefaultAssignmentMetadata(['assignment_notes' => 'Returned to admin queue after vendor rejection']), JSON_UNESCAPED_SLASHES));
+                $nextBookingNotes = serviceAppendNoteField($nextBookingNotes, 'Assignment state', 'unassigned');
+                $nextBookingNotes = serviceAppendNoteField($nextBookingNotes, 'Assignment metadata', json_encode(serviceDefaultAssignmentMetadata(['vendor_response_status' => 'vendor_rejected', 'assignment_notes' => 'Returned to admin queue after vendor rejection']), JSON_UNESCAPED_SLASHES));
+                $nextBookingNotes = serviceAppendNoteField($nextBookingNotes, 'Vendor execution metadata', json_encode(serviceDefaultVendorExecutionMetadata(['vendor_response_status' => 'vendor_rejected', 'reassignment_required' => true, 'reassignment_reason' => trim((string)($input['notes'] ?? 'Vendor rejected'))]), JSON_UNESCAPED_SLASHES));
                 $nextBookingNotes = serviceAppendNoteField($nextBookingNotes, 'Timeline', json_encode($timeline, JSON_UNESCAPED_SLASHES));
             }
         }
@@ -1605,6 +1812,10 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
                     $bookingUpdates[] = 'notes = :notes';
                     $bookingBind[':notes'] = $nextBookingNotes;
                 }
+                if (serviceTableHasColumn($db, 'bookings', 'lifecycle_state')) { $bookingUpdates[] = 'lifecycle_state = :lifecycle_state'; $bookingBind[':lifecycle_state'] = 'requeued'; }
+                if (serviceTableHasColumn($db, 'bookings', 'assignment_state')) { $bookingUpdates[] = 'assignment_state = :assignment_state'; $bookingBind[':assignment_state'] = 'unassigned'; }
+                if (serviceTableHasColumn($db, 'bookings', 'vendor_response_status')) { $bookingUpdates[] = 'vendor_response_status = :vendor_response_status'; $bookingBind[':vendor_response_status'] = 'vendor_rejected'; }
+                if (serviceTableHasColumn($db, 'bookings', 'operational_timeline') && isset($timeline)) { $bookingUpdates[] = 'operational_timeline = :operational_timeline'; $bookingBind[':operational_timeline'] = json_encode($timeline, JSON_UNESCAPED_SLASHES); }
                 $db->prepare("UPDATE bookings SET " . implode(', ', $bookingUpdates) . " WHERE id = :id")
                    ->execute($bookingBind);
             }
@@ -1618,7 +1829,7 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
         Response::success([
             'message' => 'Job rejected and returned to admin queue for reassignment',
             'job_id'  => $jobId,
-            'status'  => 'pending',
+            'status'  => 'requeued',
             'job_status' => 'open',
             'vendor_id' => null,
             'vendor_route' => 'admin_queue',
@@ -1653,6 +1864,38 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
         if ($bookingStatus && $jobRow['booking_id']) {
             $bookingUpdates = ['status = :status'];
             $bookingBind = [':status' => $bookingStatus, ':id' => (int)$jobRow['booking_id']];
+            $bookingForTimeline = null;
+            $bookingTimeline = [];
+            $timelineLifecycle = match ($newStatus) {
+                'assigned' => $rawStatus === 'confirmed' || $rawStatus === 'accepted' || $rawStatus === 'accept' ? 'vendor_accepted' : 'assigned',
+                'in_progress' => 'in_progress',
+                'completed' => 'completed',
+                'cancelled' => 'cancelled',
+                default => 'pending',
+            };
+            $timelineEvent = match ($timelineLifecycle) {
+                'vendor_accepted' => 'vendor_accepted',
+                'in_progress' => 'in_progress',
+                'completed' => 'completed',
+                'cancelled' => 'cancelled',
+                default => 'update',
+            };
+            $btStmt = $db->prepare("SELECT * FROM bookings WHERE id = ? LIMIT 1");
+            $btStmt->execute([(int)$jobRow['booking_id']]);
+            $bookingForTimeline = $btStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            if ($bookingForTimeline) {
+                $storedTimeline = [];
+                if (!empty($bookingForTimeline['operational_timeline'])) {
+                    $decodedTimeline = json_decode((string)$bookingForTimeline['operational_timeline'], true);
+                    if (is_array($decodedTimeline)) $storedTimeline = $decodedTimeline;
+                }
+                $bookingTimeline = serviceNormalizeTimeline($storedTimeline ?: serviceJsonField($bookingForTimeline['notes'] ?? null, 'Timeline'), (string)($bookingForTimeline['created_at'] ?? gmdate('c')), serviceCanonicalLifecycle((string)($bookingForTimeline['lifecycle_state'] ?? 'pending')));
+                $bookingTimeline = serviceAppendTimelineEntry($bookingTimeline, $timelineEvent, $timelineLifecycle, $auth['role'] === ROLE_VENDOR_SERVICE ? 'vendor' : 'admin', 'job_status', trim((string)($input['notes'] ?? '')), $timelineLifecycle !== 'cancelled');
+                $nextBookingNotes = serviceAppendNoteField($bookingForTimeline['notes'] ?? null, 'Lifecycle state', $timelineLifecycle);
+                $nextBookingNotes = serviceAppendNoteField($nextBookingNotes, 'Timeline', json_encode($bookingTimeline, JSON_UNESCAPED_SLASHES));
+                $bookingUpdates[] = 'notes = :notes';
+                $bookingBind[':notes'] = $nextBookingNotes;
+            }
             if (!empty($jobRow['vendor_id'])) {
                 $bookingUpdates[] = 'vendor_id = :vendor_id';
                 $bookingBind[':vendor_id'] = (int)$jobRow['vendor_id'];
@@ -1660,6 +1903,10 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
             if (serviceTableHasColumn($db, 'bookings', 'updated_at')) {
                 $bookingUpdates[] = 'updated_at = NOW()';
             }
+            if (serviceTableHasColumn($db, 'bookings', 'lifecycle_state')) { $bookingUpdates[] = 'lifecycle_state = :lifecycle_state'; $bookingBind[':lifecycle_state'] = $timelineLifecycle; }
+            if (serviceTableHasColumn($db, 'bookings', 'assignment_state')) { $bookingUpdates[] = 'assignment_state = :assignment_state'; $bookingBind[':assignment_state'] = serviceCanonicalAssignment('', $timelineLifecycle); }
+            if (serviceTableHasColumn($db, 'bookings', 'vendor_response_status') && $timelineLifecycle === 'vendor_accepted') { $bookingUpdates[] = 'vendor_response_status = :vendor_response_status'; $bookingBind[':vendor_response_status'] = 'vendor_accepted'; }
+            if (serviceTableHasColumn($db, 'bookings', 'operational_timeline') && $bookingTimeline) { $bookingUpdates[] = 'operational_timeline = :operational_timeline'; $bookingBind[':operational_timeline'] = json_encode($bookingTimeline, JSON_UNESCAPED_SLASHES); }
             $db->prepare("UPDATE bookings SET " . implode(', ', $bookingUpdates) . " WHERE id = :id")
                ->execute($bookingBind);
         }

@@ -15,6 +15,16 @@ const CONFIG = {
   MAX_PAGE_SIZE: 100,
   ENABLE_REAL_TIME_LOGS: true,
   ENABLE_EXPORT_CSV: true,
+  PILOT_CONTROLS: {
+    pilot_mode: true,
+    enabled_cities: ["Haldwani"],
+    enabled_categories: ["electrician", "plumber", "painting", "waterproofing", "cctv"],
+    inspection_required_categories: ["painting", "waterproofing", "cctv"],
+    disable_fake_networks: true,
+    disable_proof_tiles: true,
+    disable_material_actions: true,
+    disable_service_status_toggle: true,
+  },
   LOG_POLL_INTERVAL: 10000,
   DASHBOARD_REFRESH: 30000,
   ENDPOINTS: {
