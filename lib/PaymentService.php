@@ -479,12 +479,28 @@ class PaymentService
 
     private function syncPaidBookingPropagation(int $bookingId): void
     {
-        $bookingStmt = $this->db->prepare('SELECT id, vendor_id, status FROM bookings WHERE id = :id LIMIT 1 FOR UPDATE');
+        $bookingStmt = $this->db->prepare('SELECT id, vendor_id, status, notes FROM bookings WHERE id = :id LIMIT 1 FOR UPDATE');
         $bookingStmt->execute([':id' => $bookingId]);
         $booking = $bookingStmt->fetch(PDO::FETCH_ASSOC);
         if (!$booking) {
             return;
         }
+
+        $sets = ["status = CASE WHEN status IN ('cancelled','completed','in_progress') THEN status ELSE 'pending' END"];
+        $bind = [':id' => $bookingId];
+        if ($this->tableHasColumn('bookings', 'lifecycle_state')) {
+            $sets[] = "lifecycle_state = 'inspection_paid'";
+        }
+        if ($this->tableHasColumn('bookings', 'assignment_state')) {
+            $sets[] = "assignment_state = CASE WHEN vendor_id IS NULL THEN 'unassigned' ELSE 'assigned' END";
+        }
+        if ($this->tableHasColumn('bookings', 'vendor_response_status')) {
+            $sets[] = "vendor_response_status = CASE WHEN vendor_id IS NULL THEN 'not_requested' ELSE 'awaiting_vendor_response' END";
+        }
+        if ($this->tableHasColumn('bookings', 'updated_at')) {
+            $sets[] = 'updated_at = NOW()';
+        }
+        $this->db->prepare('UPDATE bookings SET ' . implode(', ', $sets) . ' WHERE id = :id')->execute($bind);
 
         $jobStmt = $this->db->prepare('SELECT id, status FROM jobs WHERE booking_id = :booking_id LIMIT 1 FOR UPDATE');
         $jobStmt->execute([':booking_id' => $bookingId]);
@@ -494,6 +510,19 @@ class PaymentService
             $this->db->prepare("UPDATE jobs SET status = 'assigned', vendor_id = :vendor_id, assignment_lock_time = NULL, updated_at = NOW() WHERE id = :id")
                 ->execute([':vendor_id' => (int)$booking['vendor_id'], ':id' => (int)$job['id']]);
         }
+    }
+
+    private function tableHasColumn(string $table, string $column): bool
+    {
+        static $cache = [];
+        $key = $table . '.' . $column;
+        if (array_key_exists($key, $cache)) return $cache[$key];
+        $stmt = $this->db->prepare(
+            'SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?'
+        );
+        $stmt->execute([$table, $column]);
+        $cache[$key] = ((int)$stmt->fetchColumn()) > 0;
+        return $cache[$key];
     }
 
     // ─────────────────────────────────────────────────────────────────────────

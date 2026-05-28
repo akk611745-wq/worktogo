@@ -2336,9 +2336,21 @@ function _initialAssignmentState(mode = "") {
 }
 
 function _clientRequestId(mode = "", category = "") {
+  const context = `${_slug(mode || "request")}:${_slug(category || "service")}`;
+  try {
+    const raw = sessionStorage.getItem("wtg_active_client_request") || localStorage.getItem("wtg_active_client_request");
+    const saved = raw ? JSON.parse(raw) : null;
+    if (saved?.id && saved.context === context && Date.now() - Number(saved.ts || 0) < 30 * 60 * 1000) return saved.id;
+  } catch {}
   const stamp = Date.now().toString(36);
   const rand = Math.random().toString(36).slice(2, 7);
-  return `wtg-${_slug(mode || "request")}-${_slug(category || "service")}-${stamp}-${rand}`;
+  const id = `wtg-${_slug(mode || "request")}-${_slug(category || "service")}-${stamp}-${rand}`;
+  try {
+    const record = JSON.stringify({ id, context, ts: Date.now() });
+    sessionStorage.setItem("wtg_active_client_request", record);
+    localStorage.setItem("wtg_active_client_request", record);
+  } catch {}
+  return id;
 }
 
 function _deriveRequestPriority({ bookingMode = "", category = {}, issueList = [], notes = "" } = {}) {
@@ -2528,7 +2540,11 @@ function _persistPendingBookingForm() {
 }
 
 function _clearPendingBookingForm() {
-  try { sessionStorage.removeItem("wtg_pending_booking_form"); } catch {}
+  try {
+    sessionStorage.removeItem("wtg_pending_booking_form");
+    sessionStorage.removeItem("wtg_active_client_request");
+    localStorage.removeItem("wtg_active_client_request");
+  } catch {}
 }
 
 function _clearPendingBookingIntent() {

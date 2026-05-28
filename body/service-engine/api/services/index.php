@@ -36,8 +36,9 @@ if (defined('HEART_INTERNAL_INC')) {
  */
 function resolveVendorId(PDO $db, int $userId): int
 {
+    $deletedFilter = serviceTableHasColumn($db, 'vendors', 'deleted_at') ? 'AND deleted_at IS NULL' : "AND status != 'rejected'";
     $stmt = $db->prepare(
-        "SELECT id FROM vendors WHERE user_id = ? AND deleted_at IS NULL LIMIT 1"
+        "SELECT id FROM vendors WHERE user_id = ? {$deletedFilter} LIMIT 1"
     );
     $stmt->execute([$userId]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1571,8 +1572,8 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/assign$#', 
         default => null,
     };
 
-    if ($vendorId <= 0) Response::validation('vendor_id is required');
     if (!$newJobStatus) Response::validation('status must be assigned or open');
+    if ($newJobStatus !== 'open' && $vendorId <= 0) Response::validation('vendor_id is required');
 
     $bookingStmt = $db->prepare(
         "SELECT b.*, s.name AS service_name
@@ -1601,21 +1602,25 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/assign$#', 
         Response::validation('Invalid lifecycle transition from ' . $currentLifecycle . ' to ' . $nextLifecycle);
     }
 
-    $typeColumn = ServiceVendorEligibility::vendorTypeColumn($db);
-    $vendorStmt = $db->prepare(
-        "SELECT " . ServiceVendorEligibility::buildVendorSelect($db, 'v') . "
-         FROM vendors v
-         WHERE v.id = ? AND v.status = 'active' AND v.{$typeColumn} = 'service'
-         LIMIT 1"
-    );
-    $vendorStmt->execute([$vendorId]);
-    $vendor = $vendorStmt->fetch(PDO::FETCH_ASSOC);
-    if (!$vendor) Response::validation('Active service vendor not found');
+    $vendor = null;
+    $eligibility = ['assignable' => true, 'reasons' => [], 'requeue' => $newJobStatus === 'open'];
+    if ($newJobStatus !== 'open') {
+        $typeColumn = ServiceVendorEligibility::vendorTypeColumn($db);
+        $vendorStmt = $db->prepare(
+            "SELECT " . ServiceVendorEligibility::buildVendorSelect($db, 'v') . "
+             FROM vendors v
+             WHERE v.id = ? AND v.status = 'active' AND v.{$typeColumn} = 'service'
+             LIMIT 1"
+        );
+        $vendorStmt->execute([$vendorId]);
+        $vendor = $vendorStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$vendor) Response::validation('Active service vendor not found');
 
-    $availability = ServiceVendorEligibility::availabilityFor($db, $vendorId, $booking['scheduled_at'] ?? null, $bookingId);
-    $eligibility = ServiceVendorEligibility::evaluate($vendor, $booking, $availability);
-    if (!$eligibility['assignable']) {
-        Response::validation('Vendor is not operationally eligible: ' . implode('; ', $eligibility['reasons']), ['eligibility' => $eligibility]);
+        $availability = ServiceVendorEligibility::availabilityFor($db, $vendorId, $booking['scheduled_at'] ?? null, $bookingId);
+        $eligibility = ServiceVendorEligibility::evaluate($vendor, $booking, $availability);
+        if (!$eligibility['assignable']) {
+            Response::validation('Vendor is not operationally eligible: ' . implode('; ', $eligibility['reasons']), ['eligibility' => $eligibility]);
+        }
     }
 
     $jobStmt = $db->prepare("SELECT * FROM jobs WHERE booking_id = ? LIMIT 1");
@@ -1715,7 +1720,7 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/assign$#', 
         'booking_id' => $bookingId,
         'job_id' => $jobId,
         'vendor_id' => $effectiveVendorId,
-        'vendor_name' => $vendor['business_name'],
+        'vendor_name' => $vendor['business_name'] ?? null,
         'status' => $bookingStatus,
         'job_status' => normalizeServiceJobStatus($newJobStatus),
         'vendor_route' => $effectiveRoute,
