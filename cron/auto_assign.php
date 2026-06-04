@@ -63,7 +63,8 @@ try {
         SELECT 'job' as type, j.id, j.status, j.user_id
         FROM jobs j
         LEFT JOIN bookings b ON j.booking_id = b.id
-        WHERE j.status IN ('open', 'pending') 
+        WHERE j.status IN ('open', 'pending')
+          AND j.booking_id IS NULL
           AND j.assignment_lock_time IS NULL
           AND (b.id IS NULL OR b.payment_method = 'cod' OR b.payment_status = 'paid')
         FOR UPDATE SKIP LOCKED
@@ -76,6 +77,15 @@ try {
           AND (payment_method = 'cod' OR payment_status = 'paid')
         FOR UPDATE SKIP LOCKED
     ")->fetchAll(PDO::FETCH_ASSOC);
+
+    // Resolve vendor type column name (handles vendor_type → type rename migration)
+    $vendorTypeColCheck = $db->query(
+        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'vendors'
+           AND COLUMN_NAME = 'type'"
+    );
+    $vendorTypeCol = ((int)$vendorTypeColCheck->fetchColumn() > 0) ? 'type' : 'vendor_type';
 
     foreach ($entitiesToAssign as $entity) {
         $type = $entity['type'];
@@ -131,21 +141,23 @@ try {
             }
         }
 
-        // Fetch nearest online vendor
+        // Fetch nearest online vendor of the matching type
+        $requiredVendorType = ($type === 'job') ? 'service' : 'shopping';
         $stmt = $db->prepare("
-            SELECT v.id, 
+            SELECT v.id,
             (6371 * acos(cos(radians(?)) * cos(radians(v.lat))
             * cos(radians(v.lng) - radians(?))
             + sin(radians(?)) * sin(radians(v.lat)))) AS distance
             FROM vendors v
             WHERE v.is_online = 1 AND v.status = 'active'
+              AND v.{$vendorTypeCol} = ?
               AND v.id NOT IN (
-                  SELECT vendor_id FROM auto_assignments 
+                  SELECT vendor_id FROM auto_assignments
                   WHERE entity_type = ? AND entity_id = ?
               )
             ORDER BY distance ASC LIMIT 1
         ");
-        $stmt->execute([$entityLat, $entityLng, $entityLat, $type, $id]);
+        $stmt->execute([$entityLat, $entityLng, $entityLat, $requiredVendorType, $type, $id]);
         $nextVendor = $stmt->fetchColumn();
 
         if ($nextVendor) {
