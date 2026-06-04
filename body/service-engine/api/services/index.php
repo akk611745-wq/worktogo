@@ -829,11 +829,12 @@ if ($method === 'GET' && $uri === '/api/services') {
     $categorySelect = serviceTableHasColumn($db, 'categories', 'icon') ? ', c.icon AS category_icon' : ", NULL AS category_icon";
     $categorySelect .= serviceTableHasColumn($db, 'categories', 'image_url') ? ', c.image_url AS category_image' : ", NULL AS category_image";
 
+    $svcDeletedAt = serviceTableHasColumn($db, 'services', 'deleted_at') ? 'AND s.deleted_at IS NULL' : '';
     $sql  = "SELECT s.*, v.business_name AS vendor_name, c.name AS category_name, c.slug AS category_slug {$categorySelect}
              FROM services s
              LEFT JOIN vendors v ON v.id = s.vendor_id
              LEFT JOIN categories c ON c.id = s.category_id
-             WHERE s.status = 'active' AND s.deleted_at IS NULL";
+             WHERE s.status = 'active' {$svcDeletedAt}";
     $bind = [];
 
     if ($category) {
@@ -922,13 +923,14 @@ if ($method === 'POST' && $uri === '/api/services') {
 
 // ── GET /api/services/{id} ────────────────────────────────────────────────────
 if ($method === 'GET' && preg_match('#^/api/services/(\d+)$#', $uri, $m)) {
+    $svcDeletedAt = serviceTableHasColumn($db, 'services', 'deleted_at') ? 'AND s.deleted_at IS NULL' : '';
     $stmt = $db->prepare(
         "SELECT s.*, v.business_name AS vendor_name, v.logo_url AS vendor_logo,
                 c.name AS category_name
          FROM services s
          LEFT JOIN vendors v ON v.id = s.vendor_id
          LEFT JOIN categories c ON c.id = s.category_id
-         WHERE s.id = ? AND s.status = 'active' AND s.deleted_at IS NULL
+         WHERE s.id = ? AND s.status = 'active' {$svcDeletedAt}
          LIMIT 1"
     );
     $stmt->execute([(int)$m[1]]);
@@ -948,7 +950,8 @@ if ($method === 'PUT' && preg_match('#^/api/services/(\d+)$#', $uri, $m)) {
     $vendorId = resolveVendorId($db, (int)$auth['user_id']);
     $serviceId = (int)$m[1];
 
-    $stmt = $db->prepare("SELECT id FROM services WHERE id = ? AND vendor_id = ? AND deleted_at IS NULL LIMIT 1");
+    $svcDeletedAt = serviceTableHasColumn($db, 'services', 'deleted_at') ? 'AND deleted_at IS NULL' : '';
+    $stmt = $db->prepare("SELECT id FROM services WHERE id = ? AND vendor_id = ? {$svcDeletedAt} LIMIT 1");
     $stmt->execute([$serviceId, $vendorId]);
     if (!$stmt->fetch()) {
         Response::notFound('Service not found or you do not have permission to edit it');
@@ -999,13 +1002,18 @@ if ($method === 'DELETE' && preg_match('#^/api/services/(\d+)$#', $uri, $m)) {
     $vendorId = resolveVendorId($db, (int)$auth['user_id']);
     $serviceId = (int)$m[1];
 
-    $stmt = $db->prepare("SELECT id FROM services WHERE id = ? AND vendor_id = ? AND deleted_at IS NULL LIMIT 1");
+    $svcDeletedAt = serviceTableHasColumn($db, 'services', 'deleted_at') ? 'AND deleted_at IS NULL' : '';
+    $stmt = $db->prepare("SELECT id FROM services WHERE id = ? AND vendor_id = ? {$svcDeletedAt} LIMIT 1");
     $stmt->execute([$serviceId, $vendorId]);
     if (!$stmt->fetch()) {
         Response::notFound('Service not found or you do not have permission to delete it');
     }
 
-    $db->prepare("UPDATE services SET deleted_at = NOW(), updated_at = NOW() WHERE id = ?")->execute([$serviceId]);
+    if (serviceTableHasColumn($db, 'services', 'deleted_at')) {
+        $db->prepare("UPDATE services SET deleted_at = NOW(), updated_at = NOW() WHERE id = ?")->execute([$serviceId]);
+    } else {
+        $db->prepare("UPDATE services SET status = 'inactive' WHERE id = ?")->execute([$serviceId]);
+    }
 
     Response::success(['message' => 'Service deleted successfully']);
 }
