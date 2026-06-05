@@ -71,20 +71,24 @@ try {
         $finance['total_refunds_today']     = (float)($finance['total_refunds_today'] ?? 0);
 
         // --- DRIVER STATUS ---
-        // FIX: When no active drivers exist the JOIN returns zero rows, so fetch()
-        //      returns false — not an array row of NULLs.  Guard with ?: [] so the
-        //      subsequent array-key accesses never run on a boolean.
-        $stmt = $db->prepare("
-            SELECT
-                COUNT(u.id) as total_drivers_active,
-                SUM(CASE WHEN dw.cash_in_hand >= dw.collection_limit THEN 1 ELSE 0 END) as drivers_blocked,
-                SUM(dw.cash_in_hand) as total_cash_in_hand
-            FROM users u
-            JOIN driver_wallets dw ON u.id = dw.driver_id
-            WHERE u.role = 'delivery' AND u.status = 'active'
-        ");
-        $stmt->execute();
-        $driver_stats = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        // Guard: driver_wallets table is absent on service-only pilot databases.
+        // Absence causes a PDOException that would otherwise propagate to the outer
+        // catch and return 500 for the entire dashboard request.
+        try {
+            $stmt = $db->prepare("
+                SELECT
+                    COUNT(u.id) as total_drivers_active,
+                    SUM(CASE WHEN dw.cash_in_hand >= dw.collection_limit THEN 1 ELSE 0 END) as drivers_blocked,
+                    SUM(dw.cash_in_hand) as total_cash_in_hand
+                FROM users u
+                JOIN driver_wallets dw ON u.id = dw.driver_id
+                WHERE u.role = 'delivery' AND u.status = 'active'
+            ");
+            $stmt->execute();
+            $driver_stats = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        } catch (PDOException $e) {
+            $driver_stats = [];
+        }
 
         $driver_stats['total_drivers_active'] = (int)($driver_stats['total_drivers_active'] ?? 0);
         $driver_stats['drivers_blocked']      = (int)($driver_stats['drivers_blocked'] ?? 0);
