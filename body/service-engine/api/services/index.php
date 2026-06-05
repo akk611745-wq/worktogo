@@ -1,17 +1,17 @@
-<?php
+﻿<?php
 /**
- * WorkToGo — Services & Bookings Module
+ * WorkToGo â€” Services & Bookings Module
  *
- * GET    /api/services                → list active services
- * GET    /api/services/{id}           → service detail
- * POST   /api/service/request         → create booking (+ auto-creates job)
- * GET    /api/service/bookings        → list bookings (scoped by role)
- * GET    /api/service/bookings/{id}   → booking detail with linked job
- * PATCH  /api/service/bookings/{id}/assign → admin assign/reassign vendor
- * PATCH  /api/jobs/{id}/status        → update job status (vendor/admin)
+ * GET    /api/services                â†’ list active services
+ * GET    /api/services/{id}           â†’ service detail
+ * POST   /api/service/request         â†’ create booking (+ auto-creates job)
+ * GET    /api/service/bookings        â†’ list bookings (scoped by role)
+ * GET    /api/service/bookings/{id}   â†’ booking detail with linked job
+ * PATCH  /api/service/bookings/{id}/assign â†’ admin assign/reassign vendor
+ * PATCH  /api/jobs/{id}/status        â†’ update job status (vendor/admin)
  */
 
-// ── Centralized Boot ──────────────────────────────────────────
+// â”€â”€ Centralized Boot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Incorrect path: dirname(dirname(dirname(__DIR__))) . '/core/...' -> body/core/...
 // Corrected path: dirname(dirname(dirname(dirname(__DIR__)))) . '/core/...' -> /core/...
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Database.php';
@@ -23,7 +23,8 @@ require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/heart/middleware/Au
 $db = getDB();
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-$uri    = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
+$uri = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
+if (str_starts_with($uri, '/heart')) { $uri = substr($uri, 6) ?: '/' ; }
 
 // Handle internal Heart calls
 if (defined('HEART_INTERNAL_INC')) {
@@ -816,7 +817,7 @@ function serviceBookingEligibility(PDO $db, array $booking): array
     ];
 }
 
-// ── GET /api/services ──────────────────────────────────────────────────────────
+// â”€â”€ GET /api/services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method === 'GET' && $uri === '/api/services') {
     header('Cache-Control: no-store, max-age=0');
     $category = $_GET['category'] ?? null;
@@ -855,7 +856,7 @@ if ($method === 'GET' && $uri === '/api/services') {
             $categories[$slug] = [
                 'slug' => $slug,
                 'name' => $service['category_name'] ?? $slug,
-                'icon' => $service['category_icon'] ?: '🔧',
+                'icon' => $service['category_icon'] ?: 'ðŸ”§',
                 'image' => $service['category_image'] ?? null,
             ];
         }
@@ -869,7 +870,7 @@ if ($method === 'GET' && $uri === '/api/services') {
     ]);
 }
 
-// ── GET /api/service/categories ───────────────────────────────────────────────
+// â”€â”€ GET /api/service/categories â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method === 'GET' && $uri === '/api/service/categories') {
     header('Cache-Control: no-store, max-age=0');
     $iconSelect = serviceTableHasColumn($db, 'categories', 'icon') ? 'icon' : "NULL AS icon";
@@ -879,7 +880,7 @@ if ($method === 'GET' && $uri === '/api/service/categories') {
     Response::success(['categories' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
 }
 
-// ── POST /api/services ─────────────────────────────────────────────────────────
+// â”€â”€ POST /api/services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method === 'POST' && $uri === '/api/services') {
     $auth  = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE);
     $input = defined('HEART_INTERNAL_INC') 
@@ -921,7 +922,7 @@ if ($method === 'POST' && $uri === '/api/services') {
     Response::success(['service' => $service], 201);
 }
 
-// ── GET /api/services/{id} ────────────────────────────────────────────────────
+// â”€â”€ GET /api/services/{id} â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method === 'GET' && preg_match('#^/api/services/(\d+)$#', $uri, $m)) {
     $svcDeletedAt = serviceTableHasColumn($db, 'services', 'deleted_at') ? 'AND s.deleted_at IS NULL' : '';
     $stmt = $db->prepare(
@@ -940,7 +941,7 @@ if ($method === 'GET' && preg_match('#^/api/services/(\d+)$#', $uri, $m)) {
     Response::success(['service' => $service]);
 }
 
-// ── PUT /api/services/{id} ────────────────────────────────────────────────────
+// â”€â”€ PUT /api/services/{id} â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method === 'PUT' && preg_match('#^/api/services/(\d+)$#', $uri, $m)) {
     $auth  = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE);
     $input = defined('HEART_INTERNAL_INC') 
@@ -996,7 +997,7 @@ if ($method === 'PUT' && preg_match('#^/api/services/(\d+)$#', $uri, $m)) {
     Response::success(['service' => $service]);
 }
 
-// ── DELETE /api/services/{id} ─────────────────────────────────────────────────
+// â”€â”€ DELETE /api/services/{id} â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method === 'DELETE' && preg_match('#^/api/services/(\d+)$#', $uri, $m)) {
     $auth  = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE);
     $vendorId = resolveVendorId($db, (int)$auth['user_id']);
@@ -1018,7 +1019,7 @@ if ($method === 'DELETE' && preg_match('#^/api/services/(\d+)$#', $uri, $m)) {
     Response::success(['message' => 'Service deleted successfully']);
 }
 
-// ── POST /api/service/request (create booking + auto-create job) ──────────────
+// â”€â”€ POST /api/service/request (create booking + auto-create job) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method === 'POST' && $uri === '/api/service/request') {
     $auth  = AuthMiddleware::require();
     if (defined('HEART_INTERNAL_INC')) {
@@ -1245,7 +1246,7 @@ if ($method === 'POST' && $uri === '/api/service/request') {
     ], 201);
 }
 
-// ── GET /api/service/bookings ─────────────────────────────────────────────────
+// â”€â”€ GET /api/service/bookings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method === 'GET' && $uri === '/api/service/bookings') {
     header('Cache-Control: no-store, max-age=0');
     $auth   = AuthMiddleware::require();
@@ -1260,7 +1261,7 @@ if ($method === 'GET' && $uri === '/api/service/bookings') {
         $where    = ['b.vendor_id = :vid'];
         $bind     = [':vid' => $vendorId];
     } else {
-        // Regular user — own bookings only
+        // Regular user â€” own bookings only
         $where = ['b.user_id = :uid'];
         $bind  = [':uid' => (int)$auth['user_id']];
     }
@@ -1330,8 +1331,8 @@ if ($method === 'GET' && $uri === '/api/service/bookings') {
     Response::success(['bookings' => $bookings, 'total' => count($bookings)]);
 }
 
-// ── GET /api/service/bookings/{id} ────────────────────────────────────────────
-// FIX: IDOR — enforce that only the owning user, the assigned vendor, or an admin
+// â”€â”€ GET /api/service/bookings/{id} â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// FIX: IDOR â€” enforce that only the owning user, the assigned vendor, or an admin
 //      can view a specific booking.
 if ($method === 'GET' && preg_match('#^/api/service/bookings/(\d+)$#', $uri, $m)) {
     $auth = AuthMiddleware::require();
@@ -1359,7 +1360,7 @@ if ($method === 'GET' && preg_match('#^/api/service/bookings/(\d+)$#', $uri, $m)
 
     // Ownership enforcement
     if ($auth['role'] === ROLE_ADMIN) {
-        // Admin may view any booking — no restriction
+        // Admin may view any booking â€” no restriction
     } elseif ($auth['role'] === ROLE_VENDOR_SERVICE) {
         $vendorId = resolveVendorId($db, (int)$auth['user_id']);
         if ((int)$booking['vendor_id'] !== $vendorId) {
@@ -1391,7 +1392,7 @@ if ($method === 'GET' && preg_match('#^/api/service/bookings/(\d+)$#', $uri, $m)
     Response::success(['booking' => $booking, 'job' => $job ?: null]);
 }
 
-// ── PATCH /api/service/bookings/{id}/ops ───────────────────────────────────────
+// â”€â”€ PATCH /api/service/bookings/{id}/ops â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Admin operational workflow actions. Persists canonical lifecycle metadata and
 // timeline continuity while preserving the existing notes compatibility path.
 if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/ops$#', $uri, $m)) {
@@ -1563,7 +1564,7 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/ops$#', $ur
     ], 200, 'Admin operation updated');
 }
 
-// ── PATCH /api/service/bookings/{id}/assign ───────────────────────────────────
+// â”€â”€ PATCH /api/service/bookings/{id}/assign â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Admin assignment control. Reuses bookings.vendor_id and jobs.vendor_id/status;
 // no parallel routing table is introduced.
 if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/assign$#', $uri, $m)) {
@@ -1736,7 +1737,7 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/assign$#', 
     ], 200, 'Booking assignment updated');
 }
 
-// ── PATCH /api/jobs/{id}/status ───────────────────────────────────────────────
+// â”€â”€ PATCH /api/jobs/{id}/status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // FIX: Vendor ownership validated via vendors table (not raw user_id comparison).
 if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
     $auth      = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_ADMIN);
@@ -1758,7 +1759,7 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
     $jobRow = $jobStmt->fetch(PDO::FETCH_ASSOC);
     if (!$jobRow) Response::notFound('Job');
 
-    // FIX: vendor ownership — compare against vendors.id, not users.id
+    // FIX: vendor ownership â€” compare against vendors.id, not users.id
     if ($auth['role'] === ROLE_VENDOR_SERVICE) {
         $vendorId = resolveVendorId($db, (int)$auth['user_id']);
         if ((int)$jobRow['vendor_id'] !== $vendorId) {

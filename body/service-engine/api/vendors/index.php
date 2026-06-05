@@ -1,14 +1,14 @@
-<?php
+﻿<?php
 /**
- * WorkToGo — Vendors Module
+ * WorkToGo â€” Vendors Module
  *
- * GET /api/vendors          → paginated list of active vendors
- * GET /api/vendors/{id}     → vendor detail
- * GET /api/vendor/jobs      → vendor's own jobs (vendor/admin JWT required)
- * GET /api/vendor/jobs/{id} → single job detail (ownership enforced)
+ * GET /api/vendors          â†’ paginated list of active vendors
+ * GET /api/vendors/{id}     â†’ vendor detail
+ * GET /api/vendor/jobs      â†’ vendor's own jobs (vendor/admin JWT required)
+ * GET /api/vendor/jobs/{id} â†’ single job detail (ownership enforced)
  */
 
-// ── Centralized Boot ──────────────────────────────────────────
+// â”€â”€ Centralized Boot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Incorrect path: dirname(dirname(dirname(__DIR__))) . '/core/...' -> body/core/...
 // Corrected path: dirname(dirname(dirname(dirname(__DIR__)))) . '/core/...' -> /core/...
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Database.php';
@@ -20,7 +20,8 @@ require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/heart/middleware/Au
 $db = getDB();
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-$uri    = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
+$uri = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
+if (str_starts_with($uri, '/heart')) { $uri = substr($uri, 6) ?: '/' ; }
 
 /**
  * Resolve the vendors.id for the authenticated user.
@@ -40,7 +41,7 @@ function resolveVendorId(PDO $db, int $userId): int
     return (int)$row['id'];
 }
 
-// ── POST /api/vendors ─────────────────────────────────────────────────────────
+// â”€â”€ POST /api/vendors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method === 'POST' && $uri === '/api/vendors') {
     $auth  = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_ADMIN, ROLE_CUSTOMER);
     $input = json_decode(file_get_contents('php://input'), true) ?? [];
@@ -112,7 +113,7 @@ if ($method === 'POST' && $uri === '/api/vendors') {
     }
 }
 
-// ── GET /api/vendors ──────────────────────────────────────────────────────────
+// â”€â”€ GET /api/vendors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method === 'GET' && $uri === '/api/vendors') {
     $type   = $_GET['type']   ?? null;
     $search = $_GET['search'] ?? null;
@@ -175,7 +176,7 @@ if ($method === 'GET' && $uri === '/api/vendors') {
     ]);
 }
 
-// ── GET /api/vendors/{id} ─────────────────────────────────────────────────────
+// â”€â”€ GET /api/vendors/{id} â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method === 'GET' && preg_match('#^/api/vendors/(\d+)$#', $uri, $m)) {
     // FIX: Only select columns that actually exist in the vendors table
     $stmt = $db->prepare(
@@ -197,7 +198,7 @@ if ($method === 'GET' && preg_match('#^/api/vendors/(\d+)$#', $uri, $m)) {
     Response::success(['vendor' => $vendor]);
 }
 
-// ── GET /api/vendor/jobs ──────────────────────────────────────────────────────
+// â”€â”€ GET /api/vendor/jobs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // FIX: vendor_id resolved from vendors table via JWT user_id (not used as raw vendor_id).
 if ($method === 'GET' && $uri === '/api/vendor/jobs') {
     $auth   = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_ADMIN);
@@ -236,7 +237,7 @@ if ($method === 'GET' && $uri === '/api/vendor/jobs') {
     Response::success(['jobs' => $jobs, 'total' => count($jobs)]);
 }
 
-// ── GET /api/vendor/jobs/{id} ─────────────────────────────────────────────────
+// â”€â”€ GET /api/vendor/jobs/{id} â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // FIX: ownership check uses resolved vendors.id, not raw JWT user_id.
 if ($method === 'GET' && preg_match('#^/api/vendor/jobs/(\d+)$#', $uri, $m)) {
     $auth  = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_ADMIN);

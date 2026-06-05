@@ -1,17 +1,17 @@
-<?php
+﻿<?php
 /**
  * ================================================================
- *  WorkToGo — HEART SYSTEM v1.2.0
+ *  WorkToGo â€” HEART SYSTEM v1.2.0
  *  Entry Point :: heart/index.php
  *
  *  PIPELINE:
- *  Request → [HEART] → Brain → Body → Response
+ *  Request â†’ [HEART] â†’ Brain â†’ Body â†’ Response
  * ================================================================
  */
 
 declare(strict_types=1);
 
-// ── 0. Global Error Handling ──────────────────────────────────
+// â”€â”€ 0. Global Error Handling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
 
@@ -59,7 +59,7 @@ define('HEART_ROOT',  __DIR__);
 define('SYSTEM_ROOT', dirname(__DIR__));
 define('HEART_START', microtime(true));
 
-// ── 1. Load environment ───────────────────────────────────────
+// â”€â”€ 1. Load environment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $envFile = SYSTEM_ROOT . '/.env';
 if (file_exists($envFile)) {
     foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
@@ -75,7 +75,7 @@ if (file_exists($envFile)) {
     }
 }
 
-// ── 2. Load Centralized Configurations ───────────────────────
+// â”€â”€ 2. Load Centralized Configurations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $appConfig = require_once __DIR__ . '/bootstrap.php';
 $config = [
     'app'      => $appConfig,
@@ -83,7 +83,7 @@ $config = [
     'engines'  => require_once SYSTEM_ROOT . '/config/engines.php',
 ];
 
-// ── 3. Load Shared Core Helpers ──────────────────────────────
+// â”€â”€ 3. Load Shared Core Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 require_once SYSTEM_ROOT . '/core/helpers/Logger.php';
 require_once SYSTEM_ROOT . '/core/helpers/Validator.php';
 require_once SYSTEM_ROOT . '/core/helpers/RateLimiter.php';
@@ -115,7 +115,7 @@ define('CACHE_TTL', [
     'track'   => 10,
 ]);
 
-// ── 4. Global Headers & Guards ───────────────────────────────
+// â”€â”€ 4. Global Headers & Guards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -126,7 +126,7 @@ if ($contentLength > 1_048_576) {   // 1 MB limit
     exit;
 }
 
-// ── 4. Standard REST Dispatcher (Non-Pipeline) ───────────────
+// â”€â”€ 4. Standard REST Dispatcher (Non-Pipeline) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $allowedOrigin = $_ENV['APP_URL'] ?? '';
 $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
 
@@ -223,7 +223,7 @@ if (str_starts_with($uri, '/api/cart')) {
 }
 
 // Services & Bookings API
-if (str_starts_with($uri, '/api/services') || $uri === '/api/service/request' || str_starts_with($uri, '/api/service/bookings') || str_starts_with($uri, '/api/jobs/')) {
+if (str_starts_with($uri, '/api/services') || str_starts_with($uri, '/api/service/') || str_starts_with($uri, '/api/jobs/')) {
     require_once SYSTEM_ROOT . '/body/service-engine/api/services/index.php';
     exit;
 }
@@ -393,7 +393,7 @@ if (str_starts_with($uri, '/api/vendor/story') || str_starts_with($uri, '/api/fe
     }
 }
 
-// ── 5. Heart Pipeline (POST only) ─────────────────────────────
+// â”€â”€ 5. Heart Pipeline (POST only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method !== 'POST') {
     Response::error('Method not allowed. Use POST for pipeline or valid GET for API.', 405);
 }
