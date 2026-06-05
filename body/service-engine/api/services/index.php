@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * WorkToGo â€” Services & Bookings Module
  *
