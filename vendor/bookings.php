@@ -317,7 +317,7 @@ function normalizeBooking(b) {
   return { ...b, status: normalizeStatus(b.status || b.job_status), amount: b.amount ?? b.total ?? b.price, payment_method: b.payment_method || 'cod' };
 }
 function _extractBookings(res) {
-  const block = res.blocks?.[0];
+  const block = res.data?.blocks?.[0];
   return block?.items || block?.bookings || block?.data?.bookings || [];
 }
 function escHtml(str) {
