@@ -112,7 +112,7 @@ async function loadServiceBookings() {
     if (q) params.q = q;
     if (status) params.status = status;
     const data = await API.get(CONFIG.ENDPOINTS.SERVICE_BOOKINGS, params);
-    serviceBookingsCache = (data.bookings || data.data || []).map(b => ({ ...b, status: normalizeServiceStatus(b.status || b.job_status), amount: b.amount ?? b.total ?? b.price }));
+    serviceBookingsCache = (data.data?.bookings || data.bookings || []).map(b => ({ ...b, status: normalizeServiceStatus(b.status || b.job_status), amount: b.amount ?? b.total ?? b.price }));
     renderServiceBookings(filterServiceBookings(serviceBookingsCache));
   } catch(e) {
     tableEmpty('service-bookings-tbody', 9, 'Failed to load service bookings: ' + (e.message || ''));
