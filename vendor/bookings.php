@@ -317,7 +317,8 @@ function normalizeBooking(b) {
   return { ...b, status: normalizeStatus(b.status || b.job_status), amount: b.amount ?? b.total ?? b.price, payment_method: b.payment_method || 'cod' };
 }
 function _extractBookings(res) {
-  return Array.isArray(res.data) ? res.data : (res.data?.bookings || res.data?.data || []);
+  const block = res.blocks?.[0];
+  return block?.items || block?.bookings || block?.data?.bookings || [];
 }
 function escHtml(str) {
   return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
