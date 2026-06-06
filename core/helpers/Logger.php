@@ -81,4 +81,9 @@ class Logger
     public static function warning($message, $context = []) {
         self::write(self::WARNING, $message, $context);
     }
+
+    public static function debug(string $message, array $context = []): void
+    {
+        self::write(self::DEBUG, $message, $context);
+    }
 }
