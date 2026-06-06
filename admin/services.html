@@ -33,7 +33,7 @@
             <select class="form-control" id="ops-payment" style="max-width:145px"><option value="">Payment</option><option value="free_request">Free</option><option value="paid_inspection">Inspection</option></select>
             <select class="form-control" id="ops-priority" style="max-width:145px"><option value="">Priority</option><option value="normal_priority">Normal</option><option value="high_priority">High</option></select>
             <select class="form-control" id="ops-assignment" style="max-width:165px"><option value="">Assignment</option><option value="unassigned_searching">Unassigned</option><option value="worker_contacted">Contacted</option><option value="worker_assigned">Assigned</option><option value="inspection_unassigned">Inspection unassigned</option><option value="inspection_assigned">Inspection assigned</option></select>
-            <select class="form-control" id="ops-lifecycle" style="max-width:165px"><option value="">Lifecycle</option><option value="request_received">Received</option><option value="searching_worker">Searching</option><option value="worker_assigned">Worker assigned</option><option value="service_in_progress">In progress</option><option value="payment_pending">Payment pending</option><option value="inspection_queued">Inspection queued</option><option value="inspection_assigned">Inspection assigned</option><option value="completed">Completed</option></select>
+            <select class="form-control" id="ops-lifecycle" style="max-width:165px"><option value="">Lifecycle</option><option value="pending">New / Pending</option><option value="request_received">Received</option><option value="searching_worker">Searching</option><option value="worker_assigned">Worker assigned</option><option value="service_in_progress">In progress</option><option value="payment_pending">Payment pending</option><option value="inspection_queued">Inspection queued</option><option value="inspection_assigned">Inspection assigned</option><option value="completed">Completed</option></select>
             <select class="form-control" id="booking-status" style="max-width:150px">
               <option value="">All Status</option><option value="pending">Pending</option><option value="confirmed">Confirmed</option><option value="in_progress">In Progress</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option>
             </select>
@@ -138,7 +138,9 @@ function filterServiceBookings(bookings) {
     if (filters.payment && String(view.payment_type || b.payment_route || keys.payment_route || '') !== filters.payment) return false;
     if (filters.priority && String(view.priority || b.priority || keys.priority || '') !== filters.priority) return false;
     if (filters.assignment && String(view.assignment_state || b.assignment_state || keys.assignment_state || '') !== filters.assignment) return false;
-    if (filters.lifecycle && String(view.lifecycle_state || b.lifecycle_state || keys.lifecycle_state || '') !== filters.lifecycle) return false;
+    const bookingLifecycle = view.lifecycle_state || b.lifecycle_state || b.status || '';
+    const normalised = bookingLifecycle === 'pending' ? 'pending' : bookingLifecycle;
+    if (filters.lifecycle && normalised !== filters.lifecycle) return false;
     return true;
   });
 }
@@ -320,8 +322,8 @@ async function loadServices(page = 1) {
 
   try {
     const data = await API.get(CONFIG.ENDPOINTS.SERVICES, params);
-    const services = data.services || data.data || [];
-    const total = data.total || services.length;
+    const services = data.data?.services || data.services || [];
+    const total = data.data?.total ?? data.total ?? services.length;
     totalPages = Math.ceil(total / CONFIG.DEFAULT_PAGE_SIZE);
     document.getElementById('service-count').textContent = `${total.toLocaleString()} total services`;
     renderServices(services);
