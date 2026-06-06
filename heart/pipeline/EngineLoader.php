@@ -115,7 +115,9 @@ class EngineLoader
             $_SERVER['HTTP_AUTHORIZATION'] = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
         }
 
-        $fullPath = SYSTEM_ROOT . '/' . ltrim($path, '/');
+        $fullPath = (str_starts_with($path, '/') || (strlen($path) > 1 && $path[1] === ':'))
+            ? $path
+            : SYSTEM_ROOT . '/' . ltrim($path, '/');
         
         // Ensure the path points to the index.php if it's a directory
         if (is_dir($fullPath)) {
