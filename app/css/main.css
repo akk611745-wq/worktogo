@@ -889,12 +889,14 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 .otp-inputs {
   display: flex;
   gap: var(--sp-sm);
-  justify-content: space-between;
+  justify-content: center;
   margin-bottom: var(--sp-md);
+  max-width: 320px;
 }
 
 .otp-digit {
-  flex: 1;
+  flex: 0 0 44px;
+  width: 44px;
   height: 52px;
   background: var(--clr-surface-2);
   border: 1.5px solid var(--clr-border);
@@ -977,7 +979,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
 }
 
 body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { transform: translateY(-110%); opacity: 0.02; pointer-events: none; }
-body.chrome-hidden:not(.modal-open):not(.explore-open) .bottom-nav { transform: translate(-50%, 110%); opacity: 0.02; pointer-events: none; }
+/* bottom-nav always visible — scroll-hide removed */
 
 .location-pill {
   display: inline-grid;

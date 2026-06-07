@@ -78,7 +78,7 @@ export async function render(container) {
           ${_categoryEcosystemHTML(_activeCategory)}
         </section>
 
-        <section class="local-proof-grid marketplace-proof-grid" id="trust-proof-section">
+        <section class="local-proof-grid marketplace-proof-grid" id="trust-proof-section" style="display:none">
           ${_trustProofHTML(_activeCategory)}
 
         </section>
@@ -1657,7 +1657,7 @@ function _serviceCardsHTML(slug = "") {
 }
 
 function _freeBookingStripHTML(slug = "") {
-  if (_activeCategory) return "";
+  if (_activeCategory || _allServices.length > 0) return "";
   const meta = _categoryMeta(slug);
   return `<div>
     <strong>${_esc(slug ? `Free ${meta.label} booking` : "Free booking")}</strong>
