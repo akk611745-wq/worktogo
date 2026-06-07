@@ -72,9 +72,23 @@ document.addEventListener("click", e => {
 });
 
 /* ── Badge Helper ───────────────────────────────── */
+const STATUS_LABELS = {
+  pending:     'Pending',
+  confirmed:   'Confirmed',
+  accepted:    'Accepted',
+  in_progress: 'In Progress',
+  completed:   'Completed',
+  delivered:   'Delivered',
+  cancelled:   'Cancelled',
+  rejected:    'Rejected',
+  requeued:    'Requeued',
+  active:      'Active',
+  ready:       'Ready',
+};
 function statusBadge(status) {
-  const s = (status || "unknown").toLowerCase().replace(/\s+/g, "_");
-  return `<span class="badge badge-dot badge-${s}">${status}</span>`;
+  const s     = (status || "unknown").toLowerCase().replace(/\s+/g, "_");
+  const label = STATUS_LABELS[s] || (status || 'Unknown');
+  return `<span class="badge badge-dot badge-${s}">${label}</span>`;
 }
 
 /* ── Date Format ────────────────────────────────── */

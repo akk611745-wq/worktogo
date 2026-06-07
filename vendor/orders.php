@@ -155,11 +155,13 @@ function applyFilter() {
 }
 
 const STATUS_COLOR = { pending:'#f59e0b', confirmed:'#3b82f6', ready:'#f97316', delivered:'#10b981', cancelled:'#ef4444' };
+const ORDER_STATUS_LABEL = { pending:'Pending', confirmed:'Confirmed', ready:'Ready', delivered:'Delivered', cancelled:'Cancelled' };
 const ORDER_LIFECYCLE = ['pending','confirmed','ready','delivered'];
 
 function _chip(status) {
-  const c = STATUS_COLOR[status] || '#6b7280';
-  return '<span style="display:inline-flex;align-items:center;gap:4px;padding:0.2rem 0.6rem;border-radius:20px;font-size:0.72rem;font-weight:600;background:' + c + '1a;color:' + c + ';border:1px solid ' + c + '40;text-transform:capitalize;"><span style="width:6px;height:6px;border-radius:50%;background:' + c + ';flex-shrink:0;"></span>' + (status||'') + '</span>';
+  const c     = STATUS_COLOR[status] || '#6b7280';
+  const label = ORDER_STATUS_LABEL[status] || (status||'').replace(/_/g,' ').replace(/\b\w/g, l => l.toUpperCase());
+  return '<span style="display:inline-flex;align-items:center;gap:4px;padding:0.2rem 0.6rem;border-radius:20px;font-size:0.72rem;font-weight:600;background:' + c + '1a;color:' + c + ';border:1px solid ' + c + '40;"><span style="width:6px;height:6px;border-radius:50%;background:' + c + ';flex-shrink:0;"></span>' + label + '</span>';
 }
 
 function _quickBtns(id, status) {
