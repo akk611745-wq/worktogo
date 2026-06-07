@@ -115,5 +115,14 @@ function initShell(pageTitle, contentId = "pageContent") {
   </div>
 </div>`;
 
+  // Init UI components NOW — DOM exists at this point.
+  // app.js DOMContentLoaded fires before this function runs,
+  // so sidebar, toasts, vendor info and active nav must be
+  // wired here, not there.
+  if (typeof initSidebar      === 'function') initSidebar();
+  if (typeof initToasts       === 'function') initToasts();
+  if (typeof renderVendorInfo === 'function') renderVendorInfo();
+  if (typeof setActiveNav     === 'function') setActiveNav();
+
   return user;
 }

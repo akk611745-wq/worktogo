@@ -148,9 +148,7 @@ function filterItems(arr, query, keys) {
 }
 
 /* ── Init on all pages ──────────────────────────── */
-document.addEventListener("DOMContentLoaded", () => {
-  initSidebar();
-  initToasts();
-  renderVendorInfo();
-  setActiveNav();
-});
+// initShell() (shell.js) calls initSidebar / initToasts /
+// renderVendorInfo / setActiveNav after it builds the DOM.
+// Nothing to do here — shell.js owns the init sequence.
+document.addEventListener("DOMContentLoaded", () => {});
