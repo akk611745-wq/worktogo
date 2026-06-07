@@ -8,7 +8,10 @@
  *  - XSS protection on user name/phone from stored data
  */
 
+let _container = null;
+
 export async function render(container) {
+  _container = container;
   if (!AUTH.requireAuth()) return;
   const user = AUTH.getUser();
   const profile = _customerProfile(user);
@@ -133,7 +136,7 @@ window.AccountPage = {
     UI.toast('Profile saved', 'success');
     AccountPage._rerender();
   },
-  _rerender() { ROUTER.go('account', true); },
+  _rerender() { if (_container) render(_container); else ROUTER.go('account', true); },
   logout() {
     const modal = document.createElement('div');
     modal.innerHTML = `
