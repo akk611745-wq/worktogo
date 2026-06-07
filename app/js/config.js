@@ -74,7 +74,7 @@ const CONFIG = {
     PAYMENT_LAYER:   false,
     REALTIME_WS:     false,
     NOTIFICATIONS:   false,
-    VENDOR_APPLY:    false,
+    VENDOR_APPLY:    true,
   },
 
   SERVICE_ONLY: {
