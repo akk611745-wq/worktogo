@@ -50,6 +50,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Load summary
   const summaryRes = await API.Dashboard.getSummary();
+  console.log('SUMMARY:', JSON.stringify(summaryRes));
   const s = summaryRes.ok ? (summaryRes.data?.data || summaryRes.data || {}) : {};
 
   if (isService) renderServiceDash(s);
@@ -59,10 +60,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   let recentItems = [];
   if (isService) {
     const res = await API.Bookings.list();
+    console.log('BOOKINGS RAW:', JSON.stringify(res));
     recentItems = res.ok ? (res.data?.data || res.data || []) : [];
     loadRecentBookings(recentItems);
   } else {
     const res = await API.Orders.list();
+    console.log('BOOKINGS RAW:', JSON.stringify(res));
     recentItems = res.ok ? (res.data?.data || res.data || []) : [];
     loadRecentOrders(recentItems);
   }
