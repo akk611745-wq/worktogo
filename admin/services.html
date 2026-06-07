@@ -263,7 +263,22 @@ function openOpsDetail(bookingId) {
   const location = view.location || {};
   const issue = view.issue_summary || {};
   const timeline = Array.isArray(booking.timeline) ? booking.timeline : [];
-  const vendors = ['<option value="">Select vendor</option>'].concat(serviceVendors.map(v => `<option value="${escHtml(String(v.id || v._id || ''))}">${escHtml(v.business_name || v.name || ('Vendor #' + (v.id || v._id)))}</option>`)).join('');
+  // Category-based vendor filtering
+  const bookingCategory = (issue.category || issue.label || (booking.sorting_keys || booking.filter_keys || {}).category || '').toLowerCase().trim();
+  let vendorPool = serviceVendors;
+  let vendorPlaceholder = 'Select vendor';
+  if (bookingCategory) {
+    const categoryFiltered = serviceVendors.filter(v => {
+      const vc = (v.category || v.category_slug || v.service_category || '').toLowerCase();
+      return vc.includes(bookingCategory) || bookingCategory.includes(vc);
+    });
+    if (categoryFiltered.length > 0) {
+      vendorPool = categoryFiltered;
+    } else {
+      vendorPlaceholder = 'Select vendor (No category match — showing all)';
+    }
+  }
+  const vendors = [`<option value="">${vendorPlaceholder}</option>`].concat(vendorPool.map(v => `<option value="${escHtml(String(v.id || v._id || ''))}">${escHtml(v.business_name || v.name || ('Vendor #' + (v.id || v._id)))}</option>`)).join('');
   const html = `<div class="modal-backdrop" onclick="closeOpsDetail(event)">
     <div class="modal" style="max-width:860px" onclick="event.stopPropagation()">
       <div class="modal-header"><h3>Operational Request ${escHtml(view.request_summary?.request_id || booking.request_id || bookingId)}</h3><button class="btn btn-sm btn-ghost" onclick="closeOpsDetail()">Close</button></div>
