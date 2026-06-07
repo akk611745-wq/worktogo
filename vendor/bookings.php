@@ -325,11 +325,10 @@ function _extractBookings(res) {
 function escHtml(str) {
   return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-function cleanNotes(raw) {
-  if (!raw) return null;
-  const STRIP = ['Request ID:','Client request ID:','Request schema version:','Routing context:','Sorting keys:','Assignment metadata:'];
-  const clean = String(raw).split('\n').filter(function(l){ const t = l.trim(); return t && !STRIP.some(function(p){ return t.startsWith(p); }); }).join('\n').trim();
-  return clean || null;
+function cleanNotes(_raw) {
+  // Notes field contains only internal metadata for this booking type.
+  // Return null until a real customer_note field is available.
+  return null;
 }
 </script>
 </body>
