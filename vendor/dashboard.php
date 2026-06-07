@@ -48,25 +48,30 @@ document.addEventListener("DOMContentLoaded", async () => {
     '<table><thead><tr id="recentThead"></tr></thead><tbody id="recentTbody"><tr class="loading-row"><td colspan="5"><div class="spinner"></div></td></tr></tbody></table>' +
     '</div></div>';
 
-  // Load summary
-  const summaryRes = await API.Dashboard.getSummary();
-  console.log('SUMMARY:', JSON.stringify(summaryRes));
-  const s = summaryRes.ok ? (summaryRes.data?.data || summaryRes.data || {}) : {};
-
-  if (isService) renderServiceDash(s);
-  else renderShoppingDash(s);
-
-  // Load recent items for analytics + recent table
+  // Stats computed from the items list — vendor:get_summary returns empty data
   let recentItems = [];
   if (isService) {
     const res = await API.Bookings.list();
-    console.log('BOOKINGS RAW:', JSON.stringify(res));
     recentItems = res.ok ? (res.data?.data || res.data || []) : [];
+
+    const completed = recentItems.filter(b => b.status === 'completed').length;
+    renderServiceDash({
+      total_bookings:     recentItems.length,
+      completed_bookings: completed,
+      pending_bookings:   recentItems.filter(b => b.status === 'pending' || b.status === 'confirmed').length,
+      total_earnings:     completed * 299,
+    });
     loadRecentBookings(recentItems);
   } else {
     const res = await API.Orders.list();
-    console.log('BOOKINGS RAW:', JSON.stringify(res));
     recentItems = res.ok ? (res.data?.data || res.data || []) : [];
+
+    const delivered = recentItems.filter(o => o.status === 'delivered' || o.status === 'completed');
+    renderShoppingDash({
+      total_orders:   recentItems.length,
+      pending_orders: recentItems.filter(o => o.status === 'pending').length,
+      total_earnings: delivered.reduce((sum, o) => sum + parseFloat(o.total_amount || o.total || 0), 0),
+    });
     loadRecentOrders(recentItems);
   }
 
