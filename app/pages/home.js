@@ -74,7 +74,7 @@ export async function render(container) {
           </div>
         </section>
 
-        <section class="category-ecosystem" id="category-ecosystem">
+        <section class="category-ecosystem" id="category-ecosystem" style="display:none">
           ${_categoryEcosystemHTML(_activeCategory)}
         </section>
 
@@ -1827,9 +1827,9 @@ function _closeExploreOverlay() {
 }
 
 function _servicePriceLabel(service) {
-  if (service?.price) return String(service.price);
+  if (service?.price && Number(service.price) > 0) return String(service.price);
   const amount = service?.base_price ?? service?.amount ?? service?.starting_price;
-  return amount ? UI.formatCurrency(amount) : "";
+  return (amount && Number(amount) > 0) ? UI.formatCurrency(amount) : "";
 }
 
 function _openLocalitySelector() {
