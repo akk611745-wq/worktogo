@@ -24,9 +24,9 @@ export async function render(container) {
         <div class="profile-card">
           <div class="profile-avatar">${_initials(user)}</div>
           <div class="profile-info">
-            <h3>${_escapeHtml(profile.name || "WorkToGo Customer")}</h3>
+            <h3>${_escapeHtml(profile.name || _phoneLabel(profile.phone))}</h3>
             <p class="phone-number">${_escapeHtml(_phoneLabel(profile.phone))}</p>
-            <span class="account-role-pill">Customer operations center</span>
+            <span class="account-role-pill">My Account</span>
           </div>
         </div>
 
@@ -64,6 +64,25 @@ export async function render(container) {
             <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
           </div>
 
+          ${AUTH.hasRole(CONFIG.ROLES.VENDOR) ? `
+          <div class="menu-item" onclick="window.location.href='/vendor/'">
+            <div class="menu-icon">🔧</div>
+            <div class="menu-body">
+              <span>Vendor Panel</span>
+              <p class="menu-sub">Manage your jobs and availability</p>
+            </div>
+            <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+          </div>` : ""}
+
+          <div class="menu-item" onclick="AccountPage.editProfile()">
+            <div class="menu-icon">✏️</div>
+            <div class="menu-body">
+              <span>Edit profile</span>
+              <p class="menu-sub">Name and address for booking pre-fill</p>
+            </div>
+            <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+
           <div class="menu-item danger" onclick="AccountPage.logout()">
             <div class="menu-icon">🚪</div>
             <div class="menu-body"><span>Logout</span></div>
@@ -80,6 +99,40 @@ export async function render(container) {
 }
 
 window.AccountPage = {
+  editProfile() {
+    const profile = _customerProfile(AUTH.getUser());
+    const card = document.querySelector('.profile-card');
+    if (!card) return;
+    card.innerHTML = `
+      <div class="profile-edit-form" style="width:100%;padding:4px 0">
+        <label style="display:block;margin-bottom:10px;font-size:14px;color:var(--clr-text-2)">Name
+          <input id="edit-name" type="text" value="${_escapeHtml(profile.name)}" placeholder="Your name"
+            autocomplete="name"
+            style="display:block;width:100%;margin-top:4px;padding:10px 12px;border:1.5px solid var(--clr-border);border-radius:8px;font-size:15px;background:var(--clr-surface-2);color:var(--clr-text-1);box-sizing:border-box"/>
+        </label>
+        <label style="display:block;margin-bottom:14px;font-size:14px;color:var(--clr-text-2)">Address
+          <input id="edit-address" type="text" value="${_escapeHtml(profile.address)}" placeholder="Area / address for booking pre-fill"
+            autocomplete="street-address"
+            style="display:block;width:100%;margin-top:4px;padding:10px 12px;border:1.5px solid var(--clr-border);border-radius:8px;font-size:15px;background:var(--clr-surface-2);color:var(--clr-text-1);box-sizing:border-box"/>
+        </label>
+        <div style="display:flex;gap:10px">
+          <button onclick="AccountPage.saveProfile()"
+            style="flex:1;padding:11px;border-radius:8px;border:none;background:var(--clr-accent);color:#fff;font-size:15px;font-weight:600;cursor:pointer">Save</button>
+          <button onclick="ROUTER.go('account')"
+            style="flex:1;padding:11px;border-radius:8px;border:1px solid var(--clr-border);background:transparent;color:var(--clr-text-1);font-size:15px;cursor:pointer">Cancel</button>
+        </div>
+      </div>`;
+  },
+  saveProfile() {
+    const name    = document.getElementById('edit-name')?.value?.trim() || '';
+    const address = document.getElementById('edit-address')?.value?.trim() || '';
+    try {
+      const existing = JSON.parse(localStorage.getItem('wtg_customer_profile') || '{}');
+      localStorage.setItem('wtg_customer_profile', JSON.stringify({ ...existing, name, address }));
+    } catch {}
+    UI.toast('Profile saved', 'success');
+    ROUTER.go('account');
+  },
   logout() {
     const modal = document.createElement('div');
     modal.innerHTML = `
