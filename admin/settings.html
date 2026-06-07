@@ -220,7 +220,7 @@
   function checkAuth() {
     const token = localStorage.getItem(CONFIG.TOKEN_KEY);
     if (!token) {
-      window.location.href = 'login.html';
+      window.location.href = '/admin/index.html';
       return null;
     }
     try {
