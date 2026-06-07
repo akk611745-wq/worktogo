@@ -63,7 +63,7 @@ export async function render(container) {
         </section>
 
         <section class="home-section" id="services-section">
-          <div class="section-header">
+          <div class="section-header" style="display:none">
             <div>
               <h3 id="vendor-feed-title">${_esc(_resolvedLocality().label)} worker routing</h3>
             </div>
@@ -1611,6 +1611,7 @@ function _operatingFeedHTML(slug = "") {
   const places = meta.locality || CATEGORY_META.all.locality || ["nearby"];
   const localityContext = _resolvedLocality();
   return `
+    <div style="display:none">
     <div class="operating-head">
       <div>
         <h3>${_esc(`${localityContext.label} request context`)}</h3>
@@ -1619,6 +1620,7 @@ function _operatingFeedHTML(slug = "") {
     </div>
     <div class="ops-ticker" aria-label="Nearby activity statuses">
       ${places.slice(0, 5).map((place, i) => `<button type="button" class="ops-status-pill ${_activeLocalityFilter === place ? "active" : ""}" onclick="HomePage.selectLocality('${_esc(place)}')"><strong>${_esc(place)}</strong><small>${_esc(_activeLocalityFilter === place ? "selected for routing" : (jobs[i % jobs.length] || "area context"))}</small></button>`).join("")}
+    </div>
     </div>`;
 }
 
@@ -1650,7 +1652,7 @@ function _serviceCardsHTML(slug = "") {
   const localityContext = _resolvedLocality();
   return `
     <div class="quick-service-rail">
-      ${cards.map(name => `<button class="quick-service-card" onclick="HomePage.bookQuickService('${_esc(meta.slug || "")}', '${_esc(name)}')"><span>${meta.icon}</span><strong>${_esc(name)}</strong><small>${_esc(localityContext.label)} routing</small></button>`).join("")}
+      ${cards.map(name => `<button class="quick-service-card" onclick="HomePage.bookQuickService('${_esc(meta.slug || "")}', '${_esc(name)}')"><span>${meta.icon}</span><strong>${_esc(name)}</strong></button>`).join("")}
     </div>`;
 }
 
@@ -1732,13 +1734,13 @@ function _vendorCardHTML(service, support = false) {
           <div class="vendor-avatar">${service.icon || meta.icon || "🔧"}</div>
             <div>
               <h4>${_esc(name)}</h4>
-              <p>${[locality, `${localityContext.label} routing context`, "request routed by admin"].filter(Boolean).map(_esc).join(" · ")}</p>
+              <p>${[locality, "WorkToGo verified"].filter(Boolean).map(_esc).join(" · ")}</p>
             </div>
           </div>
           <div class="vendor-stats">
           ${rating ? `<span>★ ${_esc(rating)}</span>` : ""}
           <span>${_esc(verified ? "Checked" : meta.label)}</span>
-          ${completed ? `<span>${_esc(completed)} past jobs</span>` : `<span>Assignment only</span>`}
+          ${completed ? `<span>${_esc(completed)} past jobs</span>` : `<span>Available</span>`}
           ${exp ? `<span>${_esc(exp)} exp</span>` : ""}
           ${price ? `<span>${_esc(price)}</span>` : ""}
         </div>

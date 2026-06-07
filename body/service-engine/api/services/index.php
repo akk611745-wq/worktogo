@@ -856,7 +856,7 @@ if ($method === 'GET' && $uri === '/api/services') {
             $categories[$slug] = [
                 'slug' => $slug,
                 'name' => $service['category_name'] ?? $slug,
-                'icon' => $service['category_icon'] ?: 'ðŸ”§',
+                'icon' => $service['category_icon'] ?: '🔧',
                 'image' => $service['category_image'] ?? null,
             ];
         }
