@@ -279,7 +279,7 @@ function openOpsDetail(bookingId) {
     }
   }
   const vendors = [`<option value="">${vendorPlaceholder}</option>`].concat(vendorPool.map(v => `<option value="${escHtml(String(v.id || v._id || ''))}">${escHtml(v.business_name || v.name || ('Vendor #' + (v.id || v._id)))}</option>`)).join('');
-  const html = `<div class="modal-backdrop" onclick="closeOpsDetail(event)">
+  const html = `<div class="modal-overlay open" onclick="closeOpsDetail(event)">
     <div class="modal" style="max-width:860px" onclick="event.stopPropagation()">
       <div class="modal-header"><h3>Operational Request ${escHtml(view.request_summary?.request_id || booking.request_id || bookingId)}</h3><button class="btn btn-sm btn-ghost" onclick="closeOpsDetail()">Close</button></div>
       <div class="modal-body" style="display:grid;gap:14px">
@@ -298,7 +298,7 @@ function openOpsDetail(bookingId) {
 
 function closeOpsDetail(event) {
   if (event && event.target !== event.currentTarget) return;
-  document.querySelector('.modal-backdrop')?.remove();
+  document.querySelector('.modal-overlay.open')?.remove();
 }
 
 async function simulateOpsAction(bookingId, action) {
