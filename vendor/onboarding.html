@@ -639,7 +639,7 @@
   };
 
   function checkAuth() {
-    const token = localStorage.getItem('vendor_token');
+    const token = localStorage.getItem('wtg_vendor_token');
     if(!token) {
       window.location.href = '/vendor/login.html';
       return;
@@ -903,7 +903,7 @@
     btn.style.animation = 'none';
 
     try {
-      const token = localStorage.getItem('vendor_token');
+      const token = localStorage.getItem('wtg_vendor_token');
       const payload = {
         vendor_type: state.vendor_type,
         name: state.name,
