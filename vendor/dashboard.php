@@ -50,29 +50,37 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Stats computed from the items list — vendor:get_summary returns empty data
   let recentItems = [];
-  if (isService) {
-    const res = await API.Bookings.list();
-    recentItems = res.ok ? (res.data?.data || res.data || []) : [];
+  try {
+    if (isService) {
+      const res = await API.Bookings.list();
+      recentItems = safeArray(res, ['jobs']);
 
-    const completed = recentItems.filter(b => b.status === 'completed').length;
-    renderServiceDash({
-      total_bookings:     recentItems.length,
-      completed_bookings: completed,
-      pending_bookings:   recentItems.filter(b => b.status === 'pending' || b.status === 'confirmed').length,
-      total_earnings:     completed * 299,
-    });
-    loadRecentBookings(recentItems);
-  } else {
-    const res = await API.Orders.list();
-    recentItems = res.ok ? (res.data?.data || res.data || []) : [];
+      const completed = recentItems.filter(b => b.status === 'completed').length;
+      renderServiceDash({
+        total_bookings:     recentItems.length,
+        completed_bookings: completed,
+        pending_bookings:   recentItems.filter(b => b.status === 'pending' || b.status === 'confirmed').length,
+        total_earnings:     completed * 299,
+      });
+      loadRecentBookings(recentItems);
+    } else {
+      const res = await API.Orders.list();
+      recentItems = safeArray(res, ['orders']);
 
-    const delivered = recentItems.filter(o => o.status === 'delivered' || o.status === 'completed');
-    renderShoppingDash({
-      total_orders:   recentItems.length,
-      pending_orders: recentItems.filter(o => o.status === 'pending').length,
-      total_earnings: delivered.reduce((sum, o) => sum + parseFloat(o.total_amount || o.total || 0), 0),
-    });
-    loadRecentOrders(recentItems);
+      const delivered = recentItems.filter(o => o.status === 'delivered' || o.status === 'completed');
+      renderShoppingDash({
+        total_orders:   recentItems.length,
+        pending_orders: recentItems.filter(o => o.status === 'pending').length,
+        total_earnings: delivered.reduce((sum, o) => sum + parseFloat(o.total_amount || o.total || 0), 0),
+      });
+      loadRecentOrders(recentItems);
+    }
+  } catch (err) {
+    console.error('Dashboard load error:', err);
+    document.getElementById('statGrid').innerHTML =
+      '<div class="stat-card" style="grid-column:1/-1;text-align:center;color:var(--danger);padding:1.5rem;">' +
+      'Failed to load dashboard data. <button class="btn btn-ghost btn-sm" onclick="location.reload()">Retry</button>' +
+      '</div>';
   }
 
   // Analytics section
@@ -154,6 +162,30 @@ function loadRecentOrders(items) {
 
 function escHtml(str) {
   return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/**
+ * Safely extract an array from an intent-API response.
+ * The dispatcher can return data in several shapes; try each in order.
+ * @param {object} res      - full API response { ok, data, ... }
+ * @param {string[]} keys   - domain-specific keys to probe first (e.g. ['jobs'] or ['orders'])
+ */
+function safeArray(res, keys = []) {
+  if (!res.ok) return [];
+  const d = res.data;
+  // Intent dispatcher blocks wrapper  (blocks[0].items)
+  if (Array.isArray(d?.blocks?.[0]?.items))       return d.blocks[0].items;
+  if (Array.isArray(d?.data?.blocks?.[0]?.items)) return d.data.blocks[0].items;
+  // Domain-specific keys passed by caller
+  for (const k of keys) {
+    if (Array.isArray(d?.[k]))       return d[k];
+    if (Array.isArray(d?.data?.[k])) return d.data[k];
+  }
+  // Generic fallbacks
+  if (Array.isArray(d?.items))  return d.items;
+  if (Array.isArray(d?.data))   return d.data;
+  if (Array.isArray(d))         return d;
+  return [];
 }
 </script>
 </body>
