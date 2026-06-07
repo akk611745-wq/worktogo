@@ -91,18 +91,18 @@ const UI = (() => {
     const safeMsg = _friendlyErrorMessage(msg);
     return `<div class="error-state">
       <div class="empty-icon">🛠️</div>
-      <h3>Operational tracking is active</h3>
+      <h3>Something went wrong</h3>
       <p>${safeMsg}</p>
-      ${retryFn ? `<button class="btn-retry" onclick="${retryFn}()">Refresh tracking</button>` : ""}
+      ${retryFn ? `<button class="btn-retry" onclick="${retryFn}()">Try again</button>` : ""}
     </div>`;
   }
 
   function _friendlyErrorMessage(msg = "") {
     const text = String(msg || "");
     const lower = text.toLowerCase();
-    if (lower.includes("internal server") || lower.includes("500")) return "Requests can still move through WorkToGo confirmation while live data is coordinated.";
-    if (lower.includes("failed") || lower.includes("network")) return "Your request flow remains available; refresh when the connection is stable.";
-    return text || "WorkToGo confirmation remains available.";
+    if (lower.includes("internal server") || lower.includes("500")) return "Server error. Please try again in a moment.";
+    if (lower.includes("failed") || lower.includes("network")) return "Connection issue. Check your internet and try again.";
+    return text || "Something went wrong. Please try again.";
   }
 
   // ── Format Helpers ─────────────────────────────────────────────────────

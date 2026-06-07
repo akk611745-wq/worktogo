@@ -632,7 +632,7 @@ window.HomeModals = (() => {
       const preMobile = document.getElementById("booking-mobile")?.value?.trim() || "";
       const preDigits = preMobile.replace(/\D/g, "");
       if (!preName) { _markInvalid("booking-name", "Please enter name"); return; }
-      if (preDigits.length !== 10) { _markInvalid("booking-mobile", "Please enter a valid 10-digit mobile number"); return; }
+      if (preDigits.length !== 10 || !/^[6-9]/.test(preDigits)) { _markInvalid("booking-mobile", "Please enter a valid 10-digit mobile number"); return; }
       _persistCustomerProfile({ name: preName, phone: preDigits });
       UI.toast("Verify mobile once to send request", "info");
       const pendingArea = document.getElementById("booking-area")?.value?.trim() || _activeLocalityFilter;
@@ -673,7 +673,7 @@ window.HomeModals = (() => {
     }
     if (!mobile) { _markInvalid("booking-mobile", "Please enter mobile number"); return; }
     const mobileDigits = mobile.replace(/\D/g, "");
-    if (mobileDigits.length !== 10) { _markInvalid("booking-mobile", "Please enter a valid 10-digit mobile number"); return; }
+    if (mobileDigits.length !== 10 || !/^[6-9]/.test(mobileDigits)) { _markInvalid("booking-mobile", "Please enter a valid 10-digit mobile number"); return; }
     if (!area) { _markInvalid("booking-area", "Please enter area or landmark"); return; }
     if (!address) { _markInvalid("booking-address", "Please enter full address"); return; }
     if (bookingMode !== "inspection" && !notes && !serviceContext) { _markInvalid("booking-notes", "Please add a short issue note"); return; }
@@ -1655,7 +1655,7 @@ function _serviceCardsHTML(slug = "") {
 }
 
 function _freeBookingStripHTML(slug = "") {
-  if (_activeCategory || CONFIG.SERVICE_ONLY?.PILOT_MODE) return "";
+  if (_activeCategory) return "";
   const meta = _categoryMeta(slug);
   return `<div>
     <strong>${_esc(slug ? `Free ${meta.label} booking` : "Free booking")}</strong>
@@ -1720,7 +1720,7 @@ function _vendorCardHTML(service, support = false) {
   const semantics = _vendorSemantics(service, meta);
   const completed = service.completed_jobs || service.jobs_completed || service.total_jobs || service.completed || "";
   const verified = service.is_verified || service.verified || semantics.visibility !== "normal";
-  const activeState = semantics.visibility === "quick" ? "Faster response lane" : "Admin assignment lane";
+  const activeState = semantics.visibility === "quick" ? "Fast response" : "Verified worker";
   return `
     <article class="vendor-card vendor-${_esc(semantics.visibility)}" data-vendor-state="${_esc(semantics.visibility)}" data-vendor-priority="${_esc(semantics.priority)}">
       <div class="vendor-media ${photo ? "has-img" : ""}">
@@ -2481,7 +2481,7 @@ function _vendorSemantics(service, meta) {
   const featured = Boolean(service.is_featured || service.featured);
   const trusted = Boolean(service.is_trusted || service.trusted || Number(service.rating || 0) >= 4.7);
   const demand = Boolean(service.demand_priority || service.priority === "demand");
-  const live = false;
+  const live = !!(service.vendor_state === "live" || service.is_live === true);
   const quick = Boolean(service.quick_response || service.fast_response);
   const visibility = live ? "live" : featured ? "featured" : trusted ? "trusted" : demand ? "demand-priority" : quick ? "quick" : "normal";
   const badgeMap = { live: "WorkToGo lane", featured: "Featured", trusted: "Trusted", "demand-priority": "High demand", quick: "Faster response", normal: "" };

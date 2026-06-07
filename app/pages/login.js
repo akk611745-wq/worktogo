@@ -411,7 +411,7 @@ window.LoginPage = (() => {
     const inp = document.getElementById("inp-phone");
     _phone = inp?.value?.trim().replace(/\D/g, "");
 
-    if (!_phone || _phone.length !== 10) {
+    if (!_phone || _phone.length !== 10 || !/^[6-9]/.test(_phone)) {
       UI.toast("Enter a valid 10-digit mobile number", "error");
       return;
     }

@@ -81,7 +81,20 @@ export async function render(container) {
 
 window.AccountPage = {
   logout() {
-    if (confirm("Log out of WorkToGo?")) AUTH.logout();
+    const modal = document.createElement('div');
+    modal.innerHTML = `
+      <div style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;">
+        <div style="background:var(--clr-surface-1);border-radius:16px;padding:24px;margin:16px;max-width:320px;width:100%;">
+          <p style="color:var(--clr-text-1);font-size:16px;margin:0 0 20px;text-align:center;">Log out of WorkToGo?</p>
+          <div style="display:flex;gap:12px;">
+            <button id="_wtg_cancel" style="flex:1;padding:12px;border-radius:8px;border:1px solid var(--clr-border);background:transparent;color:var(--clr-text-1);font-size:15px;">Cancel</button>
+            <button id="_wtg_confirm" style="flex:1;padding:12px;border-radius:8px;border:none;background:var(--clr-accent);color:#fff;font-size:15px;">Log out</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#_wtg_cancel').onclick = () => modal.remove();
+    modal.querySelector('#_wtg_confirm').onclick = () => { modal.remove(); AUTH.logout(); };
   },
 };
 

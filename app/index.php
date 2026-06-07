@@ -45,6 +45,7 @@
   <script src="js/api.js?v=20260524-customer-stabilization"></script>
   <script src="js/auth.js?v=20260524-customer-stabilization"></script>
   <script src="js/router.js?v=20260524-customer-stabilization"></script>
+  <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
   <script src="/app/pages/vendor-apply-modal.js?v=20260524-customer-stabilization"></script>
 
   <!-- Bootstrap -->
