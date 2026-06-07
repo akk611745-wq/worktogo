@@ -24,15 +24,13 @@ export async function render(container) {
         <div class="profile-card">
           <div class="profile-avatar">${_initials(user)}</div>
           <div class="profile-info">
-            <h3>${_escapeHtml(profile.name || _phoneLabel(profile.phone))}</h3>
-            <p class="phone-number">${_escapeHtml(_phoneLabel(profile.phone))}</p>
+            <div style="display:flex;align-items:center;gap:8px">
+              <h3 style="margin:0">${_escapeHtml(profile.name || _phoneLabel(profile.phone))}</h3>
+              <button onclick="AccountPage.editProfile()" title="Edit profile" style="background:none;border:none;cursor:pointer;font-size:16px;padding:2px;line-height:1">✏️</button>
+            </div>
+            ${profile.name ? `<p class="phone-number">${_escapeHtml(_phoneLabel(profile.phone))}</p>` : ""}
             <span class="account-role-pill">My Account</span>
           </div>
-        </div>
-
-        <div class="account-ops-card">
-          <strong>Local service tracking</strong>
-          <p>Bookings, worker confirmation, inspection updates and saved address details stay together here.</p>
         </div>
 
         <!-- Menu Items -->
@@ -74,11 +72,11 @@ export async function render(container) {
             <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
           </div>` : ""}
 
-          <div class="menu-item" onclick="AccountPage.editProfile()">
-            <div class="menu-icon">✏️</div>
+          <div class="menu-item" onclick="VendorApplyModal.show()">
+            <div class="menu-icon">🔧</div>
             <div class="menu-body">
-              <span>Edit profile</span>
-              <p class="menu-sub">Name and address for booking pre-fill</p>
+              <span>Become a WorkToGo vendor</span>
+              <p class="menu-sub">Register to receive service jobs</p>
             </div>
             <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
           </div>
@@ -105,6 +103,9 @@ window.AccountPage = {
     if (!card) return;
     card.innerHTML = `
       <div class="profile-edit-form" style="width:100%;padding:4px 0">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+          <button onclick="ROUTER.go('account')" title="Close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--clr-text-2);padding:0;line-height:1">✕</button>
+        </div>
         <label style="display:block;margin-bottom:10px;font-size:14px;color:var(--clr-text-2)">Name
           <input id="edit-name" type="text" value="${_escapeHtml(profile.name)}" placeholder="Your name"
             autocomplete="name"
