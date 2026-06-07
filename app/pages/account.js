@@ -26,10 +26,9 @@ export async function render(container) {
           <div class="profile-info">
             <div style="display:flex;align-items:center;gap:8px">
               <h3 style="margin:0">${_escapeHtml(profile.name || _phoneLabel(profile.phone))}</h3>
-              <button onclick="AccountPage.editProfile()" title="Edit profile" style="background:none;border:none;cursor:pointer;font-size:16px;padding:2px;line-height:1">✏️</button>
+              <button onclick="AccountPage.editProfile()" style="padding:3px 10px;font-size:12px;border:1px solid var(--clr-border);border-radius:6px;background:transparent;color:var(--clr-text-2);cursor:pointer;line-height:1.4">Edit</button>
             </div>
             ${profile.name ? `<p class="phone-number">${_escapeHtml(_phoneLabel(profile.phone))}</p>` : ""}
-            <span class="account-role-pill">My Account</span>
           </div>
         </div>
 
@@ -104,7 +103,7 @@ window.AccountPage = {
     card.innerHTML = `
       <div class="profile-edit-form" style="width:100%;padding:4px 0">
         <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
-          <button onclick="ROUTER.go('account')" title="Close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--clr-text-2);padding:0;line-height:1">✕</button>
+          <button onclick="AccountPage._rerender()" title="Close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--clr-text-2);padding:0;line-height:1">✕</button>
         </div>
         <label style="display:block;margin-bottom:10px;font-size:14px;color:var(--clr-text-2)">Name
           <input id="edit-name" type="text" value="${_escapeHtml(profile.name)}" placeholder="Your name"
@@ -119,7 +118,7 @@ window.AccountPage = {
         <div style="display:flex;gap:10px">
           <button onclick="AccountPage.saveProfile()"
             style="flex:1;padding:11px;border-radius:8px;border:none;background:var(--clr-accent);color:#fff;font-size:15px;font-weight:600;cursor:pointer">Save</button>
-          <button onclick="ROUTER.go('account')"
+          <button onclick="AccountPage._rerender()"
             style="flex:1;padding:11px;border-radius:8px;border:1px solid var(--clr-border);background:transparent;color:var(--clr-text-1);font-size:15px;cursor:pointer">Cancel</button>
         </div>
       </div>`;
@@ -132,8 +131,9 @@ window.AccountPage = {
       localStorage.setItem('wtg_customer_profile', JSON.stringify({ ...existing, name, address }));
     } catch {}
     UI.toast('Profile saved', 'success');
-    ROUTER.go('account');
+    AccountPage._rerender();
   },
+  _rerender() { ROUTER.go('account', true); },
   logout() {
     const modal = document.createElement('div');
     modal.innerHTML = `
