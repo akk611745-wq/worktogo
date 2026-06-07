@@ -283,9 +283,9 @@
 
   // Auth Check
   function checkAuth() {
-    const token = localStorage.getItem('admin_token');
+    const token = localStorage.getItem('wtg_admin_token');
     if (!token) {
-      window.location.href = 'login.html';
+      window.location.href = '/admin/index.html';
       return null;
     }
     return token;
