@@ -450,6 +450,24 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   flex-wrap: wrap;
 }
 
+/* ── Booking card collapse / expand ──────────────────────────── */
+.booking-item { cursor: pointer; }
+.booking-item.collapsed .booking-detail { display: none; }
+.booking-item .booking-detail { display: block; padding-top: 4px; }
+
+.booking-chevron {
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 10px; height: 10px;
+  border-right: 2px solid var(--clr-text-3);
+  border-bottom: 2px solid var(--clr-text-3);
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+}
+.booking-item:not(.collapsed) .booking-chevron {
+  transform: rotate(-135deg);
+}
+
 .item-title {
   font-weight: 600;
   font-size: 0.9375rem;

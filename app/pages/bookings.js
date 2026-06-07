@@ -88,52 +88,54 @@ window.BookingsPage = (() => {
       const issues = _issueList(b);
       const paymentBadge = _paymentBadge(b);
       return `
-      <div class="list-item booking-item">
+      <div class="list-item booking-item collapsed" onclick="this.classList.toggle('collapsed')">
         <div class="item-icon booking-icon">${_esc(b.service_icon || "🛠️")}</div>
         <div class="item-body">
+
+          <!-- Always visible: title + status + pills + date/amount -->
           <div class="item-row">
             <span class="item-title">${_esc(b.category_label || b.category_name || b.service_name || b.name || "Service")}</span>
             ${UI.statusBadge(state.key)}
+            <span class="booking-chevron"></span>
           </div>
           <div class="request-status-pill-row">
             <span class="request-mini-pill state-${_esc(state.key)}">${_esc(state.short)}</span>
             <span class="request-mini-pill ${_esc(paymentBadge.tone)}">${_esc(paymentBadge.label)}</span>
           </div>
-          <div class="item-row muted small"><span>Category: ${_esc(b.category_label || b.category_name || b.service_name || "Service")}</span></div>
-          ${b.issue_summary ? `<div class="item-row muted small"><span>Issues: ${_esc(b.issue_summary)}</span></div>` : issues.length ? `<div class="item-row muted small"><span>Issues: ${_esc(issues.join(", "))}</span></div>` : b.subservice ? `<div class="item-row muted small"><span>Service: ${_esc(b.subservice)}</span></div>` : ""}
-          ${b.locality ? `<div class="item-row muted small"><span>Area routing: ${_esc(b.locality)}${b.city ? ` · ${_esc(b.city)}` : ""}${b.locality_source ? ` · ${_esc(_localitySourceLabel(b.locality_source))}` : ""}</span></div>` : ""}
-          <div class="item-row muted small"><span>Mode: ${_esc(_modeLabel(b.booking_mode))}</span></div>
-          <div class="item-row muted small"><span>Now: ${_esc(state.label)}</span></div>
-          <div class="item-row muted small"><span>Next: ${_esc(state.next)}</span></div>
-          <div class="item-row muted small"><span>Date: ${_esc(b.scheduled_at ? UI.formatDate(b.scheduled_at) : UI.formatDate(b.created_at))}</span></div>
-          <div class="item-row muted small"><span>${_esc(_lifecycleLabel(b))}</span></div>
-          ${state.message ? `<div class="item-row muted small"><span>${_esc(state.message)}</span></div>` : ""}
-          ${b.status === "in_progress" ? `<div class="item-row muted small"><span>Service is in progress. Pay after service only.</span></div>` : ""}
-          ${b.vendor_name ? `
-          <div class="item-row vendor-row">
-            <svg viewBox="0 0 24 24" class="vendor-icon"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-            <span class="muted small">${_esc(b.vendor_name)}</span>
-          </div>` : ""}
           <div class="item-row muted small">
-            <span>${b.scheduled_at
-              ? `📅 ${UI.formatDate(b.scheduled_at)}`
-              : UI.formatDate(b.created_at)
-            }</span>
+            <span>${b.scheduled_at ? `📅 ${UI.formatDate(b.scheduled_at)}` : UI.formatDate(b.created_at)}</span>
             ${b.amount ? `<span class="item-amount">${UI.formatCurrency(b.amount)}</span>` : ""}
           </div>
-          ${b.notes ? `<div class="item-row muted small"><span>${_esc(_shortNotes(b.notes))}</span></div>` : ""}
-          <div class="item-row muted small">
-            <span>Payment: ${_esc(_paymentLabel(b.payment_method || "cod", b.payment_status, b.booking_mode))}</span>
+
+          <!-- Collapsible detail -->
+          <div class="booking-detail">
+            <div class="item-row muted small"><span>Category: ${_esc(b.category_label || b.category_name || b.service_name || "Service")}</span></div>
+            ${b.issue_summary ? `<div class="item-row muted small"><span>Issues: ${_esc(b.issue_summary)}</span></div>` : issues.length ? `<div class="item-row muted small"><span>Issues: ${_esc(issues.join(", "))}</span></div>` : b.subservice ? `<div class="item-row muted small"><span>Service: ${_esc(b.subservice)}</span></div>` : ""}
+            ${b.locality ? `<div class="item-row muted small"><span>Area routing: ${_esc(b.locality)}${b.city ? ` · ${_esc(b.city)}` : ""}${b.locality_source ? ` · ${_esc(_localitySourceLabel(b.locality_source))}` : ""}</span></div>` : ""}
+            <div class="item-row muted small"><span>Mode: ${_esc(_modeLabel(b.booking_mode))}</span></div>
+            <div class="item-row muted small"><span>Now: ${_esc(state.label)}</span></div>
+            <div class="item-row muted small"><span>Next: ${_esc(state.next)}</span></div>
+            <div class="item-row muted small"><span>Date: ${_esc(b.scheduled_at ? UI.formatDate(b.scheduled_at) : UI.formatDate(b.created_at))}</span></div>
+            <div class="item-row muted small"><span>${_esc(_lifecycleLabel(b))}</span></div>
+            ${state.message ? `<div class="item-row muted small"><span>${_esc(state.message)}</span></div>` : ""}
+            ${b.status === "in_progress" ? `<div class="item-row muted small"><span>Service is in progress. Pay after service only.</span></div>` : ""}
+            ${b.vendor_name ? `
+            <div class="item-row vendor-row">
+              <svg viewBox="0 0 24 24" class="vendor-icon"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+              <span class="muted small">${_esc(b.vendor_name)}</span>
+            </div>` : ""}
+            ${b.notes ? `<div class="item-row muted small"><span>${_esc(_shortNotes(b.notes))}</span></div>` : ""}
+            <div class="item-row muted small">
+              <span>Payment: ${_esc(_paymentLabel(b.payment_method || "cod", b.payment_status, b.booking_mode))}</span>
+            </div>
+            <div class="item-row muted small">
+              <span>ID: ${_esc(String(b.id || "—"))}</span>
+            </div>
+            <div class="item-row muted small">
+              <button class="btn-text-inline" onclick="event.stopPropagation(); BookingsPage.openSupport('${_esc(String(b.id || ""))}')">Get booking help</button>
+            </div>
           </div>
-          <div class="item-row muted small">
-            <span>ID: ${_esc(String(b.id || "—"))}</span>
-          </div>
-          <div class="item-row muted small">
-            <span>Support available with this booking ID</span>
-          </div>
-          <div class="item-row muted small">
-            <button class="btn-text-inline" onclick="BookingsPage.openSupport('${_esc(String(b.id || ""))}')">Get booking help</button>
-          </div>
+
         </div>
       </div>
     `;
@@ -391,7 +393,16 @@ window.BookingsPage = (() => {
   function _shortNotes(notes) {
     return String(notes || "")
       .split("\n")
-      .filter(line => !/^(Request ID|Client request ID|Request schema version|Request type|Category|Issue list|Issue summary|Locality|City|Payment required|Payment route|Priority|Priority score|Assignment state|Lifecycle state|Timeline|Operational tags|Booking mode|Vendor route|Customer|Mobile|Address|Preferred time|Selected worker):/i.test(line.trim()))
+      .filter(line => {
+        const t = line.trim();
+        if (!t) return false;
+        // Strip raw JSON lines
+        if (/^\s*[\[{]/.test(t)) return false;
+        // Strip lines with internal field names
+        if (/assigned_vendor_id|assignment_metadata|assignment_state/i.test(t)) return false;
+        // Strip known metadata prefixes
+        return !/^(Request ID|Client request ID|Request schema version|Request type|Category|Issue list|Issue summary|Locality|City|Payment required|Payment route|Priority|Priority score|Assignment state|Assignment metadata|Lifecycle state|Timeline|Operational tags|Booking mode|Vendor route|Customer|Mobile|Address|Preferred time|Selected worker):/i.test(t);
+      })
       .slice(0, 2)
       .join(" · ")
       .slice(0, 140);
