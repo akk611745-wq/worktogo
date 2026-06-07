@@ -216,7 +216,7 @@ function renderBookingRows(list) {
     return '<div class="card" style="border:1px solid var(--border);"><div class="card-body" style="display:grid;gap:0.45rem;">' +
       '<div style="display:flex;justify-content:space-between;gap:0.5rem;align-items:flex-start"><div><div class="fw-bold">#' + id + ' · ' + escHtml(b.service_name || b.service?.name || 'Service') + '</div><div class="text-muted text-sm">' + fmtDateTime(b.booking_date || b.date || b.scheduled_at) + '</div></div>' + _chip(status) + '</div>' +
       '<div class="text-sm"><strong>Customer:</strong> ' + escHtml(b.customer_name || b.user?.name || '—') + ' · ' + escHtml(b.customer_phone || b.user?.phone || '—') + '</div>' +
-      (b.notes ? '<div class="text-sm" style="background:var(--surface-2);padding:0.5rem;border-radius:6px;white-space:pre-wrap;">' + escHtml(b.notes).slice(0,220) + '</div>' : '') +
+      (cleanNotes(b.notes) ? '<div class="text-sm" style="background:var(--surface-2);padding:0.5rem;border-radius:6px;white-space:pre-wrap;">' + escHtml(cleanNotes(b.notes)).slice(0,220) + '</div>' : '') +
       '<div class="td-actions" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.3rem;"><button class="btn btn-ghost btn-sm" onclick="viewBooking(\'' + id + '\')">View</button>' +
       (status === 'pending' ? '<button class="btn btn-accept btn-sm" onclick="quickAccept(\'' + id + '\',\'' + jobId + '\')">Accept</button><button class="btn btn-reject btn-sm" onclick="quickReject(\'' + id + '\',\'' + jobId + '\')">Reject</button>' : (status === 'requeued' ? '<span class="text-muted text-sm">Returned to WorkToGo queue</span>' : '<button class="btn btn-primary btn-sm" onclick="openStatusModal(\'' + id + '\',\'' + jobId + '\')">Update</button>')) +
       '</div></div></div>';
@@ -257,7 +257,7 @@ async function viewBooking(id) {
     '<div><div class="text-muted text-sm">Payment</div><div>' + (b.payment_status||'—') + '</div></div>' +
     '</div>' +
     (b.address ? '<div style="margin-bottom:0.75rem;"><div class="text-muted text-sm">Address</div><div class="text-sm">' + escHtml(b.address) + '</div></div>' : '') +
-    (b.notes   ? '<div><div class="text-muted text-sm">Customer Notes</div><div class="text-sm" style="background:var(--surface-2);padding:0.6rem;border-radius:6px;margin-top:4px;">' + escHtml(b.notes) + '</div></div>' : '');
+    '<div style="margin-bottom:0.75rem;"><div class="text-muted text-sm">Customer Notes</div><div class="text-sm" style="background:var(--surface-2);padding:0.6rem;border-radius:6px;margin-top:4px;">' + escHtml(cleanNotes(b.notes) || 'No notes from customer.') + '</div></div>';
 
   const bid = b.id || b._id;
   let footer = '<button class="btn btn-ghost" onclick="closeModal(\'bookingModal\')">Close</button>';
@@ -324,6 +324,12 @@ function _extractBookings(res) {
 }
 function escHtml(str) {
   return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function cleanNotes(raw) {
+  if (!raw) return null;
+  const STRIP = ['Request ID:','Client request ID:','Request schema version:','Routing context:','Sorting keys:','Assignment metadata:'];
+  const clean = String(raw).split('\n').filter(function(l){ const t = l.trim(); return t && !STRIP.some(function(p){ return t.startsWith(p); }); }).join('\n').trim();
+  return clean || null;
 }
 </script>
 </body>
