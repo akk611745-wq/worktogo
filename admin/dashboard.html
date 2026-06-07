@@ -221,7 +221,7 @@ let dashboardData = null;
 async function loadDashboard() {
   try {
     // Override API endpoint config for dashboard to use our new API
-    const response = await API.get('/api/admin/dashboard');
+    const response = await API.get(CONFIG.ENDPOINTS.DASHBOARD_STATS);
     
     // Handle error responses
     if (!response || response.status >= 400 || response.error) {
@@ -340,11 +340,11 @@ function openModal(type) {
     body.innerHTML = `<p>There are ${dashboardData.driver_status.drivers_blocked} drivers blocked. <br><br><a href="users.html?role=delivery" class="btn btn-primary">Go to Users page to manage</a></p>`;
   }
   
-  modal.classList.add('active');
+  modal.classList.add('open');
 }
 
 function closeModal() {
-  document.getElementById('detail-modal').classList.remove('active');
+  document.getElementById('detail-modal').classList.remove('open');
 }
 
 loadDashboard();
