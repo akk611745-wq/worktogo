@@ -109,6 +109,7 @@ class CashfreeClient
         // Log detailed error server-side only
         $errMsg = $decoded['message'] ?? $decoded['error'] ?? 'Unknown Cashfree error';
         error_log("[CashfreeClient] API error [$httpCode] on $method $endpoint: $errMsg");
+        error_log("[CashfreeClient] Raw response: " . $response);
 
         return [
             'success'   => false,
