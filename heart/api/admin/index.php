@@ -739,6 +739,20 @@ try {
         Response::success(null, 200, 'Order status updated');
     }
 
+    // ── PATCH /service/bookings/{id}/assign ───────────────────────
+    if ($method === 'PATCH' && preg_match('#^/service/bookings/(\d+)/assign$#', $uri, $m)) {
+        $bookingId = (int) $m[1];
+        $input     = json_decode(file_get_contents('php://input'), true) ?? [];
+        $vendorId  = (int) ($input['vendor_id'] ?? 0);
+        if (!$vendorId) {
+            Response::error('vendor_id required', 400);
+        }
+        $db->prepare("UPDATE bookings SET vendor_id = ? WHERE id = ?")
+           ->execute([$vendorId, $bookingId]);
+        Logger::info('Admin assigned vendor to booking', ['admin_id' => $auth['user_id'], 'booking_id' => $bookingId, 'vendor_id' => $vendorId]);
+        Response::success(null, 200, 'Vendor assigned');
+    }
+
     // ── POST /api/admin/orders/{id}/cancel ────────────────────────
     if ($method === 'POST' && preg_match('#^/api/admin/orders/(\d+)/cancel$#', $uri, $m)) {
         $orderId = (int) $m[1];
