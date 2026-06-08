@@ -41,9 +41,15 @@ const Shell = {
   init({ title = 'Admin', active = '' } = {}) {
     // Build nav HTML
     let navHTML = '';
-    this.NAV.forEach(item => {
-      if (item.hiddenInServiceOnly && this.SERVICE_ONLY_MODE) return;
+    for (let i = 0; i < this.NAV.length; i++) {
+      const item = this.NAV[i];
+      if (item.hiddenInServiceOnly && this.SERVICE_ONLY_MODE) continue;
       if (item.group) {
+        let hasVisible = false;
+        for (let j = i + 1; j < this.NAV.length && !this.NAV[j].group; j++) {
+          if (!(this.NAV[j].hiddenInServiceOnly && this.SERVICE_ONLY_MODE)) { hasVisible = true; break; }
+        }
+        if (!hasVisible) continue;
         navHTML += `<div class="nav-group-label">${item.group}</div>`;
       } else {
         const isActive = active && item.href && item.href.includes(active) ? 'active' : '';
@@ -51,7 +57,7 @@ const Shell = {
           ${this.ICONS[item.icon] || ''} ${item.label}
         </a>`;
       }
-    });
+    }
 
     const sidebarHTML = `
     <aside class="sidebar" id="sidebar">
