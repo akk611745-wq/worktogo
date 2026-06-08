@@ -269,7 +269,7 @@ document.getElementById('export-btn').addEventListener('click', () => {
 
 async function loadServiceCategories() {
   try {
-    const r = await API.get('/admin/categories?type=service&status=active');
+    const r = await API.get(CONFIG.ENDPOINTS.CATEGORIES + '?type=service&status=active');
     window._serviceCategories = r.categories || r.data || [];
   } catch(e) { window._serviceCategories = []; }
 }
