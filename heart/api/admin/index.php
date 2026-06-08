@@ -315,7 +315,7 @@ try {
         $stmt = $db->prepare(
             "SELECT v.id, v.user_id, v.business_name, v.slug, v.type, v.type AS vendor_type,
                     v.status, v.commission_rate, v.rating, v.is_online, v.lat, v.lng,
-                    v.created_at, v.updated_at,
+                    v.created_at, v.updated_at, v.category_id,
                     u.name AS owner_name, u.phone AS owner_phone, u.email AS owner_email
              FROM vendors v
              LEFT JOIN users u ON u.id = v.user_id
@@ -624,6 +624,17 @@ try {
            ->execute([$dbStatus, $vendorId]);
         Logger::info('Admin updated vendor status', ['admin_id' => $auth['user_id'], 'vendor_id' => $vendorId, 'status' => $dbStatus]);
         Response::success(null, 200, 'Vendor status updated');
+    }
+
+    // ── PATCH /api/admin/vendors/{id}/category ─────────────────
+    if ($method === 'PATCH' && preg_match('#^/api/admin/vendors/(\d+)/category$#', $uri, $m)) {
+        $vendorId   = (int) $m[1];
+        $input      = json_decode(file_get_contents('php://input'), true) ?? [];
+        $categoryId = isset($input['category_id']) ? (int) $input['category_id'] : null;
+        $db->prepare("UPDATE vendors SET category_id = ?, updated_at = NOW() WHERE id = ?")
+           ->execute([$categoryId, $vendorId]);
+        Logger::info('Admin updated vendor category', ['admin_id' => $auth['user_id'], 'vendor_id' => $vendorId, 'category_id' => $categoryId]);
+        Response::success(null, 200, 'Vendor category updated');
     }
 
     // ── GET /api/admin/vendors/{id} ────────────────────────────
