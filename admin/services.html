@@ -231,7 +231,7 @@ function renderServiceBookings(bookings) {
       <td><div>${escHtml(location.city || b.city || '—')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(location.locality || b.locality || b.customer_locality || 'Locality not set')}</div></td>
       <td>${escHtml(view.payment_type || b.payment_route || b.payment_method || 'cod')}</td>
       <td>${escHtml(view.priority || b.priority || 'normal_priority')}</td>
-      <td><div>${escHtml(view.lifecycle_state || b.lifecycle_state || 'request_received')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(view.assignment_state || b.assignment_state || 'unassigned_searching')}</div></td>
+      <td><div>${escHtml(view.lifecycle_state || b.lifecycle_state || 'request_received')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(b.vendor_id && serviceVendors.find(v=>v.id===b.vendor_id)?.business_name || view.assignment_state || b.assignment_state || 'unassigned_searching')}</div></td>
       <td><div>${escHtml(latest.latest_event || 'request_created')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(latest.latest_actor || 'system')} · ${escHtml(latest.latest_state || '')}</div></td>
       <td><div class="td-actions">
         <button class="btn btn-sm btn-primary" onclick="openOpsDetail('${escHtml(String(id))}')">Details</button>
