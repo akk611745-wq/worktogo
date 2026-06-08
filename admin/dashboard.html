@@ -83,7 +83,30 @@
         </div>
       </div>
 
-      <!-- 2. Financial Overview -->
+      <!-- 2. Service Operations -->
+      <div class="dashboard-section">
+        <h2>🔧 Service Operations</h2>
+        <div class="grid-4">
+          <div class="metric-card" style="border-top: 3px solid var(--orange)">
+            <div class="metric-label">Pending Assignment</div>
+            <div class="metric-value" id="val-pending-assignment">-</div>
+          </div>
+          <div class="metric-card" style="border-top: 3px solid var(--blue)">
+            <div class="metric-label">In Progress</div>
+            <div class="metric-value" id="val-in-progress">-</div>
+          </div>
+          <div class="metric-card" style="border-top: 3px solid var(--green)">
+            <div class="metric-label">Completed Today</div>
+            <div class="metric-value" id="val-completed-service">-</div>
+          </div>
+          <div class="metric-card" style="border-top: 3px solid #d97706">
+            <div class="metric-label">Service Revenue</div>
+            <div class="metric-value" id="val-service-revenue">-</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Financial Overview -->
       <div class="dashboard-section">
         <h2>💰 Finance Today</h2>
         <div class="grid-4">
@@ -239,6 +262,12 @@ async function loadDashboard() {
     set('val-completed-orders', data.orders?.completed_orders_today ?? 0);
     set('val-failed-orders', data.orders?.failed_orders_today ?? 0);
     set('val-pending-orders', data.orders?.pending_orders ?? 0);
+
+    // Service stats - with null safety
+    document.getElementById('val-pending-assignment').textContent = data.service_stats?.pending_assignment ?? '—';
+    document.getElementById('val-in-progress').textContent = data.service_stats?.in_progress ?? '—';
+    document.getElementById('val-completed-service').textContent = data.service_stats?.completed_today ?? '—';
+    document.getElementById('val-service-revenue').textContent = '₹' + (data.service_stats?.total_revenue_services ?? 0).toLocaleString('en-IN');
 
     // Finance - with null safety
     set('val-revenue', Fmt.currency(data.finance?.total_revenue_today ?? 0));
