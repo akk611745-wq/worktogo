@@ -1,0 +1,1 @@
+ALTER TABLE vendors ADD COLUMN category_id INT NULL DEFAULT NULL;
