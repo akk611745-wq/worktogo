@@ -251,7 +251,8 @@ async function assignBookingVendor(bookingId) {
   try {
     await API.patch(CONFIG.ENDPOINTS.SERVICE_BOOKING_ASSIGN(bookingId), { vendor_id: Number(vendorId), status: 'assigned' });
     Toast.success('Booking assignment updated.');
-    loadServiceBookings();
+    await loadServiceBookings();
+    openOpsDetail(bookingId);
   } catch(e) { Toast.error(e.message || 'Failed to assign vendor'); }
 }
 
