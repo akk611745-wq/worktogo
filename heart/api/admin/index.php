@@ -41,6 +41,45 @@ try {
         $orders['completed_orders_today']    = (int)($orders['completed_orders_today'] ?? 0);
         $orders['failed_orders_today']       = (int)($orders['failed_orders_today'] ?? 0);
 
+        // --- SERVICE STATS ---
+        // Guard: bookings table is absent on delivery-only databases;
+        // mirrors the same try/catch pattern used for driver_wallets above.
+        try {
+            $stmt = $db->prepare("SELECT COUNT(*) FROM bookings WHERE DATE(created_at) = CURDATE()");
+            $stmt->execute();
+            $svc_total_today = $stmt->fetchColumn();
+
+            $stmt = $db->prepare("SELECT COUNT(*) FROM bookings WHERE status = 'completed' AND DATE(created_at) = CURDATE()");
+            $stmt->execute();
+            $svc_completed_today = $stmt->fetchColumn();
+
+            $stmt = $db->prepare("SELECT COUNT(*) FROM bookings WHERE vendor_id IS NULL AND status NOT IN ('completed', 'cancelled')");
+            $stmt->execute();
+            $svc_pending_assignment = $stmt->fetchColumn();
+
+            $stmt = $db->prepare("SELECT COUNT(*) FROM bookings WHERE status = 'in_progress'");
+            $stmt->execute();
+            $svc_in_progress = $stmt->fetchColumn();
+
+            $stmt = $db->prepare("SELECT SUM(total) FROM bookings WHERE payment_status = 'paid'");
+            $stmt->execute();
+            $svc_revenue = $stmt->fetchColumn();
+        } catch (PDOException $e) {
+            $svc_total_today        = 0;
+            $svc_completed_today    = 0;
+            $svc_pending_assignment = 0;
+            $svc_in_progress        = 0;
+            $svc_revenue            = 0;
+        }
+
+        $service_stats = [
+            'total_service_bookings_today' => (int)($svc_total_today ?: 0),
+            'completed_today'              => (int)($svc_completed_today ?: 0),
+            'pending_assignment'           => (int)($svc_pending_assignment ?: 0),
+            'in_progress'                  => (int)($svc_in_progress ?: 0),
+            'total_revenue_services'       => (float)($svc_revenue ?: 0),
+        ];
+
         // --- FINANCE ---
         // FIX: same fetch() false-guard; SUM on empty set returns NULL → coerce to 0.0
         $stmt = $db->prepare("
@@ -194,8 +233,9 @@ try {
         }
 
         Response::success([
-            'orders'       => $orders,
-            'finance'      => $finance,
+            'orders'        => $orders,
+            'service_stats' => $service_stats,
+            'finance'       => $finance,
             'driver_status' => $driver_stats,
             'system_health' => $system_health,
             'insights'     => [
