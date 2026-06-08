@@ -712,7 +712,7 @@ try {
     // ── POST /api/admin/users/{id}/block ──────────────────────────
     if ($method === 'POST' && preg_match('#^/api/admin/users/(\d+)/block$#', $uri, $m)) {
         $userId = (int) $m[1];
-        $db->prepare("UPDATE users SET status = 'suspended', updated_at = NOW() WHERE id = ?")
+        $db->prepare("UPDATE users SET status = 'blocked', updated_at = NOW() WHERE id = ?")
            ->execute([$userId]);
         Logger::info('Admin blocked user', ['admin_id' => $auth['user_id'], 'target_user' => $userId]);
         Response::success(null, 200, 'User blocked');

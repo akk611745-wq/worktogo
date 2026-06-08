@@ -369,11 +369,11 @@ function openModal(type) {
     body.innerHTML = `<p>There are ${dashboardData.driver_status.drivers_blocked} drivers blocked. <br><br><a href="users.html?role=delivery" class="btn btn-primary">Go to Users page to manage</a></p>`;
   }
   
-  modal.classList.add('open');
+  modal.classList.add('active');
 }
 
 function closeModal() {
-  document.getElementById('detail-modal').classList.remove('open');
+  document.getElementById('detail-modal').classList.remove('active');
 }
 
 loadDashboard();
