@@ -268,14 +268,15 @@ document.getElementById('export-btn').addEventListener('click', () => {
 
 async function loadServiceCategories() {
   try {
-    const r = await API.get(CONFIG.ENDPOINTS.CATEGORIES + '?type=service&status=active');
-    window._serviceCategories = r.categories || r.data || [];
+    const r = await API.get(CONFIG.ENDPOINTS.CATEGORIES, { type: 'service', status: 'active' });
+    const cats = r?.data?.categories || r?.categories || r?.data || [];
+    window._serviceCategories = Array.isArray(cats) ? cats : [];
   } catch(e) { window._serviceCategories = []; }
 }
 
 async function updateVendorCategory(vendorId, categoryId) {
   try {
-    await API.patch(`/api/admin/vendors/${vendorId}/category`, { category_id: categoryId || null });
+    await API.patch(`/vendors/${vendorId}/category`, { category_id: categoryId || null });
     Toast.success('Category updated');
   } catch(e) { Toast.error('Failed to update category'); }
 }
