@@ -223,7 +223,7 @@ async function toggleVendorStatus(id, action) {
 }
 
 async function viewVendor(id) {
-  await loadServiceCategories();
+  await loadServiceCategories().catch(() => {});
   Modal.open('vendor-modal');
   document.getElementById('vendor-modal-body').innerHTML = '<div style="text-align:center;padding:20px"><div class="spinner" style="margin:auto"></div></div>';
   document.getElementById('vendor-modal-footer').innerHTML = '';
