@@ -1091,28 +1091,39 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         $existingStmt->execute([(int)$auth['user_id'], '%Client request ID: ' . $operationalRequest['client_request_id'] . '%']);
         $existingBooking = $existingStmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
-    if ($existingBooking) {
-        Response::success([
-            'message' => 'Existing request returned safely. No duplicate booking was created.',
-            'booking_id' => (int)$existingBooking['id'],
-            'booking_number' => $existingBooking['booking_number'] ?? null,
-            'job_number' => $existingBooking['job_number'] ?? null,
-            'service' => $service['name'],
-            'booking_mode' => $existingBooking['booking_mode'] ?? $bookingMode,
-            'scheduled_at' => $existingBooking['scheduled_at'] ?? null,
-            'total' => $existingBooking['total'] ?? $bookingTotal,
-            'status' => normalizeServiceJobStatus((string)($existingBooking['status'] ?? 'pending')),
-            'payment_status' => $existingBooking['payment_status'] ?? 'unpaid',
-            'vendor_route' => $existingBooking['vendor_route'] ?? 'admin_queue',
-            'payment_data' => null,
-            'request_id' => $operationalRequest['request_id'],
-            'client_request_id' => $operationalRequest['client_request_id'],
-            'request_schema_version' => $operationalRequest['request_schema_version'],
-            'issue_summary' => $operationalRequest['issue_summary'],
-            'lifecycle_state' => $existingBooking['lifecycle_state'] ?? serviceCanonicalLifecycle((string)serviceNoteField($existingBooking['notes'] ?? null, 'Lifecycle state'), $bookingMode),
-            'assignment_state' => $existingBooking['assignment_state'] ?? serviceCanonicalAssignment((string)serviceNoteField($existingBooking['notes'] ?? null, 'Assignment state')),
-            'duplicate_prevented' => true,
-        ], 200);
+    // Skip duplicate gate if client explicitly confirmed "book anyway", or existing is inactive
+    $forceNew = !empty($input['force_new_booking']);
+    if ($existingBooking && !$forceNew) {
+        $existingStatus    = strtolower((string)($existingBooking['status'] ?? 'pending'));
+        $existingLifecycle = strtolower((string)($existingBooking['lifecycle_state'] ?? ''));
+        $inactiveStates    = ['cancelled', 'completed', 'done', 'closed'];
+        $existingIsActive  = !in_array($existingStatus, $inactiveStates, true)
+            && !in_array($existingLifecycle, $inactiveStates, true);
+
+        if ($existingIsActive) {
+            Response::success([
+                'message' => 'Existing request returned safely. No duplicate booking was created.',
+                'booking_id' => (int)$existingBooking['id'],
+                'booking_number' => $existingBooking['booking_number'] ?? null,
+                'job_number' => $existingBooking['job_number'] ?? null,
+                'service' => $service['name'],
+                'booking_mode' => $existingBooking['booking_mode'] ?? $bookingMode,
+                'scheduled_at' => $existingBooking['scheduled_at'] ?? null,
+                'total' => $existingBooking['total'] ?? $bookingTotal,
+                'status' => normalizeServiceJobStatus((string)($existingBooking['status'] ?? 'pending')),
+                'payment_status' => $existingBooking['payment_status'] ?? 'unpaid',
+                'vendor_route' => $existingBooking['vendor_route'] ?? 'admin_queue',
+                'payment_data' => null,
+                'request_id' => $operationalRequest['request_id'],
+                'client_request_id' => $operationalRequest['client_request_id'],
+                'request_schema_version' => $operationalRequest['request_schema_version'],
+                'issue_summary' => $operationalRequest['issue_summary'],
+                'lifecycle_state' => $existingBooking['lifecycle_state'] ?? serviceCanonicalLifecycle((string)serviceNoteField($existingBooking['notes'] ?? null, 'Lifecycle state'), $bookingMode),
+                'assignment_state' => $existingBooking['assignment_state'] ?? serviceCanonicalAssignment((string)serviceNoteField($existingBooking['notes'] ?? null, 'Assignment state')),
+                'duplicate_prevented' => true,
+            ], 200);
+        }
+        // Existing booking is inactive (cancelled / completed) — fall through to create new
     }
 
     // Generate collision-resistant unique reference numbers

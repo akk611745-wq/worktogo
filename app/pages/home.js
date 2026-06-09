@@ -422,6 +422,7 @@ window.HomeModals = (() => {
   let _currentService = null;
   let _isBookingSubmitting = false;
   let _bookingOpenToken = 0;
+  let _forceNewBooking  = false; // set true when user confirms "book new anyway"
   let _swipeCleanup = null;
 
     function openOrder(product) {
@@ -791,9 +792,18 @@ window.HomeModals = (() => {
         customer_address: address,
         vendor_id: selectedWorker?.vendor_id || null,
         notes: _adminRequestNotes(operationalPayload),
+        ...(_forceNewBooking ? { force_new_booking: true } : {}),
       }).catch(err => ({ ok: false, error: err?.message || "Network issue while sending booking." }));
+    _forceNewBooking = false; // always reset after submission attempt
 
     if (res.ok) {
+      // Existing active booking returned — warn and offer "Book new anyway"
+      if (res.data?.duplicate_prevented) {
+        _isBookingSubmitting = false;
+        if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
+        _showDuplicateBookingConfirm(res.data, bookingMode, category);
+        return;
+      }
       const paymentOk = await _handleInspectionCheckout(res.data, bookingMode, operationalPayload);
       if (paymentOk !== true && bookingMode !== "inspection") {
         _isBookingSubmitting = false;
@@ -1095,7 +1105,47 @@ window.HomeModals = (() => {
     delete document.body.dataset.modalOpen;
   }
 
-  return { openOrder, changeQty, confirmOrder, openBooking, confirmBooking, close, closeBooking, discardBookingDraft, closeOnOverlay, selectInspectionCategory, selectInspectionIssue, showInspectionConfirmation: _showInspectionConfirmation, checkInspectionPaymentStatus: _checkInspectionPaymentStatus, resumeInspectionPayment: _resumeInspectionPayment };
+  // ── Duplicate booking: warn inline + "Book anyway" ───────────────────────
+  function _showDuplicateBookingConfirm(data, mode, cat) {
+    const container = document.getElementById("booking-modal-body");
+    if (!container) return;
+    container.querySelector(".duplicate-booking-warn")?.remove();
+    const bookingRef = data.booking_number || `#${data.booking_id}`;
+    const modeLabel  = mode === "inspection" ? "₹299 inspection" : "free service request";
+    const warn = document.createElement("div");
+    warn.className = "duplicate-booking-warn";
+    warn.style.cssText = "background:#fff8e1;border:1px solid #f59e0b;border-radius:0.75rem;padding:1rem;margin-bottom:1rem;";
+    warn.innerHTML = `
+      <p style="margin:0 0 0.625rem;font-size:0.875rem;font-weight:600;color:#92400e;">
+        ⚠️ Active booking already exists (${_esc(bookingRef)})
+      </p>
+      <p style="margin:0 0 0.875rem;font-size:0.8125rem;color:#78350f;line-height:1.45;">
+        You already have an active <strong>${_esc(data.service || (cat && cat.label) || "service")}</strong>
+        ${_esc(modeLabel)} — currently <strong>${_esc(data.status || "active")}</strong>.
+        Do you want to book a new one anyway?
+      </p>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <button class="btn-primary" style="font-size:0.8125rem;padding:0.4375rem 0.875rem;min-width:0;"
+          onclick="HomeModals.confirmNewBookingAnyway()">Yes, book new</button>
+        <button class="btn-ghost-inline" style="font-size:0.8125rem;padding:0.4375rem 0.75rem;min-width:0;"
+          onclick="this.closest('.duplicate-booking-warn')?.remove()">Cancel</button>
+      </div>`;
+    container.prepend(warn);
+    container.scrollTop = 0;
+  }
+
+  function confirmNewBookingAnyway() {
+    // Clear cached request ID so a fresh one is generated for the new booking
+    try {
+      sessionStorage.removeItem("wtg_active_client_request");
+      localStorage.removeItem("wtg_active_client_request");
+    } catch {}
+    _forceNewBooking = true;
+    document.querySelector(".duplicate-booking-warn")?.remove();
+    confirmBooking();
+  }
+
+  return { openOrder, changeQty, confirmOrder, openBooking, confirmBooking, close, closeBooking, discardBookingDraft, closeOnOverlay, selectInspectionCategory, selectInspectionIssue, showInspectionConfirmation: _showInspectionConfirmation, checkInspectionPaymentStatus: _checkInspectionPaymentStatus, resumeInspectionPayment: _resumeInspectionPayment, confirmNewBookingAnyway };
 })();
 
 async function _handleInspectionCheckout(booking, bookingMode, payload = {}) {
