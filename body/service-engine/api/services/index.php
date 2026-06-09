@@ -1458,6 +1458,12 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/ops$#', $ur
     if ($bookingMode === 'inspection' && in_array($action, ['assign_vendor', 'reassign_vendor', 'inspection_scheduled'], true) && !in_array($paymentState, ['paid', 'verified', 'success', 'captured'], true) && !$override) {
         Response::validation('Inspection payment must be verified before assignment. Use admin_override_payment only after manual verification.');
     }
+    // When admin overrides payment, advance lifecycle past the payment gate so the
+    // transition inspection_pending → inspection_assigned is valid.
+    $paymentOverrideUsed = $override && $bookingMode === 'inspection' && !in_array($paymentState, ['paid', 'verified', 'success', 'captured'], true);
+    if ($paymentOverrideUsed) {
+        $currentLifecycle = 'inspection_paid';
+    }
     if (!serviceCanTransitionLifecycle($bookingMode, $currentLifecycle, $nextLifecycle)) {
         Response::validation('Invalid lifecycle transition from ' . $currentLifecycle . ' to ' . $nextLifecycle);
     }
@@ -1531,7 +1537,11 @@ if ($method === 'PATCH' && preg_match('#^/api/service/bookings/(\d+)/ops$#', $ur
         if (is_array($decodedTimeline)) $storedTimeline = $decodedTimeline;
     }
     $timeline = serviceNormalizeTimeline($storedTimeline ?: serviceJsonField($booking['notes'] ?? null, 'Timeline'), (string)($booking['created_at'] ?? $now), $currentLifecycle);
-    $timeline = serviceAppendTimelineEntry($timeline, (string)($config['event'] ?? $action), $nextLifecycle, 'admin', 'admin_ops', trim((string)($input['notes'] ?? '')), false);
+    $timelineNote = trim((string)($input['notes'] ?? ''));
+    if ($paymentOverrideUsed) {
+        $timelineNote = ($timelineNote ? $timelineNote . ' | ' : '') . 'Payment manually verified by admin (override)';
+    }
+    $timeline = serviceAppendTimelineEntry($timeline, (string)($config['event'] ?? $action), $nextLifecycle, 'admin', 'admin_ops', $timelineNote, false);
 
     $nextAssignment = serviceCanonicalAssignment((string)($config['assignment'] ?? serviceNoteField($booking['notes'] ?? null, 'Assignment state') ?: 'unassigned'), $nextLifecycle);
     $nextNotes = serviceAppendNoteField($booking['notes'] ?? null, 'Lifecycle state', $nextLifecycle);
