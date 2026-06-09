@@ -395,7 +395,7 @@ async function loadServiceBookings(page = 1) {
     if (status) params.status = status;
     const data = await API.get(CONFIG.ENDPOINTS.SERVICE_BOOKINGS, params);
     const total = data.total ?? data.data?.total ?? 0;
-    bookingTotalPages = data.total_pages ?? data.data?.total_pages ?? Math.ceil(total / 50) || 1;
+    bookingTotalPages = data.total_pages ?? data.data?.total_pages ?? (Math.ceil(total / 50) || 1);
     serviceBookingsCache = (data.data?.bookings || data.bookings || []).map(b => ({ ...b, status: normalizeServiceStatus(b.status || b.job_status), amount: b.amount ?? b.total ?? b.price }));
     renderServiceBookings(filterServiceBookings(serviceBookingsCache));
     buildPagination('bookings-pagination', bookingPage, bookingTotalPages, loadServiceBookings);
