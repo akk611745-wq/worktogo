@@ -1156,36 +1156,74 @@ if ($method === 'POST' && $uri === '/api/service/request') {
 
         $bookingId = (int)$db->lastInsertId();
 
-        // Online Payment logic
+        // Online Payment logic — CashfreeClient (API v2023-08-01) with credential guard
         $paymentData = null;
         if ($paymentMethod === 'online') {
-            require_once SYSTEM_ROOT . '/core/helpers/Payment.php';
-            try {
-                $paymentData = Payment::createOrder('cashfree', $bookingTotal, $bookingNum, [
-                    'return_url' => (defined('APP_URL') ? APP_URL : '') . '/app/#home?payment_return=inspection&booking_id=' . $bookingId,
-                    'notify_url' => (defined('APP_URL') ? APP_URL : '') . '/api/payment/webhook',
-                    'customer' => [
-                        'id' => (int)$auth['user_id'],
-                        'name' => trim((string)($input['customer_name'] ?? 'WorkToGo Customer')) ?: 'WorkToGo Customer',
-                        'email' => 'support@worktogo.com',
-                        'phone' => trim((string)($input['customer_mobile'] ?? '9999999999')) ?: '9999999999',
-                    ],
-                    'order_tags' => [
-                        'internal_booking_id' => (string)$bookingId,
-                        'reference_type' => 'booking',
-                        'platform' => 'worktogo',
-                    ],
-                ]);
-                if (empty($paymentData['success']) || empty($paymentData['payment_id'])) {
-                    throw new RuntimeException($paymentData['message'] ?? 'Cashfree order was not created');
-                }
-                $db->prepare("UPDATE bookings SET payment_id = ?, payment_status = 'unpaid' WHERE id = ?")
-                   ->execute([$paymentData['payment_id'] ?? null, $bookingId]);
-                $paymentStatus = 'unpaid';
-            } catch (Throwable $paymentError) {
-                $paymentData = ['success' => false, 'message' => 'Payment session could not be created. Booking lifecycle is still saved.'];
+            require_once SYSTEM_ROOT . '/config/payment.config.php';
+            require_once SYSTEM_ROOT . '/lib/CashfreeClient.php';
+
+            // ── Credential guard: fail fast if Cashfree is not yet configured ──
+            $cfAppId = (string)(getenv('CASHFREE_APP_ID') ?: '');
+            if (
+                empty($cfAppId) ||
+                strpos($cfAppId, 'placeholder') !== false ||
+                strpos($cfAppId, 'your_') !== false
+            ) {
+                $paymentData   = ['success' => false, 'message' => 'Payment gateway not configured. Contact support.'];
                 $db->prepare("UPDATE bookings SET payment_status = 'failed' WHERE id = ?")->execute([$bookingId]);
                 $paymentStatus = 'failed';
+            } else {
+                try {
+                    $cfOrderId = 'WTG_B' . $bookingId . '_' . time();
+                    $cfClient  = new CashfreeClient();
+                    $cfResult  = $cfClient->post('/orders', [
+                        'order_id'       => $cfOrderId,
+                        'order_amount'   => $bookingTotal,
+                        'order_currency' => 'INR',
+                        'customer_details' => [
+                            'customer_id'    => (string)(int)$auth['user_id'],
+                            'customer_name'  => htmlspecialchars(strip_tags(trim((string)($input['customer_name'] ?? 'WorkToGo Customer'))), ENT_QUOTES, 'UTF-8') ?: 'WorkToGo Customer',
+                            'customer_email' => 'support@worktogo.com',
+                            'customer_phone' => preg_replace('/\D/', '', (string)($input['customer_mobile'] ?? '9999999999')) ?: '9999999999',
+                        ],
+                        'order_meta' => [
+                            'return_url' => (defined('APP_URL') ? APP_URL : '') . '/app/#home?payment_return=inspection&booking_id=' . $bookingId,
+                            'notify_url' => (defined('APP_URL') ? APP_URL : '') . '/api/payment/webhook',
+                        ],
+                        'order_tags' => [
+                            'internal_booking_id' => (string)$bookingId,
+                            'reference_type'      => 'booking',
+                            'platform'            => 'worktogo',
+                        ],
+                    ]);
+
+                    if (!$cfResult['success']) {
+                        throw new RuntimeException('Cashfree error: ' . ($cfResult['error'] ?? 'unknown'));
+                    }
+
+                    $cfData      = $cfResult['data'];
+                    $paymentData = [
+                        'success'            => true,
+                        'payment_id'         => $cfOrderId,
+                        'provider'           => 'cashfree',
+                        'amount'             => $bookingTotal,
+                        'currency'           => 'INR',
+                        'status'             => 'created',
+                        'payment_session_id' => $cfData['payment_session_id'] ?? null,
+                        'order_token'        => $cfData['order_token'] ?? null,
+                        'mode'               => strtolower(CASHFREE_ENV),
+                        'gateway_data'       => $cfData,
+                    ];
+
+                    $db->prepare("UPDATE bookings SET payment_id = ?, payment_status = 'unpaid' WHERE id = ?")
+                       ->execute([$paymentData['payment_id'], $bookingId]);
+                    $paymentStatus = 'unpaid';
+                } catch (Throwable $paymentError) {
+                    error_log('[services] Cashfree booking payment failed: ' . $paymentError->getMessage());
+                    $paymentData   = ['success' => false, 'message' => 'Payment session could not be created. Booking lifecycle is still saved.'];
+                    $db->prepare("UPDATE bookings SET payment_status = 'failed' WHERE id = ?")->execute([$bookingId]);
+                    $paymentStatus = 'failed';
+                }
             }
         }
         $operationalTimeline = $operationalRequest['timeline'];

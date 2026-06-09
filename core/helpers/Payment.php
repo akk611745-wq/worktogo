@@ -14,10 +14,19 @@ class Payment
             throw new Exception("Unsupported payment provider: {$provider}");
         }
 
-        $appId = getenv('CASHFREE_APP_ID');
-        $secret = getenv('CASHFREE_SECRET_KEY');
-        $baseUrl = getenv('APP_ENV') === 'production'
-            ? ($_ENV['CASHFREE_API_URL'] ?? 'https://api.cashfree.com/pg')
+        $appId  = (string)(getenv('CASHFREE_APP_ID')    ?: '');
+        $secret = (string)(getenv('CASHFREE_SECRET_KEY') ?: '');
+        // ── Credential guard ──────────────────────────────────────────────────
+        if (
+            empty($appId) ||
+            strpos($appId, 'placeholder') !== false ||
+            strpos($appId, 'your_') !== false
+        ) {
+            return ['success' => false, 'message' => 'Payment gateway not configured. Contact support.'];
+        }
+        $cfEnv   = (string)(getenv('CASHFREE_ENV') ?: getenv('APP_ENV') ?: 'production');
+        $baseUrl = strtolower($cfEnv) === 'production'
+            ? ($_ENV['CASHFREE_API_URL']     ?? 'https://api.cashfree.com/pg')
             : ($_ENV['CASHFREE_SANDBOX_URL'] ?? 'https://sandbox.cashfree.com/pg');
 
         $ch = curl_init("{$baseUrl}/orders");
@@ -26,7 +35,7 @@ class Payment
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             "x-client-id: $appId",
             "x-client-secret: $secret",
-            "x-api-version: 2022-09-01",
+            "x-api-version: 2023-08-01",
             "Content-Type: application/json"
         ]);
         
@@ -132,10 +141,11 @@ class Payment
      */
     public static function refundOrder($orderId, $amount, $reason = "Refund")
     {
-        $appId = getenv('CASHFREE_APP_ID');
-        $secret = getenv('CASHFREE_SECRET_KEY');
-        $baseUrl = getenv('APP_ENV') === 'production'
-            ? ($_ENV['CASHFREE_API_URL'] ?? 'https://api.cashfree.com/pg')
+        $appId   = (string)(getenv('CASHFREE_APP_ID')    ?: '');
+        $secret  = (string)(getenv('CASHFREE_SECRET_KEY') ?: '');
+        $cfEnv   = (string)(getenv('CASHFREE_ENV') ?: getenv('APP_ENV') ?: 'production');
+        $baseUrl = strtolower($cfEnv) === 'production'
+            ? ($_ENV['CASHFREE_API_URL']     ?? 'https://api.cashfree.com/pg')
             : ($_ENV['CASHFREE_SANDBOX_URL'] ?? 'https://sandbox.cashfree.com/pg');
 
         $ch = curl_init("{$baseUrl}/orders/{$orderId}/refunds");
@@ -144,7 +154,7 @@ class Payment
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             "x-client-id: $appId",
             "x-client-secret: $secret",
-            "x-api-version: 2022-09-01",
+            "x-api-version: 2023-08-01",
             "Content-Type: application/json"
         ]);
         
@@ -207,22 +217,23 @@ class Payment
             // Example endpoint: POST https://api.cashfree.com/pg/orders/{order_id}/refunds
             
             if ($gateway === 'cashfree') {
-                $appId = getenv('CASHFREE_APP_ID');
-                $secret = getenv('CASHFREE_SECRET_KEY');
-                $baseUrl = getenv('APP_ENV') === 'production'
-                    ? ($_ENV['CASHFREE_API_URL'] ?? 'https://api.cashfree.com/pg')
+                $appId   = (string)(getenv('CASHFREE_APP_ID')    ?: '');
+                $secret  = (string)(getenv('CASHFREE_SECRET_KEY') ?: '');
+                $cfEnv   = (string)(getenv('CASHFREE_ENV') ?: getenv('APP_ENV') ?: 'production');
+                $baseUrl = strtolower($cfEnv) === 'production'
+                    ? ($_ENV['CASHFREE_API_URL']     ?? 'https://api.cashfree.com/pg')
                     : ($_ENV['CASHFREE_SANDBOX_URL'] ?? 'https://sandbox.cashfree.com/pg');
-                
+
                 // Generate unique refund ID for the request
                 $refundId = 'refund_' . uniqid();
-                
+
                 $ch = curl_init("{$baseUrl}/orders/{$gatewayRef}/refunds");
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                 curl_setopt($ch, CURLOPT_POST, true);
                 curl_setopt($ch, CURLOPT_HTTPHEADER, [
                     "x-client-id: $appId",
                     "x-client-secret: $secret",
-                    "x-api-version: 2022-09-01",
+                    "x-api-version: 2023-08-01",
                     "Content-Type: application/json"
                 ]);
                 
