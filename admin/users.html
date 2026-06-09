@@ -191,7 +191,7 @@ function field(label, val) {
 document.getElementById('apply-filter').addEventListener('click', () => loadUsers(1));
 document.getElementById('search-input').addEventListener('keydown', e => { if (e.key === 'Enter') loadUsers(1); });
 document.getElementById('export-btn').addEventListener('click', () => {
-  exportCSV(allUsers, ['id','name','email','phone','status','createdAt'], 'users.csv');
+  exportCSV(allUsers, ['id','name','email','phone','status','created_at'], 'users.csv');
 });
 
 loadUsers(1);

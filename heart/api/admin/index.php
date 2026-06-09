@@ -493,8 +493,9 @@ try {
         $total = (int) $countStmt->fetchColumn();
 
         $stmt = $db->prepare(
-            "SELECT id, uuid, name, phone, email, role, status, created_at, last_login_at
-             FROM users {$whereSQL}
+            "SELECT id, uuid, name, phone, email, role, status, created_at, last_login_at,
+                    (SELECT COUNT(*) FROM bookings WHERE user_id = u.id) AS order_count
+             FROM users u {$whereSQL}
              ORDER BY created_at DESC
              LIMIT :limit OFFSET :offset"
         );
