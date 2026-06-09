@@ -530,9 +530,10 @@ window.HomeModals = (() => {
     const intendedMode = _canonicalBookingMode(service.booking_mode || (service.vendor_id ? "direct_vendor" : "free_lead"), service, category);
     const savedInspectionPayment = intendedMode === "inspection" ? _readInspectionPaymentReturn() : null;
     if (savedInspectionPayment?.booking && _normalizePaymentState(savedInspectionPayment.status_state || savedInspectionPayment.booking.payment_status) !== "paid") {
+      const _savedPayState = _normalizePaymentState(savedInspectionPayment.status_state || savedInspectionPayment.booking.payment_status);
       _currentService = null;
       _showInspectionVerificationState(savedInspectionPayment, { forceOpen: true });
-      _continueInspectionVerification(savedInspectionPayment);
+      if (_savedPayState !== "failed" && _savedPayState !== "cancelled") _continueInspectionVerification(savedInspectionPayment);
       return;
     }
     _currentService = {
@@ -660,9 +661,10 @@ window.HomeModals = (() => {
     bookingMode = _canonicalBookingMode(document.getElementById("booking-mode")?.value, _currentService, category);
     const savedInspectionPayment = bookingMode === "inspection" ? _readInspectionPaymentReturn() : null;
     if (savedInspectionPayment?.booking && _normalizePaymentState(savedInspectionPayment.status_state || savedInspectionPayment.booking.payment_status) !== "paid") {
-      _showInspectionVerificationState(savedInspectionPayment, { forceOpen: true, checking: true });
-      _continueInspectionVerification(savedInspectionPayment);
-      UI.toast("Your existing inspection request is safely saved. No duplicate request was created.", "info", 5000);
+      const _savedPayState = _normalizePaymentState(savedInspectionPayment.status_state || savedInspectionPayment.booking.payment_status);
+      _showInspectionVerificationState(savedInspectionPayment, { forceOpen: true, checking: _savedPayState === "pending" });
+      if (_savedPayState !== "failed" && _savedPayState !== "cancelled") _continueInspectionVerification(savedInspectionPayment);
+      UI.toast(_savedPayState === "failed" ? "Previous payment did not go through. Use New booking to start fresh." : "Your existing inspection request is safely saved. No duplicate request was created.", "info", 5000);
       return;
     }
     if (bookingMode === "inspection" && !dateVal) dateVal = _defaultScheduledLocal();
@@ -1145,7 +1147,7 @@ window.HomeModals = (() => {
     confirmBooking();
   }
 
-  return { openOrder, changeQty, confirmOrder, openBooking, confirmBooking, close, closeBooking, discardBookingDraft, closeOnOverlay, selectInspectionCategory, selectInspectionIssue, showInspectionConfirmation: _showInspectionConfirmation, checkInspectionPaymentStatus: _checkInspectionPaymentStatus, resumeInspectionPayment: _resumeInspectionPayment, confirmNewBookingAnyway };
+  return { openOrder, changeQty, confirmOrder, openBooking, confirmBooking, close, closeBooking, discardBookingDraft, closeOnOverlay, selectInspectionCategory, selectInspectionIssue, showInspectionConfirmation: _showInspectionConfirmation, checkInspectionPaymentStatus: _checkInspectionPaymentStatus, resumeInspectionPayment: _resumeInspectionPayment, startFreshInspectionBooking: _startFreshInspectionBooking, confirmNewBookingAnyway };
 })();
 
 async function _handleInspectionCheckout(booking, bookingMode, payload = {}) {
@@ -1299,22 +1301,24 @@ function _showInspectionVerificationState(saved = {}, opts = {}) {
   document.getElementById("booking-modal-title").textContent = title;
   body.innerHTML = `
     <div class="inspection-confirmation-state inspection-verification-state">
-      <div class="inspection-success-mark">${state === "paid" ? "✓" : "…"}</div>
+      <div class="inspection-success-mark">${state === "paid" ? "✓" : state === "failed" ? "✗" : "…"}</div>
       <h4>${_esc(title)}</h4>
       <p>${_esc(note)}</p>
       <div class="inspection-confirmation-list">
         <span><strong>Request ID</strong>${_esc(String(bookingId))}</span>
         <span><strong>Service</strong>${_esc(service)}</span>
         <span><strong>Area</strong>${_esc(locality)}</span>
-        <span><strong>Next step</strong>${state === "paid" ? "Inspection visit confirmation" : "Payment verification, then inspection assignment"}</span>
+        <span><strong>Next step</strong>${state === "paid" ? "Inspection visit confirmation" : state === "failed" ? "Start a fresh booking below" : "Payment verification, then inspection assignment"}</span>
       </div>
-      <p class="inspection-payment-note">No duplicate request is needed. Use Check status to continue verification safely.</p>
+      <p class="inspection-payment-note">${state === "failed" ? "Payment did not go through. Your slot is still open — start a fresh booking." : "No duplicate request is needed. Use Check status to continue verification safely."}</p>
     </div>`;
   const actions = document.querySelector("#booking-modal .modal-actions");
-  if (actions) actions.innerHTML = `
-    <button class="btn-primary" onclick="HomeModals.checkInspectionPaymentStatus()">Check status</button>
-    ${state === "pending" ? `<button class="btn-secondary" onclick="HomeModals.resumeInspectionPayment()">Continue payment</button>` : ""}
-    <button class="btn-secondary" onclick="HomeModals.closeBooking(); ROUTER.go('bookings')">My Requests</button>`;
+  if (actions) actions.innerHTML = state === "failed"
+    ? `<button class="btn-primary" onclick="HomeModals.startFreshInspectionBooking()">New booking</button>
+       <button class="btn-ghost-inline" onclick="HomeModals.closeBooking()">Dismiss</button>`
+    : `<button class="btn-primary" onclick="HomeModals.checkInspectionPaymentStatus()">Check status</button>
+       ${state === "pending" ? `<button class="btn-secondary" onclick="HomeModals.resumeInspectionPayment()">Continue payment</button>` : ""}
+       <button class="btn-secondary" onclick="HomeModals.closeBooking(); ROUTER.go('bookings')">My Requests</button>`;
   if (opts.forceOpen) {
     modal.classList.remove("hidden");
     document.body.classList.add("modal-open");
@@ -1373,6 +1377,16 @@ function _continueInspectionVerification(saved = {}) {
       _saveInspectionPaymentReturn(saved.booking, { payload: saved.payload, locality: saved.locality, state: status });
     }
   }, 3000);
+}
+
+function _startFreshInspectionBooking() {
+  _clearInspectionPaymentReturn();
+  try {
+    sessionStorage.removeItem("wtg_active_client_request");
+    localStorage.removeItem("wtg_active_client_request");
+  } catch {}
+  HomeModals.closeBooking();
+  UI.toast("Previous payment cleared. Tap the service to book again.", "info", 4000);
 }
 
 // ── Loaders ─────────────────────────────────────────────────────────────────

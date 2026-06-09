@@ -1097,8 +1097,10 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         $existingStatus    = strtolower((string)($existingBooking['status'] ?? 'pending'));
         $existingLifecycle = strtolower((string)($existingBooking['lifecycle_state'] ?? ''));
         $inactiveStates    = ['cancelled', 'completed', 'done', 'closed'];
+        $failedPayment     = in_array(strtolower((string)($existingBooking['payment_status'] ?? '')), ['failed', 'failure', 'declined'], true);
         $existingIsActive  = !in_array($existingStatus, $inactiveStates, true)
-            && !in_array($existingLifecycle, $inactiveStates, true);
+            && !in_array($existingLifecycle, $inactiveStates, true)
+            && !$failedPayment;
 
         if ($existingIsActive) {
             Response::success([
