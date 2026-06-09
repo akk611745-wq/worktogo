@@ -1294,6 +1294,21 @@ if ($method === 'GET' && $uri === '/api/service/bookings') {
     $vendorRouteSelect = serviceBookingColumnSql($db, 'vendor_route', 'b.vendor_route');
     $jobAssignmentLockSelect = serviceJobColumnSql($db, 'assignment_lock_time', 'j.assignment_lock_time');
 
+    $limit  = min((int)($_GET['limit'] ?? 50), 200);
+    $page   = max(1, (int)($_GET['page']  ?? 1));
+    $offset = ($page - 1) * $limit;
+
+    $countStmt = $db->prepare(
+        "SELECT COUNT(*) FROM bookings b
+         LEFT JOIN services s ON s.id = b.service_id
+         LEFT JOIN vendors v ON v.id = b.vendor_id
+         LEFT JOIN users u ON u.id = b.user_id
+         LEFT JOIN jobs j ON j.booking_id = b.id
+         $whereSQL"
+    );
+    $countStmt->execute($bind);
+    $totalCount = (int)$countStmt->fetchColumn();
+
     $stmt = $db->prepare(
         "SELECT b.*, s.name AS service_name, v.business_name AS vendor_name,
                  {$customerNameSelect}, {$customerMobileSelect}, {$customerLocalitySelect}, {$customerAddressSelect},
@@ -1307,9 +1322,12 @@ if ($method === 'GET' && $uri === '/api/service/bookings') {
          LEFT JOIN jobs j ON j.booking_id = b.id
          $whereSQL
          ORDER BY b.created_at DESC
-         LIMIT 50"
+         LIMIT :limit OFFSET :offset"
     );
-    $stmt->execute($bind);
+    $stmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    foreach ($bind as $k => $v) $stmt->bindValue($k, $v);
+    $stmt->execute();
     $bookings = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($bookings as &$booking) {
@@ -1328,7 +1346,13 @@ if ($method === 'GET' && $uri === '/api/service/bookings') {
     }
     unset($booking);
 
-    Response::success(['bookings' => $bookings, 'total' => count($bookings)]);
+    Response::success([
+        'bookings'    => $bookings,
+        'total'       => $totalCount,
+        'page'        => $page,
+        'limit'       => $limit,
+        'total_pages' => (int)ceil($totalCount / max($limit, 1)),
+    ]);
 }
 
 // â”€â”€ GET /api/service/bookings/{id} â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

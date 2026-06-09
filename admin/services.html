@@ -243,6 +243,9 @@
               </tbody>
             </table>
           </div>
+          <div class="card-body" style="padding-top:8px">
+            <div class="pagination" id="bookings-pagination"></div>
+          </div>
         </div>
       </div>
 
@@ -362,6 +365,7 @@
 Shell.init({ title: 'Service Control', active: 'services.html' });
 
 let currentPage = 1, totalPages = 1;
+let bookingPage = 1, bookingTotalPages = 1;
 let serviceVendors = [];
 let serviceBookingsCache = [];
 const SERVICE_STATUS_ALIASES = { open:'pending', pending:'pending', assigned:'confirmed', accepted:'confirmed', confirmed:'confirmed', started:'in_progress', ongoing:'in_progress', in_progress:'in_progress', delivered:'completed', completed:'completed', rejected:'cancelled', cancelled:'cancelled' };
@@ -380,17 +384,23 @@ function switchTab(name) {
 }
 
 // ── Service Bookings (Operations Board) ─────────────────────
-async function loadServiceBookings() {
+async function loadServiceBookings(page = 1) {
+  bookingPage = page;
   tableLoading('service-bookings-tbody', 9);
   try {
-    const params = {};
+    const params = { page, limit: 50 };
     const q = document.getElementById('booking-search')?.value.trim();
     const status = document.getElementById('booking-status')?.value;
     if (q) params.q = q;
     if (status) params.status = status;
     const data = await API.get(CONFIG.ENDPOINTS.SERVICE_BOOKINGS, params);
+    const total = data.total ?? data.data?.total ?? 0;
+    bookingTotalPages = data.total_pages ?? data.data?.total_pages ?? Math.ceil(total / 50) || 1;
     serviceBookingsCache = (data.data?.bookings || data.bookings || []).map(b => ({ ...b, status: normalizeServiceStatus(b.status || b.job_status), amount: b.amount ?? b.total ?? b.price }));
     renderServiceBookings(filterServiceBookings(serviceBookingsCache));
+    buildPagination('bookings-pagination', bookingPage, bookingTotalPages, loadServiceBookings);
+    document.getElementById('booking-count').textContent =
+      `${total.toLocaleString()} total bookings · Page ${bookingPage} of ${bookingTotalPages}`;
     // Re-render kanban if it's visible
     if (document.getElementById('tab-kanban')?.classList.contains('active')) {
       renderKanban();

@@ -312,11 +312,23 @@ try {
         $pendingStmt->execute();
         $pendingCount = (int) $pendingStmt->fetchColumn();
         
+        $hasServiceLocalities = (int)$db->query(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vendors' AND COLUMN_NAME = 'service_localities'"
+        )->fetchColumn() > 0;
+        $hasServiceAreaNotes = (int)$db->query(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vendors' AND COLUMN_NAME = 'service_area_notes'"
+        )->fetchColumn() > 0;
+        $serviceLocalitiesSelect = $hasServiceLocalities ? ', v.service_localities' : ', NULL AS service_localities';
+        $serviceAreaNotesSelect  = $hasServiceAreaNotes  ? ', v.service_area_notes'  : ', NULL AS service_area_notes';
+
         $stmt = $db->prepare(
             "SELECT v.id, v.user_id, v.business_name, v.slug, v.type, v.type AS vendor_type,
                     v.status, v.commission_rate, v.rating, v.is_online, v.lat, v.lng,
                     v.created_at, v.updated_at, v.category_id,
                     u.name AS owner_name, u.phone AS owner_phone, u.email AS owner_email
+                    {$serviceLocalitiesSelect}{$serviceAreaNotesSelect}
              FROM vendors v
              LEFT JOIN users u ON u.id = v.user_id
              {$whereSQL}
