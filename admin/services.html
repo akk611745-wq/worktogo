@@ -4,6 +4,186 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WorkToGo Admin — Services</title>
 <link rel="stylesheet" href="assets/style.css">
+<style>
+/* ── Tab System ─────────────────────────────────────────────── */
+.wtg-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  width: fit-content;
+}
+.wtg-tab {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 7px 18px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: var(--mono);
+  letter-spacing: 0.05em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+.wtg-tab:hover { color: var(--text-primary); background: var(--bg-raised); }
+.wtg-tab.active { background: var(--accent); color: #000; font-weight: 700; }
+.wtg-tab-panel { display: none; }
+.wtg-tab-panel.active { display: block; }
+
+/* ── Kanban Board ────────────────────────────────────────────── */
+.kanban-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(230px, 1fr));
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  align-items: start;
+}
+.kanban-col {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 240px);
+  min-height: 320px;
+}
+.kanban-col-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px 8px;
+  border-top: 3px solid var(--border-mid);
+  border-bottom: 1px solid var(--border-dim);
+  flex-shrink: 0;
+}
+.kanban-col-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-primary);
+}
+.kanban-col-badge {
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+  border-radius: 100px;
+  padding: 1px 9px;
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 24px;
+  text-align: center;
+}
+.kanban-col-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 4px 12px 6px;
+  border-bottom: 1px solid var(--border-dim);
+  flex-shrink: 0;
+}
+.kanban-cards {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  transition: background 0.15s, outline 0.1s;
+}
+.kanban-cards.drag-over {
+  background: var(--accent-dim);
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+.kanban-empty {
+  color: var(--text-muted);
+  font-size: 10px;
+  text-align: center;
+  padding: 28px 8px;
+  border: 1px dashed var(--border-dim);
+  border-radius: var(--radius-sm);
+  margin: 2px 0;
+}
+.kanban-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  cursor: grab;
+  transition: border-color 0.15s, box-shadow 0.15s, opacity 0.15s, transform 0.1s;
+  user-select: none;
+}
+.kanban-card:hover {
+  border-color: var(--border-bright);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  transform: translateY(-1px);
+}
+.kanban-card:active { cursor: grabbing; }
+.kanban-card.dragging {
+  opacity: 0.35;
+  cursor: grabbing;
+  transform: scale(0.97);
+}
+.kanban-card .kc-id {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+}
+.kanban-card .kc-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 3px 0 2px;
+  line-height: 1.3;
+}
+.kanban-card .kc-phone {
+  font-size: 10px;
+  color: var(--green);
+  display: block;
+  margin-bottom: 4px;
+  text-decoration: none;
+}
+.kanban-card .kc-phone:hover { text-decoration: underline; }
+.kanban-card .kc-location {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.kanban-card .kc-vendor {
+  font-size: 10px;
+  color: var(--blue);
+  margin-bottom: 3px;
+}
+.kanban-card .kc-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border-dim);
+  gap: 4px;
+}
+.kanban-card .kc-elapsed {
+  font-size: 9px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.kanban-card .kc-elapsed.overdue { color: var(--red); font-weight: 600; }
+.kanban-card .kc-badge {
+  font-size: 9px;
+  padding: 1px 7px;
+  border-radius: 100px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+</style>
 </head>
 <body>
 <div class="admin-shell">
@@ -17,71 +197,158 @@
           <p class="page-subtitle" id="service-count">Loading…</p>
         </div>
       </div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-body" style="padding-bottom:12px">
-          <div class="page-header" style="padding:0;margin-bottom:12px">
-            <div>
-              <h2 class="page-title" style="font-size:16px">Service Operations Board</h2>
-              <p class="page-subtitle" id="booking-count">Loading service bookings… Verify customer/vendor by phone or WhatsApp before closing actions.</p>
+
+      <!-- Tab Navigation -->
+      <div class="wtg-tabs">
+        <button class="wtg-tab active" data-tab="ops"     onclick="switchTab('ops')">Operations Board</button>
+        <button class="wtg-tab"        data-tab="kanban"  onclick="switchTab('kanban')">Kanban Pipeline</button>
+        <button class="wtg-tab"        data-tab="catalog" onclick="switchTab('catalog')">Service Catalog</button>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════
+           TAB: OPERATIONS BOARD (original list view — unchanged)
+      ════════════════════════════════════════════════════════ -->
+      <div id="tab-ops" class="wtg-tab-panel active">
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-body" style="padding-bottom:12px">
+            <div class="page-header" style="padding:0;margin-bottom:12px">
+              <div>
+                <h2 class="page-title" style="font-size:16px">Service Operations Board</h2>
+                <p class="page-subtitle" id="booking-count">Loading service bookings… Verify customer/vendor by phone or WhatsApp before closing actions.</p>
+              </div>
+              <button class="btn btn-ghost btn-sm" onclick="loadServiceBookings()">Refresh</button>
             </div>
-            <button class="btn btn-ghost btn-sm" onclick="loadServiceBookings()">Refresh</button>
+            <div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:10px">
+              <input class="form-control" id="booking-search" placeholder="Booking ID, name, vendor…" style="max-width:220px">
+              <input class="form-control" id="ops-city" placeholder="City" style="max-width:120px">
+              <input class="form-control" id="ops-category" placeholder="Category" style="max-width:130px">
+              <select class="form-control" id="ops-payment" style="max-width:145px"><option value="">Payment</option><option value="free_request">Free</option><option value="paid_inspection">Inspection</option></select>
+              <select class="form-control" id="ops-priority" style="max-width:145px"><option value="">Priority</option><option value="normal_priority">Normal</option><option value="high_priority">High</option></select>
+              <select class="form-control" id="ops-assignment" style="max-width:165px"><option value="">Assignment</option><option value="unassigned_searching">Unassigned</option><option value="worker_contacted">Contacted</option><option value="worker_assigned">Assigned</option><option value="inspection_unassigned">Inspection unassigned</option><option value="inspection_assigned">Inspection assigned</option></select>
+              <select class="form-control" id="ops-lifecycle" style="max-width:165px"><option value="">Lifecycle</option><option value="pending">New / Pending</option><option value="request_received">Received</option><option value="searching_worker">Searching</option><option value="worker_assigned">Worker assigned</option><option value="service_in_progress">In progress</option><option value="payment_pending">Payment pending</option><option value="inspection_queued">Inspection queued</option><option value="inspection_assigned">Inspection assigned</option><option value="completed">Completed</option></select>
+              <select class="form-control" id="booking-status" style="max-width:150px">
+                <option value="">All Status</option><option value="pending">Pending</option><option value="confirmed">Confirmed</option><option value="in_progress">In Progress</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option>
+              </select>
+              <button class="btn btn-primary btn-sm" onclick="loadServiceBookings()">Apply</button>
+              <button class="btn btn-ghost btn-sm" onclick="resetBookingFilters()">Reset</button>
+            </div>
           </div>
-          <div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:10px">
-            <input class="form-control" id="booking-search" placeholder="Booking ID, name, vendor…" style="max-width:220px">
-            <input class="form-control" id="ops-city" placeholder="City" style="max-width:120px">
-            <input class="form-control" id="ops-category" placeholder="Category" style="max-width:130px">
-            <select class="form-control" id="ops-payment" style="max-width:145px"><option value="">Payment</option><option value="free_request">Free</option><option value="paid_inspection">Inspection</option></select>
-            <select class="form-control" id="ops-priority" style="max-width:145px"><option value="">Priority</option><option value="normal_priority">Normal</option><option value="high_priority">High</option></select>
-            <select class="form-control" id="ops-assignment" style="max-width:165px"><option value="">Assignment</option><option value="unassigned_searching">Unassigned</option><option value="worker_contacted">Contacted</option><option value="worker_assigned">Assigned</option><option value="inspection_unassigned">Inspection unassigned</option><option value="inspection_assigned">Inspection assigned</option></select>
-            <select class="form-control" id="ops-lifecycle" style="max-width:165px"><option value="">Lifecycle</option><option value="pending">New / Pending</option><option value="request_received">Received</option><option value="searching_worker">Searching</option><option value="worker_assigned">Worker assigned</option><option value="service_in_progress">In progress</option><option value="payment_pending">Payment pending</option><option value="inspection_queued">Inspection queued</option><option value="inspection_assigned">Inspection assigned</option><option value="completed">Completed</option></select>
-            <select class="form-control" id="booking-status" style="max-width:150px">
-              <option value="">All Status</option><option value="pending">Pending</option><option value="confirmed">Confirmed</option><option value="in_progress">In Progress</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option>
-            </select>
-            <button class="btn btn-primary btn-sm" onclick="loadServiceBookings()">Apply</button>
-            <button class="btn btn-ghost btn-sm" onclick="resetBookingFilters()">Reset</button>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>REQUEST</th><th>CUSTOMER</th><th>ISSUE</th><th>LOCATION</th><th>PAYMENT</th><th>PRIORITY</th><th>STATE</th><th>LATEST</th><th>ACTIONS</th></tr>
+              </thead>
+              <tbody id="service-bookings-tbody">
+                <tr class="loading-row"><td colspan="9"><div class="spinner" style="margin:auto"></div></td></tr>
+              </tbody>
+            </table>
           </div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr><th>REQUEST</th><th>CUSTOMER</th><th>ISSUE</th><th>LOCATION</th><th>PAYMENT</th><th>PRIORITY</th><th>STATE</th><th>LATEST</th><th>ACTIONS</th></tr>
-            </thead>
-            <tbody id="service-bookings-tbody">
-              <tr class="loading-row"><td colspan="9"><div class="spinner" style="margin:auto"></div></td></tr>
-            </tbody>
-          </table>
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-body" style="padding-bottom:12px">
-          <div class="filter-bar">
-            <div class="search-box">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" id="search-input" class="form-control" placeholder="Search services…">
+      <!-- ═══════════════════════════════════════════════════════
+           TAB: KANBAN PIPELINE (new)
+      ════════════════════════════════════════════════════════ -->
+      <div id="tab-kanban" class="wtg-tab-panel">
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-body" style="padding:12px 16px">
+            <div class="page-header" style="padding:0">
+              <div>
+                <h2 class="page-title" style="font-size:15px">Kanban Pipeline View</h2>
+                <p class="page-subtitle" id="kanban-total">Drag cards between columns or use the action buttons. Click Details to open the full ops panel.</p>
+              </div>
+              <button class="btn btn-ghost btn-sm" onclick="loadServiceBookings()">Refresh</button>
             </div>
-            <select id="status-filter" class="form-control" style="width:140px">
-              <option value="">All Status</option>
-              <option value="enabled">Enabled</option>
-              <option value="disabled">Disabled</option>
-            </select>
-            <button class="btn btn-ghost btn-sm" id="apply-filter">Filter</button>
           </div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr><th>SERVICE</th><th>VENDOR</th><th>CATEGORY</th><th>BASE PRICE</th><th>BOOKINGS</th><th>STATUS</th><th>ACTIONS</th></tr>
-            </thead>
-            <tbody id="services-tbody">
-              <tr class="loading-row"><td colspan="7"><div class="spinner" style="margin:auto"></div></td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="card-body" style="padding-top:8px">
-          <div class="pagination" id="services-pagination"></div>
+        <div class="kanban-board">
+
+          <!-- Column 1: NEW -->
+          <div class="kanban-col">
+            <div class="kanban-col-header" style="border-top-color:var(--orange)">
+              <span class="kanban-col-title">NEW</span>
+              <span class="kanban-col-badge" id="kanban-count-new">0</span>
+            </div>
+            <div class="kanban-col-desc">Unassigned bookings</div>
+            <div class="kanban-cards" id="kanban-cards-new">
+              <div class="kanban-empty">No new bookings</div>
+            </div>
+          </div>
+
+          <!-- Column 2: ASSIGNED -->
+          <div class="kanban-col">
+            <div class="kanban-col-header" style="border-top-color:var(--blue)">
+              <span class="kanban-col-title">ASSIGNED</span>
+              <span class="kanban-col-badge" id="kanban-count-assigned">0</span>
+            </div>
+            <div class="kanban-col-desc">Vendor assigned, awaiting start</div>
+            <div class="kanban-cards" id="kanban-cards-assigned">
+              <div class="kanban-empty">No assigned bookings</div>
+            </div>
+          </div>
+
+          <!-- Column 3: IN PROGRESS -->
+          <div class="kanban-col">
+            <div class="kanban-col-header" style="border-top-color:var(--accent)">
+              <span class="kanban-col-title">IN PROGRESS</span>
+              <span class="kanban-col-badge" id="kanban-count-in_progress">0</span>
+            </div>
+            <div class="kanban-col-desc">Vendor accepted, work ongoing</div>
+            <div class="kanban-cards" id="kanban-cards-in_progress">
+              <div class="kanban-empty">No active jobs</div>
+            </div>
+          </div>
+
+          <!-- Column 4: COMPLETED -->
+          <div class="kanban-col">
+            <div class="kanban-col-header" style="border-top-color:var(--green)">
+              <span class="kanban-col-title">COMPLETED</span>
+              <span class="kanban-col-badge" id="kanban-count-completed">0</span>
+            </div>
+            <div class="kanban-col-desc">Work done today</div>
+            <div class="kanban-cards" id="kanban-cards-completed">
+              <div class="kanban-empty">No completed bookings yet</div>
+            </div>
+          </div>
+
         </div>
       </div>
+
+      <!-- ═══════════════════════════════════════════════════════
+           TAB: SERVICE CATALOG (original table — unchanged)
+      ════════════════════════════════════════════════════════ -->
+      <div id="tab-catalog" class="wtg-tab-panel">
+        <div class="card">
+          <div class="card-body" style="padding-bottom:12px">
+            <div class="filter-bar">
+              <div class="search-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="search-input" class="form-control" placeholder="Search services…">
+              </div>
+              <select id="status-filter" class="form-control" style="width:140px">
+                <option value="">All Status</option>
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+              </select>
+              <button class="btn btn-ghost btn-sm" id="apply-filter">Filter</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>SERVICE</th><th>VENDOR</th><th>CATEGORY</th><th>BASE PRICE</th><th>BOOKINGS</th><th>STATUS</th><th>ACTIONS</th></tr>
+              </thead>
+              <tbody id="services-tbody">
+                <tr class="loading-row"><td colspan="7"><div class="spinner" style="margin:auto"></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card-body" style="padding-top:8px">
+            <div class="pagination" id="services-pagination"></div>
+          </div>
+        </div>
+      </div>
+
     </main>
   </div>
 </div>
@@ -103,6 +370,16 @@ function normalizeServiceStatus(status) {
   return SERVICE_STATUS_ALIASES[String(status || 'pending').toLowerCase()] || String(status || 'pending').toLowerCase();
 }
 
+// ── Tab switching ────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.wtg-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.wtg-tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelector('.wtg-tab[data-tab="' + name + '"]').classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'kanban') renderKanban();
+}
+
+// ── Service Bookings (Operations Board) ─────────────────────
 async function loadServiceBookings() {
   tableLoading('service-bookings-tbody', 9);
   try {
@@ -114,6 +391,10 @@ async function loadServiceBookings() {
     const data = await API.get(CONFIG.ENDPOINTS.SERVICE_BOOKINGS, params);
     serviceBookingsCache = (data.data?.bookings || data.bookings || []).map(b => ({ ...b, status: normalizeServiceStatus(b.status || b.job_status), amount: b.amount ?? b.total ?? b.price }));
     renderServiceBookings(filterServiceBookings(serviceBookingsCache));
+    // Re-render kanban if it's visible
+    if (document.getElementById('tab-kanban')?.classList.contains('active')) {
+      renderKanban();
+    }
   } catch(e) {
     tableEmpty('service-bookings-tbody', 9, 'Failed to load service bookings: ' + (e.message || ''));
   }
@@ -225,7 +506,7 @@ function renderServiceBookings(bookings) {
     const issue = view.issue_summary || {};
     const latest = view.timeline_snapshot || b.timeline_snapshot || {};
     return `<tr>
-      <td><div style="font-size:12px;color:var(--text-primary)">${escHtml(request.request_id || b.request_id || ('#' + id))}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(request.booking_number || b.booking_number || '')}</div></td>
+      <td><div style="font-size:12px;color:var(--text-primary)">${escHtml(request.request_id || b.request_id || ('#' + id))}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(request.booking_number || b.booking_number || '')}</div>${(() => { const mode = b.booking_mode || b.admin_request_view?.booking_mode; if (mode === 'free_lead') return '<span style="font-size:9px;padding:1px 6px;border-radius:100px;background:var(--green-dim);color:var(--green);font-weight:700">FREE</span>'; if (mode === 'inspection') return '<span style="font-size:9px;padding:1px 6px;border-radius:100px;background:var(--accent-dim);color:var(--accent);font-weight:700">₹299</span>'; if (mode === 'direct_vendor') return '<span style="font-size:9px;padding:1px 6px;border-radius:100px;background:var(--blue-dim);color:var(--blue);font-weight:700">DIRECT</span>'; return ''; })()}</td>
       <td><div>${escHtml(customer.name || b.customer_name || b.user_name || '—')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(customer.mobile || b.customer_mobile || b.customer_phone || '')}</div></td>
       <td><div>${escHtml(issue.label || b.category_label || b.service_name || 'Service')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(issue.summary || b.issue_summary || '—')}</div></td>
       <td><div>${escHtml(location.city || b.city || '—')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(location.locality || b.locality || b.customer_locality || 'Locality not set')}</div></td>
@@ -264,7 +545,6 @@ function openOpsDetail(bookingId) {
   const location = view.location || {};
   const issue = view.issue_summary || {};
   const timeline = Array.isArray(booking.timeline) ? booking.timeline : [];
-  // Category-based vendor filtering
   const bookingCategory = (issue.category || issue.label || (booking.sorting_keys || booking.filter_keys || {}).category || '').toLowerCase().trim();
   let vendorPool = serviceVendors;
   let vendorPlaceholder = 'Select vendor';
@@ -287,7 +567,7 @@ function openOpsDetail(bookingId) {
         ${requestTruthPanel(booking)}
         <div class="card"><div class="card-body"><b>Customer</b><div>${escHtml(customer.name || booking.customer_name || '—')} · ${escHtml(customer.mobile || booking.customer_mobile || booking.customer_phone || '')}</div><div style="color:var(--text-muted)">${escHtml(location.full_address || booking.customer_address || 'Address not set')}</div></div></div>
         <div class="card"><div class="card-body"><b>Issue</b><div>${escHtml(issue.label || booking.category_label || 'Service')} — ${escHtml(issue.summary || booking.issue_summary || '—')}</div><div style="color:var(--text-muted)">${(issue.issues || booking.issue_list || []).map(escHtml).join(', ')}</div><div>${escHtml(location.city || booking.city || '—')} / ${escHtml(location.locality || booking.locality || booking.customer_locality || '—')}</div><div>Payment: ${escHtml(view.payment_type || booking.payment_route || 'cod')}</div></div></div>
-        <div class="card"><div class="card-body"><b>Actions</b><div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:8px"><select class="form-control" id="ops-vendor-${escHtml(String(bookingId))}" style="max-width:220px">${vendors}</select><button class="btn btn-sm btn-primary" onclick="simulateOpsAction('${escHtml(String(bookingId))}','assign_vendor')">Assign</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','reassign_vendor')">Reassign</button><button class="btn btn-sm btn-warn" onclick="simulateOpsAction('${escHtml(String(bookingId))}','unassign_vendor')">Unassign</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','inspection_queued')">Inspection queued</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','coordinator_assigned')">Coordinator assigned</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','inspection_scheduled')">Scheduled</button><button class="btn btn-sm btn-success" onclick="simulateOpsAction('${escHtml(String(bookingId))}','inspection_completed')">Inspection done</button><button class="btn btn-sm btn-warn" onclick="simulateOpsAction('${escHtml(String(bookingId))}','mark_escalated')">Escalate</button></div></div></div>
+        <div class="card"><div class="card-body"><b>Actions</b><div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:8px"><select class="form-control" id="ops-vendor-${escHtml(String(bookingId))}" style="max-width:220px">${vendors}</select><button class="btn btn-sm btn-primary" onclick="simulateOpsAction('${escHtml(String(bookingId))}','assign_vendor')">Assign</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','reassign_vendor')">Reassign</button><label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-secondary);cursor:pointer;margin-left:4px"><input type="checkbox" id="override-payment-${escHtml(String(bookingId))}" style="accent-color:var(--red)"> Confirm payment verified</label><span style="font-size:9px;color:var(--red)">⚠ Inspection override only</span><button class="btn btn-sm btn-warn" onclick="simulateOpsAction('${escHtml(String(bookingId))}','unassign_vendor')">Unassign</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','inspection_queued')">Inspection queued</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','coordinator_assigned')">Coordinator assigned</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','inspection_scheduled')">Scheduled</button><button class="btn btn-sm btn-success" onclick="simulateOpsAction('${escHtml(String(bookingId))}','inspection_completed')">Inspection done</button><button class="btn btn-sm btn-warn" onclick="simulateOpsAction('${escHtml(String(bookingId))}','mark_escalated')">Escalate</button></div></div></div>
         <div class="card"><div class="card-body" style="border-top:2px solid var(--red-dim)"><b style="color:var(--red)">⚠ Force Status Override</b><div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:8px"><select class="form-control" id="ops-force-status-${escHtml(String(bookingId))}" style="max-width:180px"><option value="">Select status…</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="escalated">Escalated</option></select><button class="btn btn-sm btn-danger" onclick="var s=document.getElementById('ops-force-status-${escHtml(String(bookingId))}').value;if(!s){Toast.warn('Select a status first.');return;}adminSetJobStatus('${escHtml(String(bookingId))}',s)">Override Status</button></div></div></div>
         <div class="card"><div class="card-body"><b>Timeline</b>${timeline.map(t => `<div style="border-left:2px solid var(--border);padding:6px 0 6px 10px"><b>${escHtml(t.event || 'update')}</b> <span style="color:var(--text-muted)">${escHtml(t.actor || 'system')} · ${escHtml(t.state || '')} · ${escHtml(t.at || '')}</span><div style="font-size:11px;color:var(--text-muted)">${escHtml(t.notes || '')}</div></div>`).join('') || '<div style="color:var(--text-muted)">No timeline entries.</div>'}</div></div>
       </div>
@@ -307,6 +587,8 @@ async function simulateOpsAction(bookingId, action) {
   if (['assign_vendor','reassign_vendor'].includes(action)) {
     if (!vendorEl?.value) { Toast.warn('Select a vendor first.'); return; }
     payload.vendor_id = Number(vendorEl.value);
+    const overrideEl = document.getElementById('override-payment-' + bookingId);
+    if (overrideEl?.checked) payload.admin_override_payment = true;
   }
   if (action === 'mark_escalated') payload.escalation_reason = 'Manual admin escalation';
   if (!await confirmAction(`Run ${action.replaceAll('_',' ')} for request #${bookingId}?`)) return;
@@ -318,7 +600,10 @@ async function simulateOpsAction(bookingId, action) {
   } catch(e) { Toast.error(e.message || 'Admin operation failed'); }
 }
 
-async function adminSetJobStatus(jobId, status) {
+async function adminSetJobStatus(bookingId, status) {
+  const booking = serviceBookingsCache.find(b => String(b.id || b._id) === String(bookingId));
+  const jobId = booking?.job_id;
+  if (!jobId) { Toast.error('Job record not found for this booking.'); return; }
   if (!await confirmAction(`Set this service booking to ${status.replace('_',' ')}?`)) return;
   try {
     await API.patch(CONFIG.ENDPOINTS.SERVICE_JOB_STATUS(jobId), { status });
@@ -327,6 +612,7 @@ async function adminSetJobStatus(jobId, status) {
   } catch(e) { Toast.error(e.message || 'Failed to update booking'); }
 }
 
+// ── Service Catalog (original) ───────────────────────────────
 async function loadServices(page = 1) {
   currentPage = page;
   tableLoading('services-tbody', 7);
@@ -389,10 +675,278 @@ async function toggleService(id, newStatus) {
   } catch(e) { Toast.error(e.message||'Failed'); }
 }
 
+// ══════════════════════════════════════════════════════════════
+//  KANBAN PIPELINE
+// ══════════════════════════════════════════════════════════════
+
+const KANBAN_COLS = [
+  { id: 'new',         label: 'NEW' },
+  { id: 'assigned',    label: 'ASSIGNED' },
+  { id: 'in_progress', label: 'IN PROGRESS' },
+  { id: 'completed',   label: 'COMPLETED' },
+];
+
+// Map a booking to its kanban column
+function getKanbanColumn(booking) {
+  const lifecycle  = ((booking.admin_request_view?.lifecycle_state  || booking.lifecycle_state  || '')).toLowerCase();
+  const assignment = ((booking.admin_request_view?.assignment_state || booking.assignment_state || '')).toLowerCase();
+  const status     = normalizeServiceStatus(booking.status || booking.job_status || '');
+
+  if (status === 'cancelled') return null;
+  if (status === 'completed' || lifecycle === 'completed' || lifecycle === 'payment_pending') return 'completed';
+  if (
+    status === 'in_progress' ||
+    ['service_in_progress','inspection_queued','inspection_assigned','inspection_scheduled'].includes(lifecycle)
+  ) return 'in_progress';
+  if (
+    ['worker_assigned','worker_contacted','inspection_unassigned','inspection_assigned'].includes(assignment) ||
+    lifecycle === 'worker_assigned'
+  ) return 'assigned';
+  return 'new';
+}
+
+// Human-readable elapsed time from booking.created_at
+function getElapsed(booking) {
+  const raw = booking.created_at
+    || booking.admin_request_view?.timeline_snapshot?.created_at
+    || booking.admin_request_view?.request_summary?.created_at;
+  if (!raw) return null;
+  const diff = Date.now() - new Date(raw).getTime();
+  if (isNaN(diff) || diff < 0) return null;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1)  return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return hrs + 'h ' + (mins % 60) + 'm ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+// Whether elapsed time is overdue (>2 hours for new, >4 for assigned)
+function isOverdue(booking, col) {
+  const raw = booking.created_at || booking.admin_request_view?.timeline_snapshot?.created_at;
+  if (!raw) return false;
+  const hrs = (Date.now() - new Date(raw).getTime()) / 3600000;
+  if (col === 'new'      && hrs > 2)  return true;
+  if (col === 'assigned' && hrs > 4)  return true;
+  if (col === 'in_progress' && hrs > 8) return true;
+  return false;
+}
+
+// Category → CSS var color name
+const CATEGORY_COLOR_MAP = {
+  electrician:   'blue',
+  plumber:       'orange',
+  painting:      'purple',
+  waterproofing: 'green',
+  cctv:          'accent',
+};
+function getCategoryColor(cat) {
+  const key = (cat || '').toLowerCase();
+  for (const [k, v] of Object.entries(CATEGORY_COLOR_MAP)) {
+    if (key.includes(k)) return v;
+  }
+  return 'purple';
+}
+
+// Build one kanban card's HTML
+function buildKanbanCard(b) {
+  const id  = b.id || b._id;
+  const view     = b.admin_request_view || {};
+  const customer = view.customer_summary || {};
+  const issue    = view.issue_summary    || {};
+  const location = view.location         || {};
+  const col = getKanbanColumn(b);
+
+  const name     = escHtml(customer.name || b.customer_name || b.user_name || '—');
+  const phone    = customer.mobile || b.customer_mobile || b.customer_phone || '';
+  const category = issue.category || issue.label || b.category_label || b.service_name || '—';
+  const city     = escHtml(location.city || b.city || '—');
+  const locality = escHtml(location.locality || b.locality || b.customer_locality || '');
+  const reqId    = escHtml(view.request_summary?.request_id || b.request_id || ('#' + id));
+  const elapsed  = getElapsed(b);
+  const overdue  = isOverdue(b, col);
+  const catColor = getCategoryColor(category);
+
+  // Build vendor name
+  const assignedVendor = b.vendor_id
+    ? (serviceVendors.find(v => String(v.id || v._id) === String(b.vendor_id))?.business_name || '')
+    : (view.assignment_state && view.assignment_state !== 'unassigned_searching' ? view.assignment_state : '');
+
+  // WhatsApp link
+  let waHtml = '';
+  if (phone) {
+    const clean = phone.replace(/\D/g, '');
+    const waNum = clean.startsWith('91') ? clean : ('91' + clean);
+    waHtml = `<a href="https://wa.me/${waNum}" target="_blank" rel="noopener" class="kc-phone">📱 ${escHtml(phone)}</a>`;
+  }
+
+  // Next-action button
+  let actionBtn = '';
+  if (col === 'new') {
+    actionBtn = `<button class="btn btn-sm btn-primary" style="font-size:9px;padding:2px 8px" onclick="openOpsDetail('${escHtml(String(id))}')">Assign →</button>`;
+  } else if (col === 'assigned') {
+    actionBtn = `<button class="btn btn-sm btn-ghost" style="font-size:9px;padding:2px 8px" onclick="moveKanbanCard('${escHtml(String(id))}','assigned','in_progress')">Mark Started</button>`;
+  } else if (col === 'in_progress') {
+    actionBtn = `<button class="btn btn-sm btn-success" style="font-size:9px;padding:2px 8px;background:var(--green-dim);color:var(--green);border-color:var(--green)" onclick="moveKanbanCard('${escHtml(String(id))}','in_progress','completed')">Complete ✓</button>`;
+  } else if (col === 'completed') {
+    actionBtn = `<button class="btn btn-sm btn-ghost" style="font-size:9px;padding:2px 8px" onclick="openOpsDetail('${escHtml(String(id))}')">View</button>`;
+  }
+
+  return `<div class="kanban-card" draggable="true" data-id="${escHtml(String(id))}" data-col="${escHtml(col || 'new')}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px;margin-bottom:5px">
+      <span class="kc-id">${reqId}</span>
+      <span class="kc-badge" style="background:var(--${catColor}-dim);color:var(--${catColor})">${escHtml(category)}</span>
+    </div>
+    <div class="kc-name">${name}</div>
+    ${waHtml}
+    <div class="kc-location">📍 ${city}${locality ? ' · ' + locality : ''}</div>
+    ${assignedVendor ? `<div class="kc-vendor">🔧 ${escHtml(assignedVendor)}</div>` : ''}
+    <div class="kc-footer">
+      <span class="kc-elapsed${overdue ? ' overdue' : ''}">${elapsed || '—'}${overdue ? ' ⚠' : ''}</span>
+      <div style="display:flex;gap:4px">
+        <button class="btn btn-sm btn-ghost" style="font-size:9px;padding:2px 7px" onclick="openOpsDetail('${escHtml(String(id))}')">Details</button>
+        ${actionBtn}
+      </div>
+    </div>
+  </div>`;
+}
+
+// Render all 4 kanban columns from cache
+function renderKanban() {
+  const buckets = { new: [], assigned: [], in_progress: [], completed: [] };
+  const active = serviceBookingsCache.filter(b => normalizeServiceStatus(b.status) !== 'cancelled');
+
+  active.forEach(b => {
+    const col = getKanbanColumn(b);
+    if (col && buckets[col]) buckets[col].push(b);
+  });
+
+  let totalActive = active.length;
+  document.getElementById('kanban-total').textContent =
+    `${totalActive} active booking${totalActive !== 1 ? 's' : ''} · drag cards between columns or use action buttons`;
+
+  KANBAN_COLS.forEach(({ id: colId }) => {
+    const container = document.getElementById('kanban-cards-' + colId);
+    const countEl   = document.getElementById('kanban-count-' + colId);
+    if (!container) return;
+
+    const cards = buckets[colId];
+    countEl.textContent = cards.length;
+
+    if (!cards.length) {
+      const emptyLabels = {
+        new:         'No new bookings',
+        assigned:    'No assigned bookings',
+        in_progress: 'No active jobs',
+        completed:   'No completed bookings yet',
+      };
+      container.innerHTML = `<div class="kanban-empty">${emptyLabels[colId]}</div>`;
+    } else {
+      container.innerHTML = cards.map(b => buildKanbanCard(b)).join('');
+    }
+
+    // Re-attach drag events after innerHTML reset
+    container.querySelectorAll('.kanban-card[draggable]').forEach(card => {
+      card.addEventListener('dragstart', _onCardDragStart);
+      card.addEventListener('dragend',   _onCardDragEnd);
+    });
+  });
+}
+
+// ── Drag and Drop ────────────────────────────────────────────
+let _dragId  = null;
+let _dragCol = null;
+
+function _onCardDragStart(e) {
+  _dragId  = e.currentTarget.dataset.id;
+  _dragCol = e.currentTarget.dataset.col;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', _dragId);
+}
+
+function _onCardDragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+}
+
+function _initKanbanDragDrop() {
+  KANBAN_COLS.forEach(({ id: colId }) => {
+    const container = document.getElementById('kanban-cards-' + colId);
+    if (!container) return;
+
+    container.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      container.classList.add('drag-over');
+    });
+
+    container.addEventListener('dragleave', e => {
+      if (!container.contains(e.relatedTarget)) container.classList.remove('drag-over');
+    });
+
+    container.addEventListener('drop', e => {
+      e.preventDefault();
+      container.classList.remove('drag-over');
+      if (_dragId && _dragCol && colId !== _dragCol) {
+        moveKanbanCard(_dragId, _dragCol, colId);
+      }
+      _dragId  = null;
+      _dragCol = null;
+    });
+  });
+}
+
+// Handle a card move between columns
+async function moveKanbanCard(bookingId, fromCol, toCol) {
+  if (fromCol === toCol) return;
+
+  const colLabels = {
+    new: 'NEW', assigned: 'ASSIGNED', in_progress: 'IN PROGRESS', completed: 'COMPLETED'
+  };
+
+  // Moving to NEW or backward from completed → direct to detail modal
+  if (toCol === 'new' || (fromCol === 'completed' && toCol !== 'completed')) {
+    Toast.warn('Use the Details panel to reassign or reverse a booking status.');
+    openOpsDetail(bookingId);
+    return;
+  }
+
+  // Moving NEW → ASSIGNED requires a vendor — open detail modal
+  if (fromCol === 'new' && toCol === 'assigned') {
+    Toast.info('Assign a vendor first to move to ASSIGNED.');
+    openOpsDetail(bookingId);
+    return;
+  }
+
+  if (!await confirmAction(`Move booking #${bookingId} to ${colLabels[toCol]}?`)) return;
+
+  try {
+    if (toCol === 'in_progress') {
+      await API.patch(CONFIG.ENDPOINTS.SERVICE_BOOKING_OPS(bookingId), { action: 'mark_worker_confirmed' });
+    } else if (toCol === 'assigned' && fromCol === 'in_progress') {
+      // Moving back from in_progress to assigned — open detail
+      Toast.warn('Use the Details panel to revert a job in progress.');
+      openOpsDetail(bookingId);
+      return;
+    } else if (toCol === 'completed') {
+      const bk = serviceBookingsCache.find(x => String(x.id || x._id) === String(bookingId));
+      const jId = bk?.job_id;
+      if (!jId) throw new Error('Job record not found for this booking.');
+      await API.patch(CONFIG.ENDPOINTS.SERVICE_JOB_STATUS(jId), { status: 'completed' });
+    }
+    Toast.success(`Booking #${bookingId} moved to ${colLabels[toCol]}.`);
+    await loadServiceBookings();
+  } catch(e) {
+    Toast.error(e.message || 'Failed to move booking');
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────
 document.getElementById('apply-filter').addEventListener('click', () => loadServices(1));
 document.getElementById('search-input').addEventListener('keydown', e => { if(e.key==='Enter') loadServices(1); });
 loadServices(1);
 loadServiceVendors().then(loadServiceBookings);
+_initKanbanDragDrop();
 </script>
 </body>
 </html>
