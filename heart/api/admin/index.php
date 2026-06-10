@@ -411,7 +411,8 @@ try {
 
         $stmt = $db->prepare(
             "SELECT s.*, c.name AS category_name, c.slug AS category_slug,
-                    v.business_name AS vendor_name
+                    v.business_name AS vendor_name,
+                    (SELECT COUNT(*) FROM bookings b WHERE b.service_id = s.id) AS bookingCount
              FROM services s
              LEFT JOIN categories c ON c.id = s.category_id
              LEFT JOIN vendors v ON v.id = s.vendor_id
