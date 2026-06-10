@@ -976,7 +976,7 @@ window.HomeModals = (() => {
     `;
   }
 
-  function _resetBookingActions(mode, inspectionPrice = 299) {
+  function _resetBookingActions(mode, inspectionPrice) {
     const actions = document.querySelector("#booking-modal .modal-actions");
     if (!actions) return;
     const isInspection = mode === "inspection";
@@ -1113,7 +1113,7 @@ window.HomeModals = (() => {
     if (!container) return;
     container.querySelector(".duplicate-booking-warn")?.remove();
     const bookingRef = data.booking_number || `#${data.booking_id}`;
-    const modeLabel  = mode === "inspection" ? "₹299 inspection" : "free service request";
+    const modeLabel  = mode === "inspection" ? `₹${_inspectionPrice()} inspection` : "free service request";
     const warn = document.createElement("div");
     warn.className = "duplicate-booking-warn";
     warn.style.cssText = "background:#fff8e1;border:1px solid #f59e0b;border-radius:0.75rem;padding:1rem;margin-bottom:1rem;";
@@ -1462,6 +1462,7 @@ async function _loadPilotConfig() {
   const res = await API.getPublicSettings().catch(() => null);
   const data = res?.ok ? _unwrapData(res.data) : null;
   if (data?.pilot_public_config) _pilotConfig = { ..._pilotConfig, ...data.pilot_public_config };
+  if (data?.inspection_price !== undefined) _pilotConfig.inspection_price = Number(data.inspection_price);
 }
 
 function _renderCategoryChips() {

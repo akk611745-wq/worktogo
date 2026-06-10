@@ -153,6 +153,12 @@
           <h2>💼 Business Settings</h2>
           
           <div class="form-group">
+            <label>Inspection Fee (₹)</label>
+            <input type="number" id="inspection_price" min="0">
+            <div class="helper-text">Amount charged for a home inspection booking (default: 299)</div>
+          </div>
+
+          <div class="form-group">
             <label>Platform Commission %</label>
             <input type="number" id="default_commission_rate" min="0" max="50">
           </div>
@@ -270,7 +276,7 @@
       
       const fields = [
         'pilot_public_config',
-        'default_commission_rate', 'quickbook_radius_km',
+        'inspection_price', 'default_commission_rate', 'quickbook_radius_km',
         'story_expiry_hours', 'max_file_upload_mb',
         'platform_name', 'platform_city'
       ];
@@ -292,7 +298,7 @@
   // Save Card logic
   const cardFields = {
     pilot: ['pilot_public_config'],
-    business: ['default_commission_rate', 'quickbook_radius_km', 'story_expiry_hours', 'max_file_upload_mb'],
+    business: ['inspection_price', 'default_commission_rate', 'quickbook_radius_km', 'story_expiry_hours', 'max_file_upload_mb'],
     platform: ['platform_name', 'platform_city']
   };
 
