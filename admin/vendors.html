@@ -230,13 +230,17 @@ async function viewVendor(id) {
     const data = await API.get(CONFIG.ENDPOINTS.VENDOR_DETAIL(id));
     const payload = data?.data && !Array.isArray(data.data) ? data.data : data;
     const v = payload?.vendor || payload || {};
+    const ph = (v.owner_phone || v.phone || '').replace(/\D/g, '').replace(/^91/, '');
+    const phoneHtml = ph
+      ? `${escHtml(v.owner_phone||v.phone)} <a href="https://wa.me/91${ph}" target="_blank" style="font-size:10px;padding:2px 8px;border-radius:4px;text-decoration:none;background:rgba(37,211,102,0.15);color:#25d366;border:1px solid rgba(37,211,102,0.3);margin-left:6px">WhatsApp</a><a href="tel:+91${ph}" style="font-size:10px;padding:2px 8px;border-radius:4px;text-decoration:none;background:rgba(99,102,241,0.15);color:var(--accent);border:1px solid rgba(99,102,241,0.3);margin-left:4px">Call</a>`
+      : '—';
     document.getElementById('vendor-modal-title').textContent = v.business_name || v.name || 'Vendor';
     document.getElementById('vendor-modal-body').innerHTML = `
       <div style="display:grid;gap:12px">
         ${field('Business Name', escHtml(v.business_name||v.name))}
         ${field('Owner', escHtml(v.owner_name))}
         ${field('Email', escHtml(v.owner_email||v.email))}
-        ${field('Phone', escHtml(v.owner_phone||v.phone))}
+        ${field('Phone', phoneHtml)}
         ${field('Type', statusBadge(v.type||v.vendor_type))}
         ${field('Category', `<select id="vendor-cat-${v.id}" onchange="updateVendorCategory(${v.id}, this.value)" style="background:#1e293b;color:#fff;border:1px solid #334155;padding:4px 8px;border-radius:6px;">
   <option value="">-- Not set --</option>

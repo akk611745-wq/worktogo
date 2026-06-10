@@ -167,11 +167,15 @@ async function viewUser(id) {
   try {
     const data = await API.get(CONFIG.ENDPOINTS.USER_DETAIL(id));
     const u = data.user || data;
+    const ph = (u.phone || u.mobile || '').replace(/\D/g, '').replace(/^91/, '');
+    const phoneHtml = ph
+      ? `${escHtml(u.phone||u.mobile)} <a href="https://wa.me/91${ph}" target="_blank" style="font-size:10px;padding:2px 8px;border-radius:4px;text-decoration:none;background:rgba(37,211,102,0.15);color:#25d366;border:1px solid rgba(37,211,102,0.3);margin-left:6px">WhatsApp</a><a href="tel:+91${ph}" style="font-size:10px;padding:2px 8px;border-radius:4px;text-decoration:none;background:rgba(99,102,241,0.15);color:var(--accent);border:1px solid rgba(99,102,241,0.3);margin-left:4px">Call</a>`
+      : '—';
     document.getElementById('user-modal-body').innerHTML = `
       <div style="display:grid;gap:12px">
         ${field('Full Name', escHtml(u.name || u.firstName + ' ' + (u.lastName||'')))}
         ${field('Email', escHtml(u.email))}
-        ${field('Phone', escHtml(u.phone || u.mobile))}
+        ${field('Phone', phoneHtml)}
         ${field('Status', statusBadge(u.status || (u.is_blocked?'blocked':'active')))}
         ${field('Total Orders', escHtml(u.order_count ?? u.total_orders ?? '—'))}
         ${field('Joined', Fmt.date(u.created_at))}
