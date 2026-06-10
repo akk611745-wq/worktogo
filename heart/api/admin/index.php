@@ -365,17 +365,24 @@ try {
         $bind  = [];
 
         if (!empty($_GET['status'])) {
-            $where[] = 'status = :status';
+            $where[] = 's.status = :status';
             $bind[':status'] = $_GET['status'];
         }
 
         $whereSQL = 'WHERE ' . implode(' AND ', $where);
 
-        $countStmt = $db->prepare("SELECT COUNT(*) FROM services {$whereSQL}");
+        $countStmt = $db->prepare("SELECT COUNT(*) FROM services s {$whereSQL}");
         $countStmt->execute($bind);
         $total = (int) $countStmt->fetchColumn();
 
-        $stmt = $db->prepare("SELECT * FROM services {$whereSQL} ORDER BY created_at DESC LIMIT :limit OFFSET :offset");
+        $stmt = $db->prepare(
+            "SELECT s.*, c.name AS category_name, c.slug AS category_slug
+             FROM services s
+             LEFT JOIN categories c ON c.id = s.category_id
+             {$whereSQL}
+             ORDER BY s.created_at DESC
+             LIMIT :limit OFFSET :offset"
+        );
         $stmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         foreach ($bind as $k => $v) $stmt->bindValue($k, $v);

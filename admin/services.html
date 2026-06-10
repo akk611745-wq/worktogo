@@ -993,15 +993,20 @@ async function moveKanbanCard(bookingId, fromCol, toCol) {
   }
 }
 
-// ── Category Detail Modal ─────────────────────────────────────
+// ── Category Detail Modal (full-screen) ──────────────────────
 async function openCategoryDetail(categoryId) {
   if (!categoryId) { Toast.warn('No category assigned to this service.'); return; }
 
   document.body.insertAdjacentHTML('beforeend',
-    `<div class="modal-overlay open" id="cat-detail-overlay" onclick="closeCategoryDetail(event)">
-      <div class="modal" style="max-width:640px" onclick="event.stopPropagation()">
-        <div class="modal-header"><h3>Category Detail</h3><button class="btn btn-sm btn-ghost" onclick="closeCategoryDetail()">Close</button></div>
-        <div class="modal-body" style="text-align:center;padding:32px"><div class="spinner" style="margin:auto"></div></div>
+    `<div id="cat-detail-overlay" style="position:fixed;inset:0;z-index:2000;background:var(--bg-raised);display:flex;flex-direction:column;overflow:hidden">
+      <div id="cat-modal-inner" style="display:flex;flex-direction:column;height:100%">
+        <div style="padding:18px 28px;border-bottom:1px solid var(--border-dim);display:flex;align-items:center;justify-content:space-between;background:var(--bg-surface);flex-shrink:0">
+          <span style="font-size:15px;font-weight:700;color:var(--text-primary)">Category Detail</span>
+          <button class="btn btn-sm btn-ghost" onclick="closeCategoryDetail()">✕ Close</button>
+        </div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center">
+          <div class="spinner"></div>
+        </div>
       </div>
     </div>`
   );
@@ -1012,68 +1017,72 @@ async function openCategoryDetail(categoryId) {
     const stats   = data.stats    || {};
     const vendors = data.vendors  || [];
 
-    const hasCommission     = cat.commission_rate   != null;
-    const hasInspectPrice   = cat.inspection_price  != null;
+    const hasCommission   = cat.commission_rate  != null;
+    const hasInspectPrice = cat.inspection_price != null;
 
     const vendorRows = vendors.length
       ? vendors.map(v => `<tr>
-          <td>${escHtml(v.business_name || '—')}</td>
-          <td style="color:var(--green);font-size:11px">${escHtml(v.owner_phone || '—')}</td>
+          <td style="font-size:13px">${escHtml(v.business_name || '—')}</td>
+          <td style="color:var(--green);font-size:13px">${escHtml(v.owner_phone || '—')}</td>
           <td>${statusBadge(v.status || 'unknown')}</td>
-          <td style="text-align:center">${v.is_online
+          <td style="text-align:center;font-size:16px">${v.is_online
             ? '<span style="color:var(--green)">●</span>'
             : '<span style="color:var(--text-muted)">○</span>'}</td>
         </tr>`).join('')
-      : `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px">No vendors in this category</td></tr>`;
+      : `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px;font-size:13px">No vendors in this category</td></tr>`;
 
-    const body = `
-      <div class="modal-header">
-        <h3>📁 ${escHtml(cat.name || 'Category')}</h3>
-        <button class="btn btn-sm btn-ghost" onclick="closeCategoryDetail()">Close</button>
+    const content = `
+      <div style="padding:18px 28px;border-bottom:1px solid var(--border-dim);display:flex;align-items:flex-start;justify-content:space-between;background:var(--bg-surface);flex-shrink:0">
+        <div>
+          <h2 style="margin:0 0 5px;font-size:20px;font-weight:700;color:var(--text-primary)">📁 ${escHtml(cat.name || 'Category')}</h2>
+          <div style="font-size:12px;color:var(--text-muted)">
+            Slug: <code style="background:var(--bg-raised);padding:1px 5px;border-radius:3px;font-size:11px">${escHtml(cat.slug || '—')}</code>
+            &nbsp;·&nbsp;${statusBadge(cat.status || 'unknown')}
+          </div>
+        </div>
+        <button class="btn btn-sm btn-ghost" onclick="closeCategoryDetail()">✕ Close</button>
       </div>
-      <div class="modal-body" style="display:grid;gap:14px">
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
-          <div class="card"><div class="card-body" style="text-align:center">
-            <div style="font-size:22px;font-weight:700;color:var(--accent)">${stats.total_bookings ?? '—'}</div>
-            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Total Bookings</div>
+      <div style="flex:1;overflow-y:auto;padding:28px;display:grid;gap:20px;align-content:start">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+          <div class="card"><div class="card-body" style="text-align:center;padding:22px">
+            <div style="font-size:34px;font-weight:700;color:var(--accent)">${stats.total_bookings ?? '—'}</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:5px;letter-spacing:0.06em">TOTAL BOOKINGS</div>
           </div></div>
-          <div class="card"><div class="card-body" style="text-align:center">
-            <div style="font-size:22px;font-weight:700;color:var(--green)">${stats.active_vendors ?? '—'}</div>
-            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Active Vendors</div>
+          <div class="card"><div class="card-body" style="text-align:center;padding:22px">
+            <div style="font-size:34px;font-weight:700;color:var(--green)">${stats.active_vendors ?? '—'}</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:5px;letter-spacing:0.06em">ACTIVE VENDORS</div>
           </div></div>
-          <div class="card"><div class="card-body" style="text-align:center">
-            <div style="font-size:22px;font-weight:700;color:var(--blue)">${stats.completed_jobs ?? '—'}</div>
-            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Completed Jobs</div>
+          <div class="card"><div class="card-body" style="text-align:center;padding:22px">
+            <div style="font-size:34px;font-weight:700;color:var(--blue)">${stats.completed_jobs ?? '—'}</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:5px;letter-spacing:0.06em">COMPLETED JOBS</div>
           </div></div>
         </div>
 
-        <div class="card"><div class="card-body">
-          <div style="font-size:11px;font-weight:700;margin-bottom:10px">Price Controls</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="card"><div class="card-body" style="padding:22px">
+          <div style="font-size:14px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Price Controls</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:560px">
             <div>
-              <label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:4px">INSPECTION FEE (₹)</label>
+              <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;letter-spacing:0.06em">INSPECTION FEE (₹)</label>
               <input type="number" id="cat-inspection-price" class="form-control" min="0" step="1"
                 value="${hasInspectPrice ? parseFloat(cat.inspection_price) : ''}"
-                placeholder="${hasInspectPrice ? '' : 'Column not in schema'}">
+                placeholder="${hasInspectPrice ? '0' : 'Column not in schema'}"
+                style="font-size:14px">
             </div>
             <div>
-              <label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:4px">COMMISSION (%)</label>
+              <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;letter-spacing:0.06em">COMMISSION (%)</label>
               <input type="number" id="cat-commission-rate" class="form-control" min="0" max="100" step="0.1"
                 value="${hasCommission ? parseFloat(cat.commission_rate) : ''}"
-                placeholder="${hasCommission ? '' : 'Column not in schema'}">
+                placeholder="${hasCommission ? '0' : 'Column not in schema'}"
+                style="font-size:14px">
             </div>
           </div>
-          <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <button class="btn btn-sm btn-primary" onclick="saveCategoryDetail(${parseInt(cat.id)||0})">Save</button>
-            <span style="font-size:10px;color:var(--text-muted)">
-              Slug: <code>${escHtml(cat.slug || '—')}</code>
-              &nbsp;·&nbsp;${statusBadge(cat.status || 'unknown')}
-            </span>
+          <div style="margin-top:18px">
+            <button class="btn btn-primary" onclick="saveCategoryDetail(${parseInt(cat.id)||0})" style="font-size:13px;padding:8px 20px">Save Changes</button>
           </div>
         </div></div>
 
-        <div class="card"><div class="card-body">
-          <div style="font-size:11px;font-weight:700;margin-bottom:8px">Vendors in this category</div>
+        <div class="card"><div class="card-body" style="padding:22px">
+          <div style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--text-primary)">Vendors in this category</div>
           <div class="table-wrap">
             <table>
               <thead><tr><th>VENDOR</th><th>PHONE</th><th>STATUS</th><th>ONLINE</th></tr></thead>
@@ -1083,16 +1092,15 @@ async function openCategoryDetail(categoryId) {
         </div></div>
       </div>`;
 
-    const overlay = document.getElementById('cat-detail-overlay');
-    if (overlay) overlay.querySelector('.modal').innerHTML = body;
+    const inner = document.getElementById('cat-modal-inner');
+    if (inner) inner.innerHTML = content;
   } catch(e) {
     document.getElementById('cat-detail-overlay')?.remove();
     Toast.error(e.message || 'Failed to load category detail');
   }
 }
 
-function closeCategoryDetail(event) {
-  if (event && event.target !== event.currentTarget) return;
+function closeCategoryDetail() {
   document.getElementById('cat-detail-overlay')?.remove();
 }
 

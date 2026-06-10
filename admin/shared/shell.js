@@ -19,7 +19,6 @@ const Shell = {
     { href: 'delivery.html', icon: 'truck', label: 'Delivery', hiddenInServiceOnly: true },
     { href: 'payments.html', icon: 'credit-card', label: 'Payments', hiddenInServiceOnly: true },
     { group: 'System' },
-    { href: 'settings.html', icon: 'settings', label: 'Settings' },
     { href: 'system.html',   icon: 'settings', label: 'System Control', hiddenInServiceOnly: true },
     { href: 'logs.html',     icon: 'terminal', label: 'Logs & Activity', hiddenInServiceOnly: true },
   ],
