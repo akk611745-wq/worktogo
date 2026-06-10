@@ -1110,6 +1110,242 @@ try {
         }
     }
 
+    // ── GET /api/admin/service/bookings ───────────────────────────
+    if ($method === 'GET' && $uri === '/api/admin/service/bookings') {
+        $page   = max(1, (int) ($_GET['page']  ?? 1));
+        $limit  = min(100, (int) ($_GET['limit'] ?? 50));
+        $offset = ($page - 1) * $limit;
+        $q      = substr(trim($_GET['q'] ?? $_GET['search'] ?? ''), 0, 100);
+        $status = $_GET['status'] ?? null;
+
+        // Discover all optional columns in bookings in one query
+        $colStmt = $db->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'");
+        $bc = array_flip($colStmt->fetchAll(PDO::FETCH_COLUMN));
+
+        $optSel  = '';
+        $optSel .= isset($bc['lifecycle_state'])   ? ', b.lifecycle_state'   : ', b.status AS lifecycle_state';
+        $optSel .= isset($bc['assignment_state'])  ? ', b.assignment_state'  : ", IF(b.vendor_id IS NOT NULL, 'worker_assigned', 'unassigned_searching') AS assignment_state";
+        $optSel .= isset($bc['payment_method'])    ? ', b.payment_method AS payment_route' : (isset($bc['payment_route']) ? ', b.payment_route' : ", 'cod' AS payment_route");
+        $optSel .= isset($bc['booking_mode'])      ? ', b.booking_mode'      : ", 'free_lead' AS booking_mode";
+        $optSel .= isset($bc['priority'])          ? ', b.priority'          : ", 'normal_priority' AS priority";
+        $optSel .= isset($bc['request_id'])        ? ', b.request_id'        : ", CONCAT('REQ-', LPAD(b.id, 6, '0')) AS request_id";
+        $optSel .= isset($bc['booking_number'])    ? ', b.booking_number'    : ', NULL AS booking_number';
+        $optSel .= isset($bc['job_id'])            ? ', b.job_id'            : ', b.id AS job_id';
+        $optSel .= isset($bc['city'])              ? ', b.city'              : ', NULL AS city';
+        $optSel .= isset($bc['locality'])          ? ', b.locality'          : (isset($bc['customer_locality']) ? ', b.customer_locality AS locality' : ', NULL AS locality');
+        $optSel .= isset($bc['address'])           ? ', b.address AS full_address' : (isset($bc['customer_address']) ? ', b.customer_address AS full_address' : ', NULL AS full_address');
+        $optSel .= isset($bc['issue_description']) ? ', b.issue_description AS issue_text' : (isset($bc['issue_summary']) ? ', b.issue_summary AS issue_text' : ', NULL AS issue_text');
+        $optSel .= isset($bc['total'])             ? ', b.total AS amount'   : (isset($bc['amount']) ? ', b.amount' : ', NULL AS amount');
+
+        $svcJoin = isset($bc['service_id'])
+            ? 'LEFT JOIN services s ON s.id = b.service_id'
+            : 'LEFT JOIN services s ON 1=0';
+        $catOn = 'c.id = COALESCE(s.category_id' . (isset($bc['category_id']) ? ', b.category_id' : '') . ')';
+
+        $where = ['1=1'];
+        $bind  = [];
+        if ($status) {
+            $where[]         = 'b.status = :bstatus';
+            $bind[':bstatus'] = $status;
+        }
+        if ($q) {
+            $parts = ['u.name LIKE :q', 'u.phone LIKE :q'];
+            if (isset($bc['request_id']))     $parts[] = 'b.request_id LIKE :q';
+            if (isset($bc['booking_number'])) $parts[] = 'b.booking_number LIKE :q';
+            if (isset($bc['city']))           $parts[] = 'b.city LIKE :q';
+            $where[]    = '(' . implode(' OR ', $parts) . ')';
+            $bind[':q'] = '%' . $q . '%';
+        }
+        $whereSQL = 'WHERE ' . implode(' AND ', $where);
+
+        $cntStmt = $db->prepare("SELECT COUNT(*) FROM bookings b LEFT JOIN users u ON u.id = b.user_id {$whereSQL}");
+        $cntStmt->execute($bind);
+        $total = (int) $cntStmt->fetchColumn();
+
+        $stmt = $db->prepare(
+            "SELECT b.id, b.user_id, b.vendor_id, b.status, b.payment_status, b.created_at, b.updated_at
+                    {$optSel},
+                    u.name  AS customer_name, u.phone AS customer_phone,
+                    v.business_name AS vendor_name,
+                    s.name AS service_name, s.category_id AS svc_category_id,
+                    c.name AS category_name, c.slug AS category_slug
+             FROM bookings b
+             LEFT JOIN users      u ON u.id = b.user_id
+             LEFT JOIN vendors    v ON v.id = b.vendor_id
+             {$svcJoin}
+             LEFT JOIN categories c ON {$catOn}
+             {$whereSQL}
+             ORDER BY b.created_at DESC
+             LIMIT :blimit OFFSET :boffset"
+        );
+        $stmt->bindValue(':blimit',  $limit,  PDO::PARAM_INT);
+        $stmt->bindValue(':boffset', $offset, PDO::PARAM_INT);
+        foreach ($bind as $k => $bv) $stmt->bindValue($k, $bv);
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $bookings = array_map(static function (array $b): array {
+            $reqId    = $b['request_id'] ?? ('REQ-' . str_pad((string) $b['id'], 6, '0', STR_PAD_LEFT));
+            $catLabel = $b['category_name'] ?? $b['category_slug'] ?? $b['service_name'] ?? 'Service';
+            $assigned = $b['assignment_state'] ?? ($b['vendor_id'] ? 'worker_assigned' : 'unassigned_searching');
+            $b['admin_request_view'] = [
+                'request_summary'  => ['request_id' => $reqId, 'booking_number' => $b['booking_number'] ?? null],
+                'customer_summary' => ['name' => $b['customer_name'] ?? '', 'mobile' => $b['customer_phone'] ?? ''],
+                'location'         => ['city' => $b['city'] ?? '', 'locality' => $b['locality'] ?? '', 'full_address' => $b['full_address'] ?? ''],
+                'issue_summary'    => ['label' => $catLabel, 'category' => $b['category_slug'] ?? '', 'summary' => $b['issue_text'] ?? '', 'issues' => []],
+                'payment_type'     => $b['payment_route']   ?? 'cod',
+                'priority'         => $b['priority']        ?? 'normal_priority',
+                'lifecycle_state'  => $b['lifecycle_state'] ?? $b['status'] ?? 'pending',
+                'assignment_state' => $assigned,
+                'booking_mode'     => $b['booking_mode']    ?? 'free_lead',
+                'filter_keys'      => [
+                    'city'             => $b['city']          ?? '',
+                    'category'         => $b['category_slug'] ?? '',
+                    'payment_route'    => $b['payment_route'] ?? 'cod',
+                    'priority'         => $b['priority']      ?? 'normal_priority',
+                    'assignment_state' => $assigned,
+                ],
+                'timeline_snapshot' => [
+                    'latest_event' => 'request_received',
+                    'latest_actor' => 'system',
+                    'latest_state' => $b['lifecycle_state'] ?? $b['status'] ?? 'pending',
+                    'created_at'   => $b['created_at'] ?? null,
+                ],
+            ];
+            $b['vendor_eligibility'] = ['vendors' => [], 'eligible_count' => 0, 'booking_locality' => $b['locality'] ?? ''];
+            return $b;
+        }, $rows);
+
+        Response::success([
+            'bookings'    => $bookings,
+            'total'       => $total,
+            'total_pages' => (int) ceil($total / max($limit, 1)),
+            'page'        => $page,
+            'limit'       => $limit,
+        ]);
+    }
+
+    // ── PATCH /api/admin/service/bookings/{id}/assign ─────────────
+    if ($method === 'PATCH' && preg_match('#^/api/admin/service/bookings/(\d+)/assign$#', $uri, $m)) {
+        $bookingId = (int) $m[1];
+        $input    = json_decode(file_get_contents('php://input'), true) ?? [];
+        $vendorId = (int) ($input['vendor_id'] ?? 0);
+        if (!$vendorId) Response::validation('vendor_id is required');
+
+        $colStmt = $db->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME IN ('assignment_state','lifecycle_state')");
+        $bc = array_flip($colStmt->fetchAll(PDO::FETCH_COLUMN));
+
+        $sets = ['vendor_id = :vid', 'updated_at = NOW()'];
+        $bind = [':vid' => $vendorId, ':id' => $bookingId];
+        if (isset($bc['assignment_state'])) { $sets[] = 'assignment_state = :as'; $bind[':as'] = 'worker_assigned'; }
+        if (isset($bc['lifecycle_state']))  { $sets[] = 'lifecycle_state = :ls';  $bind[':ls'] = 'worker_assigned'; }
+
+        $db->prepare('UPDATE bookings SET ' . implode(', ', $sets) . ' WHERE id = :id')->execute($bind);
+        Logger::info('Admin assigned vendor to booking', ['admin_id' => $auth['user_id'], 'booking_id' => $bookingId, 'vendor_id' => $vendorId]);
+        Response::success(['id' => $bookingId, 'vendor_id' => $vendorId], 200, 'Vendor assigned');
+    }
+
+    // ── PATCH /api/admin/service/bookings/{id}/ops ────────────────
+    if ($method === 'PATCH' && preg_match('#^/api/admin/service/bookings/(\d+)/ops$#', $uri, $m)) {
+        $bookingId = (int) $m[1];
+        $input  = json_decode(file_get_contents('php://input'), true) ?? [];
+        $action = trim($input['action'] ?? '');
+        if (!$action) Response::validation('action is required');
+
+        $colStmt = $db->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME IN ('assignment_state','lifecycle_state','booking_mode')");
+        $bc = array_flip($colStmt->fetchAll(PDO::FETCH_COLUMN));
+
+        $sets = ['updated_at = NOW()'];
+        $bind = [':id' => $bookingId];
+
+        switch ($action) {
+            case 'mark_worker_contacted':
+                if (isset($bc['assignment_state'])) { $sets[] = 'assignment_state = :as'; $bind[':as'] = 'worker_contacted'; }
+                break;
+            case 'mark_worker_confirmed':
+                if (isset($bc['assignment_state'])) { $sets[] = 'assignment_state = :as'; $bind[':as'] = 'worker_confirmed'; }
+                if (isset($bc['lifecycle_state']))  { $sets[] = 'lifecycle_state = :ls';  $bind[':ls'] = 'worker_assigned'; }
+                break;
+            case 'assign_vendor':
+            case 'reassign_vendor':
+                $vid = (int) ($input['vendor_id'] ?? 0);
+                if (!$vid) Response::validation('vendor_id required for ' . $action);
+                $sets[] = 'vendor_id = :vid'; $bind[':vid'] = $vid;
+                if (isset($bc['assignment_state'])) { $sets[] = 'assignment_state = :as'; $bind[':as'] = 'worker_assigned'; }
+                if (isset($bc['lifecycle_state']))  { $sets[] = 'lifecycle_state = :ls';  $bind[':ls'] = 'worker_assigned'; }
+                break;
+            case 'unassign_vendor':
+                $sets[] = 'vendor_id = NULL';
+                if (isset($bc['assignment_state'])) { $sets[] = 'assignment_state = :as'; $bind[':as'] = 'unassigned_searching'; }
+                if (isset($bc['lifecycle_state']))  { $sets[] = 'lifecycle_state = :ls';  $bind[':ls'] = 'searching_worker'; }
+                break;
+            case 'inspection_queued':
+                if (isset($bc['lifecycle_state'])) { $sets[] = 'lifecycle_state = :ls'; $bind[':ls'] = 'inspection_queued'; }
+                if (isset($bc['booking_mode']))    { $sets[] = 'booking_mode = :bm';    $bind[':bm'] = 'paid_inspection'; }
+                break;
+            case 'coordinator_assigned':
+                if (isset($bc['lifecycle_state']))  { $sets[] = 'lifecycle_state = :ls';  $bind[':ls'] = 'coordinator_assigned'; }
+                if (isset($bc['assignment_state'])) { $sets[] = 'assignment_state = :as'; $bind[':as'] = 'inspection_assigned'; }
+                break;
+            case 'inspection_scheduled':
+                if (isset($bc['lifecycle_state'])) { $sets[] = 'lifecycle_state = :ls'; $bind[':ls'] = 'inspection_scheduled'; }
+                break;
+            case 'inspection_completed':
+                if (isset($bc['lifecycle_state'])) { $sets[] = 'lifecycle_state = :ls'; $bind[':ls'] = 'inspection_completed'; }
+                break;
+            case 'mark_escalated':
+                if (isset($bc['lifecycle_state'])) { $sets[] = 'lifecycle_state = :ls'; $bind[':ls'] = 'escalated'; }
+                $sets[] = 'status = :st'; $bind[':st'] = 'escalated';
+                break;
+            default:
+                Response::validation('Unknown action: ' . $action);
+        }
+
+        $db->prepare('UPDATE bookings SET ' . implode(', ', $sets) . ' WHERE id = :id')->execute($bind);
+        Logger::info('Admin ops action on booking', ['admin_id' => $auth['user_id'], 'booking_id' => $bookingId, 'action' => $action]);
+        Response::success(['id' => $bookingId, 'action' => $action], 200, 'Action applied');
+    }
+
+    // ── PATCH /api/admin/jobs/{id}/status ──────────────────────────
+    if ($method === 'PATCH' && preg_match('#^/api/admin/jobs/(\d+)/status$#', $uri, $m)) {
+        $jobId  = (int) $m[1];
+        $input  = json_decode(file_get_contents('php://input'), true) ?? [];
+        $status = strtolower(trim($input['status'] ?? ''));
+        if (!in_array($status, ['completed', 'cancelled', 'escalated'], true)) {
+            Response::validation('status must be: completed, cancelled, or escalated');
+        }
+        // Try jobs table first; if absent, treat job_id as booking id
+        try {
+            $db->prepare('UPDATE jobs SET status = :st, updated_at = NOW() WHERE id = :id')
+               ->execute([':st' => $status, ':id' => $jobId]);
+            $bRow = $db->prepare('SELECT booking_id FROM jobs WHERE id = :id LIMIT 1');
+            $bRow->execute([':id' => $jobId]);
+            $bId = $bRow->fetchColumn();
+            if ($bId) {
+                $db->prepare('UPDATE bookings SET status = :st, updated_at = NOW() WHERE id = :id')
+                   ->execute([':st' => $status, ':id' => (int) $bId]);
+            }
+        } catch (PDOException $jobEx) {
+            $db->prepare('UPDATE bookings SET status = :st, updated_at = NOW() WHERE id = :id')
+               ->execute([':st' => $status, ':id' => $jobId]);
+        }
+        Logger::info('Admin force-set job status', ['admin_id' => $auth['user_id'], 'job_id' => $jobId, 'status' => $status]);
+        Response::success(['id' => $jobId, 'status' => $status], 200, 'Status updated');
+    }
+
+    // ── PATCH /api/admin/services/{id}/price ──────────────────────
+    if ($method === 'PATCH' && preg_match('#^/api/admin/services/(\d+)/price$#', $uri, $m)) {
+        $serviceId = (int) $m[1];
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        if (!array_key_exists('base_price', $input)) Response::validation('base_price is required');
+        $price = (float) $input['base_price'];
+        if ($price < 0) Response::validation('base_price must be >= 0');
+        $db->prepare('UPDATE services SET base_price = :p, updated_at = NOW() WHERE id = :id')
+           ->execute([':p' => $price, ':id' => $serviceId]);
+        Logger::info('Admin updated service price', ['admin_id' => $auth['user_id'], 'service_id' => $serviceId, 'base_price' => $price]);
+        Response::success(['id' => $serviceId, 'base_price' => $price], 200, 'Price updated');
+    }
+
 } catch (PDOException $e) {
     Logger::error('Admin endpoint DB error', ['error' => $e->getMessage(), 'uri' => $uri]);
     Response::serverError();
