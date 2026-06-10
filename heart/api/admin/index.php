@@ -307,13 +307,18 @@ try {
     // ── GET /api/admin/vendors ────────────────────────────────
     if ($method === 'GET' && $uri === '/api/admin/vendors') {
         $type   = $_GET['type']   ?? null;
-        $search = $_GET['search'] ?? null;
+        $search = substr(trim($_GET['search'] ?? $_GET['q'] ?? ''), 0, 100);
         $page   = max(1, (int) ($_GET['page']  ?? 1));
         $limit  = min(100, (int) ($_GET['limit'] ?? 20));
         $offset = ($page - 1) * $limit;
 
         $where = ['1=1'];
         $bind  = [];
+
+        if ($search !== '') {
+            $where[] = '(v.business_name LIKE :search OR u.name LIKE :search OR u.email LIKE :search OR u.phone LIKE :search)';
+            $bind[':search'] = '%' . $search . '%';
+        }
 
         if (!empty($_GET['status'])) {
             $where[] = 'v.status = :status';
@@ -323,11 +328,6 @@ try {
         if ($type) {
             $where[] = 'v.type = :type';
             $bind[':type'] = $type;
-        }
-
-        if ($search) {
-            $where[] = '(v.business_name LIKE :search OR u.name LIKE :search OR u.email LIKE :search OR u.phone LIKE :search)';
-            $bind[':search'] = '%' . $search . '%';
         }
 
         $whereSQL = 'WHERE ' . implode(' AND ', $where);
