@@ -223,6 +223,8 @@ class AppRouter
         'vendor:list_jobs'             => ['engines' => ['service'],              'brain' => false, 'cache_ttl' => 0],
         'vendor:get_job'               => ['engines' => ['service'],              'brain' => false, 'cache_ttl' => 0],
         'vendor:update_job_status'     => ['engines' => ['service'],              'brain' => false, 'cache_ttl' => 0],
+        'vendor:get_profile'           => ['engines' => ['service'],              'brain' => false, 'cache_ttl' => 0],
+        'vendor:update_profile'        => ['engines' => ['service'],              'brain' => false, 'cache_ttl' => 0],
 
         // ── DELIVERY APP ──────────────────────────────────────
         'delivery:track_delivery'      => ['engines' => ['delivery'],             'brain' => false, 'cache_ttl' => 10],

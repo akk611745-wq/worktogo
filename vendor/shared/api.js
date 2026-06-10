@@ -61,8 +61,8 @@ const API = (() => {
      PROFILE
   ──────────────────────────────────────────────── */
   const Profile = {
-    get:    ()       => intent("vendor:get_profile"),
-    update: (data)   => intent("vendor:update_profile", data),
+    get:    ()     => get("/api/vendor/profile"),
+    update: (data) => patch("/api/vendor/profile", data),
   };
 
   /* ────────────────────────────────────────────────

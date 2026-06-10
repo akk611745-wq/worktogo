@@ -271,4 +271,66 @@ if ($method === 'GET' && preg_match('#^/api/vendor/jobs/(\d+)$#', $uri, $m)) {
     Response::success(['job' => $job]);
 }
 
+// ── GET /api/vendor/profile ──────────────────────────────────────────────────────
+if ($method === 'GET' && $uri === '/api/vendor/profile') {
+    $auth   = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_VENDOR_SHOPPING);
+    $userId = (int)$auth['user_id'];
+
+    $typeCol = ServiceVendorEligibility::vendorTypeColumn($db);
+    $descSel = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'description') ? 'v.description' : 'NULL AS description';
+    $logoSel = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'logo_url')    ? 'v.logo_url'    : 'NULL AS logo_url';
+    $catSel  = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'category_id') ? 'v.category_id' : 'NULL AS category_id';
+
+    $stmt = $db->prepare(
+        "SELECT v.id, v.business_name, v.{$typeCol} AS type, v.status, v.rating,
+                {$descSel}, {$logoSel}, {$catSel},
+                v.created_at, v.updated_at,
+                u.name, u.phone, u.email, u.role
+         FROM vendors v
+         LEFT JOIN users u ON u.id = v.user_id
+         WHERE v.user_id = ? AND v.status != 'rejected'
+         LIMIT 1"
+    );
+    $stmt->execute([$userId]);
+    $vendor = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$vendor) Response::forbidden('No vendor profile found for your account');
+
+    Response::success($vendor);
+}
+
+// ── PATCH /api/vendor/profile ────────────────────────────────────────────────────
+if ($method === 'PATCH' && $uri === '/api/vendor/profile') {
+    $auth   = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_VENDOR_SHOPPING);
+    $userId = (int)$auth['user_id'];
+    $input  = json_decode(file_get_contents('php://input'), true) ?? [];
+
+    $name        = trim((string)($input['name'] ?? ''));
+    $phone       = trim((string)($input['phone'] ?? ''));
+    $description = array_key_exists('description', $input) ? trim((string)$input['description']) : null;
+    $categoryId  = array_key_exists('category_id', $input) ? (int)$input['category_id'] : null;
+
+    if ($name === '') Response::validation('Name is required');
+
+    $db->prepare("UPDATE users SET name = ?, phone = ?, updated_at = NOW() WHERE id = ?")
+       ->execute([$name, $phone ?: null, $userId]);
+
+    $vendorSets   = ['business_name = ?', 'updated_at = NOW()'];
+    $vendorParams = [$name];
+
+    if ($description !== null && ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'description')) {
+        $vendorSets[]   = 'description = ?';
+        $vendorParams[] = $description;
+    }
+    if ($categoryId !== null && $categoryId > 0 && ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'category_id')) {
+        $vendorSets[]   = 'category_id = ?';
+        $vendorParams[] = $categoryId;
+    }
+    $vendorParams[] = $userId;
+
+    $db->prepare("UPDATE vendors SET " . implode(', ', $vendorSets) . " WHERE user_id = ?")
+       ->execute($vendorParams);
+
+    Response::success(['updated' => true], 200, 'Profile updated');
+}
+
 Response::error('Endpoint not found', 404);
