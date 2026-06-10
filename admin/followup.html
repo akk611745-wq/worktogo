@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Follow-up Center</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+.fu-section { margin-bottom: 24px; }
+.fu-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-dim);
+}
+.fu-header-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  flex: 1;
+}
+.fu-count {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--mono);
+  padding: 2px 10px;
+  border-radius: 100px;
+  min-width: 28px;
+  text-align: center;
+}
+.fu-count.orange { background: rgba(245,158,11,0.15); color: var(--orange); }
+.fu-count.accent { background: var(--accent-dim);      color: var(--accent); }
+.fu-count.red    { background: rgba(239,68,68,0.12);   color: var(--red);    }
+.sla-time { font-size: 11px; font-weight: 700; font-family: var(--mono); }
+.sla-orange { color: var(--orange); }
+.sla-red    { color: var(--red); }
+.sla-muted  { color: var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Follow-up Center</h1>
+          <p class="page-subtitle" id="fu-subtitle">Loading…</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="loadAll()">↻ Refresh</button>
+      </div>
+
+      <!-- ── Section 1: Unassigned Bookings ── -->
+      <div class="card fu-section">
+        <div class="fu-header" style="border-left:4px solid var(--orange)">
+          <span class="fu-header-title">⏰ Unassigned Bookings</span>
+          <span class="fu-count orange" id="count-unassigned">—</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>CUSTOMER</th><th>CATEGORY</th><th>AREA</th><th>PENDING</th><th>ASSIGN</th></tr>
+            </thead>
+            <tbody id="tbody-unassigned">
+              <tr class="loading-row"><td colspan="5"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── Section 2: Payment Pending ── -->
+      <div class="card fu-section">
+        <div class="fu-header" style="border-left:4px solid var(--accent)">
+          <span class="fu-header-title">💰 Payment Pending</span>
+          <span class="fu-count accent" id="count-payment">—</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>CUSTOMER</th><th>AMOUNT</th><th>TIME</th><th>CONTACT</th></tr>
+            </thead>
+            <tbody id="tbody-payment">
+              <tr class="loading-row"><td colspan="4"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── Section 3: Vendor Not Responded ── -->
+      <div class="card fu-section">
+        <div class="fu-header" style="border-left:4px solid var(--red)">
+          <span class="fu-header-title">📵 Vendor Not Responded <span style="font-size:11px;font-weight:400;color:var(--text-muted)">(assigned &gt;2h, no confirmation)</span></span>
+          <span class="fu-count red" id="count-vendor">—</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>CUSTOMER</th><th>VENDOR</th><th>ASSIGNED AGO</th><th>CONTACT VENDOR</th></tr>
+            </thead>
+            <tbody id="tbody-vendor">
+              <tr class="loading-row"><td colspan="4"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Follow-up Center', active: 'followup.html' });
+
+let allBookings = [];
+let allVendors  = [];
+
+// ── Helpers ──────────────────────────────────────────────────
+function elapsed(raw) {
+  if (!raw) return '—';
+  const mins = Math.floor((Date.now() - new Date(raw).getTime()) / 60000);
+  if (isNaN(mins) || mins < 0) return '—';
+  if (mins < 1)  return '<1m';
+  if (mins < 60) return mins + 'm';
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  if (hrs < 24)  return rem ? hrs + 'h ' + rem + 'm' : hrs + 'h';
+  return Math.floor(hrs / 24) + 'd';
+}
+
+function elapsedMins(raw) {
+  if (!raw) return 0;
+  const m = Math.floor((Date.now() - new Date(raw).getTime()) / 60000);
+  return isNaN(m) ? 0 : m;
+}
+
+function waLink(phone) {
+  if (!phone) return null;
+  const clean = String(phone).replace(/\D/g, '');
+  const num   = clean.startsWith('91') ? clean : '91' + clean;
+  return 'https://wa.me/' + num;
+}
+
+function waBtn(phone, label) {
+  const wa = waLink(phone);
+  if (!wa) return '—';
+  const clean = String(phone).replace(/\D/g, '').replace(/^91/, '');
+  return `<a href="${escHtml(wa)}" target="_blank" rel="noopener"
+    style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:3px 10px;border-radius:4px;text-decoration:none;background:rgba(37,211,102,0.12);color:#25d366;border:1px solid rgba(37,211,102,0.3);margin-right:4px"
+    >📱 ${escHtml(label || 'WhatsApp')}</a
+  ><a href="tel:+91${escHtml(clean)}"
+    style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:3px 10px;border-radius:4px;text-decoration:none;background:rgba(99,102,241,0.1);color:var(--accent);border:1px solid rgba(99,102,241,0.3)"
+    >📞 Call</a>`;
+}
+
+function slaClass(mins, forceColor) {
+  if (forceColor) return 'sla-' + forceColor;
+  if (mins > 30) return 'sla-red';
+  if (mins > 15) return 'sla-orange';
+  return 'sla-muted';
+}
+
+// ── Load ─────────────────────────────────────────────────────
+async function loadAll() {
+  document.getElementById('fu-subtitle').textContent = 'Loading…';
+  ['unassigned','payment','vendor'].forEach(s => {
+    tableLoading('tbody-' + s, s === 'unassigned' ? 5 : 4);
+  });
+
+  try {
+    const [bData, vData] = await Promise.all([
+      API.get(CONFIG.ENDPOINTS.SERVICE_BOOKINGS, { limit: 200 }),
+      API.get(CONFIG.ENDPOINTS.VENDORS, { type: 'service', status: 'active', limit: CONFIG.MAX_PAGE_SIZE }),
+    ]);
+
+    const raw = bData.bookings || bData.data?.bookings || [];
+    allBookings = raw.filter(b => !['completed','cancelled'].includes(
+      String(b.status || b.admin_request_view?.lifecycle_state || '').toLowerCase()
+    ));
+
+    const vp = vData?.data && !Array.isArray(vData.data) ? vData.data : vData;
+    allVendors = vp?.vendors || vp?.data || [];
+
+    renderUnassigned();
+    renderPaymentPending();
+    renderVendorNotResponded();
+
+    const total = allBookings.length;
+    document.getElementById('fu-subtitle').textContent =
+      `${total} active booking${total !== 1 ? 's' : ''} · last updated ${new Date().toLocaleTimeString()}`;
+  } catch(e) {
+    Toast.error('Failed to load: ' + (e.message || ''));
+    document.getElementById('fu-subtitle').textContent = 'Load failed';
+    ['unassigned','payment','vendor'].forEach(s => {
+      tableEmpty('tbody-' + s, s === 'unassigned' ? 5 : 4, e.message || 'Failed');
+    });
+  }
+}
+
+// ── Section 1: Unassigned ────────────────────────────────────
+function renderUnassigned() {
+  const rows = allBookings.filter(b => {
+    const as = b.admin_request_view?.assignment_state ?? b.assignment_state ?? '';
+    return !b.vendor_id && !['worker_assigned','worker_contacted','worker_confirmed'].includes(as);
+  });
+  document.getElementById('count-unassigned').textContent = rows.length;
+
+  if (!rows.length) { tableEmpty('tbody-unassigned', 5, 'No unassigned bookings'); return; }
+
+  const vendorOptions = ['<option value="">Select vendor…</option>',
+    ...allVendors.map(v => {
+      const vid = escHtml(String(v.id || v._id || ''));
+      return `<option value="${vid}">${escHtml(v.business_name || v.name || ('Vendor #' + vid))}</option>`;
+    })
+  ].join('');
+
+  document.getElementById('tbody-unassigned').innerHTML = rows.map(b => {
+    const id   = String(b.id || b._id);
+    const view = b.admin_request_view || {};
+    const cust = view.customer_summary || {};
+    const loc  = view.location || {};
+    const iss  = view.issue_summary || {};
+    const raw  = b.created_at || view.timeline_snapshot?.created_at;
+    const mins = elapsedMins(raw);
+    const cls  = slaClass(mins);
+    return `<tr>
+      <td>
+        <div>${escHtml(cust.name || b.customer_name || '—')}</div>
+        <div style="font-size:10px;color:var(--text-muted)">${escHtml(cust.mobile || b.customer_phone || '')}</div>
+      </td>
+      <td>${escHtml(iss.label || b.service_name || b.category_name || '—')}</td>
+      <td>
+        <div>${escHtml(loc.city || b.city || '—')}</div>
+        <div style="font-size:10px;color:var(--text-muted)">${escHtml(loc.locality || b.locality || '')}</div>
+      </td>
+      <td><span class="sla-time ${cls}">${elapsed(raw)}</span></td>
+      <td>
+        <div class="td-actions" style="flex-wrap:nowrap">
+          <select class="form-control" id="fu-v-${escHtml(id)}"
+            style="min-width:140px;max-width:180px;padding:4px 6px;font-size:11px"
+          >${vendorOptions}</select>
+          <button class="btn btn-sm btn-primary" onclick="quickAssign('${escHtml(id)}')">Assign</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Section 2: Payment Pending ───────────────────────────────
+function renderPaymentPending() {
+  const rows = allBookings.filter(b => {
+    const ps = String(b.payment_status || '').toLowerCase();
+    return ps !== 'paid' && ps !== 'refunded';
+  });
+  document.getElementById('count-payment').textContent = rows.length;
+
+  if (!rows.length) { tableEmpty('tbody-payment', 4, 'No payment pending'); return; }
+
+  document.getElementById('tbody-payment').innerHTML = rows.map(b => {
+    const view   = b.admin_request_view || {};
+    const cust   = view.customer_summary || {};
+    const raw    = b.created_at || view.timeline_snapshot?.created_at;
+    const phone  = cust.mobile || b.customer_phone || '';
+    const amount = b.amount ?? b.total ?? null;
+    return `<tr>
+      <td>
+        <div>${escHtml(cust.name || b.customer_name || '—')}</div>
+        <div style="font-size:10px;color:var(--text-muted)">${escHtml(phone)}</div>
+      </td>
+      <td style="color:var(--accent);font-weight:700">${amount != null ? Fmt.currency(amount) : '—'}</td>
+      <td><span class="sla-time sla-muted">${elapsed(raw)}</span></td>
+      <td>${waBtn(phone, 'WhatsApp')}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Section 3: Vendor Not Responded ─────────────────────────
+function renderVendorNotResponded() {
+  const vendorMap = {};
+  allVendors.forEach(v => { vendorMap[String(v.id || v._id || '')] = v; });
+
+  const rows = allBookings.filter(b => {
+    if (!b.vendor_id) return false;
+    const as = b.admin_request_view?.assignment_state ?? b.assignment_state ?? '';
+    // Only "assigned" or "contacted" — not confirmed/in-progress
+    if (!['worker_assigned','worker_contacted','unassigned_searching'].includes(as) && as !== '') {
+      if (!['worker_assigned','worker_contacted'].includes(as)) return false;
+    }
+    if (['worker_confirmed','inspection_assigned','coordinator_assigned'].includes(as)) return false;
+    const raw = b.created_at || b.admin_request_view?.timeline_snapshot?.created_at;
+    return elapsedMins(raw) >= 120;
+  });
+  document.getElementById('count-vendor').textContent = rows.length;
+
+  if (!rows.length) { tableEmpty('tbody-vendor', 4, 'No overdue vendor assignments'); return; }
+
+  document.getElementById('tbody-vendor').innerHTML = rows.map(b => {
+    const view   = b.admin_request_view || {};
+    const cust   = view.customer_summary || {};
+    const raw    = b.created_at || view.timeline_snapshot?.created_at;
+    const mins   = elapsedMins(raw);
+    const vendor = vendorMap[String(b.vendor_id || '')] || {};
+    const vPhone = vendor.owner_phone || vendor.phone || '';
+    const vName  = vendor.business_name || vendor.name || b.vendor_name || ('Vendor #' + b.vendor_id);
+    return `<tr>
+      <td>
+        <div>${escHtml(cust.name || b.customer_name || '—')}</div>
+        <div style="font-size:10px;color:var(--text-muted)">${escHtml(cust.mobile || b.customer_phone || '')}</div>
+      </td>
+      <td>
+        <div>${escHtml(vName)}</div>
+        <div style="font-size:10px;color:var(--text-muted)">${escHtml(vPhone)}</div>
+      </td>
+      <td><span class="sla-time sla-red">${elapsed(raw)}</span></td>
+      <td>${waBtn(vPhone, 'WhatsApp')}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Quick Assign (Section 1) ─────────────────────────────────
+async function quickAssign(bookingId) {
+  const el = document.getElementById('fu-v-' + bookingId);
+  const vendorId = el?.value;
+  if (!vendorId) { Toast.warn('Pehle vendor select karo.'); return; }
+  const vendorName = el.options[el.selectedIndex]?.textContent || ('Vendor #' + vendorId);
+  if (!await confirmAction(`Assign booking #${bookingId} to ${vendorName}?`)) return;
+  try {
+    await API.patch(CONFIG.ENDPOINTS.SERVICE_BOOKING_ASSIGN(bookingId), { vendor_id: Number(vendorId) });
+    Toast.success('Vendor assigned.');
+    loadAll();
+  } catch(e) { Toast.error(e.message || 'Failed to assign'); }
+}
+
+loadAll();
+</script>
+</body>
+</html>

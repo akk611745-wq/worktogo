@@ -503,6 +503,38 @@ function eligibilityCell(booking) {
   </div>`;
 }
 
+// ── SLA Helpers ──────────────────────────────────────────────
+function slaElapsed(raw) {
+  if (!raw) return null;
+  const mins = Math.floor((Date.now() - new Date(raw).getTime()) / 60000);
+  if (isNaN(mins) || mins < 0) return null;
+  if (mins < 1)  return '<1m';
+  if (mins < 60) return mins + 'm';
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  if (hrs < 24)  return rem ? hrs + 'h ' + rem + 'm' : hrs + 'h';
+  return Math.floor(hrs / 24) + 'd';
+}
+function slaRowStyle(b) {
+  const assigned = b.admin_request_view?.assignment_state ?? b.assignment_state ?? '';
+  if (b.vendor_id || assigned === 'worker_assigned' || assigned === 'worker_contacted') return '';
+  const raw = b.created_at || b.admin_request_view?.timeline_snapshot?.created_at;
+  if (!raw) return '';
+  const mins = Math.floor((Date.now() - new Date(raw).getTime()) / 60000);
+  if (mins > 30) return 'border-left:3px solid var(--red);background:rgba(239,68,68,0.05)';
+  if (mins > 15) return 'border-left:3px solid var(--orange);background:rgba(245,158,11,0.05)';
+  return '';
+}
+function slaBadgeHtml(b) {
+  const raw = b.created_at || b.admin_request_view?.timeline_snapshot?.created_at;
+  const t = slaElapsed(raw);
+  if (!t) return '';
+  const mins = raw ? Math.floor((Date.now() - new Date(raw).getTime()) / 60000) : 0;
+  const unassigned = !b.vendor_id;
+  const c = (unassigned && mins > 30) ? 'var(--red)' : (unassigned && mins > 15) ? 'var(--orange)' : 'var(--text-muted)';
+  return `<div style="font-size:9px;font-weight:600;color:${c};margin-top:2px">⏱ ${t}</div>`;
+}
+
 function renderServiceBookings(bookings) {
   const tbody = document.getElementById('service-bookings-tbody');
   if (!bookings.length) { tableEmpty('service-bookings-tbody', 9, 'No service bookings yet. Confirm pilot services/vendors are seeded before public testing.'); return; }
@@ -515,14 +547,14 @@ function renderServiceBookings(bookings) {
     const location = view.location || {};
     const issue = view.issue_summary || {};
     const latest = view.timeline_snapshot || b.timeline_snapshot || {};
-    return `<tr>
+    return `<tr style="${slaRowStyle(b)}">
       <td><div style="font-size:12px;color:var(--text-primary)">${escHtml(request.request_id || b.request_id || ('#' + id))}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(request.booking_number || b.booking_number || '')}</div>${(() => { const mode = b.booking_mode || b.admin_request_view?.booking_mode; if (mode === 'free_lead') return '<span style="font-size:9px;padding:1px 6px;border-radius:100px;background:var(--green-dim);color:var(--green);font-weight:700">FREE</span>'; if (mode === 'inspection') return '<span style="font-size:9px;padding:1px 6px;border-radius:100px;background:var(--accent-dim);color:var(--accent);font-weight:700">₹299</span>'; if (mode === 'direct_vendor') return '<span style="font-size:9px;padding:1px 6px;border-radius:100px;background:var(--blue-dim);color:var(--blue);font-weight:700">DIRECT</span>'; return ''; })()}</td>
       <td><div>${escHtml(customer.name || b.customer_name || b.user_name || '—')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(customer.mobile || b.customer_mobile || b.customer_phone || '')}</div></td>
       <td><div>${escHtml(issue.label || b.category_label || b.service_name || 'Service')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(issue.summary || b.issue_summary || '—')}</div></td>
       <td><div>${escHtml(location.city || b.city || '—')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(location.locality || b.locality || b.customer_locality || 'Locality not set')}</div></td>
       <td>${escHtml(view.payment_type || b.payment_route || b.payment_method || 'cod')}</td>
       <td>${escHtml(view.priority || b.priority || 'normal_priority')}</td>
-      <td><div>${escHtml(view.lifecycle_state || b.lifecycle_state || 'request_received')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(b.vendor_id && serviceVendors.find(v=>v.id==b.vendor_id)?.business_name || view.assignment_state || b.assignment_state || 'unassigned_searching')}</div></td>
+      <td><div>${escHtml(view.lifecycle_state || b.lifecycle_state || 'request_received')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(b.vendor_id && serviceVendors.find(v=>v.id==b.vendor_id)?.business_name || view.assignment_state || b.assignment_state || 'unassigned_searching')}</div>${slaBadgeHtml(b)}</td>
       <td><div>${escHtml(latest.latest_event || 'request_created')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(latest.latest_actor || 'system')} · ${escHtml(latest.latest_state || '')}</div></td>
       <td><div class="td-actions">
         <button class="btn btn-sm btn-primary" onclick="openOpsDetail('${escHtml(String(id))}')">Details</button>
