@@ -57,11 +57,12 @@
                 <th>PRODUCTS/SERVICES</th>
                 <th>JOINED</th>
                 <th>STATUS</th>
+                <th>RATING</th>
                 <th>ACTIONS</th>
               </tr>
             </thead>
             <tbody id="vendors-tbody">
-              <tr class="loading-row"><td colspan="7"><div class="spinner" style="margin:auto"></div></td></tr>
+              <tr class="loading-row"><td colspan="8"><div class="spinner" style="margin:auto"></div></td></tr>
             </tbody>
           </table>
         </div>
@@ -118,7 +119,7 @@ let currentPage = 1, totalPages = 1, allVendors = [], rejectTargetId = null;
 
 async function loadVendors(page = 1) {
   currentPage = page;
-  tableLoading('vendors-tbody', 7);
+  tableLoading('vendors-tbody', 8);
   const search = document.getElementById('search-input').value.trim();
   const type   = document.getElementById('type-filter').value;
   const status = document.getElementById('status-filter').value;
@@ -146,7 +147,7 @@ async function loadVendors(page = 1) {
     renderVendors(allVendors);
     buildPagination('vendors-pagination', currentPage, totalPages, loadVendors);
   } catch(e) {
-    tableEmpty('vendors-tbody', 7, 'Failed to load: ' + (e.message||''));
+    tableEmpty('vendors-tbody', 8, 'Failed to load: ' + (e.message||''));
     Toast.error('Failed to load vendors');
   }
 }
@@ -154,7 +155,7 @@ async function loadVendors(page = 1) {
 function renderVendors(vendors) {
   const tbody = document.getElementById('vendors-tbody');
   if (!Array.isArray(vendors)) vendors = [];
-  if (!vendors.length) { tableEmpty('vendors-tbody', 7); return; }
+  if (!vendors.length) { tableEmpty('vendors-tbody', 8); return; }
   tbody.innerHTML = vendors.map(v => {
     const id = v.id || v.uuid;
     const status = v.status || 'pending';
@@ -168,6 +169,13 @@ function renderVendors(vendors) {
     } else if (status === 'inactive') {
       actions += `<button class="btn btn-success btn-sm" onclick="toggleVendorStatus('${escHtml(id)}','active')">Activate</button>`;
     }
+    const ratingHtml = v.rating > 0
+      ? `<span style="font-size:12px">&#11088; ${parseFloat(v.rating).toFixed(1)}</span>`
+      : '<span style="font-size:10px;color:var(--text-muted)">—</span>';
+    const isOnline = v.is_online == 1 || v.is_online === true || v.is_online === '1';
+    const onlineHtml = isOnline
+      ? '<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--green)"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span>Online</span>'
+      : '<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--text-muted)"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;opacity:0.4;display:inline-block"></span>Offline</span>';
     return `<tr>
       <td>
         <div style="display:flex;align-items:center;gap:8px">
@@ -185,6 +193,7 @@ function renderVendors(vendors) {
       <td style="color:var(--text-muted)">${escHtml(v.product_count??v.service_count??'—')}</td>
       <td style="color:var(--text-muted);font-size:11px">${Fmt.date(v.created_at)}</td>
       <td>${statusBadge(status)}</td>
+      <td>${ratingHtml}<div style="margin-top:3px">${onlineHtml}</div></td>
       <td><div class="td-actions">${actions}</div></td>
     </tr>`;
   }).join('');
@@ -248,6 +257,9 @@ async function viewVendor(id) {
   ${(window._serviceCategories||[]).map(c=>`<option value="${c.id}" ${v.category_id==c.id?'selected':''}>${c.name}</option>`).join('')}
 </select>`)}
         ${field('Status', statusBadge(v.status))}
+        ${field('Rating', v.rating > 0 ? `&#11088; ${parseFloat(v.rating).toFixed(1)} / 5` : 'Not rated yet')}
+        ${field('Online', (v.is_online == 1 || v.is_online === true || v.is_online === '1') ? '<span style="color:var(--green);font-weight:600">&#9679; Online</span>' : '<span style="color:var(--text-muted)">&#9675; Offline</span>')}
+        ${v.service_localities ? field('Service Areas', escHtml(v.service_localities)) : ''}
         ${field('Products/Services', escHtml(v.product_count??v.service_count??'—'))}
         ${field('Total Revenue', Fmt.currency(v.total_revenue))}
         ${field('Joined', Fmt.date(v.created_at))}
