@@ -180,18 +180,46 @@ try {
         ];
 
         // --- SMART INSIGHTS ---
-        $stmt = $db->prepare("
-            SELECT v.id, v.business_name, SUM(o.total) as total_sales
-            FROM vendors v
-            JOIN orders o ON v.id = o.vendor_id
-            WHERE o.status IN ('delivered')
-            GROUP BY v.id
-            ORDER BY total_sales DESC
-            LIMIT 5
-        ");
-        $stmt->execute();
-        // FIX: fetchAll() already returns [] on no rows — safe.
-        $top_vendors = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Primary: service bookings (service-only mode); fallback: shopping orders
+        $top_vendors = [];
+        try {
+            $bCols = array_flip($db->query(
+                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'
+                 AND COLUMN_NAME IN ('total','amount','vendor_id','status')"
+            )->fetchAll(PDO::FETCH_COLUMN));
+            if (isset($bCols['vendor_id'], $bCols['status'])) {
+                $revExpr = isset($bCols['total']) ? 'SUM(b.total)' : (isset($bCols['amount']) ? 'SUM(b.amount)' : '0');
+                $stmt = $db->prepare("
+                    SELECT v.id, v.business_name,
+                           COUNT(*) AS completed_jobs,
+                           COALESCE({$revExpr}, 0) AS total_sales
+                    FROM bookings b
+                    JOIN vendors v ON v.id = b.vendor_id
+                    WHERE b.status IN ('completed','done','delivered') AND b.vendor_id IS NOT NULL
+                    GROUP BY v.id, v.business_name
+                    ORDER BY completed_jobs DESC, total_sales DESC
+                    LIMIT 5
+                ");
+                $stmt->execute();
+                $top_vendors = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+        } catch (PDOException $ignored) {}
+        if (empty($top_vendors)) {
+            try {
+                $stmt = $db->prepare("
+                    SELECT v.id, v.business_name, SUM(o.total) AS total_sales, 0 AS completed_jobs
+                    FROM vendors v
+                    JOIN orders o ON v.id = o.vendor_id
+                    WHERE o.status IN ('delivered')
+                    GROUP BY v.id, v.business_name
+                    ORDER BY total_sales DESC
+                    LIMIT 5
+                ");
+                $stmt->execute();
+                $top_vendors = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            } catch (PDOException $ignored) {}
+        }
 
         $stmt = $db->prepare("
             SELECT oi.product_id, oi.product_name, COUNT(*) as cancel_count

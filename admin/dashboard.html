@@ -292,7 +292,7 @@ async function loadDashboard() {
       topVendorsEl.innerHTML = '<li class="insight-item" style="color:var(--text-muted)">No data yet today</li>';
     } else {
       topVendorsEl.innerHTML = topVendors.map(v =>
-        `<li class="insight-item"><span>${escHtml(v.business_name || 'Unknown')}</span> <strong>${Fmt.currency(v.total_sales || 0)}</strong></li>`
+        `<li class="insight-item"><span>${escHtml(v.business_name || 'Unknown')}</span> <strong>${[v.completed_jobs > 0 ? v.completed_jobs + ' jobs' : '', v.total_sales > 0 ? Fmt.currency(v.total_sales) : ''].filter(Boolean).join(' · ') || '—'}</strong></li>`
       ).join('');
     }
 
