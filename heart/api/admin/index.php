@@ -521,6 +521,51 @@ try {
             // bookings or services table absent on this database
         }
 
+        // --- REVENUE TOTAL for this category ---
+        $revenueTotal = 0.0;
+        try {
+            $stmt = $db->prepare(
+                "SELECT COALESCE(SUM(b.total), 0)
+                 FROM bookings b
+                 JOIN services s ON s.id = b.service_id
+                 WHERE s.category_id = ? AND b.status IN ('completed','done','delivered')"
+            );
+            $stmt->execute([$categoryId]);
+            $revenueTotal = (float)$stmt->fetchColumn();
+        } catch (PDOException $ignored) {}
+
+        // --- TOP 3 VENDORS in this category by job count ---
+        $topVendorsInCat = [];
+        try {
+            $stmt = $db->prepare(
+                "SELECT v.id, v.business_name, COUNT(*) AS jobs,
+                        COALESCE(v.rating, 0) AS rating
+                 FROM bookings b
+                 JOIN services s ON s.id = b.service_id
+                 JOIN vendors v ON v.id = b.vendor_id
+                 WHERE s.category_id = ? AND b.vendor_id IS NOT NULL
+                 GROUP BY v.id, v.business_name, v.rating
+                 ORDER BY jobs DESC
+                 LIMIT 3"
+            );
+            $stmt->execute([$categoryId]);
+            $topVendorsInCat = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $ignored) {}
+
+        // --- PENDING (unassigned) bookings for this category ---
+        $pendingBookings = 0;
+        try {
+            $stmt = $db->prepare(
+                "SELECT COUNT(*) FROM bookings b
+                 JOIN services s ON s.id = b.service_id
+                 WHERE s.category_id = ?
+                   AND b.vendor_id IS NULL
+                   AND b.status NOT IN ('completed','done','delivered','cancelled','rejected')"
+            );
+            $stmt->execute([$categoryId]);
+            $pendingBookings = (int)$stmt->fetchColumn();
+        } catch (PDOException $ignored) {}
+
         $vendorList = [];
         try {
             $hasIsOnline = (int)$db->query(
@@ -550,10 +595,13 @@ try {
         Response::success([
             'category' => $category,
             'stats'    => [
-                'total_bookings' => $totalBookings,
-                'completed_jobs' => $completedJobs,
-                'active_vendors' => $activeVendors,
+                'total_bookings'  => $totalBookings,
+                'completed_jobs'  => $completedJobs,
+                'active_vendors'  => $activeVendors,
+                'revenue_total'   => $revenueTotal,
+                'pending_bookings'=> $pendingBookings,
             ],
+            'top_vendors_in_cat' => $topVendorsInCat,
             'vendors' => $vendorList,
         ]);
     }
