@@ -1045,9 +1045,10 @@ async function openCategoryDetail(categoryId) {
 
   try {
     const data = await API.get('/categories/' + categoryId + '/detail');
-    const cat     = data.category || {};
-    const stats   = data.stats    || {};
-    const vendors = data.vendors  || [];
+    const rsp     = data.data || data;
+    const cat     = rsp.category || {};
+    const stats   = rsp.stats    || {};
+    const vendors = rsp.vendors  || [];
 
     const hasCommission   = cat.commission_rate  != null;
     const hasInspectPrice = cat.inspection_price != null;

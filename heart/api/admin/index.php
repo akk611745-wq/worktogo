@@ -478,10 +478,11 @@ try {
                  FROM vendors v
                  LEFT JOIN users u ON u.id = v.user_id
                  WHERE v.category_id = ?
+                    OR v.id IN (SELECT DISTINCT vendor_id FROM services WHERE category_id = ? AND vendor_id IS NOT NULL)
                  ORDER BY v.status = 'active' DESC, v.business_name ASC
                  LIMIT 50"
             );
-            $stmt->execute([$categoryId]);
+            $stmt->execute([$categoryId, $categoryId]);
             $vendorList = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
             // vendors unavailable
