@@ -250,14 +250,14 @@ async function viewBooking(id) {
     '<div><div class="text-muted text-sm">Booking ID</div><div class="fw-bold">#' + (b.id||b._id) + '</div></div>' +
     '<div><div class="text-muted text-sm">Status</div><div>' + _chip(b.status) + '</div></div>' +
     '<div><div class="text-muted text-sm">Customer</div><div>' + escHtml(b.customer_name||b.user?.name||'—') + '</div></div>' +
-    '<div><div class="text-muted text-sm">Phone / WhatsApp</div><div>' + escHtml(b.customer_phone||b.user?.phone||'—') + '</div></div>' +
+    '<div><div class="text-muted text-sm">Phone / WhatsApp</div><div>' + _phoneLinks(b.customer_phone||b.customer_mobile||b.user?.phone) + '</div></div>' +
     '<div><div class="text-muted text-sm">Service</div><div>' + escHtml(b.service_name||b.service?.name||'—') + '</div></div>' +
     '<div><div class="text-muted text-sm">Scheduled</div><div>' + fmtDateTime(b.booking_date||b.date||b.scheduled_at) + '</div></div>' +
     '<div><div class="text-muted text-sm">Amount</div><div class="fw-bold">' + fmtCurrency(b.amount||b.price) + '</div></div>' +
     '<div><div class="text-muted text-sm">Payment</div><div>' + (b.payment_status||'—') + '</div></div>' +
     '</div>' +
-    (b.address ? '<div style="margin-bottom:0.75rem;"><div class="text-muted text-sm">Address</div><div class="text-sm">' + escHtml(b.address) + '</div></div>' : '') +
-    '<div style="margin-bottom:0.75rem;"><div class="text-muted text-sm">Customer Notes</div><div class="text-sm" style="background:var(--surface-2);padding:0.6rem;border-radius:6px;margin-top:4px;">' + escHtml(cleanNotes(b.notes) || 'No notes from customer.') + '</div></div>';
+    _addrBlock(b) +
+    '<div style="margin-bottom:0.75rem;"><div class="text-muted text-sm">Customer Notes</div><div class="text-sm" style="background:var(--surface-2);padding:0.6rem;border-radius:6px;margin-top:4px;">' + escHtml(cleanNotes(b.customer_note || b.notes) || 'No notes from customer.') + '</div></div>';
 
   const bid = b.id || b._id;
   let footer = '<button class="btn btn-ghost" onclick="closeModal(\'bookingModal\')">Close</button>';
@@ -325,10 +325,35 @@ function _extractBookings(res) {
 function escHtml(str) {
   return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-function cleanNotes(_raw) {
-  // Notes field contains only internal metadata for this booking type.
-  // Return null until a real customer_note field is available.
-  return null;
+function cleanNotes(raw) {
+  const val = String(raw || '').trim();
+  return val || null;
+}
+
+function _phoneLinks(phone) {
+  if (!phone) return '&mdash;';
+  const digits = String(phone).replace(/\D/g, '');
+  // Normalise to E.164 with 91 prefix — use last 10 digits if no country code
+  const e164 = (digits.length === 12 && digits.startsWith('91'))
+    ? digits
+    : '91' + digits.slice(-10);
+  const display = escHtml(phone);
+  const wa  = 'https://wa.me/' + e164;
+  const tel = 'tel:+' + e164;
+  return display +
+    ' <a href="' + wa + '" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:3px;margin-left:8px;padding:2px 9px;border-radius:12px;font-size:0.7rem;font-weight:600;background:#25d36622;color:#25d366;border:1px solid #25d36645;text-decoration:none;">WhatsApp</a>' +
+    ' <a href="' + tel + '" style="display:inline-flex;align-items:center;gap:3px;margin-left:4px;padding:2px 9px;border-radius:12px;font-size:0.7rem;font-weight:600;background:#3b82f622;color:#3b82f6;border:1px solid #3b82f645;text-decoration:none;">Call</a>';
+}
+
+function _addrBlock(b) {
+  const locality = (b.customer_locality || '').trim();
+  const address  = (b.customer_address  || b.address || '').trim();
+  if (!locality && !address) return '';
+  let html = '<div style="margin-bottom:0.75rem;"><div class="text-muted text-sm">Address</div>';
+  if (locality) html += '<div class="text-sm fw-bold" style="margin-top:3px;">' + escHtml(locality) + '</div>';
+  if (address)  html += '<div class="text-sm" style="margin-top:2px;">' + escHtml(address) + '</div>';
+  html += '</div>';
+  return html;
 }
 </script>
 </body>
