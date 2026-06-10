@@ -18,7 +18,8 @@
 </head>
 <body>
 <script>
-let profileData = null;
+let profileData     = null;
+let categoriesCache = [];
 
 document.addEventListener("DOMContentLoaded", async () => {
   const user = initShell("Profile");
@@ -41,9 +42,9 @@ function renderPage(user) {
     <div class="profile-hero" id="profileHero">
       <div class="profile-avatar" id="profileAvatarBig">?</div>
       <div>
-        <div class="profile-name" id="profileNameBig">Loading…</div>
-        <div class="profile-email" id="profileEmailBig">—</div>
-        <div class="profile-role-pill" id="profileRolePill">—</div>
+        <div class="profile-name" id="profileNameBig">Loading&hellip;</div>
+        <div class="profile-email" id="profileEmailBig">&mdash;</div>
+        <div class="profile-role-pill" id="profileRolePill">&mdash;</div>
       </div>
     </div>
 
@@ -57,15 +58,21 @@ function renderPage(user) {
         </button>
       </div>
       <div class="card-body">
+
         <!-- View mode -->
         <div id="viewMode">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-            <div class="field"><label>Business / Full Name</label><div id="vName" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">—</div></div>
-            <div class="field"><label>Phone</label><div id="vPhone" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">—</div></div>
-            <div class="field"><label>Email</label><div id="vEmail" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">—</div></div>
-            <div class="field"><label>Role</label><div id="vRole"  class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">—</div></div>
-            <div class="field"><label>Status</label><div id="vStatus" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">—</div></div>
-            <div class="field"><label>Member Since</label><div id="vSince" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">—</div></div>
+            <div class="field"><label>Business / Full Name</label><div id="vName"   class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
+            <div class="field"><label>Phone</label>               <div id="vPhone"  class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
+            <div class="field"><label>Email</label>               <div id="vEmail"  class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
+            <div class="field"><label>Role</label>                <div id="vRole"   class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
+            <div class="field"><label>Status</label>              <div id="vStatus" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
+            <div class="field"><label>Member Since</label>        <div id="vSince"  class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
+            <div class="field"><label>Category</label>            <div id="vCategory" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
+            <div class="field"><label>Photo</label>               <div id="vPhoto"  class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
+            <div class="field" style="grid-column:1/-1"><label>Bio / Description</label>
+              <div id="vBio" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);white-space:pre-wrap;">&mdash;</div>
+            </div>
           </div>
         </div>
 
@@ -80,6 +87,18 @@ function renderPage(user) {
               <label for="ePhone">Phone Number</label>
               <input type="tel" id="ePhone" placeholder="+91 XXXXX XXXXX"/>
             </div>
+            <div class="field">
+              <label for="eCategory">Category</label>
+              <select id="eCategory"><option value="">— Select category —</option></select>
+            </div>
+            <div class="field">
+              <label for="eLogoUrl">Photo URL</label>
+              <input type="url" id="eLogoUrl" placeholder="https://example.com/photo.jpg"/>
+            </div>
+            <div class="field" style="grid-column:1/-1">
+              <label for="eDescription">Bio / Description</label>
+              <textarea id="eDescription" rows="3" placeholder="Tell customers about your business&hellip;" style="width:100%;resize:vertical;"></textarea>
+            </div>
           </div>
           <div style="display:flex;gap:0.6rem;margin-top:1.25rem;">
             <button class="btn btn-ghost" onclick="cancelEdit()">Cancel</button>
@@ -88,6 +107,7 @@ function renderPage(user) {
             </button>
           </div>
         </div>
+
       </div>
     </div>
 
@@ -109,33 +129,49 @@ function renderPage(user) {
   `;
 }
 
+/* ── Data loaders ─────────────────────────────────────────── */
+
 async function loadProfile() {
-  const res = await API.Profile.get();
-  if (!res.ok) {
-    // Fallback to locally stored user
+  // Fetch profile and categories in parallel — no sequential wait
+  const [profileRes, catRes] = await Promise.all([
+    API.Profile.get(),
+    API.Categories.list(),
+  ]);
+
+  categoriesCache = catRes.data?.data?.categories || catRes.data?.categories || [];
+
+  if (!profileRes.ok) {
     profileData = Auth.getUser() || {};
     showToast("Using cached profile data.", "warning");
   } else {
-    profileData = res.data?.data || res.data || Auth.getUser() || {};
-    // Sync auth cache with fresh data
+    profileData = profileRes.data?.data || profileRes.data || Auth.getUser() || {};
     const token = Auth.getToken();
     if (token) Auth.setSession(token, profileData);
   }
   populateProfile(profileData);
 }
 
+/* ── Display ──────────────────────────────────────────────── */
+
 function populateProfile(p) {
   const name  = p.name || p.business_name || '—';
   const email = p.email || '—';
   const role  = (p.role || '').replace('vendor_', '').replace('_', ' ');
 
-  // Hero
-  document.getElementById("profileAvatarBig").textContent = name.charAt(0).toUpperCase() || '?';
-  document.getElementById("profileNameBig").textContent   = name;
-  document.getElementById("profileEmailBig").textContent  = email;
-  document.getElementById("profileRolePill").textContent  = cap(role) + ' Vendor';
+  // Hero — show photo thumbnail if logo_url is set
+  const avatarEl = document.getElementById("profileAvatarBig");
+  if (p.logo_url) {
+    avatarEl.innerHTML = `<img src="${escHtml(p.logo_url)}" alt="${escHtml(name.charAt(0))}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
+    avatarEl.style.overflow = 'hidden';
+  } else {
+    avatarEl.textContent    = name.charAt(0).toUpperCase() || '?';
+    avatarEl.style.overflow = '';
+  }
+  document.getElementById("profileNameBig").textContent  = name;
+  document.getElementById("profileEmailBig").textContent = email;
+  document.getElementById("profileRolePill").textContent = cap(role) + ' Vendor';
 
-  // View fields
+  // View fields — original 6
   document.getElementById("vName").textContent   = name;
   document.getElementById("vPhone").textContent  = p.phone || '—';
   document.getElementById("vEmail").textContent  = email;
@@ -143,34 +179,76 @@ function populateProfile(p) {
   document.getElementById("vStatus").innerHTML   = statusBadge(p.status || 'active');
   document.getElementById("vSince").textContent  = fmtDate(p.created_at || p.createdAt) || '—';
 
-  // Edit prefill
+  // View fields — new 3
+  const catObj = categoriesCache.find(c => String(c.id) === String(p.category_id));
+  document.getElementById("vCategory").textContent = catObj ? catObj.name : (p.category_id ? `Category #${p.category_id}` : '—');
+  document.getElementById("vBio").textContent      = p.description || '—';
+
+  const vPhoto = document.getElementById("vPhoto");
+  if (p.logo_url) {
+    vPhoto.innerHTML = `<img src="${escHtml(p.logo_url)}" alt="Logo" style="width:40px;height:40px;border-radius:6px;object-fit:cover;border:1px solid var(--border);vertical-align:middle;margin-right:6px;"><span class="text-muted" style="font-size:0.72rem;">Set</span>`;
+  } else {
+    vPhoto.textContent = '—';
+  }
+
+  // Edit prefill — original 2
   document.getElementById("eName").value  = p.name || p.business_name || '';
   document.getElementById("ePhone").value = p.phone || '';
+
+  // Edit prefill — new 3
+  document.getElementById("eDescription").value = p.description || '';
+  document.getElementById("eLogoUrl").value      = p.logo_url    || '';
+  populateCategorySelect();
 }
 
-function enableEdit() {
+function populateCategorySelect() {
+  const sel = document.getElementById("eCategory");
+  if (!sel || !categoriesCache.length) return;
+  const current = profileData?.category_id;
+  sel.innerHTML = '<option value="">— Select category —</option>' +
+    categoriesCache
+      .filter(c => (c.status === 'active' || c.status == null))
+      .map(c => `<option value="${c.id}"${String(c.id) === String(current) ? ' selected' : ''}>${escHtml(c.name)}</option>`)
+      .join('');
+}
+
+/* ── Edit mode ────────────────────────────────────────────── */
+
+async function enableEdit() {
   document.getElementById("viewMode").style.display = 'none';
   document.getElementById("editMode").style.display = 'block';
+  // If categories failed to load on page load, try once more
+  if (!categoriesCache.length) {
+    const catRes = await API.Categories.list();
+    categoriesCache = catRes.data?.data?.categories || catRes.data?.categories || [];
+  }
+  populateCategorySelect();
 }
+
 function cancelEdit() {
   document.getElementById("viewMode").style.display = 'block';
   document.getElementById("editMode").style.display = 'none';
 }
 
+/* ── Save ─────────────────────────────────────────────────── */
+
 async function saveProfile() {
-  const name  = document.getElementById("eName").value.trim();
-  const phone = document.getElementById("ePhone").value.trim();
+  const name        = document.getElementById("eName").value.trim();
+  const phone       = document.getElementById("ePhone").value.trim();
+  const description = document.getElementById("eDescription").value.trim();
+  const logo_url    = document.getElementById("eLogoUrl").value.trim();
+  const category_id = parseInt(document.getElementById("eCategory").value) || null;
 
   if (!name) { showToast("Name is required.", "warning"); return; }
 
   const btn = document.getElementById("saveProfileBtn");
-  btn.disabled = true;
+  btn.disabled    = true;
   btn.textContent = "Saving…";
 
-  const payload = { name, phone };
+  const payload = { name, phone, description, logo_url, category_id };
   const res = await API.Profile.update(payload);
 
-  btn.disabled = false;
+  btn.disabled    = false;
   btn.textContent = "Save Changes";
 
   if (!res.ok) {
@@ -180,7 +258,6 @@ async function saveProfile() {
 
   showToast("Profile updated!", "success");
   profileData = { ...profileData, ...payload };
-  // Update local auth cache
   Auth.setSession(Auth.getToken(), profileData);
   populateProfile(profileData);
   cancelEdit();
@@ -190,6 +267,11 @@ function confirmLogout() {
   if (confirmAction("Log out from all sessions?")) Auth.logout();
 }
 
+/* ── Helpers ──────────────────────────────────────────────── */
+
+function escHtml(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 </script>
 </body>

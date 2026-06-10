@@ -308,6 +308,7 @@ if ($method === 'PATCH' && $uri === '/api/vendor/profile') {
     $phone       = trim((string)($input['phone'] ?? ''));
     $description = array_key_exists('description', $input) ? trim((string)$input['description']) : null;
     $categoryId  = array_key_exists('category_id', $input) ? (int)$input['category_id'] : null;
+    $logoUrl     = array_key_exists('logo_url', $input)    ? trim((string)$input['logo_url'])    : null;
 
     if ($name === '') Response::validation('Name is required');
 
@@ -324,6 +325,10 @@ if ($method === 'PATCH' && $uri === '/api/vendor/profile') {
     if ($categoryId !== null && $categoryId > 0 && ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'category_id')) {
         $vendorSets[]   = 'category_id = ?';
         $vendorParams[] = $categoryId;
+    }
+    if ($logoUrl !== null && ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'logo_url')) {
+        $vendorSets[]   = 'logo_url = ?';
+        $vendorParams[] = $logoUrl ?: null;
     }
     $vendorParams[] = $userId;
 

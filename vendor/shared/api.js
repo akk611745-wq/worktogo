@@ -66,6 +66,13 @@ const API = (() => {
   };
 
   /* ────────────────────────────────────────────────
+     CATEGORIES  (public — no auth required)
+  ──────────────────────────────────────────────── */
+  const Categories = {
+    list: () => get("/api/service/categories"),
+  };
+
+  /* ────────────────────────────────────────────────
      PRODUCTS  (vendor_shopping)
   ──────────────────────────────────────────────── */
   const Products = {
@@ -96,5 +103,5 @@ const API = (() => {
     updateStatus: (id, status)   => intent("vendor:update_job_status", { id, status }),
   };
 
-  return { get, post, put, patch, del, intent, Auth: Auth_API, Dashboard, Profile, Products, Orders, Bookings: Jobs, Jobs };
+  return { get, post, put, patch, del, intent, Auth: Auth_API, Dashboard, Profile, Categories, Products, Orders, Bookings: Jobs, Jobs };
 })();
