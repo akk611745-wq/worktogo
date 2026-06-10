@@ -793,7 +793,31 @@ try {
         if (!$vendor) {
             Response::notFound('Vendor');
         }
-        Response::success(['vendor' => $vendor]);
+
+        $perf = ['total_assigned' => 0, 'completed' => 0, 'active' => 0, 'completion_rate' => 0];
+        try {
+            $pStmt = $db->prepare(
+                "SELECT
+                    COUNT(*) AS total_assigned,
+                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
+                    SUM(CASE WHEN status IN ('pending','assigned','in_progress') THEN 1 ELSE 0 END) AS active
+                 FROM bookings WHERE vendor_id = ?"
+            );
+            $pStmt->execute([$vendorId]);
+            $row = $pStmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                $total = (int) $row['total_assigned'];
+                $done  = (int) $row['completed'];
+                $perf  = [
+                    'total_assigned'  => $total,
+                    'completed'       => $done,
+                    'active'          => (int) $row['active'],
+                    'completion_rate' => $total > 0 ? round($done / $total * 100) : 0,
+                ];
+            }
+        } catch (PDOException $ignored) {}
+
+        Response::success(['vendor' => $vendor, 'perf' => $perf]);
     }
 
     // ── POST /api/admin/deliveries/assign ──────────────────────

@@ -239,6 +239,7 @@ async function viewVendor(id) {
     const data = await API.get(CONFIG.ENDPOINTS.VENDOR_DETAIL(id));
     const payload = data?.data && !Array.isArray(data.data) ? data.data : data;
     const v = payload?.vendor || payload || {};
+    const perf = payload?.perf || {};
     const rawPhone = v.owner_phone || v.phone || '';
     const ph = rawPhone.replace(/\D/g, '').replace(/^91/, '');
     document.getElementById('vendor-modal-title').textContent = v.business_name || v.name || 'Vendor';
@@ -260,6 +261,29 @@ async function viewVendor(id) {
         ${field('Rating', v.rating > 0 ? `&#11088; ${parseFloat(v.rating).toFixed(1)} / 5` : 'Not rated yet')}
         ${field('Online', (v.is_online == 1 || v.is_online === true || v.is_online === '1') ? '<span style="color:var(--green);font-weight:600">&#9679; Online</span>' : '<span style="color:var(--text-muted)">&#9675; Offline</span>')}
         ${v.service_localities ? field('Service Areas', escHtml(v.service_localities)) : ''}
+        <div style="border-top:1px solid var(--border-dim);padding-top:10px;margin-top:2px">
+          <div style="font-size:10px;color:var(--text-muted);letter-spacing:0.08em;margin-bottom:8px">PERFORMANCE</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div style="background:var(--surface-2,#1e293b);border-radius:var(--radius-sm,6px);padding:10px;text-align:center">
+              <div style="font-size:20px;font-weight:700;color:var(--text-primary)">${perf.total_assigned ?? '—'}</div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Total Assigned</div>
+            </div>
+            <div style="background:var(--surface-2,#1e293b);border-radius:var(--radius-sm,6px);padding:10px;text-align:center">
+              <div style="font-size:20px;font-weight:700;color:var(--green)">${perf.completed ?? '—'}</div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Completed</div>
+            </div>
+            <div style="background:var(--surface-2,#1e293b);border-radius:var(--radius-sm,6px);padding:10px;text-align:center">
+              <div style="font-size:20px;font-weight:700;color:var(--accent)">${perf.active ?? '—'}</div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Active / Pending</div>
+            </div>
+            <div style="background:var(--surface-2,#1e293b);border-radius:var(--radius-sm,6px);padding:10px;text-align:center">
+              <div style="font-size:20px;font-weight:700;color:${(perf.completion_rate??0)>=80?'var(--green)':(perf.completion_rate??0)>=50?'var(--accent)':'var(--red)'}">
+                ${perf.completion_rate != null ? perf.completion_rate + '%' : '—'}
+              </div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Completion Rate</div>
+            </div>
+          </div>
+        </div>
         ${field('Products/Services', escHtml(v.product_count??v.service_count??'—'))}
         ${field('Total Revenue', Fmt.currency(v.total_revenue))}
         ${field('Joined', Fmt.date(v.created_at))}
