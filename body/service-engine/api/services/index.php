@@ -2042,7 +2042,7 @@ if ($method === 'PATCH' && preg_match('#^/api/services/(\d+)/price$#', $uri, $m)
     $stmt->execute([$serviceId]);
     if (!$stmt->fetch()) Response::notFound('Service');
 
-    $db->prepare("UPDATE services SET base_price = ?, updated_at = NOW() WHERE id = ?")
+    $db->prepare("UPDATE services SET base_price = ? WHERE id = ?")
        ->execute([$price, $serviceId]);
 
     Response::success(['id' => $serviceId, 'base_price' => $price], 200, 'Service price updated');
