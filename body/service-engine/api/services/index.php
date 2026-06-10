@@ -2045,11 +2045,6 @@ if ($method === 'PATCH' && preg_match('#^/api/services/(\d+)/price$#', $uri, $m)
     $db->prepare("UPDATE services SET base_price = ?, updated_at = NOW() WHERE id = ?")
        ->execute([$price, $serviceId]);
 
-    Logger::info('Admin updated service price', [
-        'admin_id'   => $auth['user_id'],
-        'service_id' => $serviceId,
-        'base_price' => $price,
-    ]);
     Response::success(['id' => $serviceId, 'base_price' => $price], 200, 'Service price updated');
 }
 
