@@ -212,6 +212,29 @@
         </div>
       </div>
 
+      <!-- 6. Area Demand Intelligence -->
+      <div class="dashboard-section">
+        <h2>&#128205; Area Demand Intelligence</h2>
+        <div class="card">
+          <div class="card-body" style="padding:0">
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead>
+                <tr style="border-bottom:1px solid var(--border)">
+                  <th style="padding:10px 14px;text-align:left;font-size:10px;color:var(--text-muted);letter-spacing:0.06em;font-weight:600">AREA</th>
+                  <th style="padding:10px 14px;text-align:right;font-size:10px;color:var(--text-muted);letter-spacing:0.06em;font-weight:600">BOOKINGS</th>
+                  <th style="padding:10px 14px;text-align:right;font-size:10px;color:var(--text-muted);letter-spacing:0.06em;font-weight:600">COMPLETED</th>
+                  <th style="padding:10px 14px;text-align:right;font-size:10px;color:var(--text-muted);letter-spacing:0.06em;font-weight:600">ACTIVE VENDORS</th>
+                  <th style="padding:10px 14px;text-align:right;font-size:10px;color:var(--text-muted);letter-spacing:0.06em;font-weight:600">STATUS</th>
+                </tr>
+              </thead>
+              <tbody id="area-demand-tbody">
+                <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Loading&#8230;</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
     </main>
   </div>
 </div>
@@ -304,6 +327,33 @@ async function loadDashboard() {
       cancelledItemsEl.innerHTML = cancelledItems.map(i =>
         `<li class="insight-item"><span>${escHtml(i.product_name || 'Unknown')}</span> <strong>${i.cancel_count || 0}x</strong></li>`
       ).join('');
+    }
+
+    // Area Demand
+    const areaTbody = document.getElementById('area-demand-tbody');
+    const areas = data.area_demand || [];
+    if (!areas.length) {
+      areaTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--text-muted)">No area data available</td></tr>';
+    } else {
+      areaTbody.innerHTML = areas.map(a => {
+        const vendors  = parseInt(a.active_vendors) || 0;
+        const bookings = parseInt(a.total_bookings)  || 0;
+        let statusHtml;
+        if (vendors === 0) {
+          statusHtml = '<span style="color:var(--red);font-weight:600">&#9888; No vendor</span>';
+        } else if (bookings > 5 && vendors < 2) {
+          statusHtml = '<span style="color:#f59e0b;font-weight:600">&#9888; Shortage</span>';
+        } else {
+          statusHtml = '<span style="color:var(--green);font-weight:600">&#10003; OK</span>';
+        }
+        return `<tr style="border-bottom:1px solid var(--border-dim)">
+          <td style="padding:9px 14px;font-weight:500">${escHtml(a.area || '—')}</td>
+          <td style="padding:9px 14px;text-align:right">${bookings}</td>
+          <td style="padding:9px 14px;text-align:right">${parseInt(a.completed) || 0}</td>
+          <td style="padding:9px 14px;text-align:right">${vendors}</td>
+          <td style="padding:9px 14px;text-align:right">${statusHtml}</td>
+        </tr>`;
+      }).join('');
     }
 
     set('val-expected-cash', Fmt.currency(data.insights?.cash_flow?.expected_cash_from_cod ?? 0));

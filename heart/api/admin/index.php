@@ -233,6 +233,25 @@ try {
         $stmt->execute();
         $most_cancelled_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // --- AREA DEMAND ---
+        $area_demand = [];
+        try {
+            $stmt = $db->prepare(
+                "SELECT
+                    customer_locality AS area,
+                    COUNT(*) AS total_bookings,
+                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
+                    COUNT(DISTINCT vendor_id) AS active_vendors
+                 FROM bookings
+                 WHERE customer_locality IS NOT NULL AND customer_locality != ''
+                 GROUP BY customer_locality
+                 ORDER BY total_bookings DESC
+                 LIMIT 10"
+            );
+            $stmt->execute();
+            $area_demand = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $ignored) {}
+
         $stmt = $db->prepare("SELECT SUM(total) FROM orders WHERE payment_method = 'cod' AND status = 'delivered'");
         $stmt->execute();
         // FIX: fetchColumn() returns false or NULL on empty set → coerce to 0.0
@@ -271,6 +290,7 @@ try {
                 'most_cancelled_items'  => $most_cancelled_items,
                 'cash_flow'             => $cash_flow,
             ],
+            'area_demand' => $area_demand,
             'alerts' => $alerts,
         ]);
     }
