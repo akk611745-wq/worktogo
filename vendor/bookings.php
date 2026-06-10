@@ -327,7 +327,12 @@ function escHtml(str) {
 }
 function cleanNotes(raw) {
   const val = String(raw || '').trim();
-  return val || null;
+  if (!val) return null;
+  // Suppress internal routing/metadata strings — vendor should never see these
+  if (val.includes('routing_context') ||
+      val.includes('Request ID:')     ||
+      val.includes('wtg-free-lead'))  return null;
+  return val;
 }
 
 function _phoneLinks(phone) {
