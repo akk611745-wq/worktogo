@@ -272,8 +272,15 @@
     try {
       document.getElementById('loader').style.display = 'block';
       const res = await fetchApi('/admin/settings');
-      const data = res.data || res || {};
-      
+      const raw = res.data || res || {};
+      // API returns grouped { text:[...], number:[...], json:[...] } — flatten to { key: value }
+      const data = {};
+      ['text', 'number', 'boolean', 'json'].forEach(type => {
+        if (Array.isArray(raw[type])) {
+          raw[type].forEach(row => { data[row.setting_key] = row.setting_value; });
+        }
+      });
+
       const fields = [
         'pilot_public_config',
         'inspection_price', 'default_commission_rate', 'quickbook_radius_km',
