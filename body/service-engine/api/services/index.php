@@ -2023,4 +2023,34 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
     ]);
 }
 
+// ── PATCH /api/services/{id}/price ───────────────────────────────────────────
+// Admin-only: update base_price on a service.
+if ($method === 'PATCH' && preg_match('#^/api/services/(\d+)/price$#', $uri, $m)) {
+    $auth      = AuthMiddleware::requireRole(ROLE_ADMIN);
+    $serviceId = (int)$m[1];
+    $input     = json_decode(file_get_contents('php://input'), true) ?? [];
+
+    if (!array_key_exists('base_price', $input)) {
+        Response::validation('base_price is required');
+    }
+    $price = (float)$input['base_price'];
+    if ($price < 0) {
+        Response::validation('base_price must be a non-negative number');
+    }
+
+    $stmt = $db->prepare("SELECT id FROM services WHERE id = ? LIMIT 1");
+    $stmt->execute([$serviceId]);
+    if (!$stmt->fetch()) Response::notFound('Service');
+
+    $db->prepare("UPDATE services SET base_price = ?, updated_at = NOW() WHERE id = ?")
+       ->execute([$price, $serviceId]);
+
+    Logger::info('Admin updated service price', [
+        'admin_id'   => $auth['user_id'],
+        'service_id' => $serviceId,
+        'base_price' => $price,
+    ]);
+    Response::success(['id' => $serviceId, 'base_price' => $price], 200, 'Service price updated');
+}
+
 Response::error('Endpoint not found', 404);

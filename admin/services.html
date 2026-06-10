@@ -622,6 +622,43 @@ async function adminSetJobStatus(bookingId, status) {
   } catch(e) { Toast.error(e.message || 'Failed to update booking'); }
 }
 
+// ── Inline price edit ────────────────────────────────────────
+function editServicePrice(id, currentPrice, el) {
+  const td = el.parentElement;
+  let done = false;
+
+  const restore = (price) => {
+    td.innerHTML = `<span class="svc-price" style="color:var(--accent);cursor:pointer;border-bottom:1px dashed var(--border-mid)" title="Click to edit price" onclick="editServicePrice('${id}',${price},this)">${Fmt.currency(price)}</span>`;
+  };
+
+  const commit = async () => {
+    if (done) return;
+    const val = parseFloat(inp.value);
+    if (isNaN(val) || val < 0) { Toast.warn('Enter a valid price (≥ 0).'); done = false; inp.focus(); return; }
+    done = true;
+    if (val === currentPrice) { restore(currentPrice); return; }
+    try {
+      await API.patch(CONFIG.ENDPOINTS.SERVICE_PRICE(id), { base_price: val });
+      Toast.success('Price updated.');
+      restore(val);
+    } catch(e) { done = false; Toast.error(e.message || 'Failed to update price'); inp.focus(); }
+  };
+
+  const inp = document.createElement('input');
+  inp.type = 'number'; inp.min = '0'; inp.step = '1'; inp.value = currentPrice;
+  inp.className = 'form-control';
+  inp.style.cssText = 'width:90px;padding:3px 6px;font-size:11px;display:inline-block';
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { done = true; restore(currentPrice); }
+  });
+  inp.addEventListener('blur', commit);
+
+  td.innerHTML = '';
+  td.appendChild(inp);
+  inp.focus(); inp.select();
+}
+
 // ── Service Catalog (original) ───────────────────────────────
 async function loadServices(page = 1) {
   currentPage = page;
@@ -664,7 +701,7 @@ function renderServices(services) {
       </td>
       <td>${Fmt.truncate(s.vendor_name||s.vendorName||s.vendor?.name,20)||'—'}</td>
       <td><span class="badge badge-purple">${s.category_name||s.category_slug||s.category||'—'}</span></td>
-      <td style="color:var(--accent)">${Fmt.currency(s.base_price||s.basePrice||s.price)}</td>
+      <td><span class="svc-price" style="color:var(--accent);cursor:pointer;border-bottom:1px dashed var(--border-mid)" title="Click to edit price" onclick="editServicePrice('${escHtml(String(id))}',${parseFloat(s.base_price||s.basePrice||s.price||0)},this)">${Fmt.currency(s.base_price||s.basePrice||s.price)}</span></td>
       <td style="color:var(--text-muted)">${s.bookingCount??'—'}</td>
       <td>${statusBadge(status)}</td>
       <td>

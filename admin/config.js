@@ -53,6 +53,7 @@ const CONFIG = {
     SERVICE_BOOKING_ASSIGN:(id) => `/service/bookings/${id}/assign`,
     SERVICE_JOB_STATUS:(id) => `/jobs/${id}/status`,
     SERVICE_STATUS:    (id) => `/services/${id}/status`,
+    SERVICE_PRICE:     (id) => `/services/${id}/price`,
     ORDERS:            "/orders",
     ORDER_STATUS:      (id) => `/orders/${id}/status`,
     ORDER_CANCEL:      (id) => `/orders/${id}/cancel`,
