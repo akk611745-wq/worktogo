@@ -705,7 +705,7 @@ function renderServices(services) {
         </div>
       </td>
       <td>${Fmt.truncate(s.vendor_name||s.vendorName||s.vendor?.name,20)||'—'}</td>
-      <td><span class="badge badge-purple">${s.category_name||s.category_slug||s.category||'—'}</span></td>
+      <td><span class="badge badge-purple" style="cursor:pointer" title="Click for category detail" onclick="openCategoryDetail(${parseInt(s.category_id)||0})">${escHtml(s.category_name||s.category_slug||s.category||'—')}</span></td>
       <td><span class="svc-price" style="color:var(--accent);cursor:pointer;border-bottom:1px dashed var(--border-mid)" title="Click to edit price" onclick="editServicePrice('${escHtml(String(id))}',${parseFloat(s.base_price||s.basePrice||s.price||0)},this)">${Fmt.currency(s.base_price||s.basePrice||s.price)}</span></td>
       <td style="color:var(--text-muted)">${s.bookingCount??'—'}</td>
       <td>${statusBadge(status)}</td>
@@ -991,6 +991,134 @@ async function moveKanbanCard(bookingId, fromCol, toCol) {
   } catch(e) {
     Toast.error(e.message || 'Failed to move booking');
   }
+}
+
+// ── Category Detail Modal ─────────────────────────────────────
+async function openCategoryDetail(categoryId) {
+  if (!categoryId) { Toast.warn('No category assigned to this service.'); return; }
+
+  document.body.insertAdjacentHTML('beforeend',
+    `<div class="modal-overlay open" id="cat-detail-overlay" onclick="closeCategoryDetail(event)">
+      <div class="modal" style="max-width:640px" onclick="event.stopPropagation()">
+        <div class="modal-header"><h3>Category Detail</h3><button class="btn btn-sm btn-ghost" onclick="closeCategoryDetail()">Close</button></div>
+        <div class="modal-body" style="text-align:center;padding:32px"><div class="spinner" style="margin:auto"></div></div>
+      </div>
+    </div>`
+  );
+
+  try {
+    const data = await API.get('/categories/' + categoryId + '/detail');
+    const cat     = data.category || {};
+    const stats   = data.stats    || {};
+    const vendors = data.vendors  || [];
+
+    const hasCommission     = cat.commission_rate   != null;
+    const hasInspectPrice   = cat.inspection_price  != null;
+
+    const vendorRows = vendors.length
+      ? vendors.map(v => `<tr>
+          <td>${escHtml(v.business_name || '—')}</td>
+          <td style="color:var(--green);font-size:11px">${escHtml(v.owner_phone || '—')}</td>
+          <td>${statusBadge(v.status || 'unknown')}</td>
+          <td style="text-align:center">${v.is_online
+            ? '<span style="color:var(--green)">●</span>'
+            : '<span style="color:var(--text-muted)">○</span>'}</td>
+        </tr>`).join('')
+      : `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px">No vendors in this category</td></tr>`;
+
+    const body = `
+      <div class="modal-header">
+        <h3>📁 ${escHtml(cat.name || 'Category')}</h3>
+        <button class="btn btn-sm btn-ghost" onclick="closeCategoryDetail()">Close</button>
+      </div>
+      <div class="modal-body" style="display:grid;gap:14px">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          <div class="card"><div class="card-body" style="text-align:center">
+            <div style="font-size:22px;font-weight:700;color:var(--accent)">${stats.total_bookings ?? '—'}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Total Bookings</div>
+          </div></div>
+          <div class="card"><div class="card-body" style="text-align:center">
+            <div style="font-size:22px;font-weight:700;color:var(--green)">${stats.active_vendors ?? '—'}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Active Vendors</div>
+          </div></div>
+          <div class="card"><div class="card-body" style="text-align:center">
+            <div style="font-size:22px;font-weight:700;color:var(--blue)">${stats.completed_jobs ?? '—'}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Completed Jobs</div>
+          </div></div>
+        </div>
+
+        <div class="card"><div class="card-body">
+          <div style="font-size:11px;font-weight:700;margin-bottom:10px">Price Controls</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div>
+              <label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:4px">INSPECTION FEE (₹)</label>
+              <input type="number" id="cat-inspection-price" class="form-control" min="0" step="1"
+                value="${hasInspectPrice ? parseFloat(cat.inspection_price) : ''}"
+                placeholder="${hasInspectPrice ? '' : 'Column not in schema'}">
+            </div>
+            <div>
+              <label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:4px">COMMISSION (%)</label>
+              <input type="number" id="cat-commission-rate" class="form-control" min="0" max="100" step="0.1"
+                value="${hasCommission ? parseFloat(cat.commission_rate) : ''}"
+                placeholder="${hasCommission ? '' : 'Column not in schema'}">
+            </div>
+          </div>
+          <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-sm btn-primary" onclick="saveCategoryDetail(${parseInt(cat.id)||0})">Save</button>
+            <span style="font-size:10px;color:var(--text-muted)">
+              Slug: <code>${escHtml(cat.slug || '—')}</code>
+              &nbsp;·&nbsp;${statusBadge(cat.status || 'unknown')}
+            </span>
+          </div>
+        </div></div>
+
+        <div class="card"><div class="card-body">
+          <div style="font-size:11px;font-weight:700;margin-bottom:8px">Vendors in this category</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>VENDOR</th><th>PHONE</th><th>STATUS</th><th>ONLINE</th></tr></thead>
+              <tbody>${vendorRows}</tbody>
+            </table>
+          </div>
+        </div></div>
+      </div>`;
+
+    const overlay = document.getElementById('cat-detail-overlay');
+    if (overlay) overlay.querySelector('.modal').innerHTML = body;
+  } catch(e) {
+    document.getElementById('cat-detail-overlay')?.remove();
+    Toast.error(e.message || 'Failed to load category detail');
+  }
+}
+
+function closeCategoryDetail(event) {
+  if (event && event.target !== event.currentTarget) return;
+  document.getElementById('cat-detail-overlay')?.remove();
+}
+
+async function saveCategoryDetail(categoryId) {
+  if (!categoryId) return;
+  const inspEl = document.getElementById('cat-inspection-price');
+  const commEl = document.getElementById('cat-commission-rate');
+  const payload = {};
+
+  if (inspEl && inspEl.value !== '') {
+    const v = parseFloat(inspEl.value);
+    if (isNaN(v) || v < 0) { Toast.warn('Inspection fee must be a positive number.'); return; }
+    payload.inspection_price = v;
+  }
+  if (commEl && commEl.value !== '') {
+    const v = parseFloat(commEl.value);
+    if (isNaN(v) || v < 0 || v > 100) { Toast.warn('Commission must be between 0 and 100.'); return; }
+    payload.commission_rate = v;
+  }
+  if (!Object.keys(payload).length) { Toast.warn('No changes to save.'); return; }
+
+  try {
+    await API.patch(CONFIG.ENDPOINTS.CATEGORY_DETAIL(categoryId), payload);
+    Toast.success('Category updated.');
+    closeCategoryDetail();
+  } catch(e) { Toast.error(e.message || 'Failed to save category'); }
 }
 
 // ── Init ─────────────────────────────────────────────────────

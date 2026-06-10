@@ -419,19 +419,98 @@ try {
         Response::success(['categories' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
     }
 
+    // ── GET /api/admin/categories/{id}/detail ─────────────────────
+    if ($method === 'GET' && preg_match('#^/api/admin/categories/(\d+)/detail$#', $uri, $m)) {
+        $categoryId = (int)$m[1];
+
+        $cols = "id, name, slug, type, status, parent_id, created_at";
+        foreach (['icon','image_url','sort_order','commission_rate','inspection_price'] as $col) {
+            $chk = $db->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categories' AND COLUMN_NAME = ?");
+            $chk->execute([$col]);
+            $cols .= ((int)$chk->fetchColumn() > 0) ? ", {$col}" : ", NULL AS {$col}";
+        }
+
+        $stmt = $db->prepare("SELECT {$cols} FROM categories WHERE id = ? LIMIT 1");
+        $stmt->execute([$categoryId]);
+        $category = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$category) Response::notFound('Category');
+
+        $totalBookings = 0;
+        $completedJobs = 0;
+        try {
+            $stmt = $db->prepare(
+                "SELECT COUNT(*) FROM bookings b
+                 JOIN services s ON s.id = b.service_id
+                 WHERE s.category_id = ?"
+            );
+            $stmt->execute([$categoryId]);
+            $totalBookings = (int)$stmt->fetchColumn();
+
+            $stmt = $db->prepare(
+                "SELECT COUNT(*) FROM bookings b
+                 JOIN services s ON s.id = b.service_id
+                 WHERE s.category_id = ? AND b.status IN ('completed','done','delivered')"
+            );
+            $stmt->execute([$categoryId]);
+            $completedJobs = (int)$stmt->fetchColumn();
+        } catch (PDOException $e) {
+            // bookings or services table absent on this database
+        }
+
+        $vendorList = [];
+        try {
+            $hasIsOnline = (int)$db->query(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vendors' AND COLUMN_NAME = 'is_online'"
+            )->fetchColumn() > 0;
+            $onlineCol = $hasIsOnline ? ', v.is_online' : ', NULL AS is_online';
+
+            $stmt = $db->prepare(
+                "SELECT v.id, v.business_name, v.status{$onlineCol},
+                        u.phone AS owner_phone, u.name AS owner_name
+                 FROM vendors v
+                 LEFT JOIN users u ON u.id = v.user_id
+                 WHERE v.category_id = ?
+                 ORDER BY v.status = 'active' DESC, v.business_name ASC
+                 LIMIT 50"
+            );
+            $stmt->execute([$categoryId]);
+            $vendorList = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            // vendors unavailable
+        }
+
+        $activeVendors = count(array_filter($vendorList, fn($v) => $v['status'] === 'active'));
+
+        Response::success([
+            'category' => $category,
+            'stats'    => [
+                'total_bookings' => $totalBookings,
+                'completed_jobs' => $completedJobs,
+                'active_vendors' => $activeVendors,
+            ],
+            'vendors' => $vendorList,
+        ]);
+    }
+
     // ── PATCH /api/admin/categories/{id} ───────────────────────
     if ($method === 'PATCH' && preg_match('#^/api/admin/categories/(\d+)$#', $uri, $m)) {
         $categoryId = (int)$m[1];
         $input = json_decode(file_get_contents('php://input'), true) ?? [];
         $updates = [];
         $bind = [':id' => $categoryId];
-        foreach (['name','slug','status','icon','image_url','sort_order'] as $col) {
+        foreach (['name','slug','status','icon','image_url','sort_order','commission_rate','inspection_price'] as $col) {
             if (!array_key_exists($col, $input)) continue;
             $chk = $db->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categories' AND COLUMN_NAME = ?");
             $chk->execute([$col]);
             if ((int)$chk->fetchColumn() === 0) continue;
             $updates[] = "{$col} = :{$col}";
-            $bind[":{$col}"] = $col === 'sort_order' ? (int)$input[$col] : trim((string)$input[$col]);
+            $bind[":{$col}"] = match($col) {
+                'sort_order'                  => (int)$input[$col],
+                'commission_rate',
+                'inspection_price'            => (float)$input[$col],
+                default                       => trim((string)$input[$col]),
+            };
         }
         if (!$updates) Response::validation('No supported category fields to update');
         $db->prepare("UPDATE categories SET " . implode(', ', $updates) . ", updated_at = NOW() WHERE id = :id")->execute($bind);
