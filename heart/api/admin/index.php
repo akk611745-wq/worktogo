@@ -605,6 +605,7 @@ try {
     if ($method === 'GET' && $uri === '/api/admin/users') {
         $role   = $_GET['role']   ?? null;
         $status = $_GET['status'] ?? null;
+        $search = substr(trim($_GET['search'] ?? $_GET['q'] ?? ''), 0, 100);
         $page   = max(1, (int) ($_GET['page']  ?? 1));
         $limit  = min(100, (int) ($_GET['limit'] ?? 20));
         $offset = ($page - 1) * $limit;
@@ -612,6 +613,10 @@ try {
         $where = ['deleted_at IS NULL'];
         $bind  = [];
 
+        if ($search !== '') {
+            $where[]         = '(name LIKE :search OR phone LIKE :search OR email LIKE :search)';
+            $bind[':search'] = '%' . $search . '%';
+        }
         if ($role) {
             $where[]    = 'role = :role';
             $bind[':role'] = $role;
