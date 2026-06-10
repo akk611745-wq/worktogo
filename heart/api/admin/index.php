@@ -364,9 +364,15 @@ try {
         $where = ['1=1'];
         $bind  = [];
 
+        if (!empty($_GET['search'])) {
+            $where[] = "(s.name LIKE :search OR COALESCE(s.description,'') LIKE :search)";
+            $bind[':search'] = '%' . substr(trim($_GET['search']), 0, 100) . '%';
+        }
         if (!empty($_GET['status'])) {
+            $rawSt   = strtolower(trim($_GET['status']));
+            $mappedSt = ($rawSt === 'enabled') ? 'active' : (($rawSt === 'disabled') ? 'inactive' : $rawSt);
             $where[] = 's.status = :status';
-            $bind[':status'] = $_GET['status'];
+            $bind[':status'] = $mappedSt;
         }
 
         $whereSQL = 'WHERE ' . implode(' AND ', $where);
@@ -376,9 +382,11 @@ try {
         $total = (int) $countStmt->fetchColumn();
 
         $stmt = $db->prepare(
-            "SELECT s.*, c.name AS category_name, c.slug AS category_slug
+            "SELECT s.*, c.name AS category_name, c.slug AS category_slug,
+                    v.business_name AS vendor_name
              FROM services s
              LEFT JOIN categories c ON c.id = s.category_id
+             LEFT JOIN vendors v ON v.id = s.vendor_id
              {$whereSQL}
              ORDER BY s.created_at DESC
              LIMIT :limit OFFSET :offset"

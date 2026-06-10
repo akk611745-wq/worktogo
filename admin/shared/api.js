@@ -30,8 +30,8 @@ class APIClient {
     //   - endpoint starts with /auth  (auth routes have no admin prefix)
     //   - endpoint starts with /api/  (already fully-qualified path)
     const isAuth = endpoint.startsWith('/auth');
-    const directApiPaths = ['/service/', '/services', '/jobs/'];
-    const isDirectApi = directApiPaths.some(prefix => endpoint === prefix.slice(0, -1) || endpoint.startsWith(prefix));
+    const directApiPaths = []; // all admin endpoints route through adminPrefix
+    const isDirectApi = false;
     const isFullApi = endpoint.startsWith('/api/');
     const isAbsolute = isFullApi || endpoint.startsWith('/admin/') || isDirectApi;
     const baseHasApiSuffix = this.baseURL.replace(/\/$/, '').endsWith('/api');
