@@ -328,10 +328,35 @@ function escHtml(str) {
 function cleanNotes(raw) {
   const val = String(raw || '').trim();
   if (!val) return null;
-  // Suppress internal routing/metadata strings — vendor should never see these
-  if (val.includes('routing_context') ||
-      val.includes('Request ID:')     ||
-      val.includes('wtg-free-lead'))  return null;
+  // Suppress internal routing/metadata — vendor should never see these
+  const INTERNAL_SIGNALS = [
+    'routing_context',
+    'Request ID:',
+    'Client request ID:',
+    'Request schema version:',
+    'Request type:',
+    'Booking mode:',
+    'Booking mode label:',
+    'Lifecycle state:',
+    'Assignment state:',
+    'Request source:',
+    'Priority:',
+    'Priority score:',
+    'Payment required:',
+    'Payment route:',
+    'Operational tags:',
+    'Timeline:',
+    'Sorting keys:',
+    'Issue note:',
+    'Issue summary:',
+    'Issue list:',
+    'Vendor route:',
+    'Selected worker:',
+    'wtg-free-lead',
+    'wtg-inspection',
+    'wtg-direct',
+  ];
+  if (INTERNAL_SIGNALS.some(s => val.includes(s))) return null;
   return val;
 }
 
