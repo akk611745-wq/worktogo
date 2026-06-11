@@ -184,5 +184,9 @@ const API = (() => {
     async getProfile() {
       return _intent("user:get_profile");
     },
+
+    async updateProfile(payload) {
+      return _request("PATCH", "/api/auth/profile", payload);
+    },
   };
 })();

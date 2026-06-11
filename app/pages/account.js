@@ -126,13 +126,46 @@ window.AccountPage = {
         </div>
       </div>`;
   },
-  saveProfile() {
+  async saveProfile() {
     const name    = document.getElementById('edit-name')?.value?.trim() || '';
     const address = document.getElementById('edit-address')?.value?.trim() || '';
+
+    if (!name && !address) {
+      UI.toast('Enter a name or address to save.', 'error');
+      return;
+    }
+
+    const btn = document.querySelector('.profile-edit-form .btn-primary');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+    const payload = {};
+    if (name)    payload.name    = name;
+    if (address) payload.address = address;
+
+    const res = await API.updateProfile(payload).catch(() => ({ ok: false, error: 'Network error.' }));
+
+    if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+
+    if (!res.ok) {
+      UI.toast(res.error || 'Could not save. Try again.', 'error');
+      return;
+    }
+
+    // Keep localStorage in sync for booking form pre-fill
     try {
       const existing = JSON.parse(localStorage.getItem('wtg_customer_profile') || '{}');
       localStorage.setItem('wtg_customer_profile', JSON.stringify({ ...existing, name, address }));
     } catch {}
+
+    // Sync name into the in-memory auth user so the header updates immediately
+    try {
+      const stored = JSON.parse(localStorage.getItem(CONFIG.USER_KEY) || '{}');
+      if (stored && name) {
+        stored.name = name;
+        localStorage.setItem(CONFIG.USER_KEY, JSON.stringify(stored));
+      }
+    } catch {}
+
     UI.toast('Profile saved', 'success');
     AccountPage._rerender();
   },
