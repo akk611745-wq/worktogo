@@ -1722,7 +1722,6 @@ function _serviceCardsHTML(slug = "") {
 }
 
 function _freeBookingStripHTML(slug = "") {
-  if (_activeCategory || _allServices.length > 0) return "";
   const meta = _categoryMeta(slug);
   return `<div>
     <strong>${_esc(slug ? `Free ${meta.label} booking` : "Free booking")}</strong>
