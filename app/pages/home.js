@@ -110,7 +110,7 @@ export async function render(container) {
     </div>
 
     <div id="locality-modal" class="modal-overlay hidden locality-modal" onclick="HomePage.closeLocalitySelector(event)" role="dialog" aria-modal="true" aria-label="Choose service locality">
-      <div class="modal-sheet locality-sheet">
+      <div class="modal-sheet locality-sheet" style="max-height:60vh;overflow-y:auto;">
         <div class="modal-handle"></div>
         <h3>Change area</h3>
         <div id="locality-selector-body">${_localitySelectorHTML()}</div>
@@ -951,14 +951,12 @@ window.HomeModals = (() => {
         </section>
         <section class="inspection-step">
           <h4>Address</h4>
-          <div class="inspection-location-pills">
-            <span>City: ${_esc(locality.city || _activeCity())}</span>
-            <span>Locality: ${_esc(locality.label)}</span>
-          </div>
-          <div class="modal-field">
+          ${(locality.source !== "fallback" && locality.label && locality.label !== "your area")
+            ? `<input type="hidden" id="booking-area" value="${_esc((sameRestoredContext && restored.locality) || locality.label)}" />`
+            : `<div class="modal-field">
             <label for="booking-area">Area / locality</label>
             <input type="text" id="booking-area" class="modal-input" placeholder="Search or type locality" autocomplete="address-level2" value="${_esc((sameRestoredContext && restored.locality) || locality.label)}" oninput="HomePage.onBookingAreaInput?.(this.value)" />
-          </div>
+          </div>`}
           <div class="modal-field">
             <label for="booking-address">Full address</label>
             <textarea id="booking-address" class="modal-textarea" placeholder="House / street / landmark" rows="2" autocomplete="street-address" oninput="HomePage.persistPendingBookingForm?.()">${_esc(restored.address || profile.address || "")}</textarea>
@@ -1736,8 +1734,8 @@ function _serviceCardsHTML(slug = "") {
 function _freeBookingStripHTML(slug = "") {
   const meta = _categoryMeta(slug);
   return `<div>
-    <strong>${_esc(slug ? `Free ${meta.label} booking` : "Free booking")}</strong>
-    <span>${_esc(slug ? `For clear ${meta.label.toLowerCase()} jobs: submit request, then WorkToGo confirms worker and time.` : "For clear jobs: submit request, then WorkToGo confirms nearby worker and time.")}</span>
+    <strong>Free booking</strong>
+    <span>Nearby worker confirmation</span>
   </div>
   <button onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Request</button>`;
 }
@@ -1790,33 +1788,16 @@ function _vendorCardHTML(service, support = false) {
   const meta = _categoryMeta(service.category_slug || service.slug || service.category || _activeCategory);
   const localityContext = _resolvedLocality();
   const name = service.vendor_name || service.name || "Worker available after confirmation";
-  const rating = service.rating && service.rating_is_verified ? service.rating : "";
   const locality = service.locality || service.vendor_locality || service.area || localityContext.label;
-  const exp = service.experience || "";
-  const photo = service.image || service.photo || "";
-  const semantics = _vendorSemantics(service, meta);
-  const completed = service.completed_jobs || service.jobs_completed || service.total_jobs || service.completed || "";
-  const verified = service.is_verified || service.verified || semantics.visibility !== "normal";
-  const activeState = semantics.visibility === "quick" ? "Fast response" : "Verified worker";
   return `
-    <article class="vendor-card vendor-${_esc(semantics.visibility)}" data-vendor-state="${_esc(semantics.visibility)}" data-vendor-priority="${_esc(semantics.priority)}">
-      <div class="vendor-media ${photo ? "has-img" : ""}">
-        ${photo ? `<img src="${_esc(photo)}" alt="${_esc(name)}" loading="lazy"/>` : `<span>${service.icon || meta.icon || "🔧"}</span>`}
-        <em>${_esc(verified ? "WorkToGo checked" : activeState)}</em>
-      </div>
+    <article class="vendor-card">
       <div class="vendor-body">
         <div class="vendor-head">
           <div class="vendor-avatar">${service.icon || meta.icon || "🔧"}</div>
-            <div>
-              <h4>${_esc(name)}</h4>
-              <p>${[locality, "WorkToGo verified"].filter(Boolean).map(_esc).join(" · ")}</p>
-            </div>
+          <div>
+            <h4>${_esc(name)}</h4>
+            <p>${_esc(locality)}</p>
           </div>
-          <div class="vendor-stats">
-          ${rating ? `<span>★ ${_esc(rating)}</span>` : ""}
-          <span>${_esc(verified ? "Checked" : meta.label)}</span>
-          ${completed ? `<span>${_esc(completed)} past jobs</span>` : `<span>Available</span>`}
-          ${exp ? `<span>${_esc(exp)} exp</span>` : ""}
         </div>
         <button class="vendor-book-btn" onclick="HomeModals.openBooking(${_jsonAttr({ ...service, request_source: "worker_card", category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon })})">Request via WorkToGo</button>
       </div>
@@ -1935,34 +1916,23 @@ function _closeLocalitySelector() {
 }
 
 function _localitySelectorHTML(query = "") {
-  const meta = _categoryMeta(_activeCategory);
   const active = _resolvedLocality();
-  const city = _activeCity();
   const search = _cleanLocality(query).toLowerCase();
-  const options = _localitySearchOptions(meta, search).slice(0, search ? 10 : 8);
-  const recent = _recentLocalityLabel();
-  const itemStyle = "min-height:56px;padding:14px 12px;display:flex;align-items:center;gap:10px;";
+  const LOCAL_AREAS = ["Mukhani", "Dahariya", "Kathgodam", "Tikonia", "Lalkuan", "Bhimtal", "Ramnagar", "Bazpur", "Kashipur"];
+  const filtered = search ? LOCAL_AREAS.filter(a => a.toLowerCase().includes(search)) : LOCAL_AREAS;
+  const rowStyle = "min-height:56px;padding:14px 12px;display:flex;align-items:center;gap:10px;width:100%;border:none;border-bottom:1px solid var(--clr-border);background:transparent;color:var(--clr-text-1);font-size:15px;text-align:left;cursor:pointer;box-sizing:border-box;";
   return `
-    <div class="locality-current-card">
-      <span>📍</span>
-      <div><strong>${_esc(active.label)} near you</strong><small>${_esc(city)} · Change anytime</small></div>
-    </div>
-    <div class="locality-search-box">
-      <span>⌕</span>
-      <input id="locality-manual-input" class="modal-input" type="search" placeholder="Search city or area" value="${_esc(query)}" autocomplete="off" oninput="HomePage.filterLocalitySuggestions(this.value)" onkeydown="if(event.key==='Enter'){HomePage.submitLocalitySearch()}" />
-    </div>
-    <button id="gps-locate-btn" type="button" onclick="HomePage.detectGPSLocality()" style="display:flex;align-items:center;gap:8px;width:100%;min-height:52px;padding:12px 14px;margin:8px 0;border:1.5px solid var(--clr-border);border-radius:10px;background:var(--clr-surface-2);color:var(--clr-text-1);font-size:14px;font-weight:500;cursor:pointer;text-align:left;box-sizing:border-box;">
+    <button id="gps-locate-btn" type="button" onclick="HomePage.detectGPSLocality()" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:14px 12px;margin-bottom:8px;border:1.5px solid var(--clr-border);border-radius:10px;background:var(--clr-surface-2);color:var(--clr-text-1);font-size:15px;font-weight:500;cursor:pointer;text-align:left;box-sizing:border-box;">
       <span>📡</span><span>Use my location</span>
     </button>
-    ${!search ? `<div class="locality-mini-row">
-      ${recent ? `<button type="button" style="${itemStyle}" onclick="HomePage.chooseLocality('${_esc(recent)}', 'selected')"><strong>${_esc(recent)}</strong><small>Recent area</small></button>` : ""}
-      <button type="button" style="${itemStyle}" onclick="HomePage.chooseCity('${_esc(city)}')"><strong>${_esc(city)}</strong><small>Current area</small></button>
-    </div>` : ""}
-    <div class="locality-suggestion-list">
-      ${options.map(item => `<button type="button" class="locality-suggestion ${_slug(active.label) === _slug(item.label) ? "active" : ""}" style="${itemStyle}" onclick="${item.type === "city" ? `HomePage.chooseCity('${_esc(item.label)}')` : `HomePage.chooseLocality('${_esc(item.label)}', 'selected')`}"><span>${item.type === "city" ? "🏙️" : "📍"}</span><strong>${_esc(item.label)}</strong><small>${_esc(_slug(active.label) === _slug(item.label) ? "Current area" : item.note)}</small></button>`).join("")}
-      ${search && !options.some(item => _slug(item.label) === _slug(query)) ? `<button type="button" class="locality-suggestion typed-suggestion" style="${itemStyle}" onclick="HomePage.chooseLocality('${_esc(query)}', 'typed')"><span>＋</span><strong>${_esc(query)}</strong><small>Use typed area</small></button>` : ""}
+    <div class="locality-search-box">
+      <span>⌕</span>
+      <input id="locality-manual-input" class="modal-input" type="search" placeholder="Search area" value="${_esc(query)}" autocomplete="off" oninput="HomePage.filterLocalitySuggestions(this.value)" onkeydown="if(event.key==='Enter'){HomePage.submitLocalitySearch()}" />
     </div>
-    <p class="service-note">Pick an area and keep browsing. Full address stays separate during booking.</p>`;
+    <div>
+      ${filtered.map(area => `<button type="button" style="${rowStyle}${_slug(active.label) === _slug(area) ? "font-weight:700;color:var(--clr-accent);" : ""}" onclick="HomePage.chooseLocality('${_esc(area)}', 'selected')"><span>📍</span><strong>${_esc(area)}</strong></button>`).join("")}
+      ${search && !filtered.length ? `<button type="button" style="${rowStyle}" onclick="HomePage.chooseLocality('${_esc(query)}', 'typed')"><span>＋</span><strong>${_esc(query)}</strong><small style="margin-left:auto;font-size:12px;color:var(--clr-text-2);">Use this area</small></button>` : ""}
+    </div>`;
 }
 
 function _localityOptions(meta = {}) {
