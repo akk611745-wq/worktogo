@@ -69,7 +69,7 @@ export async function render(container) {
             </div>
             <button class="see-all" onclick="HomePage.setCategory('')">All</button>
           </div>
-          <div id="services-grid" class="vendor-feed">
+          <div id="services-grid" class="vendor-feed" style="display:block;width:100%">
             ${UI.skeleton(4, "card")}
           </div>
         </section>
@@ -1260,51 +1260,16 @@ window.HomeModals = (() => {
 // ── Vendor Card Controller ────────────────────────────────────────────────────
 
 window.VendorCards = (function () {
-  function toggleProfile(id, service) {
-    const profileEl = document.getElementById(`vc-profile-${id}`);
-    const bookingEl = document.getElementById(`vc-booking-${id}`);
-    if (!profileEl) return;
-    const isOpen = !profileEl.classList.contains("hidden");
-    if (isOpen) {
-      profileEl.classList.add("hidden");
-      profileEl.innerHTML = "";
-      _markCardBtn(id, null);
-    } else {
-      if (bookingEl && !bookingEl.classList.contains("hidden")) {
-        bookingEl.classList.add("hidden");
-        bookingEl.innerHTML = "";
-      }
-      profileEl.innerHTML = _buildProfileHTML(service);
-      profileEl.classList.remove("hidden");
-      _markCardBtn(id, "profile");
+  function toggleExpand(id) {
+    const el = document.getElementById("vc-expand-" + id);
+    if (!el) return;
+    const isOpen = el.style.display === "block";
+    document.querySelectorAll('[id^="vc-expand-"]').forEach(e => { e.style.display = "none"; });
+    el.style.display = isOpen ? "none" : "block";
+    if (!isOpen) {
+      const card = document.getElementById("vc-" + id);
+      if (card) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
-  }
-
-  function toggleBooking(id, service) {
-    const bookingEl = document.getElementById(`vc-booking-${id}`);
-    const profileEl = document.getElementById(`vc-profile-${id}`);
-    if (!bookingEl) return;
-    const isOpen = !bookingEl.classList.contains("hidden");
-    if (isOpen) {
-      bookingEl.classList.add("hidden");
-      bookingEl.innerHTML = "";
-      _markCardBtn(id, null);
-    } else {
-      if (profileEl && !profileEl.classList.contains("hidden")) {
-        profileEl.classList.add("hidden");
-        profileEl.innerHTML = "";
-      }
-      bookingEl.innerHTML = _buildInlineBookingHTML(id, service);
-      bookingEl.classList.remove("hidden");
-      _markCardBtn(id, "booking");
-    }
-  }
-
-  function _markCardBtn(id, section) {
-    const card = document.getElementById(`vc-${id}`);
-    if (!card) return;
-    card.querySelector(".vendor-profile-btn")?.classList.toggle("active", section === "profile");
-    card.querySelector(".vendor-book-btn")?.classList.toggle("active", section === "booking");
   }
 
   function toggleIssue(btn, cardId) {
@@ -1337,96 +1302,7 @@ window.VendorCards = (function () {
     HomeModals.prepareVendorDirectSubmit(service, { phone: digits, issues: issuesVal, address, notes, name });
   }
 
-  function _buildProfileHTML(service) {
-    const meta = _categoryMeta(service.category_slug || service.slug || service.category || _activeCategory);
-    const localityCtx = _resolvedLocality();
-    const name = service.vendor_name || service.name || "Worker";
-    const photo = service.image || service.photo || "";
-    const rating = service.rating && service.rating_is_verified ? Number(service.rating).toFixed(1) : "";
-    const jobsDone = service.jobs_done || service.completed_jobs || service.jobs_count || "";
-    const initials = name.split(" ").filter(Boolean).map(w => w[0]).join("").toUpperCase().slice(0, 2) || "W";
-    const areas = (Array.isArray(service.service_localities) && service.service_localities.length
-      ? service.service_localities
-      : [service.locality || service.vendor_locality || service.area || localityCtx.label].filter(Boolean)
-    ).map(String).filter(Boolean).slice(0, 8);
-    const rawSvcs = Array.isArray(service.vendor_services) && service.vendor_services.length
-      ? service.vendor_services
-      : Array.isArray(service.services) && service.services.length ? service.services : meta.examples || [];
-    const serviceNames = rawSvcs.map(s => typeof s === "string" ? s : s.name || s.label || "").filter(Boolean);
-    const startingPrice = Number(service.base_price || service.price || service.starting_price || (Array.isArray(service.vendor_services) && service.vendor_services[0]?.price) || 0);
-    const reviews = Array.isArray(service.reviews) && service.reviews.length ? service.reviews.slice(0, 3) : [
-      { text: "Good work, came on time", rating: 5 },
-      { text: "Professional and neat", rating: 4 },
-      { text: "Reasonable rates, recommended", rating: 4 },
-    ];
-    const id = _slug(String(service.id || name));
-    const svcAttr = _jsonAttr({ ...service, request_source: "worker_card", category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon });
-    return `
-<div class="vendor-profile-expanded">
-  <div class="vendor-profile-header">
-    ${photo
-      ? `<img src="${_esc(photo)}" alt="${_esc(name)}" class="vendor-profile-photo" loading="lazy"/>`
-      : `<div class="vendor-avatar-initials vendor-avatar-lg">${_esc(initials)}</div>`}
-    <div class="vendor-profile-identity">
-      <strong>${_esc(name)}</strong>
-      <div class="vendor-card-stats">
-        ${rating ? `<span class="vendor-rating">★ ${_esc(String(rating))}</span>` : ""}
-        ${jobsDone ? `<span class="vendor-jobs">${_esc(String(jobsDone))} jobs done</span>` : ""}
-      </div>
-    </div>
-  </div>
-  ${areas.length ? `<div class="vendor-profile-row"><strong>Areas covered</strong><div class="vendor-bubble-row">${areas.map(a => `<span class="vendor-area-bubble">${_esc(a)}</span>`).join("")}</div></div>` : ""}
-  <div class="vendor-profile-row"><strong>Category</strong><span>${_esc(meta.label)}</span></div>
-  ${serviceNames.length ? `<div class="vendor-profile-row"><strong>Services</strong><div class="vendor-bubble-row">${serviceNames.map(s => `<span class="vendor-service-bubble">${_esc(s)}</span>`).join("")}</div></div>` : ""}
-  ${startingPrice ? `<div class="vendor-profile-row"><strong>Starting from</strong><span>${UI.formatCurrency(startingPrice)}</span></div>` : ""}
-  <div class="vendor-profile-row vendor-reviews"><strong>Customer reviews</strong>
-    ${reviews.map(r => `<div class="vendor-review-item"><span class="vendor-review-stars">${"★".repeat(Math.min(5, Math.round(Number(r.rating || r.stars || 4))))}</span><p>${_esc(r.text || r.comment || "")}</p></div>`).join("")}
-  </div>
-  <button class="btn-primary vendor-profile-book-btn" onclick="VendorCards.toggleBooking('${_esc(id)}', ${svcAttr})">Book Service</button>
-</div>`;
-  }
-
-  function _buildInlineBookingHTML(cardId, service) {
-    const meta = _categoryMeta(service.category_slug || service.slug || service.category || _activeCategory);
-    const profile = _customerProfile();
-    const authUser = AUTH.getUser?.() || {};
-    const phoneValue = profile.phone || authUser.phone || authUser.mobile || "";
-    const addressValue = profile.address || "";
-    const rawSvcs = Array.isArray(service.vendor_services) && service.vendor_services.length
-      ? service.vendor_services
-      : Array.isArray(service.services) && service.services.length ? service.services : meta.examples || [];
-    const issueNames = rawSvcs.map(s => typeof s === "string" ? s : s.name || s.label || "").filter(Boolean);
-    const defaultIssue = service.quick_service || issueNames[0] || "";
-    const activeIssues = defaultIssue ? [defaultIssue] : [];
-    const svcAttr = _jsonAttr({ ...service, request_source: "worker_card", category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon });
-    const cid = _esc(cardId);
-    return `
-<div class="vendor-direct-form vendor-inline-form">
-  <div class="modal-field">
-    <label for="vdf-mobile-${cid}">Mobile</label>
-    <input type="tel" id="vdf-mobile-${cid}" class="modal-input" placeholder="10-digit mobile number" autocomplete="tel" value="${_esc(phoneValue)}" />
-  </div>
-  <div class="modal-field">
-    <label>Select issue</label>
-    <div class="vendor-issue-chips" id="vdf-issues-${cid}">
-      ${issueNames.map(issue => `<button type="button" class="vendor-issue-chip${activeIssues.includes(issue) ? " active" : ""}" onclick="VendorCards.toggleIssue(this, '${cid}')">${_esc(issue)}</button>`).join("")}
-    </div>
-    <input type="hidden" id="vdf-issues-val-${cid}" value="${_esc(activeIssues.join(", "))}" />
-  </div>
-  <div class="modal-field">
-    <label for="vdf-address-${cid}">Address</label>
-    <textarea id="vdf-address-${cid}" class="modal-textarea" rows="2" placeholder="House / street / landmark">${_esc(addressValue)}</textarea>
-  </div>
-  <div class="modal-field">
-    <label for="vdf-notes-${cid}">Problem description <small>(optional)</small></label>
-    <textarea id="vdf-notes-${cid}" class="modal-textarea" rows="2" placeholder="Brief description of the issue…"></textarea>
-  </div>
-  <input type="hidden" id="vdf-name-${cid}" value="${_esc(profile.name || authUser.name || "Customer")}" />
-  <button class="btn-primary vendor-inline-submit" onclick="VendorCards.submitInlineBooking('${cid}', ${svcAttr})">Request Service</button>
-</div>`;
-  }
-
-  return { toggleProfile, toggleBooking, toggleIssue, submitInlineBooking };
+  return { toggleExpand, toggleIssue, submitInlineBooking };
 })();
 
 async function _handleInspectionCheckout(booking, bookingMode, payload = {}) {
@@ -2054,49 +1930,89 @@ function _proofMatches(item) {
 }
 
 function _vendorCardHTML(service, support = false) {
+  if (!document.getElementById("wtg-vc-styles")) {
+    const _s = document.createElement("style");
+    _s.id = "wtg-vc-styles";
+    _s.textContent = [
+      ".wtg-vendor-card{background:#fff;border-radius:16px;padding:16px;margin:0 0 12px 0;box-shadow:0 2px 8px rgba(0,0,0,.08);width:100%;box-sizing:border-box}",
+      ".vc-avatar{width:48px;height:48px;border-radius:50%;background:#FF6B35;color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex-shrink:0}",
+      ".vc-pill{display:inline-block;padding:4px 10px;border-radius:20px;font-size:12px;background:#F5F5F5;color:#444;margin:2px 3px 2px 0}",
+      ".vc-book-btn{width:100%;padding:14px;background:#FF6B35;color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:700;margin-top:12px;cursor:pointer;display:block}",
+      ".vc-expand{border-top:1px solid #f0f0f0;margin-top:12px;padding-top:12px}",
+      ".vc-issue-chip{padding:8px 14px;border-radius:20px;border:1.5px solid #ddd;background:#fff;margin:4px;cursor:pointer;font-size:13px}",
+      ".vc-issue-chip.active,.vc-issue-chip.selected{border-color:#FF6B35;background:#FFF3EF;color:#FF6B35}",
+    ].join("");
+    document.head.appendChild(_s);
+  }
   const meta = _categoryMeta(service.category_slug || service.slug || service.category || _activeCategory);
-  const localityCtx = _resolvedLocality();
-  const name = service.vendor_name || service.name || "Worker available after confirmation";
+  const name = service.vendor_name || service.name || "Worker";
   const photo = service.image || service.photo || "";
   const rating = service.rating && service.rating_is_verified ? Number(service.rating).toFixed(1) : "";
   const jobsDone = service.jobs_done || service.completed_jobs || service.jobs_count || "";
   const availableToday = Boolean(service.available_today);
-  const initials = name.split(" ").filter(Boolean).map(w => w[0]).join("").toUpperCase().slice(0, 2) || "W";
-  const areas = (Array.isArray(service.service_localities) && service.service_localities.length
+  const initial = (name[0] || "W").toUpperCase();
+  const id = String(service.id || _slug(name));
+  const svcAttr = _jsonAttr({ ...service, request_source: "worker_card", category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon });
+  const allAreas = (Array.isArray(service.service_localities) && service.service_localities.length
     ? service.service_localities
-    : [service.locality || service.vendor_locality || service.area || localityCtx.label].filter(Boolean)
-  ).map(String).filter(Boolean).slice(0, 5);
+    : [service.locality || service.vendor_locality || service.area].filter(Boolean)
+  ).map(String).filter(Boolean);
+  const cardAreas = allAreas.slice(0, 4);
   const rawSvcs = Array.isArray(service.vendor_services) && service.vendor_services.length
     ? service.vendor_services
     : Array.isArray(service.services) && service.services.length ? service.services : meta.examples || [];
-  const serviceNames = rawSvcs.map(s => typeof s === "string" ? s : s.name || s.label || "").filter(Boolean);
-  const visibleSvcs = serviceNames.slice(0, 3);
-  const extraCount = Math.max(0, serviceNames.length - 3);
-  const id = _slug(String(service.id || name));
-  const svcAttr = _jsonAttr({ ...service, request_source: "worker_card", category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon });
+  const allSvcNames = rawSvcs.map(s => typeof s === "string" ? s : s.name || s.label || "").filter(Boolean);
+  const cardSvcs = allSvcNames.slice(0, 3);
+  const extraCount = Math.max(0, allSvcNames.length - 3);
+  let savedPhone = "";
+  let savedAddress = "";
+  try { savedPhone = localStorage.getItem("wtg_user_phone") || ""; } catch {}
+  try { savedAddress = localStorage.getItem("wtg_user_address") || ""; } catch {}
+  const eid = _esc(id);
   return `
-<article class="vendor-card" id="vc-${_esc(id)}">
-  <div class="vendor-card-top">
+<article class="wtg-vendor-card" id="vc-${eid}">
+  <div style="display:flex;gap:12px;align-items:flex-start;cursor:pointer" onclick="VendorCards.toggleExpand('${eid}')">
     ${photo
-      ? `<img src="${_esc(photo)}" alt="${_esc(name)}" class="vendor-avatar-img" loading="lazy"/>`
-      : `<div class="vendor-avatar-initials">${_esc(initials)}</div>`}
-    <div class="vendor-card-identity">
-      <strong class="vendor-card-name">${_esc(name)}</strong>
-      <div class="vendor-card-stats">
-        ${rating ? `<span class="vendor-rating">★ ${_esc(String(rating))}</span>` : ""}
-        ${jobsDone ? `<span class="vendor-jobs">${_esc(String(jobsDone))} jobs</span>` : ""}
-        ${availableToday ? `<span class="vendor-today-badge">Available Today</span>` : ""}
+      ? `<img src="${_esc(photo)}" alt="${_esc(name)}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy"/>`
+      : `<div class="vc-avatar">${_esc(initial)}</div>`}
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <strong style="font-size:15px">${_esc(name)}</strong>
+        ${availableToday ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#22c55e;font-weight:600"><span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block"></span>Available</span>` : ""}
       </div>
+      ${rating || jobsDone ? `<div style="font-size:13px;color:#666;margin-top:2px">${rating ? `⭐ ${_esc(String(rating))}` : ""}${rating && jobsDone ? " · " : ""}${jobsDone ? `${_esc(String(jobsDone))} jobs` : ""}</div>` : ""}
+      ${cardAreas.length ? `<div style="margin-top:6px">${cardAreas.map(a => `<span class="vc-pill">${_esc(a)}</span>`).join("")}</div>` : ""}
+      ${cardSvcs.length ? `<div style="margin-top:4px">${cardSvcs.map(s => `<span class="vc-pill">${_esc(s)}</span>`).join("")}${extraCount ? `<span class="vc-pill">+${extraCount} more</span>` : ""}</div>` : ""}
     </div>
   </div>
-  ${areas.length ? `<div class="vendor-bubble-row">${areas.map(a => `<span class="vendor-area-bubble">${_esc(a)}</span>`).join("")}</div>` : ""}
-  ${visibleSvcs.length ? `<div class="vendor-bubble-row">${visibleSvcs.map(s => `<span class="vendor-service-bubble">${_esc(s)}</span>`).join("")}${extraCount ? `<span class="vendor-service-bubble vendor-more-bubble">+${extraCount} more</span>` : ""}</div>` : ""}
-  <div class="vendor-card-actions">
-    <button class="vendor-profile-btn" onclick="VendorCards.toggleProfile('${_esc(id)}', ${svcAttr})">View Profile</button>
-    <button class="vendor-book-btn" onclick="VendorCards.toggleBooking('${_esc(id)}', ${svcAttr})">Book Now</button>
+  <button class="vc-book-btn" onclick="VendorCards.toggleExpand('${eid}')">BOOK NOW ▾</button>
+  <div id="vc-expand-${eid}" class="vc-expand" style="display:none">
+    ${allAreas.length ? `<div style="margin-bottom:8px">${allAreas.map(a => `<span class="vc-pill">${_esc(a)}</span>`).join("")}</div>` : ""}
+    <hr style="border:none;border-top:1px solid #f0f0f0;margin:10px 0">
+    <div>
+      <div style="margin-bottom:10px">
+        <label style="font-size:13px;font-weight:600;color:#333;display:block;margin-bottom:4px">Mobile</label>
+        <input type="tel" id="vdf-mobile-${eid}" style="width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:10px;font-size:15px;box-sizing:border-box" placeholder="10-digit mobile number" autocomplete="tel" value="${_esc(savedPhone)}" />
+      </div>
+      <div style="margin-bottom:10px">
+        <label style="font-size:13px;font-weight:600;color:#333;display:block;margin-bottom:4px">Select issue</label>
+        <div id="vdf-issues-${eid}">
+          ${allSvcNames.map((issue, i) => `<button type="button" class="vc-issue-chip vendor-issue-chip${i === 0 ? " active" : ""}" onclick="VendorCards.toggleIssue(this,'${eid}')">${_esc(issue)}</button>`).join("")}
+        </div>
+        <input type="hidden" id="vdf-issues-val-${eid}" value="${_esc(allSvcNames[0] || "")}" />
+      </div>
+      <div style="margin-bottom:10px">
+        <label style="font-size:13px;font-weight:600;color:#333;display:block;margin-bottom:4px">Address</label>
+        <textarea id="vdf-address-${eid}" style="width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:10px;font-size:14px;box-sizing:border-box;resize:vertical" rows="2" placeholder="House / street / landmark">${_esc(savedAddress)}</textarea>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:13px;font-weight:600;color:#333;display:block;margin-bottom:4px">Describe your problem <span style="font-weight:400;color:#888">(optional)</span></label>
+        <textarea id="vdf-notes-${eid}" style="width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:10px;font-size:14px;box-sizing:border-box;resize:vertical" rows="2" placeholder="Describe your problem (optional)"></textarea>
+      </div>
+      <input type="hidden" id="vdf-name-${eid}" value="" />
+      <button class="vc-book-btn" style="margin-top:0" onclick="VendorCards.submitInlineBooking('${eid}', ${svcAttr})">REQUEST SERVICE</button>
+    </div>
   </div>
-  <div id="vc-profile-${_esc(id)}" class="vendor-inline-section hidden"></div>
-  <div id="vc-booking-${_esc(id)}" class="vendor-inline-section hidden"></div>
 </article>`;
 }
 
