@@ -552,8 +552,14 @@ window.HomeModals = (() => {
     const inspectionPrice = _inspectionPrice(_currentService, category);
     _resetBookingActions(defaultMode, inspectionPrice);
     const modalTitleCategory = category.slug ? category.label : "service";
-    document.getElementById("booking-modal-title").textContent = defaultMode === "inspection" ? `Inspection for ${modalTitleCategory}` : defaultMode === "free_lead" ? `Free ${modalTitleCategory} booking` : `Book ${category.label}`;
-    document.getElementById("booking-modal-body").innerHTML = (defaultMode === "inspection" || defaultMode === "free_lead") ? _intakeRequestHTML({ mode: defaultMode, service: _currentService, category, selectedService, restored, sameRestoredContext, inspectionPrice }) : `
+    const isVendorDirect = service.request_source === "worker_card";
+    const vendorDisplayName = _currentService.vendor_name || _currentService.name || category.label;
+    document.getElementById("booking-modal-title").textContent = isVendorDirect
+      ? `Book ${vendorDisplayName}`
+      : defaultMode === "inspection" ? `Inspection for ${modalTitleCategory}` : defaultMode === "free_lead" ? `Free ${modalTitleCategory} booking` : `Book ${category.label}`;
+    document.getElementById("booking-modal-body").innerHTML = isVendorDirect
+      ? _vendorDirectFormHTML({ service: _currentService, category, selectedService, restored, profile })
+      : (defaultMode === "inspection" || defaultMode === "free_lead") ? _intakeRequestHTML({ mode: defaultMode, service: _currentService, category, selectedService, restored, sameRestoredContext, inspectionPrice }) : `
       <div class="modal-product-info booking-sheet-summary">
         <div class="modal-product-placeholder">${service.icon || "🔧"}</div>
         <div>
@@ -984,6 +990,32 @@ window.HomeModals = (() => {
       <input type="hidden" id="booking-service-context" value="${_esc(activeIssues.join(", "))}" />
       <input type="hidden" id="booking-category-context" value="${_esc(activeCategory)}" />
     `;
+  }
+
+  function _vendorDirectFormHTML({ service, category, selectedService, restored, profile }) {
+    const locality = _resolvedLocality();
+    const authUser = AUTH.getUser?.() || {};
+    const phoneValue = restored.phone || profile.phone || authUser.phone || authUser.mobile || "";
+    const nameValue = profile.name || authUser.name || "Customer";
+    const addressValue = restored.address || profile.address || "Confirm on call";
+    return `
+      <div class="vendor-direct-form">
+        <div class="modal-field">
+          <label for="booking-mobile">Your mobile</label>
+          <input type="tel" id="booking-mobile" class="modal-input" placeholder="10-digit mobile number" autocomplete="tel" value="${_esc(phoneValue)}" oninput="HomePage.persistPendingBookingForm?.()" />
+        </div>
+        <div class="modal-field">
+          <label for="booking-notes">What needs to be done?</label>
+          <textarea id="booking-notes" class="modal-textarea" placeholder="Describe the issue briefly…" rows="3" oninput="HomePage.persistPendingBookingForm?.()">${_esc(restored.notes || "")}</textarea>
+        </div>
+        <input type="hidden" id="booking-name" value="${_esc(nameValue)}" />
+        <input type="hidden" id="booking-date" value="${_esc(_defaultScheduledLocal())}" />
+        <input type="hidden" id="booking-area" value="${_esc(locality.label || "")}" />
+        <input type="hidden" id="booking-address" value="${_esc(addressValue)}" />
+        <input type="hidden" id="booking-mode" value="direct_vendor" />
+        <input type="hidden" id="booking-service-context" value="${_esc(selectedService)}" />
+        <input type="hidden" id="booking-category-context" value="${_esc(category.slug || _activeCategory || "")}" />
+      </div>`;
   }
 
   function _resetBookingActions(mode, inspectionPrice) {
@@ -1789,18 +1821,26 @@ function _vendorCardHTML(service, support = false) {
   const localityContext = _resolvedLocality();
   const name = service.vendor_name || service.name || "Worker available after confirmation";
   const locality = service.locality || service.vendor_locality || service.area || localityContext.label;
+  const photo = service.image || service.photo || "";
+  const rating = service.rating && service.rating_is_verified ? service.rating : "";
+  const initials = name.split(" ").filter(Boolean).map(w => w[0]).join("").toUpperCase().slice(0, 2) || "W";
+  const categoryLabel = meta.label || "";
   return `
     <article class="vendor-card">
-      <div class="vendor-body">
-        <div class="vendor-head">
-          <div class="vendor-avatar">${service.icon || meta.icon || "🔧"}</div>
-          <div>
-            <h4>${_esc(name)}</h4>
-            <p>${_esc(locality)}</p>
+      <div style="display:flex;gap:12px;align-items:flex-start;">
+        ${photo
+          ? `<img src="${_esc(photo)}" alt="${_esc(name)}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0;" loading="lazy"/>`
+          : `<div style="width:52px;height:52px;border-radius:50%;background:var(--clr-accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0;">${_esc(initials)}</div>`}
+        <div style="flex:1;min-width:0;">
+          <strong style="font-size:15px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(name)}</strong>
+          <small style="color:var(--clr-text-2);display:block;margin-top:2px;">${_esc(locality)}</small>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;">
+            ${categoryLabel ? `<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:var(--clr-surface-2);color:var(--clr-text-2);font-weight:600;text-transform:uppercase;letter-spacing:.4px;">${_esc(categoryLabel)}</span>` : ""}
+            ${rating ? `<span style="font-size:12px;color:#f59e0b;font-weight:600;">★ ${_esc(String(rating))}</span>` : ""}
           </div>
         </div>
-        <button class="vendor-book-btn" onclick="HomeModals.openBooking(${_jsonAttr({ ...service, request_source: "worker_card", category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon })})">Request via WorkToGo</button>
       </div>
+      <button class="vendor-book-btn" style="width:100%;margin-top:12px;" onclick="HomeModals.openBooking(${_jsonAttr({ ...service, request_source: "worker_card", category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon })})">Book this vendor</button>
     </article>`;
 }
 
