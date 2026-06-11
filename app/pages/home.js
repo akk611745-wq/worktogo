@@ -205,6 +205,9 @@ export async function render(container) {
     useBrowserLocalityHint() {
       _useBrowserLocalityHint();
     },
+    detectGPSLocality() {
+      _detectGPSLocality();
+    },
     onBookingAreaInput(value = "") {
       _commitTypedLocality(value);
       _persistPendingBookingForm();
@@ -1936,8 +1939,9 @@ function _localitySelectorHTML(query = "") {
   const active = _resolvedLocality();
   const city = _activeCity();
   const search = _cleanLocality(query).toLowerCase();
-  const options = _localitySearchOptions(meta, search).slice(0, search ? 8 : 6);
+  const options = _localitySearchOptions(meta, search).slice(0, search ? 10 : 8);
   const recent = _recentLocalityLabel();
+  const itemStyle = "min-height:56px;padding:14px 12px;display:flex;align-items:center;gap:10px;";
   return `
     <div class="locality-current-card">
       <span>📍</span>
@@ -1947,13 +1951,16 @@ function _localitySelectorHTML(query = "") {
       <span>⌕</span>
       <input id="locality-manual-input" class="modal-input" type="search" placeholder="Search city or area" value="${_esc(query)}" autocomplete="off" oninput="HomePage.filterLocalitySuggestions(this.value)" onkeydown="if(event.key==='Enter'){HomePage.submitLocalitySearch()}" />
     </div>
-    <div class="locality-mini-row">
-      ${recent ? `<button type="button" onclick="HomePage.chooseLocality('${_esc(recent)}', 'selected')"><strong>${_esc(recent)}</strong><small>Recent area</small></button>` : ""}
-      <button type="button" onclick="HomePage.chooseCity('${_esc(city)}')"><strong>${_esc(city)}</strong><small>Current area</small></button>
-    </div>
+    <button id="gps-locate-btn" type="button" onclick="HomePage.detectGPSLocality()" style="display:flex;align-items:center;gap:8px;width:100%;min-height:52px;padding:12px 14px;margin:8px 0;border:1.5px solid var(--clr-border);border-radius:10px;background:var(--clr-surface-2);color:var(--clr-text-1);font-size:14px;font-weight:500;cursor:pointer;text-align:left;box-sizing:border-box;">
+      <span>📡</span><span>Use my location</span>
+    </button>
+    ${!search ? `<div class="locality-mini-row">
+      ${recent ? `<button type="button" style="${itemStyle}" onclick="HomePage.chooseLocality('${_esc(recent)}', 'selected')"><strong>${_esc(recent)}</strong><small>Recent area</small></button>` : ""}
+      <button type="button" style="${itemStyle}" onclick="HomePage.chooseCity('${_esc(city)}')"><strong>${_esc(city)}</strong><small>Current area</small></button>
+    </div>` : ""}
     <div class="locality-suggestion-list">
-      ${options.map(item => `<button type="button" class="locality-suggestion ${_slug(active.label) === _slug(item.label) ? "active" : ""}" onclick="${item.type === "city" ? `HomePage.chooseCity('${_esc(item.label)}')` : `HomePage.chooseLocality('${_esc(item.label)}', 'selected')`}"><span>${item.type === "city" ? "🏙️" : "📍"}</span><strong>${_esc(item.label)}</strong><small>${_esc(_slug(active.label) === _slug(item.label) ? "Current area" : item.note)}</small></button>`).join("")}
-      ${search && !options.some(item => _slug(item.label) === _slug(query)) ? `<button type="button" class="locality-suggestion typed-suggestion" onclick="HomePage.chooseLocality('${_esc(query)}', 'typed')"><span>＋</span><strong>${_esc(query)}</strong><small>Use typed area</small></button>` : ""}
+      ${options.map(item => `<button type="button" class="locality-suggestion ${_slug(active.label) === _slug(item.label) ? "active" : ""}" style="${itemStyle}" onclick="${item.type === "city" ? `HomePage.chooseCity('${_esc(item.label)}')` : `HomePage.chooseLocality('${_esc(item.label)}', 'selected')`}"><span>${item.type === "city" ? "🏙️" : "📍"}</span><strong>${_esc(item.label)}</strong><small>${_esc(_slug(active.label) === _slug(item.label) ? "Current area" : item.note)}</small></button>`).join("")}
+      ${search && !options.some(item => _slug(item.label) === _slug(query)) ? `<button type="button" class="locality-suggestion typed-suggestion" style="${itemStyle}" onclick="HomePage.chooseLocality('${_esc(query)}', 'typed')"><span>＋</span><strong>${_esc(query)}</strong><small>Use typed area</small></button>` : ""}
     </div>
     <p class="service-note">Pick an area and keep browsing. Full address stays separate during booking.</p>`;
 }
@@ -2114,6 +2121,50 @@ function _browserLocalityHint(create = true) {
   return hint;
 }
 
+async function _detectGPSLocality() {
+  if (!navigator.geolocation) {
+    UI.toast("Location not supported by your browser.", "error");
+    return;
+  }
+  const btn = document.getElementById("gps-locate-btn");
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span>📡</span><span>Detecting…</span>'; }
+
+  navigator.geolocation.getCurrentPosition(
+    async pos => {
+      const { latitude, longitude } = pos.coords;
+      try {
+        const url = `https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&format=json&addressdetails=1`;
+        const res = await fetch(url, { headers: { "Accept-Language": "en" } });
+        const data = await res.json();
+        const addr = data.address || {};
+        const area = _cleanLocality(addr.suburb || addr.neighbourhood || addr.village || addr.town || addr.city_district || "");
+        const city = _cleanLocality(addr.city || addr.town || addr.county || addr.state_district || "");
+        const label = area || city;
+        if (!label) {
+          UI.toast("Could not identify area. Select manually.", "error");
+          _resetGPSBtn();
+          return;
+        }
+        _setManualLocality(label, "browser_hint");
+        UI.toast(`Location set: ${label}`, "success");
+      } catch {
+        UI.toast("Location lookup failed. Select manually.", "error");
+        _resetGPSBtn();
+      }
+    },
+    err => {
+      UI.toast(err.code === 1 ? "Location permission denied." : "Could not get location.", "error");
+      _resetGPSBtn();
+    },
+    { timeout: 8000, maximumAge: 60000 }
+  );
+}
+
+function _resetGPSBtn() {
+  const btn = document.getElementById("gps-locate-btn");
+  if (btn) { btn.disabled = false; btn.innerHTML = '<span>📡</span><span>Use my location</span>'; }
+}
+
 function _restoreLocalityContext() {
   const saved = _readSavedLocality();
   const sessionLabel = _cleanLocality(_activeLocalityFilter);
@@ -2166,7 +2217,7 @@ function _activeCity() {
 
 function _cityOptions() {
   const configured = Array.isArray(_pilotConfig.cities) ? _pilotConfig.cities : [];
-  const base = ["Haldwani", "Almora", "Delhi", "Rudrapur", "Noida"];
+  const base = ["Haldwani"];
   const values = [...configured, ...base, _pilotConfig.city].map(_cleanLocality).filter(Boolean);
   const seen = new Set();
   return values.filter(city => {
@@ -2181,11 +2232,7 @@ function _cityLocalities(city = "") {
   const key = _slug(city);
   const configured = _pilotConfig.city_localities?.[city] || _pilotConfig.city_localities?.[key] || [];
   const defaults = {
-    haldwani: ["Mukhani", "Kusumkhera", "Dahariya", "Lalpur Nayak", "Kaladhungi Road"],
-    almora: ["Mall Road Almora", "Dharanaula", "Khatyari", "Nanda Devi", "Dugalkhola"],
-    delhi: ["Lajpat Nagar", "Karol Bagh", "Dwarka", "Rohini", "Saket"],
-    rudrapur: ["Awas Vikas", "Transit Camp", "Model Colony", "Kichha Road", "Civil Lines"],
-    noida: ["Sector 18", "Sector 62", "Sector 76", "Sector 137", "Greater Noida West"],
+    haldwani: ["Mukhani", "Dahariya", "Kathgodam", "Lalkuan", "Tikonia", "Bhimtal", "Ramnagar", "Bazpur", "Kashipur"],
   };
   return (Array.isArray(configured) && configured.length ? configured : defaults[key] || []).map(_cleanLocality).filter(Boolean);
 }
