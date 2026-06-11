@@ -2098,6 +2098,7 @@ function _vendorCardHTML(service, support = false) {
   <div id="vc-profile-${_esc(id)}" class="vendor-inline-section hidden"></div>
   <div id="vc-booking-${_esc(id)}" class="vendor-inline-section hidden"></div>
 </article>`;
+}
 
 function _renderInstantSearch() {
   const panel = document.getElementById("search-results-panel");
