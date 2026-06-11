@@ -997,25 +997,90 @@ window.HomeModals = (() => {
     const authUser = AUTH.getUser?.() || {};
     const phoneValue = restored.phone || profile.phone || authUser.phone || authUser.mobile || "";
     const nameValue = profile.name || authUser.name || "Customer";
-    const addressValue = restored.address || profile.address || "Confirm on call";
+    const addressValue = restored.address || profile.address || "";
+    const rawSvcs = Array.isArray(service.vendor_services) && service.vendor_services.length
+      ? service.vendor_services
+      : Array.isArray(service.services) && service.services.length ? service.services : category.examples || [];
+    const issueNames = rawSvcs.map(s => typeof s === "string" ? s : s.name || s.label || "").filter(Boolean);
+    const defaultIssue = service.quick_service || selectedService || issueNames[0] || "";
+    const activeIssues = defaultIssue ? [defaultIssue] : [];
     return `
       <div class="vendor-direct-form">
         <div class="modal-field">
-          <label for="booking-mobile">Your mobile</label>
+          <label for="booking-mobile">Mobile</label>
           <input type="tel" id="booking-mobile" class="modal-input" placeholder="10-digit mobile number" autocomplete="tel" value="${_esc(phoneValue)}" oninput="HomePage.persistPendingBookingForm?.()" />
         </div>
         <div class="modal-field">
-          <label for="booking-notes">What needs to be done?</label>
-          <textarea id="booking-notes" class="modal-textarea" placeholder="Describe the issue briefly…" rows="3" oninput="HomePage.persistPendingBookingForm?.()">${_esc(restored.notes || "")}</textarea>
+          <label>Select issue</label>
+          <div class="vendor-issue-chips" id="vendor-issue-chips">
+            ${issueNames.map(issue => `<button type="button" class="vendor-issue-chip${activeIssues.includes(issue) ? " active" : ""}" data-issue="${_esc(issue)}" onclick="HomeModals.toggleVendorIssue('${_esc(issue)}')">${_esc(issue)}</button>`).join("")}
+          </div>
+        </div>
+        <div class="modal-field">
+          <label for="booking-address">Address</label>
+          <textarea id="booking-address" class="modal-textarea" rows="2" placeholder="House / street / landmark" oninput="HomePage.persistPendingBookingForm?.()">${_esc(addressValue)}</textarea>
+        </div>
+        <div class="modal-field">
+          <label for="booking-notes">Problem description <small>(optional)</small></label>
+          <textarea id="booking-notes" class="modal-textarea" rows="2" placeholder="Brief description of the issue…" oninput="HomePage.persistPendingBookingForm?.()">${_esc(restored.notes || "")}</textarea>
         </div>
         <input type="hidden" id="booking-name" value="${_esc(nameValue)}" />
         <input type="hidden" id="booking-date" value="${_esc(_defaultScheduledLocal())}" />
         <input type="hidden" id="booking-area" value="${_esc(locality.label || "")}" />
-        <input type="hidden" id="booking-address" value="${_esc(addressValue)}" />
         <input type="hidden" id="booking-mode" value="direct_vendor" />
-        <input type="hidden" id="booking-service-context" value="${_esc(selectedService)}" />
+        <input type="hidden" id="booking-service-context" value="${_esc(activeIssues.join(", "))}" />
         <input type="hidden" id="booking-category-context" value="${_esc(category.slug || _activeCategory || "")}" />
       </div>`;
+  }
+
+  function toggleVendorIssue(issue) {
+    const clean = String(issue || "").trim();
+    if (!clean) return;
+    const chip = document.querySelector(`#vendor-issue-chips [data-issue]`);
+    const allChips = document.querySelectorAll("#vendor-issue-chips .vendor-issue-chip");
+    allChips.forEach(b => { if (b.dataset.issue === clean) b.classList.toggle("active"); });
+    const active = [...allChips].filter(b => b.classList.contains("active")).map(b => b.dataset.issue);
+    const hidden = document.getElementById("booking-service-context");
+    if (hidden) hidden.value = active.join(", ");
+    _persistPendingBookingForm();
+  }
+
+  function prepareVendorDirectSubmit(service, { phone = "", issues = "", address = "", notes = "", name = "" } = {}) {
+    if (!AUTH.isLoggedIn()) {
+      const digits = phone.replace(/\D/g, "");
+      if (digits) _persistCustomerProfile({ phone: digits, ...(name ? { name } : {}) });
+      UI.toast("Verify mobile once to send request", "info");
+      _savePendingBookingIntent(service, _pendingBookingForm());
+      ROUTER.go("login");
+      return;
+    }
+    const category = _categoryMeta(service.category_slug || service.category || _activeCategory);
+    const selectedService = _normalizeIssueList(issues)[0] || service.name || category.label;
+    _currentService = {
+      ...service,
+      category_slug: category.slug || _activeCategory,
+      category_label: category.label,
+      selected_service: selectedService,
+      request_source: "worker_card",
+    };
+    _isBookingSubmitting = false;
+    _bookingOpenToken += 1;
+    const body = document.getElementById("booking-modal-body");
+    if (body) {
+      body.innerHTML = `
+        <input type="hidden" id="booking-name" value="${_esc(name || "Customer")}" />
+        <input type="hidden" id="booking-mobile" value="${_esc(phone)}" />
+        <input type="hidden" id="booking-date" value="${_esc(_defaultScheduledLocal())}" />
+        <input type="hidden" id="booking-area" value="${_esc(_resolvedLocality().label || "")}" />
+        <input type="hidden" id="booking-address" value="${_esc(address)}" />
+        <input type="hidden" id="booking-notes" value="${_esc(notes)}" />
+        <input type="hidden" id="booking-mode" value="direct_vendor" />
+        <input type="hidden" id="booking-service-context" value="${_esc(issues || selectedService)}" />
+        <input type="hidden" id="booking-category-context" value="${_esc(category.slug || _activeCategory || "")}" />
+      `;
+    }
+    _resetBookingActions("direct_vendor", _inspectionPrice(_currentService, category));
+    confirmBooking();
   }
 
   function _resetBookingActions(mode, inspectionPrice) {
@@ -1189,7 +1254,179 @@ window.HomeModals = (() => {
     confirmBooking();
   }
 
-  return { openOrder, changeQty, confirmOrder, openBooking, confirmBooking, close, closeBooking, discardBookingDraft, closeOnOverlay, selectInspectionCategory, selectInspectionIssue, showInspectionConfirmation: _showInspectionConfirmation, checkInspectionPaymentStatus: _checkInspectionPaymentStatus, resumeInspectionPayment: _resumeInspectionPayment, startFreshInspectionBooking: _startFreshInspectionBooking, confirmNewBookingAnyway };
+  return { openOrder, changeQty, confirmOrder, openBooking, confirmBooking, close, closeBooking, discardBookingDraft, closeOnOverlay, selectInspectionCategory, selectInspectionIssue, toggleVendorIssue, prepareVendorDirectSubmit, showInspectionConfirmation: _showInspectionConfirmation, checkInspectionPaymentStatus: _checkInspectionPaymentStatus, resumeInspectionPayment: _resumeInspectionPayment, startFreshInspectionBooking: _startFreshInspectionBooking, confirmNewBookingAnyway };
+})();
+
+// ── Vendor Card Controller ────────────────────────────────────────────────────
+
+window.VendorCards = (function () {
+  function toggleProfile(id, service) {
+    const profileEl = document.getElementById(`vc-profile-${id}`);
+    const bookingEl = document.getElementById(`vc-booking-${id}`);
+    if (!profileEl) return;
+    const isOpen = !profileEl.classList.contains("hidden");
+    if (isOpen) {
+      profileEl.classList.add("hidden");
+      profileEl.innerHTML = "";
+      _markCardBtn(id, null);
+    } else {
+      if (bookingEl && !bookingEl.classList.contains("hidden")) {
+        bookingEl.classList.add("hidden");
+        bookingEl.innerHTML = "";
+      }
+      profileEl.innerHTML = _buildProfileHTML(service);
+      profileEl.classList.remove("hidden");
+      _markCardBtn(id, "profile");
+    }
+  }
+
+  function toggleBooking(id, service) {
+    const bookingEl = document.getElementById(`vc-booking-${id}`);
+    const profileEl = document.getElementById(`vc-profile-${id}`);
+    if (!bookingEl) return;
+    const isOpen = !bookingEl.classList.contains("hidden");
+    if (isOpen) {
+      bookingEl.classList.add("hidden");
+      bookingEl.innerHTML = "";
+      _markCardBtn(id, null);
+    } else {
+      if (profileEl && !profileEl.classList.contains("hidden")) {
+        profileEl.classList.add("hidden");
+        profileEl.innerHTML = "";
+      }
+      bookingEl.innerHTML = _buildInlineBookingHTML(id, service);
+      bookingEl.classList.remove("hidden");
+      _markCardBtn(id, "booking");
+    }
+  }
+
+  function _markCardBtn(id, section) {
+    const card = document.getElementById(`vc-${id}`);
+    if (!card) return;
+    card.querySelector(".vendor-profile-btn")?.classList.toggle("active", section === "profile");
+    card.querySelector(".vendor-book-btn")?.classList.toggle("active", section === "booking");
+  }
+
+  function toggleIssue(btn, cardId) {
+    if (!btn) return;
+    btn.classList.toggle("active");
+    const container = document.getElementById(`vdf-issues-${cardId}`);
+    if (!container) return;
+    const active = [...container.querySelectorAll(".vendor-issue-chip.active")].map(b => b.textContent.trim());
+    const hidden = document.getElementById(`vdf-issues-val-${cardId}`);
+    if (hidden) hidden.value = active.join(", ");
+  }
+
+  function submitInlineBooking(cardId, service) {
+    const phone = (document.getElementById(`vdf-mobile-${cardId}`)?.value || "").trim();
+    const issuesVal = (document.getElementById(`vdf-issues-val-${cardId}`)?.value || "").trim();
+    const address = (document.getElementById(`vdf-address-${cardId}`)?.value || "").trim();
+    const notes = (document.getElementById(`vdf-notes-${cardId}`)?.value || "").trim();
+    const name = (document.getElementById(`vdf-name-${cardId}`)?.value || "").trim();
+    const digits = phone.replace(/\D/g, "");
+    if (!digits || digits.length !== 10 || !/^[6-9]/.test(digits)) {
+      UI.toast("Please enter a valid 10-digit mobile number", "error");
+      document.getElementById(`vdf-mobile-${cardId}`)?.focus();
+      return;
+    }
+    if (!address) {
+      UI.toast("Please enter your address", "error");
+      document.getElementById(`vdf-address-${cardId}`)?.focus();
+      return;
+    }
+    HomeModals.prepareVendorDirectSubmit(service, { phone: digits, issues: issuesVal, address, notes, name });
+  }
+
+  function _buildProfileHTML(service) {
+    const meta = _categoryMeta(service.category_slug || service.slug || service.category || _activeCategory);
+    const localityCtx = _resolvedLocality();
+    const name = service.vendor_name || service.name || "Worker";
+    const photo = service.image || service.photo || "";
+    const rating = service.rating && service.rating_is_verified ? Number(service.rating).toFixed(1) : "";
+    const jobsDone = service.jobs_done || service.completed_jobs || service.jobs_count || "";
+    const initials = name.split(" ").filter(Boolean).map(w => w[0]).join("").toUpperCase().slice(0, 2) || "W";
+    const areas = (Array.isArray(service.service_localities) && service.service_localities.length
+      ? service.service_localities
+      : [service.locality || service.vendor_locality || service.area || localityCtx.label].filter(Boolean)
+    ).map(String).filter(Boolean).slice(0, 8);
+    const rawSvcs = Array.isArray(service.vendor_services) && service.vendor_services.length
+      ? service.vendor_services
+      : Array.isArray(service.services) && service.services.length ? service.services : meta.examples || [];
+    const serviceNames = rawSvcs.map(s => typeof s === "string" ? s : s.name || s.label || "").filter(Boolean);
+    const startingPrice = Number(service.base_price || service.price || service.starting_price || (Array.isArray(service.vendor_services) && service.vendor_services[0]?.price) || 0);
+    const reviews = Array.isArray(service.reviews) && service.reviews.length ? service.reviews.slice(0, 3) : [
+      { text: "Good work, came on time", rating: 5 },
+      { text: "Professional and neat", rating: 4 },
+      { text: "Reasonable rates, recommended", rating: 4 },
+    ];
+    const id = _slug(String(service.id || name));
+    const svcAttr = _jsonAttr({ ...service, request_source: "worker_card", category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon });
+    return `
+<div class="vendor-profile-expanded">
+  <div class="vendor-profile-header">
+    ${photo
+      ? `<img src="${_esc(photo)}" alt="${_esc(name)}" class="vendor-profile-photo" loading="lazy"/>`
+      : `<div class="vendor-avatar-initials vendor-avatar-lg">${_esc(initials)}</div>`}
+    <div class="vendor-profile-identity">
+      <strong>${_esc(name)}</strong>
+      <div class="vendor-card-stats">
+        ${rating ? `<span class="vendor-rating">★ ${_esc(String(rating))}</span>` : ""}
+        ${jobsDone ? `<span class="vendor-jobs">${_esc(String(jobsDone))} jobs done</span>` : ""}
+      </div>
+    </div>
+  </div>
+  ${areas.length ? `<div class="vendor-profile-row"><strong>Areas covered</strong><div class="vendor-bubble-row">${areas.map(a => `<span class="vendor-area-bubble">${_esc(a)}</span>`).join("")}</div></div>` : ""}
+  <div class="vendor-profile-row"><strong>Category</strong><span>${_esc(meta.label)}</span></div>
+  ${serviceNames.length ? `<div class="vendor-profile-row"><strong>Services</strong><div class="vendor-bubble-row">${serviceNames.map(s => `<span class="vendor-service-bubble">${_esc(s)}</span>`).join("")}</div></div>` : ""}
+  ${startingPrice ? `<div class="vendor-profile-row"><strong>Starting from</strong><span>${UI.formatCurrency(startingPrice)}</span></div>` : ""}
+  <div class="vendor-profile-row vendor-reviews"><strong>Customer reviews</strong>
+    ${reviews.map(r => `<div class="vendor-review-item"><span class="vendor-review-stars">${"★".repeat(Math.min(5, Math.round(Number(r.rating || r.stars || 4))))}</span><p>${_esc(r.text || r.comment || "")}</p></div>`).join("")}
+  </div>
+  <button class="btn-primary vendor-profile-book-btn" onclick="VendorCards.toggleBooking('${_esc(id)}', ${svcAttr})">Book Service</button>
+</div>`;
+  }
+
+  function _buildInlineBookingHTML(cardId, service) {
+    const meta = _categoryMeta(service.category_slug || service.slug || service.category || _activeCategory);
+    const profile = _customerProfile();
+    const authUser = AUTH.getUser?.() || {};
+    const phoneValue = profile.phone || authUser.phone || authUser.mobile || "";
+    const addressValue = profile.address || "";
+    const rawSvcs = Array.isArray(service.vendor_services) && service.vendor_services.length
+      ? service.vendor_services
+      : Array.isArray(service.services) && service.services.length ? service.services : meta.examples || [];
+    const issueNames = rawSvcs.map(s => typeof s === "string" ? s : s.name || s.label || "").filter(Boolean);
+    const defaultIssue = service.quick_service || issueNames[0] || "";
+    const activeIssues = defaultIssue ? [defaultIssue] : [];
+    const svcAttr = _jsonAttr({ ...service, request_source: "worker_card", category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon });
+    const cid = _esc(cardId);
+    return `
+<div class="vendor-direct-form vendor-inline-form">
+  <div class="modal-field">
+    <label for="vdf-mobile-${cid}">Mobile</label>
+    <input type="tel" id="vdf-mobile-${cid}" class="modal-input" placeholder="10-digit mobile number" autocomplete="tel" value="${_esc(phoneValue)}" />
+  </div>
+  <div class="modal-field">
+    <label>Select issue</label>
+    <div class="vendor-issue-chips" id="vdf-issues-${cid}">
+      ${issueNames.map(issue => `<button type="button" class="vendor-issue-chip${activeIssues.includes(issue) ? " active" : ""}" onclick="VendorCards.toggleIssue(this, '${cid}')">${_esc(issue)}</button>`).join("")}
+    </div>
+    <input type="hidden" id="vdf-issues-val-${cid}" value="${_esc(activeIssues.join(", "))}" />
+  </div>
+  <div class="modal-field">
+    <label for="vdf-address-${cid}">Address</label>
+    <textarea id="vdf-address-${cid}" class="modal-textarea" rows="2" placeholder="House / street / landmark">${_esc(addressValue)}</textarea>
+  </div>
+  <div class="modal-field">
+    <label for="vdf-notes-${cid}">Problem description <small>(optional)</small></label>
+    <textarea id="vdf-notes-${cid}" class="modal-textarea" rows="2" placeholder="Brief description of the issue…"></textarea>
+  </div>
+  <input type="hidden" id="vdf-name-${cid}" value="${_esc(profile.name || authUser.name || "Customer")}" />
+  <button class="btn-primary vendor-inline-submit" onclick="VendorCards.submitInlineBooking('${cid}', ${svcAttr})">Request Service</button>
+</div>`;
+  }
+
+  return { toggleProfile, toggleBooking, toggleIssue, submitInlineBooking };
 })();
 
 async function _handleInspectionCheckout(booking, bookingMode, payload = {}) {
@@ -1818,31 +2055,49 @@ function _proofMatches(item) {
 
 function _vendorCardHTML(service, support = false) {
   const meta = _categoryMeta(service.category_slug || service.slug || service.category || _activeCategory);
-  const localityContext = _resolvedLocality();
+  const localityCtx = _resolvedLocality();
   const name = service.vendor_name || service.name || "Worker available after confirmation";
-  const locality = service.locality || service.vendor_locality || service.area || localityContext.label;
   const photo = service.image || service.photo || "";
-  const rating = service.rating && service.rating_is_verified ? service.rating : "";
+  const rating = service.rating && service.rating_is_verified ? Number(service.rating).toFixed(1) : "";
+  const jobsDone = service.jobs_done || service.completed_jobs || service.jobs_count || "";
+  const availableToday = Boolean(service.available_today);
   const initials = name.split(" ").filter(Boolean).map(w => w[0]).join("").toUpperCase().slice(0, 2) || "W";
-  const categoryLabel = meta.label || "";
+  const areas = (Array.isArray(service.service_localities) && service.service_localities.length
+    ? service.service_localities
+    : [service.locality || service.vendor_locality || service.area || localityCtx.label].filter(Boolean)
+  ).map(String).filter(Boolean).slice(0, 5);
+  const rawSvcs = Array.isArray(service.vendor_services) && service.vendor_services.length
+    ? service.vendor_services
+    : Array.isArray(service.services) && service.services.length ? service.services : meta.examples || [];
+  const serviceNames = rawSvcs.map(s => typeof s === "string" ? s : s.name || s.label || "").filter(Boolean);
+  const visibleSvcs = serviceNames.slice(0, 3);
+  const extraCount = Math.max(0, serviceNames.length - 3);
+  const id = _slug(String(service.id || name));
+  const svcAttr = _jsonAttr({ ...service, request_source: "worker_card", category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon });
   return `
-    <article class="vendor-card">
-      <div style="display:flex;gap:12px;align-items:flex-start;">
-        ${photo
-          ? `<img src="${_esc(photo)}" alt="${_esc(name)}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0;" loading="lazy"/>`
-          : `<div style="width:52px;height:52px;border-radius:50%;background:var(--clr-accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0;">${_esc(initials)}</div>`}
-        <div style="flex:1;min-width:0;">
-          <strong style="font-size:15px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(name)}</strong>
-          <small style="color:var(--clr-text-2);display:block;margin-top:2px;">${_esc(locality)}</small>
-          <div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;">
-            ${categoryLabel ? `<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:var(--clr-surface-2);color:var(--clr-text-2);font-weight:600;text-transform:uppercase;letter-spacing:.4px;">${_esc(categoryLabel)}</span>` : ""}
-            ${rating ? `<span style="font-size:12px;color:#f59e0b;font-weight:600;">★ ${_esc(String(rating))}</span>` : ""}
-          </div>
-        </div>
+<article class="vendor-card" id="vc-${_esc(id)}">
+  <div class="vendor-card-top">
+    ${photo
+      ? `<img src="${_esc(photo)}" alt="${_esc(name)}" class="vendor-avatar-img" loading="lazy"/>`
+      : `<div class="vendor-avatar-initials">${_esc(initials)}</div>`}
+    <div class="vendor-card-identity">
+      <strong class="vendor-card-name">${_esc(name)}</strong>
+      <div class="vendor-card-stats">
+        ${rating ? `<span class="vendor-rating">★ ${_esc(String(rating))}</span>` : ""}
+        ${jobsDone ? `<span class="vendor-jobs">${_esc(String(jobsDone))} jobs</span>` : ""}
+        ${availableToday ? `<span class="vendor-today-badge">Available Today</span>` : ""}
       </div>
-      <button class="vendor-book-btn" style="width:100%;margin-top:12px;" onclick="HomeModals.openBooking(${_jsonAttr({ ...service, request_source: "worker_card", category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon })})">Book this vendor</button>
-    </article>`;
-}
+    </div>
+  </div>
+  ${areas.length ? `<div class="vendor-bubble-row">${areas.map(a => `<span class="vendor-area-bubble">${_esc(a)}</span>`).join("")}</div>` : ""}
+  ${visibleSvcs.length ? `<div class="vendor-bubble-row">${visibleSvcs.map(s => `<span class="vendor-service-bubble">${_esc(s)}</span>`).join("")}${extraCount ? `<span class="vendor-service-bubble vendor-more-bubble">+${extraCount} more</span>` : ""}</div>` : ""}
+  <div class="vendor-card-actions">
+    <button class="vendor-profile-btn" onclick="VendorCards.toggleProfile('${_esc(id)}', ${svcAttr})">View Profile</button>
+    <button class="vendor-book-btn" onclick="VendorCards.toggleBooking('${_esc(id)}', ${svcAttr})">Book Now</button>
+  </div>
+  <div id="vc-profile-${_esc(id)}" class="vendor-inline-section hidden"></div>
+  <div id="vc-booking-${_esc(id)}" class="vendor-inline-section hidden"></div>
+</article>`;
 
 function _renderInstantSearch() {
   const panel = document.getElementById("search-results-panel");
