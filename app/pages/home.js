@@ -969,7 +969,16 @@ window.HomeModals = (() => {
         </section>
         <p class="inspection-payment-note">${_esc(isInspection ? "UPI apps and UPI ID are supported at payment." : "Free request: admin receives category, issue, locality and contact details for worker matching.")}</p>
       </div>
-      <input type="hidden" id="booking-date" value="${_esc((sameRestoredContext && restored.scheduled_at) || _defaultScheduledLocal())}" />
+      ${isInspection ? `
+        <section class="inspection-step">
+          <div class="modal-field">
+            <label for="booking-date">Preferred visit time</label>
+            <input type="datetime-local" id="booking-date" class="modal-input"
+              min="${_isoNow()}"
+              value="${_esc((sameRestoredContext && restored.scheduled_at) || _defaultScheduledLocal())}"
+              onchange="HomePage.persistPendingBookingForm?.()" />
+          </div>
+        </section>` : `<input type="hidden" id="booking-date" value="${_esc((sameRestoredContext && restored.scheduled_at) || _defaultScheduledLocal())}" />`}
       <input type="hidden" id="booking-mode" value="${_esc(isInspection ? "inspection" : "free_lead")}" />
       <input type="hidden" id="booking-service-context" value="${_esc(activeIssues.join(", "))}" />
       <input type="hidden" id="booking-category-context" value="${_esc(activeCategory)}" />
@@ -1778,7 +1787,6 @@ function _vendorCardHTML(service, support = false) {
   const meta = _categoryMeta(service.category_slug || service.slug || service.category || _activeCategory);
   const localityContext = _resolvedLocality();
   const name = service.vendor_name || service.name || "Worker available after confirmation";
-  const price = _servicePriceLabel(service);
   const rating = service.rating && service.rating_is_verified ? service.rating : "";
   const locality = service.locality || service.vendor_locality || service.area || localityContext.label;
   const exp = service.experience || "";

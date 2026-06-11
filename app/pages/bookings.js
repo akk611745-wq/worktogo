@@ -111,7 +111,7 @@ window.BookingsPage = (() => {
           <div class="booking-detail">
             <div class="item-row muted small"><span>Category: ${_esc(b.category_label || b.category_name || b.service_name || "Service")}</span></div>
             ${b.issue_summary ? `<div class="item-row muted small"><span>Issues: ${_esc(b.issue_summary)}</span></div>` : issues.length ? `<div class="item-row muted small"><span>Issues: ${_esc(issues.join(", "))}</span></div>` : b.subservice ? `<div class="item-row muted small"><span>Service: ${_esc(b.subservice)}</span></div>` : ""}
-            ${b.locality ? `<div class="item-row muted small"><span>Area routing: ${_esc(b.locality)}${b.city ? ` · ${_esc(b.city)}` : ""}${b.locality_source ? ` · ${_esc(_localitySourceLabel(b.locality_source))}` : ""}</span></div>` : ""}
+            ${b.locality ? `<div class="item-row muted small"><span>Area: ${_esc(b.locality)}${b.city ? ` · ${_esc(b.city)}` : ""}</span></div>` : ""}
             <div class="item-row muted small"><span>Mode: ${_esc(_modeLabel(b.booking_mode))}</span></div>
             <div class="item-row muted small"><span>Now: ${_esc(state.label)}</span></div>
             <div class="item-row muted small"><span>Next: ${_esc(state.next)}</span></div>
@@ -129,7 +129,7 @@ window.BookingsPage = (() => {
               <span>Payment: ${_esc(_paymentLabel(b.payment_method || "cod", b.payment_status, b.booking_mode))}</span>
             </div>
             <div class="item-row muted small">
-              <span>ID: ${_esc(String(b.id || "—"))}</span>
+              <span>ID: ${_esc(b.booking_number ? String(b.booking_number) : (b.id ? `#${b.id}` : "—"))}</span>
             </div>
             <div class="item-row muted small">
               <button class="btn-text-inline" onclick="event.stopPropagation(); BookingsPage.openSupport('${_esc(String(b.id || ""))}')">Get booking help</button>

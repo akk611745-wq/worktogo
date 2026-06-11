@@ -58,7 +58,7 @@ export async function render(container) {
           <div class="menu-item" onclick="UI.openSupport('selector')">
             <div class="menu-icon">💬</div>
             <div class="menu-body">
-              <span>Operational support</span>
+              <span>Help &amp; Support</span>
               <p class="menu-sub">Help with booking ID, worker timing or saved details</p>
             </div>
             <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
@@ -74,6 +74,7 @@ export async function render(container) {
             <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
           </div>` : ""}
 
+          ${!AUTH.hasRole(CONFIG.ROLES.VENDOR) ? `
           <div class="menu-item" onclick="VendorApplyModal.show()">
             <div class="menu-icon">🔧</div>
             <div class="menu-body">
@@ -81,7 +82,7 @@ export async function render(container) {
               <p class="menu-sub">Register to receive service jobs</p>
             </div>
             <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
-          </div>
+          </div>` : ""}
 
           <div class="menu-item danger" onclick="AccountPage.logout()">
             <div class="menu-icon">🚪</div>
@@ -119,7 +120,7 @@ window.AccountPage = {
             style="display:block;width:100%;margin-top:4px;padding:10px 12px;border:1.5px solid var(--clr-border);border-radius:8px;font-size:15px;background:var(--clr-surface-2);color:var(--clr-text-1);box-sizing:border-box"/>
         </label>
         <div style="display:flex;gap:10px">
-          <button onclick="AccountPage.saveProfile()"
+          <button id="save-profile-btn" onclick="AccountPage.saveProfile()"
             style="flex:1;padding:11px;border-radius:8px;border:none;background:var(--clr-accent);color:#fff;font-size:15px;font-weight:600;cursor:pointer">Save</button>
           <button onclick="AccountPage._rerender()"
             style="flex:1;padding:11px;border-radius:8px;border:1px solid var(--clr-border);background:transparent;color:var(--clr-text-1);font-size:15px;cursor:pointer">Cancel</button>
@@ -135,7 +136,7 @@ window.AccountPage = {
       return;
     }
 
-    const btn = document.querySelector('.profile-edit-form .btn-primary');
+    const btn = document.getElementById('save-profile-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
 
     const payload = {};
