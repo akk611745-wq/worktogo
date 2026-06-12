@@ -309,6 +309,11 @@ if ($method === 'PATCH' && $uri === '/api/vendor/profile') {
     $description = array_key_exists('description', $input) ? trim((string)$input['description']) : null;
     $categoryId  = array_key_exists('category_id', $input) ? (int)$input['category_id'] : null;
     $logoUrl     = array_key_exists('logo_url', $input)    ? trim((string)$input['logo_url'])    : null;
+    $localities  = null;
+    if (array_key_exists('service_localities', $input)) {
+        $raw        = $input['service_localities'];
+        $localities = is_array($raw) ? json_encode($raw, JSON_UNESCAPED_UNICODE) : trim((string)$raw);
+    }
 
     if ($name === '') Response::validation('Name is required');
 
@@ -329,6 +334,10 @@ if ($method === 'PATCH' && $uri === '/api/vendor/profile') {
     if ($logoUrl !== null && ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'logo_url')) {
         $vendorSets[]   = 'logo_url = ?';
         $vendorParams[] = $logoUrl ?: null;
+    }
+    if ($localities !== null && ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'service_localities')) {
+        $vendorSets[]   = 'service_localities = ?';
+        $vendorParams[] = $localities ?: null;
     }
     $vendorParams[] = $userId;
 
