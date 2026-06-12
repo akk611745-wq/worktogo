@@ -87,9 +87,15 @@ function renderPage(user) {
               <label for="ePhone">Phone Number</label>
               <input type="tel" id="ePhone" placeholder="+91 XXXXX XXXXX"/>
             </div>
-            <div class="field">
-              <label for="eCategory">Category</label>
-              <select id="eCategory"><option value="">— Select category —</option></select>
+            <div class="field" style="grid-column:1/-1">
+              <label>Category (sab select karo jo laagu ho)</label>
+              <div id="cat-chips-container" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;min-height:36px;"></div>
+              <input type="hidden" id="eCategoryIds" value="[]">
+            </div>
+            <div class="field" style="grid-column:1/-1">
+              <label>Aap kahan kaam karte hain? (service areas)</label>
+              <div id="area-chips-container" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;min-height:36px;"></div>
+              <input type="hidden" id="eServiceLocalities" value="[]">
             </div>
             <div class="field">
               <label for="eLogoUrl">Photo URL</label>
@@ -199,17 +205,78 @@ function populateProfile(p) {
   document.getElementById("eDescription").value = p.description || '';
   document.getElementById("eLogoUrl").value      = p.logo_url    || '';
   populateCategorySelect();
+  const _initAreas = (() => { try { return JSON.parse(p.service_localities || '[]'); } catch (_) { return []; } })();
+  renderAreaChips(_initAreas);
+}
+
+const WTG_AREAS = [
+  "Mukhani","Kathgodam","Dahariya","Tikonia",
+  "Lalkuan","Haldwani City","Bazpur Road",
+  "Transport Nagar","Bhotia Parao"
+];
+
+function _applyChipStyle(chip, selected) {
+  chip.dataset.selected = selected ? 'true' : 'false';
+  chip.style.cssText = 'display:inline-flex;align-items:center;padding:6px 14px;border-radius:20px;font-size:0.8rem;cursor:pointer;transition:all 0.15s;user-select:none;' +
+    (selected
+      ? 'background:#FF6B35;color:#fff;border:1px solid #FF6B35;'
+      : 'background:#F5F5F5;color:#374151;border:1px solid #E5E7EB;');
+}
+
+function _syncAreaHidden() {
+  const container = document.getElementById("area-chips-container");
+  const hidden    = document.getElementById("eServiceLocalities");
+  if (!container || !hidden) return;
+  hidden.value = JSON.stringify(
+    Array.from(container.querySelectorAll('[data-selected="true"]')).map(c => c.textContent)
+  );
+}
+
+function _syncCategoryHidden() {
+  const container = document.getElementById("cat-chips-container");
+  const hidden    = document.getElementById("eCategoryIds");
+  if (!container || !hidden) return;
+  hidden.value = JSON.stringify(
+    Array.from(container.querySelectorAll('[data-selected="true"]')).map(c => c.dataset.id)
+  );
+}
+
+function renderAreaChips(selectedAreas) {
+  const container = document.getElementById("area-chips-container");
+  if (!container) return;
+  container.innerHTML = '';
+  WTG_AREAS.forEach(area => {
+    const chip = document.createElement('span');
+    chip.textContent = area;
+    _applyChipStyle(chip, selectedAreas.includes(area));
+    chip.addEventListener('click', () => {
+      _applyChipStyle(chip, chip.dataset.selected !== 'true');
+      _syncAreaHidden();
+    });
+    container.appendChild(chip);
+  });
+  _syncAreaHidden();
 }
 
 function populateCategorySelect() {
-  const sel = document.getElementById("eCategory");
-  if (!sel || !categoriesCache.length) return;
-  const current = profileData?.category_id;
-  sel.innerHTML = '<option value="">— Select category —</option>' +
-    categoriesCache
-      .filter(c => (c.status === 'active' || c.status == null))
-      .map(c => `<option value="${c.id}"${String(c.id) === String(current) ? ' selected' : ''}>${escHtml(c.name)}</option>`)
-      .join('');
+  const container = document.getElementById("cat-chips-container");
+  if (!container || !categoriesCache.length) return;
+  const currentIds = profileData?.category_id ? [String(profileData.category_id)] : [];
+  container.innerHTML = '';
+  categoriesCache
+    .filter(c => c.status === 'active' || c.status == null)
+    .forEach(c => {
+      const chip = document.createElement('span');
+      chip.dataset.id = String(c.id);
+      chip.textContent = escHtml(c.name);
+      _applyChipStyle(chip, currentIds.includes(String(c.id)));
+      chip.addEventListener('click', () => {
+        _applyChipStyle(chip, chip.dataset.selected !== 'true');
+        _syncCategoryHidden();
+      });
+      container.appendChild(chip);
+    });
+  _syncCategoryHidden();
 }
 
 /* ── Edit mode ────────────────────────────────────────────── */
@@ -217,12 +284,13 @@ function populateCategorySelect() {
 async function enableEdit() {
   document.getElementById("viewMode").style.display = 'none';
   document.getElementById("editMode").style.display = 'block';
-  // If categories failed to load on page load, try once more
   if (!categoriesCache.length) {
     const catRes = await API.Categories.list();
     categoriesCache = catRes.data?.data?.categories || catRes.data?.categories || [];
   }
   populateCategorySelect();
+  const _editAreas = (() => { try { return JSON.parse(profileData?.service_localities || '[]'); } catch (_) { return []; } })();
+  renderAreaChips(_editAreas);
 }
 
 function cancelEdit() {
@@ -237,7 +305,9 @@ async function saveProfile() {
   const phone       = document.getElementById("ePhone").value.trim();
   const description = document.getElementById("eDescription").value.trim();
   const logo_url    = document.getElementById("eLogoUrl").value.trim();
-  const category_id = parseInt(document.getElementById("eCategory").value) || null;
+  const _catIds     = (() => { try { return JSON.parse(document.getElementById("eCategoryIds").value || '[]'); } catch (_) { return []; } })();
+  const category_id = _catIds.length ? (parseInt(_catIds[0]) || null) : null;
+  const service_localities = document.getElementById("eServiceLocalities").value || '[]';
 
   if (!name) { showToast("Name is required.", "warning"); return; }
 
@@ -245,7 +315,7 @@ async function saveProfile() {
   btn.disabled    = true;
   btn.textContent = "Saving…";
 
-  const payload = { name, phone, description, logo_url, category_id };
+  const payload = { name, phone, description, logo_url, category_id, service_localities };
   const res = await API.Profile.update(payload);
 
   btn.disabled    = false;
