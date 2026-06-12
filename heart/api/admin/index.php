@@ -72,12 +72,37 @@ try {
             $svc_revenue            = 0;
         }
 
+        // --- MISSING FIELDS: vendor rejections, reviews pending, inspections, follow-up ---
+        try {
+            $stmt = $db->query("SELECT COUNT(*) FROM jobs WHERE status='rejected' AND DATE(updated_at) = CURDATE()");
+            $vendor_rejections = (int)$stmt->fetchColumn();
+        } catch(Exception $e) { $vendor_rejections = 0; }
+
+        try {
+            $stmt = $db->query("SELECT COUNT(*) FROM bookings WHERE status='completed' AND (review_status IS NULL OR review_status='')");
+            $reviews_pending = (int)$stmt->fetchColumn();
+        } catch(Exception $e) { $reviews_pending = 0; }
+
+        try {
+            $stmt = $db->query("SELECT COUNT(*) FROM bookings WHERE booking_mode IN ('inspection','paid_inspection') AND DATE(created_at) = CURDATE()");
+            $inspections_today = (int)$stmt->fetchColumn();
+        } catch(Exception $e) { $inspections_today = 0; }
+
+        try {
+            $stmt = $db->query("SELECT COUNT(*) FROM bookings WHERE vendor_id IS NULL AND status NOT IN ('completed','cancelled') AND created_at < DATE_SUB(NOW(), INTERVAL 15 MINUTE)");
+            $followup_urgent = (int)$stmt->fetchColumn();
+        } catch(Exception $e) { $followup_urgent = 0; }
+
         $service_stats = [
             'total_service_bookings_today' => (int)($svc_total_today ?: 0),
             'completed_today'              => (int)($svc_completed_today ?: 0),
             'pending_assignment'           => (int)($svc_pending_assignment ?: 0),
             'in_progress'                  => (int)($svc_in_progress ?: 0),
             'total_revenue_services'       => (float)($svc_revenue ?: 0),
+            'vendor_rejections_today'      => $vendor_rejections,
+            'reviews_pending'              => $reviews_pending,
+            'inspections_today'            => $inspections_today,
+            'followup_urgent'              => $followup_urgent,
         ];
 
         // --- FINANCE ---
@@ -1330,7 +1355,19 @@ try {
         $stmt->execute();
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $bookings = array_map(static function (array $b): array {
+        // Fetch vendor eligibility data (category_id + service_localities) for the map below
+        $vendorRows = [];
+        try {
+            $hasLocCol = (int)$db->query(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vendors' AND COLUMN_NAME = 'service_localities'"
+            )->fetchColumn() > 0;
+            $locSel = $hasLocCol ? ', v.service_localities' : ", '' AS service_localities";
+            $vrStmt = $db->query("SELECT v.id, v.category_id{$locSel} FROM vendors v WHERE v.status = 'active'");
+            $vendorRows = $vrStmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $ignored) {}
+
+        $bookings = array_map(function (array $b) use ($vendorRows): array {
             $reqId    = $b['request_id'] ?? ('REQ-' . str_pad((string) $b['id'], 6, '0', STR_PAD_LEFT));
             $catLabel = $b['category_name'] ?? $b['category_slug'] ?? $b['service_name'] ?? 'Service';
             $assigned = $b['assignment_state'] ?? ($b['vendor_id'] ? 'worker_assigned' : 'unassigned_searching');
@@ -1358,7 +1395,42 @@ try {
                     'created_at'   => $b['created_at'] ?? null,
                 ],
             ];
-            $b['vendor_eligibility'] = ['vendors' => [], 'eligible_count' => 0, 'booking_locality' => $b['locality'] ?? ''];
+            // Build real vendor eligibility: category + locality match per vendor
+            $bookingCategoryId = (int)($b['svc_category_id'] ?? $b['category_id'] ?? 0);
+            $bookingLocality   = strtolower(trim($b['locality'] ?? $b['customer_locality'] ?? ''));
+            $eligibleVendors   = [];
+            $eligibleCount     = 0;
+            foreach ($vendorRows as $vr) {
+                $vid            = (int)$vr['id'];
+                $vendorCatId    = (int)($vr['category_id'] ?? 0);
+                $vendorLocRaw   = $vr['service_localities'] ?? '';
+                $categoryMatch  = $bookingCategoryId > 0 && $vendorCatId === $bookingCategoryId;
+                $areaMatch      = false;
+                if ($bookingLocality !== '' && $vendorLocRaw !== '') {
+                    $areaMatch = stripos($vendorLocRaw, $bookingLocality) !== false
+                              || stripos($bookingLocality, strtolower(trim($vendorLocRaw))) !== false;
+                }
+                $assignable = $categoryMatch && ($bookingLocality === '' || $areaMatch);
+                if ($categoryMatch && $areaMatch) {
+                    $reason = 'Perfect match';
+                } elseif (!$categoryMatch) {
+                    $reason = 'Wrong category';
+                } else {
+                    $reason = 'Different area';
+                }
+                if ($assignable) $eligibleCount++;
+                $eligibleVendors[] = [
+                    'vendor_id'          => $vid,
+                    'eligibility'        => [
+                        'assignable'      => $assignable,
+                        'category_match'  => $categoryMatch,
+                        'area_match'      => $areaMatch,
+                        'reason'          => $reason,
+                    ],
+                    'service_localities' => $vendorLocRaw,
+                ];
+            }
+            $b['vendor_eligibility'] = ['vendors' => $eligibleVendors, 'eligible_count' => $eligibleCount, 'booking_locality' => $bookingLocality];
             return $b;
         }, $rows);
 
