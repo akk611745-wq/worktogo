@@ -223,6 +223,7 @@ if ($method === 'GET' && $uri === '/api/vendor/jobs') {
 
     $stmt = $db->prepare(
         "SELECT j.*, b.booking_number, b.scheduled_at, b.notes AS booking_notes,
+                b.address AS customer_address, b.locality AS customer_locality,
                 s.name AS service_name, u.name AS customer_name, u.phone AS customer_phone
          FROM jobs j
          LEFT JOIN bookings b ON b.id = j.booking_id
