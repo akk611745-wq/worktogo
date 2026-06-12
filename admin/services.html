@@ -364,6 +364,27 @@
 <script>
 Shell.init({ title: 'Service Control', active: 'services.html' });
 
+(function () {
+  const filterParam = new URLSearchParams(window.location.search).get('filter');
+  if (!filterParam) return;
+  if (filterParam === 'unassigned') {
+    const el = document.getElementById('ops-assignment');
+    if (el) el.value = 'unassigned_searching';
+  }
+  if (filterParam === 'inspection') {
+    const el = document.getElementById('ops-lifecycle');
+    if (el) el.value = 'inspection_queued';
+  }
+  if (filterParam === 'completed') {
+    const el = document.getElementById('ops-lifecycle');
+    if (el) el.value = 'completed';
+  }
+  if (filterParam === 'payment') {
+    const el = document.getElementById('ops-lifecycle');
+    if (el) el.value = 'payment_pending';
+  }
+})();
+
 let currentPage = 1, totalPages = 1;
 let bookingPage = 1, bookingTotalPages = 1;
 let serviceVendors = [];
