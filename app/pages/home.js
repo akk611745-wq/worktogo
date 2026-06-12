@@ -1305,6 +1305,114 @@ window.VendorCards = (function () {
   return { toggleExpand, toggleIssue, submitInlineBooking };
 })();
 
+// ── Bottom Sheet Booking System ───────────────────────────────────────────────
+
+window.WtgSheet = (function () {
+  let _vendors = [];
+  let _overlay = null;
+  let _sheet = null;
+
+  function _ensureDOM() {
+    if (_overlay) return;
+    _overlay = document.createElement('div');
+    _overlay.className = 'wtg-sheet-overlay';
+    _overlay.onclick = function (e) { if (e.target === _overlay) close(); };
+    _sheet = document.createElement('div');
+    _sheet.className = 'wtg-sheet';
+    _overlay.appendChild(_sheet);
+    document.body.appendChild(_overlay);
+  }
+
+  function setVendors(list) { _vendors = list || []; }
+
+  function open(id) {
+    _ensureDOM();
+    const s = _vendors.find(v => String(v.id || v.vendor_id) === String(id));
+    if (!s) return;
+
+    const name = s.vendor_name || s.name || 'Vendor';
+    const cat  = s.category || s.category_name || s.category_slug || '';
+    const svcs = Array.isArray(s.vendor_services) ? s.vendor_services
+      : Array.isArray(s.services) ? s.services : [];
+    const svcNames = svcs.map(x => typeof x === 'string' ? x : x.name || x.label || '').filter(Boolean);
+
+    let savedPhone = '', savedAddress = '';
+    try { savedPhone   = localStorage.getItem('wtg_user_phone')   || ''; } catch {}
+    try { savedAddress = localStorage.getItem('wtg_user_address') || ''; } catch {}
+
+    const safeId = String(id).replace(/['"\\]/g, '');
+    const chipsHTML = svcNames.map((n, i) =>
+      `<button type="button" class="wtg-issue-chip${i === 0 ? ' sel' : ''}" onclick="WtgSheet.toggleChip(this)">${UI.escapeHtml(n)}</button>`
+    ).join('');
+
+    _sheet.innerHTML = `
+      <div class="wtg-sheet-handle"></div>
+      <div class="wtg-sheet-vendor">${UI.escapeHtml(name)}</div>
+      ${cat ? `<div class="wtg-sheet-cat">${UI.escapeHtml(cat)}</div>` : ''}
+      ${chipsHTML ? `<div class="wtg-sheet-label">Select issue</div><div class="wtg-sheet-issue-chips">${chipsHTML}</div>` : ''}
+      <div class="wtg-sheet-label">Mobile number</div>
+      <input id="wtg-sh-phone" class="wtg-sheet-input" type="tel"
+        placeholder="10-digit mobile number" autocomplete="tel"
+        value="${UI.escapeHtml(savedPhone)}">
+      <div class="wtg-sheet-label">Address</div>
+      <textarea id="wtg-sh-addr" class="wtg-sheet-input" rows="2"
+        placeholder="House / street / landmark"
+        style="resize:vertical">${UI.escapeHtml(savedAddress)}</textarea>
+      <div class="wtg-sheet-label">Describe your problem
+        <span style="font-weight:400;color:#aaa">(optional)</span></div>
+      <textarea id="wtg-sh-note" class="wtg-sheet-input" rows="2"
+        placeholder="Any extra details" style="resize:vertical"></textarea>
+      <button class="wtg-sheet-submit"
+        onclick="WtgSheet.submit('${safeId}')">CONFIRM BOOKING</button>
+    `;
+
+    _overlay.classList.add('open');
+    requestAnimationFrame(() => _sheet.classList.add('open'));
+  }
+
+  function close() {
+    if (!_overlay) return;
+    _sheet.classList.remove('open');
+    setTimeout(() => _overlay.classList.remove('open'), 300);
+  }
+
+  function toggleChip(btn) { btn && btn.classList.toggle('sel'); }
+
+  function submit(vendorId) {
+    if (!_sheet) return;
+    const phone = (_sheet.querySelector('#wtg-sh-phone')?.value || '').trim();
+    const addr  = (_sheet.querySelector('#wtg-sh-addr')?.value  || '').trim();
+    const note  = (_sheet.querySelector('#wtg-sh-note')?.value  || '').trim();
+    const selected = [..._sheet.querySelectorAll('.wtg-issue-chip.sel')]
+      .map(c => c.textContent.trim()).join(', ');
+
+    const digits = phone.replace(/\D/g, '');
+    if (!digits || digits.length !== 10 || !/^[6-9]/.test(digits)) {
+      UI.toast('Please enter a valid 10-digit mobile number', 'error');
+      _sheet.querySelector('#wtg-sh-phone')?.focus();
+      return;
+    }
+    if (!addr) {
+      UI.toast('Please enter your address', 'error');
+      _sheet.querySelector('#wtg-sh-addr')?.focus();
+      return;
+    }
+
+    const svc = _vendors.find(v => String(v.id || v.vendor_id) === String(vendorId))
+      || { id: vendorId, vendor_id: vendorId, request_source: 'worker_card' };
+
+    if (window.HomeModals && HomeModals.prepareVendorDirectSubmit) {
+      HomeModals.prepareVendorDirectSubmit(
+        svc,
+        { phone: digits, issues: selected, address: addr, notes: note, name: '' }
+      );
+    }
+    close();
+  }
+
+  return { setVendors, open, close, toggleChip, submit };
+})();
+
 async function _handleInspectionCheckout(booking, bookingMode, payload = {}) {
   const paymentData = booking?.payment_data || booking?.paymentData || null;
   const bookingId = booking?.booking_id || booking?.id || paymentData?.booking_id || null;
@@ -1609,6 +1717,7 @@ function _renderServices(res) {
   el.classList.remove("fallback-services-grid");
 
   el.innerHTML = list.map(s => _vendorCardHTML(s)).join("");
+  if (window.WtgSheet) WtgSheet.setVendors(list);
 }
 
 async function _loadPilotConfig() {
@@ -1929,91 +2038,110 @@ function _proofMatches(item) {
   return `${item.title || ""} ${item.note || ""}`.toLowerCase().includes(_activeChipFilter);
 }
 
-function _vendorCardHTML(service, support = false) {
-  if (!document.getElementById("wtg-vc-styles")) {
-    const _s = document.createElement("style");
-    _s.id = "wtg-vc-styles";
-    _s.textContent = [
-      ".wtg-vendor-card{background:#fff;border-radius:16px;padding:16px;margin:0 0 12px 0;box-shadow:0 2px 8px rgba(0,0,0,.08);width:100%;box-sizing:border-box}",
-      ".vc-avatar{width:48px;height:48px;border-radius:50%;background:#FF6B35;color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex-shrink:0}",
-      ".vc-pill{display:inline-block;padding:4px 10px;border-radius:20px;font-size:12px;background:#F5F5F5;color:#444;margin:2px 3px 2px 0}",
-      ".vc-book-btn{width:100%;padding:14px;background:#FF6B35;color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:700;margin-top:12px;cursor:pointer;display:block}",
-      ".vc-expand{border-top:1px solid #f0f0f0;margin-top:12px;padding-top:12px}",
-      ".vc-issue-chip{padding:8px 14px;border-radius:20px;border:1.5px solid #ddd;background:#fff;margin:4px;cursor:pointer;font-size:13px}",
-      ".vc-issue-chip.active,.vc-issue-chip.selected{border-color:#FF6B35;background:#FFF3EF;color:#FF6B35}",
-    ].join("");
-    document.head.appendChild(_s);
+function _vendorCardHTML(s) {
+  if (!document.getElementById('wtg-vc-styles')) {
+    const st = document.createElement('style');
+    st.id = 'wtg-vc-styles';
+    st.textContent = `
+      .wtg-vc { background:#fff; border-radius:16px;
+        padding:16px; margin:0 0 12px 0;
+        box-shadow:0 2px 12px rgba(0,0,0,0.08); width:100%; }
+      .wtg-vc-top { display:flex; align-items:center; gap:12px; }
+      .wtg-vc-avatar { width:48px; height:48px; border-radius:50%;
+        background:#FF6B35; color:#fff; display:flex;
+        align-items:center; justify-content:center;
+        font-size:20px; font-weight:700; flex-shrink:0;
+        overflow:hidden; }
+      .wtg-vc-avatar img { width:100%; height:100%; object-fit:cover; }
+      .wtg-vc-info { flex:1; }
+      .wtg-vc-name { font-size:16px; font-weight:700; color:#1a1a1a; }
+      .wtg-vc-meta { font-size:13px; color:#888; margin-top:2px; }
+      .wtg-vc-avail { width:10px; height:10px; border-radius:50%;
+        background:#22c55e; flex-shrink:0; }
+      .wtg-vc-chips { display:flex; flex-wrap:wrap; gap:6px;
+        margin-top:10px; }
+      .wtg-vc-chip { padding:5px 12px; border-radius:20px;
+        background:#F5F5F5; color:#555; font-size:12px; }
+      .wtg-vc-book { width:100%; margin-top:14px; padding:14px;
+        background:#FF6B35; color:#fff; border:none;
+        border-radius:12px; font-size:16px; font-weight:700;
+        cursor:pointer; letter-spacing:0.3px; }
+
+      /* Bottom Sheet */
+      .wtg-sheet-overlay { position:fixed; inset:0;
+        background:rgba(0,0,0,0.45); z-index:1000;
+        display:none; }
+      .wtg-sheet-overlay.open { display:block; }
+      .wtg-sheet { position:fixed; bottom:0; left:0; right:0;
+        background:#fff; border-radius:20px 20px 0 0;
+        padding:20px; z-index:1001; max-height:85vh;
+        overflow-y:auto; transform:translateY(100%);
+        transition:transform 0.3s ease; }
+      .wtg-sheet.open { transform:translateY(0); }
+      .wtg-sheet-handle { width:40px; height:4px;
+        background:#ddd; border-radius:2px;
+        margin:0 auto 16px; }
+      .wtg-sheet-vendor { font-size:17px; font-weight:700;
+        color:#1a1a1a; margin-bottom:4px; }
+      .wtg-sheet-cat { font-size:13px; color:#FF6B35;
+        margin-bottom:16px; }
+      .wtg-sheet-label { font-size:13px; font-weight:600;
+        color:#555; margin:14px 0 8px; }
+      .wtg-sheet-issue-chips { display:flex; flex-wrap:wrap; gap:8px; }
+      .wtg-issue-chip { padding:8px 14px; border-radius:20px;
+        border:1.5px solid #e0e0e0; background:#fff;
+        font-size:13px; cursor:pointer; color:#444; }
+      .wtg-issue-chip.sel { border-color:#FF6B35;
+        background:#FFF3EF; color:#FF6B35; font-weight:600; }
+      .wtg-sheet-input { width:100%; padding:12px 14px;
+        border:1.5px solid #e0e0e0; border-radius:10px;
+        font-size:14px; box-sizing:border-box; margin-top:0; }
+      .wtg-sheet-submit { width:100%; margin-top:20px;
+        padding:16px; background:#FF6B35; color:#fff;
+        border:none; border-radius:12px; font-size:16px;
+        font-weight:700; cursor:pointer; }
+    `;
+    document.head.appendChild(st);
   }
-  const meta = _categoryMeta(service.category_slug || service.slug || service.category || _activeCategory);
-  const name = service.vendor_name || service.name || "Worker";
-  const photo = service.image || service.photo || "";
-  const rating = service.rating && service.rating_is_verified ? Number(service.rating).toFixed(1) : "";
-  const jobsDone = service.jobs_done || service.completed_jobs || service.jobs_count || "";
-  const availableToday = Boolean(service.available_today);
-  const initial = (name[0] || "W").toUpperCase();
-  const id = String(service.id || _slug(name));
-  const svcAttr = _jsonAttr({ ...service, request_source: "worker_card", category_slug: service.category_slug || service.slug || _activeCategory, icon: service.icon || meta.icon });
-  const allAreas = (Array.isArray(service.service_localities) && service.service_localities.length
-    ? service.service_localities
-    : [service.locality || service.vendor_locality || service.area].filter(Boolean)
-  ).map(String).filter(Boolean);
-  const cardAreas = allAreas.slice(0, 4);
-  const rawSvcs = Array.isArray(service.vendor_services) && service.vendor_services.length
-    ? service.vendor_services
-    : Array.isArray(service.services) && service.services.length ? service.services : meta.examples || [];
-  const allSvcNames = rawSvcs.map(s => typeof s === "string" ? s : s.name || s.label || "").filter(Boolean);
-  const cardSvcs = allSvcNames.slice(0, 3);
-  const extraCount = Math.max(0, allSvcNames.length - 3);
-  let savedPhone = "";
-  let savedAddress = "";
-  try { savedPhone = localStorage.getItem("wtg_user_phone") || ""; } catch {}
-  try { savedAddress = localStorage.getItem("wtg_user_address") || ""; } catch {}
-  const eid = _esc(id);
+
+  const id = s.id || s.vendor_id;
+  const name = s.vendor_name || s.name || 'Vendor';
+  const initial = name.charAt(0).toUpperCase();
+  const photo = s.image || s.photo || '';
+  const jobs = s.jobs_done || s.completed_jobs || s.jobs_count || 0;
+  const rating = (s.rating_is_verified && s.rating)
+    ? `⭐ ${parseFloat(s.rating).toFixed(1)}` : '';
+  const meta = [rating, jobs ? `${jobs} jobs` : ''].filter(Boolean).join(' · ');
+  const available = s.available_today;
+
+  const svcs = Array.isArray(s.vendor_services) ? s.vendor_services
+    : Array.isArray(s.services) ? s.services : [];
+  const svcNames = svcs.map(x => x.name || x).filter(Boolean);
+  const extra = svcNames.length > 3 ? `+${svcNames.length - 3} more` : '';
+  const chipHTML = svcNames.slice(0, 3)
+    .map(n => `<span class="wtg-vc-chip">${_esc(n)}</span>`).join('')
+    + (extra ? `<span class="wtg-vc-chip">${extra}</span>` : '');
+
+  const avatarInner = photo
+    ? `<img src="${_esc(photo)}" alt="${_esc(name)}">`
+    : _esc(initial);
+
   return `
-<article class="wtg-vendor-card" id="vc-${eid}">
-  <div style="display:flex;gap:12px;align-items:flex-start;cursor:pointer" onclick="VendorCards.toggleExpand('${eid}')">
-    ${photo
-      ? `<img src="${_esc(photo)}" alt="${_esc(name)}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0" loading="lazy"/>`
-      : `<div class="vc-avatar">${_esc(initial)}</div>`}
-    <div style="flex:1;min-width:0">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <strong style="font-size:15px">${_esc(name)}</strong>
-        ${availableToday ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#22c55e;font-weight:600"><span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block"></span>Available</span>` : ""}
-      </div>
-      ${rating || jobsDone ? `<div style="font-size:13px;color:#666;margin-top:2px">${rating ? `⭐ ${_esc(String(rating))}` : ""}${rating && jobsDone ? " · " : ""}${jobsDone ? `${_esc(String(jobsDone))} jobs` : ""}</div>` : ""}
-      ${cardAreas.length ? `<div style="margin-top:6px">${cardAreas.map(a => `<span class="vc-pill">${_esc(a)}</span>`).join("")}</div>` : ""}
-      ${cardSvcs.length ? `<div style="margin-top:4px">${cardSvcs.map(s => `<span class="vc-pill">${_esc(s)}</span>`).join("")}${extraCount ? `<span class="vc-pill">+${extraCount} more</span>` : ""}</div>` : ""}
-    </div>
-  </div>
-  <button class="vc-book-btn" onclick="VendorCards.toggleExpand('${eid}')">BOOK NOW ▾</button>
-  <div id="vc-expand-${eid}" class="vc-expand" style="display:none">
-    ${allAreas.length ? `<div style="margin-bottom:8px">${allAreas.map(a => `<span class="vc-pill">${_esc(a)}</span>`).join("")}</div>` : ""}
-    <hr style="border:none;border-top:1px solid #f0f0f0;margin:10px 0">
-    <div>
-      <div style="margin-bottom:10px">
-        <label style="font-size:13px;font-weight:600;color:#333;display:block;margin-bottom:4px">Mobile</label>
-        <input type="tel" id="vdf-mobile-${eid}" style="width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:10px;font-size:15px;box-sizing:border-box" placeholder="10-digit mobile number" autocomplete="tel" value="${_esc(savedPhone)}" />
-      </div>
-      <div style="margin-bottom:10px">
-        <label style="font-size:13px;font-weight:600;color:#333;display:block;margin-bottom:4px">Select issue</label>
-        <div id="vdf-issues-${eid}">
-          ${allSvcNames.map((issue, i) => `<button type="button" class="vc-issue-chip vendor-issue-chip${i === 0 ? " active" : ""}" onclick="VendorCards.toggleIssue(this,'${eid}')">${_esc(issue)}</button>`).join("")}
+    <div class="wtg-vc" id="vc-${_esc(String(id))}">
+      <div class="wtg-vc-top">
+        <div class="wtg-vc-avatar">${avatarInner}</div>
+        <div class="wtg-vc-info">
+          <div class="wtg-vc-name">${_esc(name)}</div>
+          ${meta ? `<div class="wtg-vc-meta">${_esc(meta)}</div>` : ''}
         </div>
-        <input type="hidden" id="vdf-issues-val-${eid}" value="${_esc(allSvcNames[0] || "")}" />
+        ${available ? '<div class="wtg-vc-avail"></div>' : ''}
       </div>
-      <div style="margin-bottom:10px">
-        <label style="font-size:13px;font-weight:600;color:#333;display:block;margin-bottom:4px">Address</label>
-        <textarea id="vdf-address-${eid}" style="width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:10px;font-size:14px;box-sizing:border-box;resize:vertical" rows="2" placeholder="House / street / landmark">${_esc(savedAddress)}</textarea>
-      </div>
-      <div style="margin-bottom:12px">
-        <label style="font-size:13px;font-weight:600;color:#333;display:block;margin-bottom:4px">Describe your problem <span style="font-weight:400;color:#888">(optional)</span></label>
-        <textarea id="vdf-notes-${eid}" style="width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:10px;font-size:14px;box-sizing:border-box;resize:vertical" rows="2" placeholder="Describe your problem (optional)"></textarea>
-      </div>
-      <input type="hidden" id="vdf-name-${eid}" value="" />
-      <button class="vc-book-btn" style="margin-top:0" onclick="VendorCards.submitInlineBooking('${eid}', ${svcAttr})">REQUEST SERVICE</button>
-    </div>
-  </div>
-</article>`;
+      ${chipHTML ? `<div class="wtg-vc-chips">${chipHTML}</div>` : ''}
+      <button class="wtg-vc-book"
+        onclick="WtgSheet.open('${_esc(String(id))}')">
+        BOOK NOW
+      </button>
+    </div>`;
 }
 
 function _renderInstantSearch() {
