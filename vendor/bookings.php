@@ -216,6 +216,8 @@ function renderBookingRows(list) {
     return '<div class="card" style="border:1px solid var(--border);"><div class="card-body" style="display:grid;gap:0.45rem;">' +
       '<div style="display:flex;justify-content:space-between;gap:0.5rem;align-items:flex-start"><div><div class="fw-bold">#' + id + ' · ' + escHtml(b.service_name || b.service?.name || 'Service') + '</div><div class="text-muted text-sm">' + fmtDateTime(b.booking_date || b.date || b.scheduled_at) + '</div></div>' + _chip(status) + '</div>' +
       '<div class="text-sm"><strong>Customer:</strong> ' + escHtml(b.customer_name || b.user?.name || '—') + ' · ' + escHtml(b.customer_phone || b.user?.phone || '—') + '</div>' +
+      (b.customer_locality ? '<div style="font-size:13px;color:#666;margin-top:2px;">📍 ' + escHtml(b.customer_locality) + '</div>' : '') +
+      ((b.customer_phone || b.customer_mobile) ? '<div style="display:flex;gap:8px;margin-top:8px;"><a href="https://wa.me/' + _e164(b.customer_phone || b.customer_mobile || '') + '" target="_blank" rel="noopener noreferrer" style="flex:1;padding:8px;background:#25D366;color:#fff;border-radius:8px;text-align:center;text-decoration:none;font-size:13px;font-weight:600;">WhatsApp</a><a href="tel:+' + _e164(b.customer_phone || b.customer_mobile || '') + '" style="flex:1;padding:8px;background:#FF6B35;color:#fff;border-radius:8px;text-align:center;text-decoration:none;font-size:13px;font-weight:600;">Call</a></div>' : '') +
       (cleanNotes(b.notes) ? '<div class="text-sm" style="background:var(--surface-2);padding:0.5rem;border-radius:6px;white-space:pre-wrap;">' + escHtml(cleanNotes(b.notes)).slice(0,220) + '</div>' : '') +
       '<div class="td-actions" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.3rem;"><button class="btn btn-ghost btn-sm" onclick="viewBooking(\'' + id + '\')">View</button>' +
       (status === 'pending' ? '<button class="btn btn-accept btn-sm" onclick="quickAccept(\'' + id + '\',\'' + jobId + '\')">Accept</button><button class="btn btn-reject btn-sm" onclick="quickReject(\'' + id + '\',\'' + jobId + '\')">Reject</button>' : (status === 'requeued' ? '<span class="text-muted text-sm">Returned to WorkToGo queue</span>' : '<button class="btn btn-primary btn-sm" onclick="openStatusModal(\'' + id + '\',\'' + jobId + '\')">Update</button>')) +
@@ -358,6 +360,12 @@ function cleanNotes(raw) {
   ];
   if (INTERNAL_SIGNALS.some(s => val.includes(s))) return null;
   return val;
+}
+
+function _e164(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return (digits.length === 12 && digits.startsWith('91')) ? digits : '91' + digits.slice(-10);
 }
 
 function _phoneLinks(phone) {
