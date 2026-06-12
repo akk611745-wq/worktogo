@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo — Morning Brief</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+.morning-wrap {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+.morning-header {
+  margin-bottom: 2.5rem;
+}
+.morning-city {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.morning-greeting {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+  font-family: var(--sans);
+}
+.morning-date {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+.cards-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 2rem;
+}
+.action-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md);
+  padding: 1.25rem 1.25rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+.action-card.has-items {
+  cursor: pointer;
+  border-left-width: 3px;
+}
+.action-card.has-items:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card);
+}
+.action-card.is-clear {
+  opacity: 0.5;
+  cursor: default;
+}
+.card-count {
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1;
+  font-family: var(--sans);
+}
+.card-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+.card-arrow {
+  position: absolute;
+  bottom: 10px;
+  right: 12px;
+  font-size: 16px;
+  color: var(--text-muted);
+  transition: var(--transition);
+}
+.action-card.has-items:hover .card-arrow { color: var(--text-primary); }
+.card-ok {
+  font-size: 10px;
+  color: var(--green);
+  font-weight: 600;
+  margin-top: 2px;
+}
+.morning-footer {
+  text-align: center;
+  margin-top: 2rem;
+}
+.go-ops-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent);
+  color: #000;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 10px 24px;
+  border-radius: var(--radius-md);
+  border: none;
+  cursor: pointer;
+  font-family: var(--mono);
+  transition: var(--transition);
+  text-decoration: none;
+}
+.go-ops-btn:hover { filter: brightness(1.1); }
+.loading-pulse {
+  color: var(--text-muted);
+  font-size: 11px;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+</style>
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="morning-wrap">
+
+        <!-- Header -->
+        <div class="morning-header">
+          <div class="morning-city">WorkToGo — Haldwani</div>
+          <div class="morning-greeting" id="greeting">Good Morning</div>
+          <div class="morning-date" id="today-date">—</div>
+        </div>
+
+        <!-- Action cards -->
+        <div class="cards-grid" id="cards-grid">
+          <div class="action-card is-clear" style="border-left-color:var(--red)">
+            <div class="card-count loading-pulse">…</div>
+            <div class="card-label">Unassigned Bookings</div>
+          </div>
+          <div class="action-card is-clear" style="border-left-color:var(--red)">
+            <div class="card-count loading-pulse">…</div>
+            <div class="card-label">Premium Inspections Today</div>
+          </div>
+          <div class="action-card is-clear" style="border-left-color:var(--accent)">
+            <div class="card-count loading-pulse">…</div>
+            <div class="card-label">Vendors Rejected — Reassign Needed</div>
+          </div>
+          <div class="action-card is-clear" style="border-left-color:var(--accent)">
+            <div class="card-count loading-pulse">…</div>
+            <div class="card-label">Reviews Pending</div>
+          </div>
+          <div class="action-card is-clear" style="border-left-color:var(--orange)">
+            <div class="card-count loading-pulse">…</div>
+            <div class="card-label">Payments Pending</div>
+          </div>
+          <div class="action-card is-clear" style="border-left-color:var(--green)">
+            <div class="card-count loading-pulse">…</div>
+            <div class="card-label">Completed Today</div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="morning-footer">
+          <a href="services.html" class="go-ops-btn">Go to Operations →</a>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+<div id="toast-container"></div>
+
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Morning Brief', active: 'morning.html' });
+
+// ── Date + Greeting ───────────────────────────────────────────
+(function () {
+  const now = new Date();
+  const h = now.getHours();
+  const greeting = h < 12 ? 'Good Morning ☀️' : 'Good Afternoon 🌤️';
+  document.getElementById('greeting').textContent = greeting;
+  document.getElementById('today-date').textContent = now.toLocaleDateString('en-IN', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  });
+})();
+
+// ── Card definitions ──────────────────────────────────────────
+const CARDS = [
+  { key: 'pending_assignment',     label: 'Unassigned Bookings',            color: 'var(--red)',    href: 'services.html?filter=unassigned' },
+  { key: 'inspections_today',      label: 'Premium Inspections Today',      color: 'var(--red)',    href: 'services.html?filter=inspection' },
+  { key: 'vendor_rejections_today',label: 'Vendors Rejected — Reassign Needed', color: 'var(--accent)', href: 'followup.html' },
+  { key: 'reviews_pending',        label: 'Reviews Pending',                color: 'var(--accent)', href: 'services.html?filter=completed' },
+  { key: 'followup_urgent',        label: 'Payments Pending',               color: 'var(--orange)', href: 'services.html?filter=payment' },
+  { key: 'completed_today',        label: 'Completed Today',                color: 'var(--green)',  href: 'services.html' },
+];
+
+// ── Render ────────────────────────────────────────────────────
+function renderCards(stats) {
+  const grid = document.getElementById('cards-grid');
+  grid.innerHTML = CARDS.map(c => {
+    const count = stats[c.key] ?? 0;
+    const hasItems = count > 0;
+    const cardClass = hasItems ? 'action-card has-items' : 'action-card is-clear';
+    const countColor = hasItems ? c.color : 'var(--text-muted)';
+    const onClick = hasItems ? `onclick="location.href='${c.href}'"` : '';
+    const arrow = hasItems ? '<span class="card-arrow">→</span>' : '';
+    const sub = !hasItems ? '<div class="card-ok">✓ All clear</div>' : '';
+    return `<div class="${cardClass}" style="border-left-color:${c.color}" ${onClick}>
+      <div class="card-count" style="color:${countColor}">${count}</div>
+      <div class="card-label">${c.label}</div>
+      ${sub}${arrow}
+    </div>`;
+  }).join('');
+}
+
+// ── Load ──────────────────────────────────────────────────────
+async function load() {
+  try {
+    const res = await API.get(CONFIG.ENDPOINTS.DASHBOARD_STATS);
+    const data = res.data || res;
+    const stats = data.service_stats || {};
+    renderCards(stats);
+  } catch(e) {
+    Toast.error('Could not load brief: ' + (e.message || 'Unknown error'));
+  }
+}
+
+load();
+</script>
+</body>
+</html>
