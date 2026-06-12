@@ -1319,6 +1319,9 @@ window.WtgSheet = (function () {
     _overlay.onclick = function (e) { if (e.target === _overlay) close(); };
     _sheet = document.createElement('div');
     _sheet.className = 'wtg-sheet';
+    let _swipeStartY = 0;
+    _sheet.addEventListener('touchstart', e => { _swipeStartY = e.touches[0].clientY; }, { passive: true });
+    _sheet.addEventListener('touchend', e => { if (e.changedTouches[0].clientY - _swipeStartY > 80) close(); });
     _overlay.appendChild(_sheet);
     document.body.appendChild(_overlay);
   }
@@ -1348,6 +1351,9 @@ window.WtgSheet = (function () {
 
     _sheet.innerHTML = `
       <div class="wtg-sheet-handle"></div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+        <button onclick="WtgSheet.close()" style="background:none;border:none;font-size:22px;color:#999;cursor:pointer;padding:0 4px;">✕</button>
+      </div>
       <div class="wtg-sheet-vendor">${UI.escapeHtml(name)}</div>
       ${cat ? `<div class="wtg-sheet-cat">${UI.escapeHtml(cat)}</div>` : ''}
       ${chipsHTML ? `<div class="wtg-sheet-label">Select issue</div><div class="wtg-sheet-issue-chips">${chipsHTML}</div>` : ''}
@@ -2154,30 +2160,16 @@ function _vendorCardHTML(s) {
 function _renderInstantSearch() {
   const panel = document.getElementById("search-results-panel");
   if (!panel) return;
-  const localityContext = _resolvedLocality();
-  if (!_searchQuery) {
-    const meta = _categoryMeta(_activeCategory);
-    const suggestions = _searchSuggestionItems(meta).slice(0, 6);
-    panel.classList.remove("hidden");
-    panel.innerHTML = `
-      <div class="instant-search-head"><strong>Popular services</strong><span>tap to search</span></div>
-      <div class="search-placeholder-grid">
-        ${suggestions.map(item => `<button onclick="HomePage.searchServices('${_esc(item.query)}')"><span>${_esc(item.icon || meta.icon)}</span><strong>${_esc(item.label)}</strong><small>${_esc(item.note)}</small></button>`).join("")}
-      </div>`;
-    return;
-  }
-  const meta = _inferSearchMeta(_searchQuery);
-  const candidates = (_searchRemoteServices.length ? _searchRemoteServices : _allServices).filter(s => _searchText(s).includes(_searchQuery)).slice(0, 3);
+  const list = _allServices.length ? _allServices : [];
   panel.classList.remove("hidden");
   panel.innerHTML = `
-    <div class="instant-search-head"><strong>${_esc(meta.label)} results for ${_esc(localityContext.label)}</strong><span>request-ready</span></div>
-    <div class="instant-result-list">
-      ${(candidates.length ? candidates : _categoryFallbackServices(meta.slug)).slice(0, 3).map(s => `
-        <button onclick="HomePage.closeExploreOverlay(); ${s.id ? `HomeModals.openBooking(${_jsonAttr({ ...s, request_source: "search" })})` : `UI.openSupport('selector', { category: ${_jsString(meta.label)}, service: ${_jsString(s.name)} })`}">
-          <span>${s.icon || meta.icon}</span><strong>${_esc(s.name)}</strong>
-        </button>
-      `).join("")}
+    <div class="instant-search-head"><strong>Available Vendors</strong></div>
+    <div style="padding:4px 0">
+      ${list.length
+        ? list.map(s => _vendorCardHTML(s)).join("")
+        : '<p style="color:#888;text-align:center;padding:20px">No vendors available in your area.</p>'}
     </div>`;
+  if (window.WtgSheet) WtgSheet.setVendors(list);
 }
 
 function _setupExploreOverlay() {
@@ -2188,6 +2180,8 @@ function _setupExploreOverlay() {
   slot.appendChild(section);
   section.classList.remove("top-search-hidden");
   section.removeAttribute("aria-hidden");
+  const searchBox = section.querySelector(".market-search-box");
+  if (searchBox) searchBox.style.display = "none";
   overlay.addEventListener("click", e => { if (e.target === overlay) _closeExploreOverlay(); });
 }
 
