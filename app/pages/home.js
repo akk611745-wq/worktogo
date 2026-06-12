@@ -1379,49 +1379,79 @@ window.WtgSheet = (function () {
 
     _overlay.classList.add('open');
     requestAnimationFrame(() => _sheet.classList.add('open'));
+    history.pushState({ wtgSheet: true }, '');
+    window._wtgSheetOpen = true;
   }
 
   function close() {
     if (!_overlay) return;
     _sheet.classList.remove('open');
     setTimeout(() => _overlay.classList.remove('open'), 300);
+    window._wtgSheetOpen = false;
   }
 
   function toggleChip(btn) { btn && btn.classList.toggle('sel'); }
 
   function submit(vendorId) {
     if (!_sheet) return;
-    const uname = (_sheet.querySelector('#wtg-sh-name')?.value  || '').trim();
-    try { localStorage.setItem('wtg_user_name', uname); } catch(e) {}
-    const phone = (_sheet.querySelector('#wtg-sh-phone')?.value || '').trim();
-    const addr  = (_sheet.querySelector('#wtg-sh-addr')?.value  || '').trim();
-    const note  = (_sheet.querySelector('#wtg-sh-note')?.value  || '').trim();
-    const selected = [..._sheet.querySelectorAll('.wtg-issue-chip.sel')]
-      .map(c => c.textContent.trim()).join(', ');
-
-    const digits = phone.replace(/\D/g, '');
-    if (!digits || digits.length !== 10 || !/^[6-9]/.test(digits)) {
-      UI.toast('Please enter a valid 10-digit mobile number', 'error');
-      _sheet.querySelector('#wtg-sh-phone')?.focus();
-      return;
+    const btn = _sheet.querySelector('.wtg-sheet-submit');
+    if (btn) {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
     }
-    if (!addr) {
-      UI.toast('Please enter your address', 'error');
-      _sheet.querySelector('#wtg-sh-addr')?.focus();
-      return;
-    }
+    try {
+      const uname = (_sheet.querySelector('#wtg-sh-name')?.value  || '').trim();
+      const phone = (_sheet.querySelector('#wtg-sh-phone')?.value || '').trim();
+      const addr  = (_sheet.querySelector('#wtg-sh-addr')?.value  || '').trim();
+      const note  = (_sheet.querySelector('#wtg-sh-note')?.value  || '').trim();
+      const selected = [..._sheet.querySelectorAll('.wtg-issue-chip.sel')]
+        .map(c => c.textContent.trim()).join(', ');
 
-    const svc = _vendors.find(v => String(v.id || v.vendor_id) === String(vendorId))
-      || { id: vendorId, vendor_id: vendorId, request_source: 'worker_card' };
+      if (!uname || uname.length < 2) {
+        UI.toast('Apna naam likhein', 'error');
+        _sheet.querySelector('#wtg-sh-name')?.focus();
+        if (btn) { btn.disabled = false; btn.textContent = 'CONFIRM BOOKING'; }
+        return;
+      }
+      try { localStorage.setItem('wtg_user_name', uname); } catch(e) {}
 
-    if (window.HomeModals && HomeModals.prepareVendorDirectSubmit) {
-      HomeModals.prepareVendorDirectSubmit(
-        svc,
-        { phone: digits, issues: selected, address: addr, notes: note, name: uname }
-      );
+      const digits = phone.replace(/\D/g, '');
+      if (!digits || digits.length !== 10 || !/^[6-9]/.test(digits)) {
+        UI.toast('Please enter a valid 10-digit mobile number', 'error');
+        _sheet.querySelector('#wtg-sh-phone')?.focus();
+        if (btn) { btn.disabled = false; btn.textContent = 'CONFIRM BOOKING'; }
+        return;
+      }
+      if (!addr) {
+        UI.toast('Please enter your address', 'error');
+        _sheet.querySelector('#wtg-sh-addr')?.focus();
+        if (btn) { btn.disabled = false; btn.textContent = 'CONFIRM BOOKING'; }
+        return;
+      }
+
+      const svc = _vendors.find(v => String(v.id || v.vendor_id) === String(vendorId))
+        || { id: vendorId, vendor_id: vendorId, request_source: 'worker_card' };
+
+      if (window.HomeModals && HomeModals.prepareVendorDirectSubmit) {
+        HomeModals.prepareVendorDirectSubmit(
+          svc,
+          { phone: digits, issues: selected, address: addr, notes: note, name: uname }
+        );
+      }
+      if (btn) { btn.disabled = false; btn.textContent = 'CONFIRM BOOKING'; }
+      close();
+    } catch(e) {
+      if (btn) { btn.disabled = false; btn.textContent = 'CONFIRM BOOKING'; }
     }
-    close();
   }
+
+  window.addEventListener('popstate', function (e) {
+    if (window._wtgSheetOpen) {
+      WtgSheet.close();
+      window._wtgSheetOpen = false;
+    }
+  });
 
   return { setVendors, open, close, toggleChip, submit };
 })();
