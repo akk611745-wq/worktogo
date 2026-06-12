@@ -348,4 +348,27 @@ if ($method === 'PATCH' && $uri === '/api/vendor/profile') {
     Response::success(['updated' => true], 200, 'Profile updated');
 }
 
+// ── POST /api/vendor/profile/photo ──────────────────────────────────────────────
+if ($method === 'POST' && $uri === '/api/vendor/profile/photo') {
+    $auth     = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_VENDOR_SHOPPING);
+    $vendorId = resolveVendorId($db, (int)$auth['user_id']);
+
+    if (empty($_FILES['photo']) || $_FILES['photo']['error'] === UPLOAD_ERR_NO_FILE) {
+        Response::error('No file uploaded. Send file as multipart field "photo".', 400);
+    }
+
+    require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/UploadHelper.php';
+
+    try {
+        $url = UploadHelper::save($_FILES['photo'], 'vendors');
+    } catch (Exception $e) {
+        Response::error($e->getMessage(), 400);
+    }
+
+    $db->prepare("UPDATE vendors SET logo_url = ?, updated_at = NOW() WHERE id = ?")
+       ->execute([$url, $vendorId]);
+
+    Response::success(['url' => $url], 200, 'Photo updated');
+}
+
 Response::error('Endpoint not found', 404);
