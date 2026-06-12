@@ -128,7 +128,7 @@ function renderUsers(users) {
           <div style="width:26px;height:26px;border-radius:50%;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0">
             ${escHtml((u.name || u.firstName || 'U').charAt(0).toUpperCase())}
           </div>
-          <span>${escHtml(Fmt.truncate(u.name || u.firstName + ' ' + (u.lastName||''), 24))}</span>
+          <span>${escHtml(Fmt.truncate(u.name || ((u.firstName||'') + ' ' + (u.lastName||'')).trim() || '—', 24))}</span>
         </div>
       </td>
       <td>${escHtml(u.email || '—')}</td>
@@ -173,7 +173,7 @@ async function viewUser(id) {
       : '—';
     document.getElementById('user-modal-body').innerHTML = `
       <div style="display:grid;gap:12px">
-        ${field('Full Name', escHtml(u.name || u.firstName + ' ' + (u.lastName||'')))}
+        ${field('Full Name', escHtml(u.name || ((u.firstName||'') + ' ' + (u.lastName||'')).trim() || '—'))}
         ${field('Email', escHtml(u.email))}
         ${field('Phone', phoneHtml)}
         ${field('Status', statusBadge(u.status || (u.is_blocked?'blocked':'active')))}
