@@ -751,7 +751,7 @@ function renderServices(services) {
 }
 
 async function toggleService(id, newStatus) {
-  const action = newStatus === 'disabled' ? 'disable' : 'enable';
+  const action = newStatus === 'active' ? 'enable' : 'disable';
   if (!await confirmAction(`${Fmt.capitalize(action)} this service?`)) return;
   try {
     await API.patch(CONFIG.ENDPOINTS.SERVICE_STATUS(id), { status: newStatus });

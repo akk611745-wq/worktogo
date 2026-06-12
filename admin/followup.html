@@ -255,8 +255,10 @@ function renderUnassigned() {
 // ── Section 2: Payment Pending ───────────────────────────────
 function renderPaymentPending() {
   const rows = allBookings.filter(b => {
-    const ps = String(b.payment_status || '').toLowerCase();
-    return ps !== 'paid' && ps !== 'refunded';
+    const ps   = String(b.payment_status || '').toLowerCase();
+    const mode = String(b.booking_mode || b.admin_request_view?.booking_mode || '').toLowerCase();
+    if (mode === 'free_lead') return false;
+    return !['paid', 'refunded', 'na', 'free'].includes(ps);
   });
   document.getElementById('count-payment').textContent = rows.length;
 

@@ -92,17 +92,24 @@ try {
         $stmt->execute([':today' => $todayStart]);
         $finance = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
-        $stmt = $db->prepare("
-            SELECT SUM(amount) FROM wallet_transactions
-            WHERE entity_type = 'platform' AND type = 'credit' AND created_at >= :today AND status = 'settled'
-        ");
-        $stmt->execute([':today' => $todayStart]);
-        // FIX: fetchColumn() returns false (no rows) or NULL (SUM of empty set); both → 0.0
-        $platform_earnings = $stmt->fetchColumn();
+        try {
+            $stmt = $db->prepare("
+                SELECT SUM(amount) FROM wallet_transactions
+                WHERE entity_type = 'platform' AND type = 'credit' AND created_at >= :today AND status = 'settled'
+            ");
+            $stmt->execute([':today' => $todayStart]);
+            $platform_earnings = $stmt->fetchColumn();
+        } catch (PDOException $e) {
+            $platform_earnings = 0;
+        }
 
-        $stmt = $db->prepare("SELECT SUM(pending_balance) FROM vendor_wallets");
-        $stmt->execute();
-        $pending_vendor_payout = $stmt->fetchColumn();
+        try {
+            $stmt = $db->prepare("SELECT SUM(pending_balance) FROM vendor_wallets");
+            $stmt->execute();
+            $pending_vendor_payout = $stmt->fetchColumn();
+        } catch (PDOException $e) {
+            $pending_vendor_payout = 0;
+        }
 
         $finance['total_revenue_today']     = (float)($finance['total_revenue_today'] ?? 0);
         $finance['platform_earnings_today'] = (float)($platform_earnings ?: 0);
@@ -221,17 +228,21 @@ try {
             } catch (PDOException $ignored) {}
         }
 
-        $stmt = $db->prepare("
-            SELECT oi.product_id, oi.product_name, COUNT(*) as cancel_count
-            FROM order_items oi
-            JOIN orders o ON oi.order_id = o.id
-            WHERE o.status = 'cancelled'
-            GROUP BY oi.product_id, oi.product_name
-            ORDER BY cancel_count DESC
-            LIMIT 5
-        ");
-        $stmt->execute();
-        $most_cancelled_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $stmt = $db->prepare("
+                SELECT oi.product_id, oi.product_name, COUNT(*) as cancel_count
+                FROM order_items oi
+                JOIN orders o ON oi.order_id = o.id
+                WHERE o.status = 'cancelled'
+                GROUP BY oi.product_id, oi.product_name
+                ORDER BY cancel_count DESC
+                LIMIT 5
+            ");
+            $stmt->execute();
+            $most_cancelled_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            $most_cancelled_items = [];
+        }
 
         // --- AREA DEMAND ---
         $area_demand = [];
