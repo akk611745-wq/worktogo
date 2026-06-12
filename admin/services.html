@@ -460,9 +460,15 @@ function vendorAssignControl(booking) {
   const options = ['<option value="">Select vendor</option>'].concat(serviceVendors.map(v => {
     const vid = String(v.id || v._id || '');
     const item = byVendor[vid];
-    const mark = item?.eligibility?.assignable ? '✅ ' : (item ? '⚠ ' : '');
+    const catMatch = item?.eligibility?.category_match;
+    const areaMatch = item?.eligibility?.area_match;
+    const isWrongCat = catMatch === false;
+    const isWrongArea = areaMatch === false;
+    const mark = catMatch && areaMatch ? '✅ ' : isWrongCat ? '❌ ' : isWrongArea ? '⚠️ ' : '';
+    const style = isWrongCat ? 'color:#ef4444;' : '';
+    const optDisabled = isWrongCat ? 'disabled' : '';
     const area = item?.service_localities ? ` — ${item.service_localities}` : '';
-    return `<option value="${escHtml(vid)}" ${vid === currentVendorId ? 'selected' : ''}>${mark}${escHtml(v.business_name || v.name || ('Vendor #' + vid))}${escHtml(area)}</option>`;
+    return `<option value="${escHtml(vid)}" ${vid === currentVendorId ? 'selected' : ''} ${optDisabled} style="${style}">${mark}${escHtml(v.business_name || v.name || ('Vendor #' + vid))}${escHtml(area)}</option>`;
   })).join('');
   return `<div class="td-actions" style="gap:4px;flex-wrap:nowrap">
     <select class="form-control" id="assign-vendor-${escHtml(String(id))}" style="min-width:150px;max-width:180px;padding:4px 6px;font-size:11px" ${disabled ? 'disabled' : ''}>${options}</select>
@@ -598,7 +604,8 @@ function openOpsDetail(bookingId) {
     if (categoryFiltered.length > 0) {
       vendorPool = categoryFiltered;
     } else {
-      vendorPlaceholder = 'Select vendor (No category match — showing all)';
+      vendorPool = [];
+      vendorPlaceholder = '⚠️ No vendors in this category';
     }
   }
   const vendors = [`<option value="">${vendorPlaceholder}</option>`].concat(vendorPool.map(v => `<option value="${escHtml(String(v.id || v._id || ''))}">${escHtml(v.business_name || v.name || ('Vendor #' + (v.id || v._id)))}</option>`)).join('');
