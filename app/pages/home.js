@@ -1336,9 +1336,10 @@ window.WtgSheet = (function () {
       : Array.isArray(s.services) ? s.services : [];
     const svcNames = svcs.map(x => typeof x === 'string' ? x : x.name || x.label || '').filter(Boolean);
 
-    let savedPhone = '', savedAddress = '';
+    let savedPhone = '', savedAddress = '', savedName = '';
     try { savedPhone   = localStorage.getItem('wtg_user_phone')   || ''; } catch {}
     try { savedAddress = localStorage.getItem('wtg_user_address') || ''; } catch {}
+    try { savedName    = localStorage.getItem('wtg_user_name')    || ''; } catch {}
 
     const safeId = String(id).replace(/['"\\]/g, '');
     const chipsHTML = svcNames.map((n, i) =>
@@ -1350,6 +1351,10 @@ window.WtgSheet = (function () {
       <div class="wtg-sheet-vendor">${UI.escapeHtml(name)}</div>
       ${cat ? `<div class="wtg-sheet-cat">${UI.escapeHtml(cat)}</div>` : ''}
       ${chipsHTML ? `<div class="wtg-sheet-label">Select issue</div><div class="wtg-sheet-issue-chips">${chipsHTML}</div>` : ''}
+      <div class="wtg-sheet-label">Aapka naam</div>
+      <input id="wtg-sh-name" class="wtg-sheet-input" type="text"
+        placeholder="Apna naam likhein"
+        value="${UI.escapeHtml(savedName)}">
       <div class="wtg-sheet-label">Mobile number</div>
       <input id="wtg-sh-phone" class="wtg-sheet-input" type="tel"
         placeholder="10-digit mobile number" autocomplete="tel"
@@ -1380,6 +1385,8 @@ window.WtgSheet = (function () {
 
   function submit(vendorId) {
     if (!_sheet) return;
+    const uname = (_sheet.querySelector('#wtg-sh-name')?.value  || '').trim();
+    try { localStorage.setItem('wtg_user_name', uname); } catch(e) {}
     const phone = (_sheet.querySelector('#wtg-sh-phone')?.value || '').trim();
     const addr  = (_sheet.querySelector('#wtg-sh-addr')?.value  || '').trim();
     const note  = (_sheet.querySelector('#wtg-sh-note')?.value  || '').trim();
@@ -1404,7 +1411,7 @@ window.WtgSheet = (function () {
     if (window.HomeModals && HomeModals.prepareVendorDirectSubmit) {
       HomeModals.prepareVendorDirectSubmit(
         svc,
-        { phone: digits, issues: selected, address: addr, notes: note, name: '' }
+        { phone: digits, issues: selected, address: addr, notes: note, name: uname }
       );
     }
     close();
