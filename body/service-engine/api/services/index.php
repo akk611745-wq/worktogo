@@ -1072,7 +1072,7 @@ if ($method === 'POST' && $uri === '/api/service/request') {
     $paymentStatus = servicePaymentStatusForMode($bookingMode, $paymentMethod);
     $canonicalNotes = serviceLifecycleNote($input, $bookingMode, $service);
     $bookingTotal = $bookingMode === 'inspection'
-        ? (float)($input['expected_payment_amount'] ?? servicePublicSetting($db, 'inspection_price', $service['inspection_price'] ?? 299))
+        ? (float)(servicePublicSetting($db, 'inspection_price', 299))
         : (float)$service['base_price'];
     $jobPriority = serviceJobPriorityForMode($bookingMode, $input);
     $existingBooking = null;
