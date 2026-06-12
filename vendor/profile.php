@@ -97,9 +97,23 @@ function renderPage(user) {
               <div id="area-chips-container" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;min-height:36px;"></div>
               <input type="hidden" id="eServiceLocalities" value="[]">
             </div>
-            <div class="field">
-              <label for="eLogoUrl">Photo URL</label>
-              <input type="url" id="eLogoUrl" placeholder="https://example.com/photo.jpg"/>
+            <div class="field" style="grid-column:1/-1">
+              <label>Photo</label>
+              <div id="photoUploadArea" style="display:flex;align-items:center;gap:16px;margin-top:4px;">
+                <div style="position:relative;width:72px;height:72px;border-radius:10px;overflow:hidden;border:1px solid var(--border);background:#f3f4f6;flex-shrink:0;">
+                  <img id="photoPreview" src="" alt="Preview" style="display:none;width:100%;height:100%;object-fit:cover;">
+                  <div id="photoInitial" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:1.6rem;font-weight:700;color:#9ca3af;background:#f3f4f6;">V</div>
+                </div>
+                <div style="flex:1;">
+                  <input type="file" id="ePhotoFile" accept="image/*" style="display:none;">
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('ePhotoFile').click()">
+                    <svg viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px;"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg>
+                    Choose Photo
+                  </button>
+                  <span id="photoUploadStatus" style="font-size:0.78rem;color:#6b7280;margin-left:8px;"></span>
+                </div>
+              </div>
+              <input type="hidden" id="eLogoUrl" value="">
             </div>
             <div class="field" style="grid-column:1/-1">
               <label for="eDescription">Bio / Description</label>
@@ -204,6 +218,23 @@ function populateProfile(p) {
   // Edit prefill — new 3
   document.getElementById("eDescription").value = p.description || '';
   document.getElementById("eLogoUrl").value      = p.logo_url    || '';
+
+  // Photo preview sync in edit mode
+  const _preview = document.getElementById('photoPreview');
+  const _initial = document.getElementById('photoInitial');
+  if (_preview && _initial) {
+    const _pname = p.name || p.business_name || 'V';
+    _initial.textContent = _pname.charAt(0).toUpperCase();
+    if (p.logo_url) {
+      _preview.src = p.logo_url;
+      _preview.style.display = 'block';
+      _initial.style.display = 'none';
+    } else {
+      _preview.style.display = 'none';
+      _initial.style.display = 'flex';
+    }
+  }
+
   populateCategorySelect();
   const _initAreas = (() => { try { return JSON.parse(p.service_localities || '[]'); } catch (_) { return []; } })();
   renderAreaChips(_initAreas);
@@ -336,6 +367,46 @@ async function saveProfile() {
 function confirmLogout() {
   if (confirmAction("Log out from all sessions?")) Auth.logout();
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.body.addEventListener('change', async function(e) {
+    if (e.target.id !== 'ePhotoFile') return;
+    const file = e.target.files[0];
+    if (!file) return;
+    const status  = document.getElementById('photoUploadStatus');
+    const preview = document.getElementById('photoPreview');
+    const initial = document.getElementById('photoInitial');
+    status.textContent = 'Uploading…';
+    status.style.color = '#6b7280';
+    const formData = new FormData();
+    formData.append('photo', file);
+    try {
+      const token = localStorage.getItem('wtg_vendor_token') || '';
+      const res   = await fetch(CONFIG.BASE_URL + '/api/vendor/profile/photo', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token },
+        body: formData,
+      });
+      const data = await res.json();
+      const url  = data?.data?.url || data?.url;
+      if (url) {
+        document.getElementById('eLogoUrl').value = url;
+        preview.src = url;
+        preview.style.display = 'block';
+        initial.style.display = 'none';
+        status.textContent = '✅ Uploaded';
+        status.style.color = '#22c55e';
+        showToast('Photo uploaded!', 'success');
+      } else {
+        status.textContent = '❌ ' + (data?.message || 'Failed');
+        status.style.color = '#ef4444';
+      }
+    } catch (err) {
+      status.textContent = '❌ Network error';
+      status.style.color = '#ef4444';
+    }
+  });
+});
 
 /* ── Helpers ──────────────────────────────────────────────── */
 
