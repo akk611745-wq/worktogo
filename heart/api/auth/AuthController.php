@@ -73,6 +73,10 @@ class AuthController {
     }
 
     public function loginEmail() {
+        if (!RateLimiter::check('login_email', 5, 300)) {
+            Response::error('Too many login attempts. Please try again later.', 429);
+        }
+
         $input = json_decode(file_get_contents('php://input'), true);
         if (!$input) {
             Response::error('Invalid JSON payload', 400);

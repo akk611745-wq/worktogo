@@ -8,8 +8,11 @@
  */
 
 require_once $_SERVER['DOCUMENT_ROOT'] . '/core/helpers/Database.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/heart/middleware/AuthMiddleware.php';
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/AlertEngine.php';
+
+AuthMiddleware::requireRole('admin');
 
 try {
     $pdo = Database::getConnection();

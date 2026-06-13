@@ -90,3 +90,8 @@ RewriteRule . - [F,L]
     php_value post_max_size 6M
     php_value max_execution_time 30
 </IfModule>
+
+<Files "deploy-hook.php">
+  Order allow,deny
+  Deny from all
+</Files>
