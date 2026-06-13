@@ -86,6 +86,14 @@ function _sendMsg91(string $phone, string $otp): bool
     $key        = getenv('MSG91_AUTH_KEY');
     $templateId = getenv('MSG91_TEMPLATE_ID');
 
+    Logger::info('MSG91_DEBUG', [
+        'key_empty'       => empty($key),
+        'key_length'      => strlen($key ?? ''),
+        'template_empty'  => empty($templateId),
+        'template_length' => strlen($templateId ?? ''),
+        'provider'        => getenv('SMS_PROVIDER') ?: 'not_set',
+    ]);
+
     if (!$key || !$templateId) {
         return _logOtp($phone, $otp);
     }
@@ -97,10 +105,16 @@ function _sendMsg91(string $phone, string $otp): bool
         'recipients'  => [['mobiles' => '91' . ltrim($phone, '+'), 'otp' => $otp]],
     ]);
 
-    return _httpPost('https://api.msg91.com/api/v5/flow/', $payload, [
+    $sent = _httpPost('https://api.msg91.com/api/v5/flow/', $payload, [
         'authkey: ' . $key,
         'content-type: application/json',
     ]);
+
+    Logger::info('MSG91_RESPONSE', [
+        'sent' => $sent,
+    ]);
+
+    return $sent;
 }
 
 function _sendFast2Sms(string $phone, string $otp): bool
