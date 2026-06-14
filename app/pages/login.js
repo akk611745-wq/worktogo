@@ -368,16 +368,28 @@ window.LoginPage = (() => {
   function googleLogin() {
     const googleClientId = window.WTG_GOOGLE_CLIENT_ID || CONFIG.GOOGLE_CLIENT_ID || "";
 
-    if (!window.google?.accounts?.id || !googleClientId) {
+    if (!googleClientId) {
       UI.toast("Google Sign-In is not configured", "error");
       return;
     }
 
-    window.google.accounts.id.initialize({
-      client_id: googleClientId,
-      callback: _handleGoogleCredential,
-    });
-    window.google.accounts.id.prompt();
+    _launchGSI(googleClientId, 0);
+  }
+
+  function _launchGSI(clientId, elapsed) {
+    if (window.google?.accounts?.id) {
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: _handleGoogleCredential,
+      });
+      window.google.accounts.id.prompt();
+      return;
+    }
+    if (elapsed >= 3000) {
+      UI.toast("Google Sign-In is not configured", "error");
+      return;
+    }
+    setTimeout(() => _launchGSI(clientId, elapsed + 200), 200);
   }
 
   function _startResendTimer(seconds = 30) {
