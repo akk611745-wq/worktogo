@@ -90,11 +90,14 @@ function _sendMsg91(string $phone, string $otp): bool
         return _logOtp($phone, $otp);
     }
 
+    $cleanPhone = preg_replace('/[^0-9]/', '', $phone);
+    $cleanPhone = preg_replace('/^91/', '', $cleanPhone);
+
     $payload = json_encode([
         'template_id' => $templateId,
         'short_url'   => '0',
         'realTimeResponse' => '1',
-        'recipients'  => [['mobiles' => '91' . ltrim($phone, '+'), 'otp' => $otp]],
+        'recipients'  => [['mobiles' => '91' . $cleanPhone, 'otp' => $otp]],
     ]);
 
     return _httpPost('https://api.msg91.com/api/v5/flow/', $payload, [
