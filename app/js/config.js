@@ -66,6 +66,7 @@ const CONFIG = {
   // ─── FEATURE FLAGS ─────────────────────────────
   FEATURES: {
     SERVICE_ONLY_MODE: true,
+    GOOGLE_LOGIN: true,
     SHOPPING_UI:       false,
     DEAD_ROUTE_GUARD:  true,
     VIDEO_SYSTEM:    false,

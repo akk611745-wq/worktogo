@@ -15,6 +15,9 @@
   <!-- Preconnect for fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+
+  <!-- Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -38,6 +41,7 @@
   <!-- Core Scripts (order matters) -->
   <script>
     window.WTG_BASE_URL = "<?php echo rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?? 'https://worktogo.in', '/'); ?>";
+    window.WTG_GOOGLE_CLIENT_ID = "<?php echo htmlspecialchars(getenv('GOOGLE_CLIENT_ID') ?: ''); ?>";
     window.WTG_ASSET_VERSION = "20260524-customer-stabilization";
   </script>
   <script src="js/config.js?v=20260524-customer-stabilization"></script>

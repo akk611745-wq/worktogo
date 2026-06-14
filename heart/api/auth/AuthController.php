@@ -150,6 +150,10 @@ class AuthController {
     }
 
     public function loginGoogle() {
+        if (!RateLimiter::check('google_login', 10, 300)) {
+            Response::error('Too many Google login attempts. Please try again later.', 429);
+        }
+
         $input = json_decode(file_get_contents('php://input'), true);
         $googleToken = trim((string)($input['google_token'] ?? ''));
 

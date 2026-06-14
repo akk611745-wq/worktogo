@@ -77,7 +77,7 @@ export async function render(container) {
             Create a new account
           </button>
           <div class="auth-divider ${CONFIG.FEATURES?.SERVICE_ONLY_MODE ? "feature-hidden" : ""}"><span>or</span></div>
-          <button id="btn-google-login" class="btn-google ${CONFIG.FEATURES?.SERVICE_ONLY_MODE ? "feature-hidden" : ""}" onclick="LoginPage.googleLogin()">
+          <button id="btn-google-login" class="btn-google ${CONFIG.FEATURES?.GOOGLE_LOGIN ? "" : "feature-hidden"}" onclick="LoginPage.googleLogin()">
             <span class="google-mark">G</span>
             Continue with Google
           </button>
@@ -366,10 +366,6 @@ window.LoginPage = (() => {
   }
 
   function googleLogin() {
-    if (CONFIG.FEATURES?.SERVICE_ONLY_MODE) {
-      UI.toast("Use Mobile OTP for service booking support.", "info");
-      return;
-    }
     const googleClientId = window.WTG_GOOGLE_CLIENT_ID || CONFIG.GOOGLE_CLIENT_ID || "";
 
     if (!window.google?.accounts?.id || !googleClientId) {
