@@ -9,6 +9,10 @@ class AuthController {
     }
 
     public function registerEmail() {
+        if (!RateLimiter::check('register_email', 5, 300)) {
+            Response::error('Too many registration attempts. Please try again later.', 429);
+        }
+
         $input = json_decode(file_get_contents('php://input'), true);
         if (!$input) {
             Response::error('Invalid JSON payload', 400);
@@ -262,6 +266,10 @@ class AuthController {
     }
 
     public function guestLogin() {
+        if (!RateLimiter::check('guest_login', 10, 300)) {
+            Response::error('Too many guest login attempts. Please try again later.', 429);
+        }
+
         $guestNumber = rand(100000, 999999);
         $name = 'Guest_' . $guestNumber;
         
