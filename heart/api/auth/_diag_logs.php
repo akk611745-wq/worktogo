@@ -34,7 +34,7 @@ if ($adminKey === '' || $provided === '' || !hash_equals($adminKey, $provided)) 
 }
 
 // ── Locate logs dir ───────────────────────────────────────────
-$logsDir  = realpath(__DIR__ . '/../../../../logs');
+$logsDir  = realpath(__DIR__ . '/../../../logs');
 $today    = date('Y-m-d');
 $todayLog = $logsDir . '/' . $today . '.log';
 
