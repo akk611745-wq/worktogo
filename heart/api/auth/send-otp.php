@@ -172,6 +172,8 @@ function _httpPost(string $url, string $payload, array $headers = [], string $au
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
+    Logger::warning('MSG91_RESPONSE', ['code' => $code, 'body' => $res]);
+
     return $code >= 200 && $code < 300;
 }
 
