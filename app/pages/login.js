@@ -27,7 +27,7 @@ export async function render(container) {
           <button id="tab-phone" class="login-tab active" type="button" role="tab" aria-selected="true" onclick="LoginPage.switchAuthTab('phone')">
             Mobile OTP
           </button>
-          <button id="tab-email" class="login-tab ${serviceOnly ? "feature-hidden" : ""}" type="button" role="tab" aria-selected="false" onclick="LoginPage.switchAuthTab('email')">
+          <button id="tab-email" class="login-tab ${serviceOnly && !CONFIG.FEATURES?.EMAIL_AUTH ? "feature-hidden" : ""}" type="button" role="tab" aria-selected="false" onclick="LoginPage.switchAuthTab('email')">
             Email
           </button>
         </div>
@@ -62,7 +62,7 @@ export async function render(container) {
           </div>
         </div>
 
-        <div id="step-email" class="login-step ${serviceOnly ? "feature-hidden" : ""}">
+        <div id="step-email" class="login-step ${serviceOnly && !CONFIG.FEATURES?.EMAIL_AUTH ? "feature-hidden" : ""}">
           <h2>Login with email</h2>
           <p class="step-hint">Email login is secondary. Mobile OTP is recommended for faster support.</p>
           <div class="auth-field">
@@ -80,10 +80,10 @@ export async function render(container) {
           <button id="btn-email-register" class="btn-text" onclick="LoginPage.showRegister()">
             Create a new account
           </button>
-          <div class="auth-divider ${CONFIG.FEATURES?.SERVICE_ONLY_MODE ? "feature-hidden" : ""}"><span>or</span></div>
+          <div class="auth-divider ${CONFIG.FEATURES?.SERVICE_ONLY_MODE && !CONFIG.FEATURES?.EMAIL_AUTH ? "feature-hidden" : ""}"><span>or</span></div>
         </div>
 
-        <div id="step-register" class="login-step ${serviceOnly ? "feature-hidden" : ""}">
+        <div id="step-register" class="login-step ${serviceOnly && !CONFIG.FEATURES?.EMAIL_AUTH ? "feature-hidden" : ""}">
           <h2>Create account</h2>
           <p class="step-hint">Enter your details to register</p>
           <div class="auth-field">
@@ -241,7 +241,7 @@ window.LoginPage = (() => {
   }
 
   function switchAuthTab(tab) {
-    if (tab === "email" && CONFIG.FEATURES?.SERVICE_ONLY_MODE) {
+    if (tab === "email" && CONFIG.FEATURES?.SERVICE_ONLY_MODE && !CONFIG.FEATURES?.EMAIL_AUTH) {
       UI.toast("Use Mobile OTP for service booking support.", "info");
       return;
     }
@@ -262,7 +262,7 @@ window.LoginPage = (() => {
   }
 
   function showRegister() {
-    if (CONFIG.FEATURES?.SERVICE_ONLY_MODE) {
+    if (CONFIG.FEATURES?.SERVICE_ONLY_MODE && !CONFIG.FEATURES?.EMAIL_AUTH) {
       UI.toast("Use Mobile OTP for service booking support.", "info");
       return;
     }
