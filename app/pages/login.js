@@ -50,6 +50,10 @@ export async function render(container) {
             <span class="btn-label">Send OTP</span>
             <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
+          <button id="btn-google-login" class="btn-google ${CONFIG.FEATURES?.GOOGLE_LOGIN ? "" : "feature-hidden"}" onclick="LoginPage.googleLogin()">
+            <span class="google-mark">G</span>
+            Continue with Google
+          </button>
           <p class="login-note">We'll send a 6-digit OTP. No password needed.</p>
           <div class="trust-panel">
             <span>✅ ${_esc(locality.label)} service routing</span>
@@ -77,10 +81,6 @@ export async function render(container) {
             Create a new account
           </button>
           <div class="auth-divider ${CONFIG.FEATURES?.SERVICE_ONLY_MODE ? "feature-hidden" : ""}"><span>or</span></div>
-          <button id="btn-google-login" class="btn-google ${CONFIG.FEATURES?.GOOGLE_LOGIN ? "" : "feature-hidden"}" onclick="LoginPage.googleLogin()">
-            <span class="google-mark">G</span>
-            Continue with Google
-          </button>
         </div>
 
         <div id="step-register" class="login-step ${serviceOnly ? "feature-hidden" : ""}">
