@@ -14,6 +14,9 @@ RewriteEngine On
 RewriteCond %{HTTPS} off
 RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
+# Block .git directory from web access
+RewriteRule ^\.git(/.*)?$ - [F,L]
+
 # Redirect browser visitors to app (GET only - keeps POST pipeline safe)
 RewriteCond %{REQUEST_METHOD} GET
 RewriteCond %{REQUEST_URI} ^/$
