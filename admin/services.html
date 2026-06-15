@@ -765,7 +765,10 @@ function renderServices(services) {
         </div>
       </td>
       <td>${Fmt.truncate(s.vendor_name||s.vendorName||s.vendor?.name,20)||'—'}</td>
-      <td><span class="badge badge-purple" style="cursor:pointer" title="Click for category detail" onclick="openCategoryDetail(${parseInt(s.category_id)||0})">${escHtml(s.category_name||s.category_slug||s.category||'—')}</span></td>
+      <td>${Array.isArray(s.vendor_services) && s.vendor_services.length
+          ? s.vendor_services.map(n => `<span class="badge badge-purple">${escHtml(n)}</span>`).join(' ')
+          : `<span class="badge badge-purple" style="cursor:pointer" title="Click for category detail" onclick="openCategoryDetail(${parseInt(s.category_id)||0})">${escHtml(s.category_name||s.category_slug||s.category||'—')}</span>`
+      }</td>
       <td><span class="svc-price" style="color:var(--accent);cursor:pointer;border-bottom:1px dashed var(--border-mid)" title="Click to edit price" onclick="editServicePrice('${escHtml(String(id))}',${parseFloat(s.base_price||s.basePrice||s.price||0)},this)">${Fmt.currency(s.base_price||s.basePrice||s.price)}</span></td>
       <td style="color:var(--text-muted)">${s.bookingCount??'—'}</td>
       <td>${statusBadge(status)}</td>
