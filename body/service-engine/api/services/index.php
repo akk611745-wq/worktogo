@@ -1135,7 +1135,9 @@ if ($method === 'POST' && $uri === '/api/service/request') {
     try {
         $db->beginTransaction();
 
-        $initialVendorId = !empty($service['vendor_id']) ? (int)$service['vendor_id'] : null;
+        $initialVendorId = ($bookingMode === 'direct_vendor' && !empty($service['vendor_id']))
+            ? (int)$service['vendor_id']
+            : null;
 
         // Create booking
         $bookingColumns = ['booking_number', 'user_id', 'vendor_id', 'service_id', 'status', 'payment_status', 'payment_method', 'booking_mode', 'scheduled_at', 'duration_minutes', 'total', 'address_id', 'notes', 'customer_name', 'customer_mobile', 'customer_locality', 'customer_address', 'vendor_route', 'created_at'];
