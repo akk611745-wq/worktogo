@@ -302,7 +302,14 @@ function populateCategorySelect() {
       chip.textContent = escHtml(c.name);
       _applyChipStyle(chip, currentIds.includes(String(c.id)));
       chip.addEventListener('click', () => {
-        _applyChipStyle(chip, chip.dataset.selected !== 'true');
+        const nowSelected = chip.dataset.selected !== 'true';
+        if (nowSelected) {
+          // Single-select: deselect every other chip before selecting this one
+          container.querySelectorAll('[data-selected="true"]').forEach(other => {
+            if (other !== chip) _applyChipStyle(other, false);
+          });
+        }
+        _applyChipStyle(chip, nowSelected);
         _syncCategoryHidden();
       });
       container.appendChild(chip);
