@@ -1412,8 +1412,9 @@ window.WtgSheet = (function () {
       const phone = (_sheet.querySelector('#wtg-sh-phone')?.value || '').trim();
       const addr  = (_sheet.querySelector('#wtg-sh-addr')?.value  || '').trim();
       const note  = (_sheet.querySelector('#wtg-sh-note')?.value  || '').trim();
-      const selected = [..._sheet.querySelectorAll('.wtg-issue-chip.sel')]
-        .map(c => c.textContent.trim()).join(', ');
+      const selectedChips = [..._sheet.querySelectorAll('.wtg-issue-chip.sel')]
+        .map(c => c.textContent.trim());
+      const selected = selectedChips.join(', ');
 
       if (!uname || uname.length < 2) {
         UI.toast('Apna naam likhein', 'error');
@@ -1437,8 +1438,16 @@ window.WtgSheet = (function () {
         return;
       }
 
-      const svc = _vendors.find(v => String(v.id || v.vendor_id) === String(vendorId))
+      const svcBase = _vendors.find(v => String(v.id || v.vendor_id) === String(vendorId))
         || { id: vendorId, vendor_id: vendorId, request_source: 'worker_card' };
+
+      // Map the first selected chip name to its service_id via service_map so
+      // the booking API receives the correct service_id for the chosen category.
+      const svc = { ...svcBase };
+      if (svcBase.service_map && selectedChips.length) {
+        const mapped = svcBase.service_map[selectedChips[0]];
+        if (mapped) svc.id = mapped;
+      }
 
       if (window.HomeModals && HomeModals.prepareVendorDirectSubmit) {
         HomeModals.prepareVendorDirectSubmit(
@@ -1750,7 +1759,7 @@ function _renderServices(res) {
   if (_searchQuery && _searchRemoteServices.length) list = _searchRemoteServices;
     const inferred = _searchQuery ? _inferSearchMeta(_searchQuery) : null;
     const categoryFilter = _activeCategory || (inferred?.slug || "");
-    if (categoryFilter) list = list.filter(s => _matchesCategory(s, categoryFilter));
+    if (categoryFilter) list = list.filter(s => _matchesCategory(s, categoryFilter) || (Array.isArray(s.category_slugs) && s.category_slugs.includes(categoryFilter)));
     if (_activeChipFilter) list = list.filter(s => _serviceMatchesDiscovery(s, _activeChipFilter, _categoryMeta(_activeCategory)));
     if (_searchQuery) list = list.filter(s => _searchText(s).includes(_searchQuery));
 
