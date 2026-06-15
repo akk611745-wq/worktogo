@@ -808,6 +808,13 @@ window.HomeModals = (() => {
     _forceNewBooking = false; // always reset after submission attempt
 
     if (res.ok) {
+      // Engine-level failure (HTTP always 200 for internal calls; check payload success flag)
+      if (res.data?.success === false) {
+        _isBookingSubmitting = false;
+        if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
+        UI.toast(res.data?.message || res.data?.error?.message || "Booking could not be created. Please try again.", "error");
+        return;
+      }
       // Existing active booking returned — warn and offer "Book new anyway"
       if (res.data?.duplicate_prevented) {
         _isBookingSubmitting = false;
