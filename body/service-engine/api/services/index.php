@@ -1161,6 +1161,7 @@ if ($method === 'POST' && $uri === '/api/service/request') {
             ':customer_address' => trim((string)($input['customer_address'] ?? '')) ?: null,
             ':vendor_route' => $bookingMode === 'direct_vendor' ? 'direct_vendor' : 'admin_queue',
         ];
+        if (serviceColumnOrNull($db, 'bookings', 'category_id', ':category_id', $service['category_id'] ?? null, $bookingColumns, $bookingBind)) $bookingValues[] = ':category_id';
         if (serviceColumnOrNull($db, 'bookings', 'client_request_id', ':client_request_id', $operationalRequest['client_request_id'], $bookingColumns, $bookingBind)) $bookingValues[] = ':client_request_id';
         if (serviceColumnOrNull($db, 'bookings', 'lifecycle_state', ':lifecycle_state', $operationalRequest['lifecycle_state'], $bookingColumns, $bookingBind)) $bookingValues[] = ':lifecycle_state';
         if (serviceColumnOrNull($db, 'bookings', 'assignment_state', ':assignment_state', $operationalRequest['assignment_state'], $bookingColumns, $bookingBind)) $bookingValues[] = ':assignment_state';
