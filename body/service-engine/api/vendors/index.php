@@ -345,6 +345,17 @@ if ($method === 'PATCH' && $uri === '/api/vendor/profile') {
     $db->prepare("UPDATE vendors SET " . implode(', ', $vendorSets) . " WHERE user_id = ?")
        ->execute($vendorParams);
 
+    // Keep vendor_categories in sync with the vendor's selected category.
+    // DELETE + INSERT IGNORE replaces the single-category selection atomically.
+    if ($categoryId !== null && $categoryId > 0
+        && ServiceVendorEligibility::tableHasColumn($db, 'vendor_categories', 'vendor_id')
+    ) {
+        $vendorId = resolveVendorId($db, $userId);
+        $db->prepare("DELETE FROM vendor_categories WHERE vendor_id = ?")->execute([$vendorId]);
+        $db->prepare("INSERT IGNORE INTO vendor_categories (vendor_id, category_id) VALUES (?, ?)")
+           ->execute([$vendorId, $categoryId]);
+    }
+
     Response::success(['updated' => true], 200, 'Profile updated');
 }
 
