@@ -847,26 +847,62 @@ if ($method === 'GET' && $uri === '/api/services') {
 
     $stmt = $db->prepare($sql);
     $stmt->execute($bind);
-    $services = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // Group rows by vendor so the customer app shows one card per vendor.
+    // Each vendor object carries vendor_services[] (chip labels), category_slugs[]
+    // (for filter matching), and service_map{catName: serviceId} (so WtgSheet
+    // can resolve the correct service_id when the user picks a category chip).
+    $vendorMap  = [];
     $categories = [];
-    foreach ($services as $service) {
-        $slug = $service['category_slug'] ?? '';
+    foreach ($rows as $row) {
+        $vid     = $row['vendor_id'];
+        $slug    = $row['category_slug'] ?? '';
+        $catName = $row['category_name'] ?? $slug;
+
+        if (!isset($vendorMap[$vid])) {
+            $vendorMap[$vid] = [
+                'id'                 => $vid,
+                'vendor_id'          => $vid,
+                'vendor_name'        => $row['vendor_name'] ?? '',
+                'category_slug'      => $slug,
+                'category_name'      => $catName,
+                'rating'             => $row['rating'] ?? null,
+                'rating_is_verified' => $row['rating_is_verified'] ?? false,
+                'is_featured'        => $row['is_featured'] ?? false,
+                'available_today'    => $row['available_today'] ?? null,
+                'image'              => $row['image'] ?? null,
+                'photo'              => $row['photo'] ?? null,
+                'jobs_done'          => $row['jobs_done'] ?? 0,
+                'vendor_services'    => [],
+                'category_slugs'     => [],
+                'service_map'        => [],
+            ];
+        }
+
+        if ($slug && $catName && !in_array($catName, $vendorMap[$vid]['vendor_services'], true)) {
+            $vendorMap[$vid]['vendor_services'][] = $catName;
+            $vendorMap[$vid]['category_slugs'][]  = $slug;
+            $vendorMap[$vid]['service_map'][$catName] = (int)$row['id'];
+        }
+
         if ($slug && !isset($categories[$slug])) {
             $categories[$slug] = [
-                'slug' => $slug,
-                'name' => $service['category_name'] ?? $slug,
-                'icon' => $service['category_icon'] ?: '🔧',
-                'image' => $service['category_image'] ?? null,
+                'slug'  => $slug,
+                'name'  => $catName,
+                'icon'  => $row['category_icon'] ?: '🔧',
+                'image' => $row['category_image'] ?? null,
             ];
         }
     }
 
+    $vendors = array_values($vendorMap);
+
     Response::success([
-        'services' => $services,
-        'categories' => array_values($categories),
+        'services'     => $vendors,
+        'categories'   => array_values($categories),
         'pilot_config' => servicePilotConfig($db),
-        'total' => count($services)
+        'total'        => count($vendors)
     ]);
 }
 
