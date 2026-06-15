@@ -831,10 +831,17 @@ if ($method === 'GET' && $uri === '/api/services') {
     $categorySelect .= serviceTableHasColumn($db, 'categories', 'image_url') ? ', c.image_url AS category_image' : ", NULL AS category_image";
 
     $svcDeletedAt = serviceTableHasColumn($db, 'services', 'deleted_at') ? 'AND s.deleted_at IS NULL' : '';
+    // vendor_categories is the source of truth for which categories a vendor claims.
+    // INNER JOIN means service rows without a matching vendor_categories row are excluded.
+    // Falls back gracefully (no join) if the table hasn't been migrated yet.
+    $vcJoin = serviceTableHasColumn($db, 'vendor_categories', 'vendor_id')
+        ? "INNER JOIN vendor_categories vc ON vc.vendor_id = s.vendor_id AND vc.category_id = s.category_id"
+        : "";
     $sql  = "SELECT s.*, v.business_name AS vendor_name, c.name AS category_name, c.slug AS category_slug {$categorySelect}
              FROM services s
              LEFT JOIN vendors v ON v.id = s.vendor_id
              LEFT JOIN categories c ON c.id = s.category_id
+             {$vcJoin}
              WHERE s.status = 'active' {$svcDeletedAt}";
     $bind = [];
 
