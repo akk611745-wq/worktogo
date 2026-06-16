@@ -1484,6 +1484,12 @@ try {
         $optSel .= isset($bc['address'])           ? ', b.address AS full_address' : (isset($bc['customer_address']) ? ', b.customer_address AS full_address' : ', NULL AS full_address');
         $optSel .= isset($bc['issue_description']) ? ', b.issue_description AS issue_text' : (isset($bc['issue_summary']) ? ', b.issue_summary AS issue_text' : ', NULL AS issue_text');
         $optSel .= isset($bc['total'])             ? ', b.total AS amount'   : (isset($bc['amount']) ? ', b.amount' : ', NULL AS amount');
+        // vendor_response_status exists on `bookings` (migration 2026_05_28_001) and is
+        // written by the vendor accept/reject flow (body/service-engine/.../jobs/{id}/status)
+        // for every booking_mode. It was never selected here, so the admin modal's
+        // "Vendor" box always fell back to its hardcoded 'not_requested' default
+        // regardless of true state. See VENDOR-ASSIGN-VISIBILITY task.
+        $optSel .= isset($bc['vendor_response_status']) ? ', b.vendor_response_status' : ", 'not_requested' AS vendor_response_status";
 
         $svcJoin = isset($bc['service_id'])
             ? 'LEFT JOIN services s ON s.id = b.service_id'

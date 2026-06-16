@@ -541,16 +541,33 @@ function vendorAssignControl(booking) {
   </div>`;
 }
 
+// Vendor accept/reject tracking DOES exist for every booking_mode —
+// bookings.vendor_response_status (migration 2026_05_28_001), written by
+// the vendor accept/reject flow regardless of free/direct/inspection mode.
+// It just wasn't selected by the admin API until VENDOR-ASSIGN-VISIBILITY
+// was fixed (heart/api/admin/index.php). No field is invented here.
+const VENDOR_RESPONSE_LABELS = {
+  vendor_accepted: 'Accepted',
+  vendor_rejected: 'Rejected',
+  awaiting_vendor_response: 'Pending response',
+  not_requested: 'Not yet contacted',
+};
+
 function requestTruthPanel(booking) {
   const lifecycle = booking.lifecycle_state || booking.admin_request_view?.lifecycle_state || 'pending';
   const payment = booking.payment_status || booking.payment_route || 'unpaid';
   const assignment = booking.assignment_state || booking.admin_request_view?.assignment_state || 'unassigned';
-  const vendor = booking.vendor_response_status || booking.vendor_execution?.vendor_response_status || 'not_requested';
+  const vendorId = String(booking.vendor_id || '');
+  const vendorName = booking.vendor_name
+    || serviceVendors.find(v => String(v.id || v._id) === vendorId)?.business_name
+    || (vendorId ? ('Vendor #' + vendorId) : '');
+  const responseRaw = booking.vendor_response_status || booking.vendor_execution?.vendor_response_status || '';
+  const responseLabel = VENDOR_RESPONSE_LABELS[responseRaw] || responseRaw || null;
   return `<div style="display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px">
     <div class="card"><div class="card-body"><b>Booking</b><div>${escHtml(lifecycle)}</div></div></div>
     <div class="card"><div class="card-body"><b>Payment</b><div>${escHtml(payment)}</div></div></div>
     <div class="card"><div class="card-body"><b>Assignment</b><div>${escHtml(assignment)}</div></div></div>
-    <div class="card"><div class="card-body"><b>Vendor</b><div>${escHtml(vendor)}</div></div></div>
+    <div class="card"><div class="card-body"><b>Vendor</b><div>${vendorId ? escHtml(vendorName) : '<span style="color:var(--text-muted)">Not assigned</span>'}</div>${vendorId ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">${responseLabel ? escHtml(responseLabel) : 'No response status tracked for this booking'}</div>` : ''}</div></div>
   </div>`;
 }
 
@@ -673,7 +690,31 @@ function openOpsDetail(bookingId) {
       vendorPlaceholder = '⚠️ No vendors in this category';
     }
   }
-  const vendors = [`<option value="">${vendorPlaceholder}</option>`].concat(vendorPool.map(v => `<option value="${escHtml(String(v.id || v._id || ''))}">${escHtml(v.business_name || v.name || ('Vendor #' + (v.id || v._id)))}</option>`)).join('');
+  const currentVendorId = String(booking.vendor_id || '');
+  const isAssigned = !!booking.vendor_id;
+  const vendors = [`<option value="">${vendorPlaceholder}</option>`].concat(vendorPool.map(v => {
+    const vid = String(v.id || v._id || '');
+    return `<option value="${escHtml(vid)}" ${vid === currentVendorId ? 'selected' : ''}>${escHtml(v.business_name || v.name || ('Vendor #' + vid))}</option>`;
+  })).join('');
+  // Resolve the currently-assigned vendor's real name — vendor_name comes
+  // straight off the bookings→vendors JOIN (heart/api/admin/index.php),
+  // falling back to the cached vendor list, never a blank/placeholder.
+  const currentVendorName = booking.vendor_name
+    || serviceVendors.find(v => String(v.id || v._id) === currentVendorId)?.business_name
+    || (isAssigned ? ('Vendor #' + currentVendorId) : '');
+  // Once a vendor is assigned, show "Reassign" + the vendor's name instead
+  // of "Select vendor" + "Assign" — never both states at once.
+  const vendorActionHtml = isAssigned
+    ? `<div style="font-size:11px;color:var(--text-secondary)">Currently: <b style="color:var(--text-primary)">${escHtml(currentVendorName)}</b></div><select class="form-control" id="ops-vendor-${escHtml(String(bookingId))}" style="max-width:220px">${vendors}</select><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','reassign_vendor')">Reassign</button>`
+    : `<select class="form-control" id="ops-vendor-${escHtml(String(bookingId))}" style="max-width:220px">${vendors}</select><button class="btn btn-sm btn-primary" onclick="simulateOpsAction('${escHtml(String(bookingId))}','assign_vendor')">Assign</button>`;
+  // Inspection-only actions (queued/coordinator/scheduled/done) don't apply
+  // to free_lead or direct_vendor bookings — hide them outside that mode.
+  const isInspectionMode = ['inspection', 'paid_inspection'].includes(
+    String(booking.booking_mode || booking.admin_request_view?.booking_mode || '').toLowerCase()
+  );
+  const inspectionActionsHtml = isInspectionMode
+    ? `<button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','inspection_queued')">Inspection queued</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','coordinator_assigned')">Coordinator assigned</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','inspection_scheduled')">Scheduled</button><button class="btn btn-sm btn-success" onclick="simulateOpsAction('${escHtml(String(bookingId))}','inspection_completed')">Inspection done</button>`
+    : '';
   const rawCustPhone = customer.mobile || booking.customer_mobile || booking.customer_phone || '';
   const custPh = rawCustPhone.replace(/\D/g, '').replace(/^91/, '');
   const custPhoneHtml = custPh
@@ -686,7 +727,7 @@ function openOpsDetail(bookingId) {
         ${requestTruthPanel(booking)}
         <div class="card"><div class="card-body"><b>Customer</b><div>${escHtml(customer.name || booking.customer_name || '—')} · ${custPhoneHtml}</div><div style="color:var(--text-muted)">${escHtml(location.full_address || booking.customer_address || 'Address not set')}</div></div></div>
         <div class="card"><div class="card-body"><b>Issue</b><div>${escHtml(issue.label || booking.category_label || 'Service')} — ${escHtml(issue.summary || booking.issue_summary || '—')}</div><div style="color:var(--text-muted)">${(issue.issues || booking.issue_list || []).map(escHtml).join(', ')}</div><div>${escHtml(location.city || booking.city || '—')} / ${escHtml(location.locality || booking.locality || booking.customer_locality || '—')}</div><div>Payment: ${escHtml(view.payment_type || booking.payment_route || 'cod')}</div></div></div>
-        <div class="card"><div class="card-body"><b>Actions</b><div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:8px"><select class="form-control" id="ops-vendor-${escHtml(String(bookingId))}" style="max-width:220px">${vendors}</select><button class="btn btn-sm btn-primary" onclick="simulateOpsAction('${escHtml(String(bookingId))}','assign_vendor')">Assign</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','reassign_vendor')">Reassign</button><label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-secondary);cursor:pointer;margin-left:4px"><input type="checkbox" id="override-payment-${escHtml(String(bookingId))}" style="accent-color:var(--red)"> Confirm payment verified</label><span style="font-size:9px;color:var(--red)">⚠ Inspection override only</span><button class="btn btn-sm btn-warn" onclick="simulateOpsAction('${escHtml(String(bookingId))}','unassign_vendor')">Unassign</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','inspection_queued')">Inspection queued</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','coordinator_assigned')">Coordinator assigned</button><button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','inspection_scheduled')">Scheduled</button><button class="btn btn-sm btn-success" onclick="simulateOpsAction('${escHtml(String(bookingId))}','inspection_completed')">Inspection done</button><button class="btn btn-sm btn-warn" onclick="simulateOpsAction('${escHtml(String(bookingId))}','mark_escalated')">Escalate</button></div></div></div>
+        <div class="card"><div class="card-body"><b>Actions</b><div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:8px">${vendorActionHtml}<label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-secondary);cursor:pointer;margin-left:4px"><input type="checkbox" id="override-payment-${escHtml(String(bookingId))}" style="accent-color:var(--red)"> Confirm payment verified</label><span style="font-size:9px;color:var(--red)">⚠ Inspection override only</span><button class="btn btn-sm btn-warn" onclick="simulateOpsAction('${escHtml(String(bookingId))}','unassign_vendor')">Unassign</button>${inspectionActionsHtml}<button class="btn btn-sm btn-warn" onclick="simulateOpsAction('${escHtml(String(bookingId))}','mark_escalated')">Escalate</button></div></div></div>
         <div class="card"><div class="card-body" style="border-top:2px solid var(--red-dim)"><b style="color:var(--red)">⚠ Force Status Override</b><div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:8px"><select class="form-control" id="ops-force-status-${escHtml(String(bookingId))}" style="max-width:180px"><option value="">Select status…</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="escalated">Escalated</option></select><button class="btn btn-sm btn-danger" onclick="var s=document.getElementById('ops-force-status-${escHtml(String(bookingId))}').value;if(!s){Toast.warn('Select a status first.');return;}adminSetJobStatus('${escHtml(String(bookingId))}',s)">Override Status</button></div></div></div>
         <div class="card"><div class="card-body"><b>Timeline</b>${timeline.map(t => `<div style="border-left:2px solid var(--border);padding:6px 0 6px 10px"><b>${escHtml(t.event || 'update')}</b> <span style="color:var(--text-muted)">${escHtml(t.actor || 'system')} · ${escHtml(t.state || '')} · ${escHtml(t.at || '')}</span><div style="font-size:11px;color:var(--text-muted)">${escHtml(t.notes || '')}</div></div>`).join('') || '<div style="color:var(--text-muted)">No timeline entries.</div>'}</div></div>
       </div>
