@@ -819,7 +819,8 @@ function serviceBookingEligibility(PDO $db, array $booking): array
 
 // â”€â”€ GET /api/services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method === 'GET' && $uri === '/api/services') {
-    header('Cache-Control: no-store, max-age=0');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
     $category = $_GET['category'] ?? null;
 
     $orderParts = [];
