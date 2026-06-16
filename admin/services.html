@@ -202,7 +202,8 @@
       <div class="wtg-tabs">
         <button class="wtg-tab active" data-tab="ops"     onclick="switchTab('ops')">Operations Board</button>
         <button class="wtg-tab"        data-tab="kanban"  onclick="switchTab('kanban')">Kanban Pipeline</button>
-        <button class="wtg-tab"        data-tab="catalog" onclick="switchTab('catalog')">Service Catalog</button>
+        <button class="wtg-tab"        data-tab="catalog"     onclick="switchTab('catalog')">Service Catalog</button>
+        <button class="wtg-tab"        data-tab="categories" onclick="switchTab('categories')">Categories</button>
       </div>
 
       <!-- ═══════════════════════════════════════════════════════
@@ -352,6 +353,47 @@
         </div>
       </div>
 
+      <!-- ═══════════════════════════════════════════════════════
+           TAB: CATEGORIES
+      ════════════════════════════════════════════════════════ -->
+      <div id="tab-categories" class="wtg-tab-panel">
+        <div class="card">
+          <div class="card-body" style="padding-bottom:12px">
+            <div class="page-header" style="padding:0;margin-bottom:12px">
+              <div>
+                <h2 class="page-title" style="font-size:16px">Category Management</h2>
+                <p class="page-subtitle" id="cat-mgmt-count">Manage service categories.</p>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="showAddCategoryForm()">+ Add Category</button>
+            </div>
+            <div id="add-cat-form" style="display:none;background:var(--bg-raised);border:1px solid var(--border-dim);border-radius:8px;padding:14px;margin-bottom:14px">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Category Name *</label>
+                  <input class="form-control" id="new-cat-name" placeholder="e.g. Carpenter" style="max-width:200px" oninput="_autoCatSlug()">
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Slug (auto)</label>
+                  <input class="form-control" id="new-cat-slug" placeholder="carpenter" style="max-width:160px">
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="submitAddCategory()">Save</button>
+                <button class="btn btn-ghost btn-sm" onclick="hideAddCategoryForm()">Cancel</button>
+              </div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>NAME</th><th>SLUG</th><th>STATUS</th><th>ACTIONS</th></tr>
+              </thead>
+              <tbody id="categories-tbody">
+                <tr class="loading-row"><td colspan="4"><div class="spinner" style="margin:auto"></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
     </main>
   </div>
 </div>
@@ -402,6 +444,7 @@ function switchTab(name) {
   document.querySelector('.wtg-tab[data-tab="' + name + '"]').classList.add('active');
   document.getElementById('tab-' + name).classList.add('active');
   if (name === 'kanban') renderKanban();
+  if (name === 'categories') loadCategories();
 }
 
 // ── Service Bookings (Operations Board) ─────────────────────
@@ -1223,6 +1266,76 @@ async function saveCategoryDetail(categoryId) {
     Toast.success('Category updated.');
     closeCategoryDetail();
   } catch(e) { Toast.error(e.message || 'Failed to save category'); }
+}
+
+// ── Category Management ──────────────────────────────────────
+async function loadCategories() {
+  tableLoading('categories-tbody', 4);
+  try {
+    const data = await API.get('/api/admin/categories');
+    const cats = data.data?.categories || data.categories || [];
+    document.getElementById('cat-mgmt-count').textContent =
+      `${cats.length} categor${cats.length !== 1 ? 'ies' : 'y'}`;
+    renderCategoryMgmt(cats);
+  } catch(e) {
+    tableEmpty('categories-tbody', 4, 'Failed: ' + (e.message || ''));
+    Toast.error('Failed to load categories');
+  }
+}
+
+function renderCategoryMgmt(cats) {
+  const tbody = document.getElementById('categories-tbody');
+  if (!cats.length) { tableEmpty('categories-tbody', 4); return; }
+  tbody.innerHTML = cats.map(c => {
+    const isActive = c.status === 'active';
+    return `<tr>
+      <td style="font-weight:600">${escHtml(c.name)}</td>
+      <td><code style="font-size:11px;background:var(--bg-raised);padding:2px 6px;border-radius:3px">${escHtml(c.slug)}</code></td>
+      <td>${statusBadge(c.status)}</td>
+      <td><div class="td-actions">
+        <button class="btn btn-sm ${isActive ? 'btn-warn' : 'btn-success'}" onclick="toggleCategory(${parseInt(c.id)},'${isActive ? 'inactive' : 'active'}')">${isActive ? 'Deactivate' : 'Activate'}</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+async function toggleCategory(id, newStatus) {
+  const action = newStatus === 'active' ? 'activate' : 'deactivate';
+  if (!await confirmAction(`${Fmt.capitalize(action)} this category?`)) return;
+  try {
+    await API.patch('/api/admin/categories/' + id, { status: newStatus });
+    Toast.success(`Category ${action}d.`);
+    loadCategories();
+  } catch(e) { Toast.error(e.message || 'Failed'); }
+}
+
+function showAddCategoryForm() {
+  document.getElementById('add-cat-form').style.display = 'block';
+  document.getElementById('new-cat-name').focus();
+}
+
+function hideAddCategoryForm() {
+  document.getElementById('add-cat-form').style.display = 'none';
+  document.getElementById('new-cat-name').value = '';
+  document.getElementById('new-cat-slug').value = '';
+}
+
+function _autoCatSlug() {
+  const name = document.getElementById('new-cat-name').value;
+  document.getElementById('new-cat-slug').value =
+    name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+async function submitAddCategory() {
+  const name = document.getElementById('new-cat-name').value.trim();
+  const slug = document.getElementById('new-cat-slug').value.trim();
+  if (!name) { Toast.warn('Category name is required.'); return; }
+  try {
+    await API.post('/api/admin/categories', { name, ...(slug ? { slug } : {}) });
+    Toast.success('Category created.');
+    hideAddCategoryForm();
+    loadCategories();
+  } catch(e) { Toast.error(e.message || 'Failed to create category'); }
 }
 
 // ── Init ─────────────────────────────────────────────────────

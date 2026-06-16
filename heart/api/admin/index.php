@@ -519,6 +519,28 @@ try {
         Response::success(['categories' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
     }
 
+    // ── POST /api/admin/categories ────────────────────────────
+    if ($method === 'POST' && $uri === '/api/admin/categories') {
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        $name  = trim($input['name'] ?? '');
+        if (!$name) Response::validation('Category name is required');
+        $slug = trim($input['slug'] ?? '');
+        if (!$slug) {
+            $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '-', $name));
+            $slug = trim($slug, '-');
+        }
+        $type   = ($input['type'] ?? 'service') === 'product' ? 'product' : 'service';
+        $status = ($input['status'] ?? 'active') === 'inactive' ? 'inactive' : 'active';
+        $dup = $db->prepare("SELECT id FROM categories WHERE slug = ? LIMIT 1");
+        $dup->execute([$slug]);
+        if ($dup->fetchColumn()) $slug = $slug . '-' . substr((string)time(), -4);
+        $db->prepare("INSERT INTO categories (name, slug, type, status, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())")
+           ->execute([$name, $slug, $type, $status]);
+        $newId = (int)$db->lastInsertId();
+        Logger::info('Admin created category', ['admin_id' => $auth['user_id'], 'category_id' => $newId, 'name' => $name]);
+        Response::success(['id' => $newId, 'name' => $name, 'slug' => $slug, 'status' => $status], 201, 'Category created');
+    }
+
     // ── GET /api/admin/categories/{id}/detail ─────────────────────
     if ($method === 'GET' && preg_match('#^/api/admin/categories/(\d+)/detail$#', $uri, $m)) {
         $categoryId = (int)$m[1];
