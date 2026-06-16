@@ -204,11 +204,11 @@ async function loadAll() {
 }
 
 // ── Section 1: Unassigned ────────────────────────────────────
+// Uses the canonical resolveBookingStage() (assets/app.js) so "unassigned
+// here" can never disagree with Kanban's "NEW" column for the same
+// booking. See ADMIN_AUDIT_2026_06_16.md §8.
 function renderUnassigned() {
-  const rows = allBookings.filter(b => {
-    const as = b.admin_request_view?.assignment_state ?? b.assignment_state ?? '';
-    return !b.vendor_id && !['worker_assigned','worker_contacted','worker_confirmed'].includes(as);
-  });
+  const rows = allBookings.filter(b => resolveBookingStage(b) === 'new');
   document.getElementById('count-unassigned').textContent = rows.length;
 
   if (!rows.length) { tableEmpty('tbody-unassigned', 5, 'No unassigned bookings'); return; }
@@ -333,7 +333,10 @@ async function quickAssign(bookingId) {
   const vendorName = el.options[el.selectedIndex]?.textContent || ('Vendor #' + vendorId);
   if (!await confirmAction(`Assign booking #${bookingId} to ${vendorName}?`)) return;
   try {
-    await API.patch(CONFIG.ENDPOINTS.SERVICE_BOOKING_ASSIGN(bookingId), { vendor_id: Number(vendorId) });
+    // status:'assigned' included to match services.html's assignBookingVendor()
+    // write path — previously this endpoint was called with vendor_id only,
+    // leaving lifecycle/assignment state stale. See ADMIN_AUDIT_2026_06_16.md §8.
+    await API.patch(CONFIG.ENDPOINTS.SERVICE_BOOKING_ASSIGN(bookingId), { vendor_id: Number(vendorId), status: 'assigned' });
     Toast.success('Vendor assigned.');
     loadAll();
   } catch(e) { Toast.error(e.message || 'Failed to assign'); }

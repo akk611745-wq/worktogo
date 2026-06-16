@@ -433,11 +433,9 @@ let currentPage = 1, totalPages = 1;
 let bookingPage = 1, bookingTotalPages = 1;
 let serviceVendors = [];
 let serviceBookingsCache = [];
-const SERVICE_STATUS_ALIASES = { open:'pending', pending:'pending', assigned:'confirmed', accepted:'confirmed', confirmed:'confirmed', started:'in_progress', ongoing:'in_progress', in_progress:'in_progress', delivered:'completed', completed:'completed', rejected:'cancelled', cancelled:'cancelled' };
-
-function normalizeServiceStatus(status) {
-  return SERVICE_STATUS_ALIASES[String(status || 'pending').toLowerCase()] || String(status || 'pending').toLowerCase();
-}
+// SERVICE_STATUS_ALIASES / normalizeServiceStatus / resolveBookingStage now
+// live in assets/app.js (loaded above) — single canonical source shared
+// with Follow-up Center. See ADMIN_AUDIT_2026_06_16.md §8.
 
 // ── Tab switching ────────────────────────────────────────────
 function switchTab(name) {
@@ -627,7 +625,7 @@ function renderServiceBookings(bookings) {
       <td><div>${escHtml(location.city || b.city || '—')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(location.locality || b.locality || b.customer_locality || 'Locality not set')}</div></td>
       <td>${escHtml(view.payment_type || b.payment_route || b.payment_method || 'cod')}</td>
       <td>${escHtml(view.priority || b.priority || 'normal_priority')}</td>
-      <td><div>${escHtml(view.lifecycle_state || b.lifecycle_state || 'request_received')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(b.vendor_id && serviceVendors.find(v=>v.id==b.vendor_id)?.business_name || view.assignment_state || b.assignment_state || 'unassigned_searching')}</div>${slaBadgeHtml(b)}</td>
+      <td>${(() => { const stage = resolveBookingStage(b); return `<span class="kanban-col-badge" style="display:inline-block;margin-bottom:3px" title="Canonical stage — same value Kanban uses for this booking">${escHtml(BOOKING_STAGE_LABELS[stage] || 'CANCELLED')}</span>`; })()}<div style="font-size:11px">${escHtml(view.lifecycle_state || b.lifecycle_state || 'request_received')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(b.vendor_id && serviceVendors.find(v=>v.id==b.vendor_id)?.business_name || view.assignment_state || b.assignment_state || 'unassigned_searching')}</div>${slaBadgeHtml(b)}</td>
       <td><div>${escHtml(latest.latest_event || 'request_created')}</div><div style="font-size:10px;color:var(--text-muted)">${escHtml(latest.latest_actor || 'system')} · ${escHtml(latest.latest_state || '')}</div></td>
       <td><div class="td-actions">
         <button class="btn btn-sm btn-primary" onclick="openOpsDetail('${escHtml(String(id))}')">Details</button>
@@ -847,23 +845,13 @@ const KANBAN_COLS = [
   { id: 'completed',   label: 'COMPLETED' },
 ];
 
-// Map a booking to its kanban column
+// Map a booking to its kanban column.
+// Delegates to the canonical resolveBookingStage() (assets/app.js) so
+// Kanban's bucket can never disagree with Operations Board / Follow-up
+// Center about the same booking. Previously this duplicated the logic
+// locally WITHOUT checking vendor_id — see ADMIN_AUDIT_2026_06_16.md §8.
 function getKanbanColumn(booking) {
-  const lifecycle  = ((booking.admin_request_view?.lifecycle_state  || booking.lifecycle_state  || '')).toLowerCase();
-  const assignment = ((booking.admin_request_view?.assignment_state || booking.assignment_state || '')).toLowerCase();
-  const status     = normalizeServiceStatus(booking.status || booking.job_status || '');
-
-  if (status === 'cancelled') return null;
-  if (status === 'completed' || lifecycle === 'completed' || lifecycle === 'payment_pending') return 'completed';
-  if (
-    status === 'in_progress' ||
-    ['service_in_progress','inspection_queued','inspection_assigned','inspection_scheduled'].includes(lifecycle)
-  ) return 'in_progress';
-  if (
-    ['worker_assigned','worker_contacted','inspection_unassigned','inspection_assigned'].includes(assignment) ||
-    lifecycle === 'worker_assigned'
-  ) return 'assigned';
-  return 'new';
+  return resolveBookingStage(booking);
 }
 
 // Human-readable elapsed time from booking.created_at

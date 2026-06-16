@@ -9,6 +9,47 @@ function escHtml(str) {
   return str.replace(/[&<>"']/g, m => map[m]);
 }
 
+// ── Canonical Booking Stage Resolver ──────────────────────────
+// Single source of truth for "what stage is this booking in" — shared by
+// Operations Board (services.html), Kanban Pipeline (services.html), and
+// Follow-up Center (followup.html) so no view can disagree about the same
+// booking. Root cause this fixes: Kanban used to decide stage WITHOUT
+// checking vendor_id, while Operations Board and Follow-up Center did —
+// so a vendor-assigned booking could read "assigned" in one view and
+// "NEW/unassigned" in another. See ADMIN_AUDIT_2026_06_16.md §8.
+const SERVICE_STATUS_ALIASES = { open:'pending', pending:'pending', assigned:'confirmed', accepted:'confirmed', confirmed:'confirmed', started:'in_progress', ongoing:'in_progress', in_progress:'in_progress', delivered:'completed', completed:'completed', rejected:'cancelled', cancelled:'cancelled' };
+
+function normalizeServiceStatus(status) {
+  return SERVICE_STATUS_ALIASES[String(status || 'pending').toLowerCase()] || String(status || 'pending').toLowerCase();
+}
+
+const BOOKING_STAGE_LABELS = { new: 'NEW', assigned: 'ASSIGNED', in_progress: 'IN PROGRESS', completed: 'COMPLETED' };
+
+// Returns 'new' | 'assigned' | 'in_progress' | 'completed' | null (cancelled).
+// Checks status + lifecycle_state + assignment_state + vendor_id TOGETHER —
+// vendor_id is treated as evidence of assignment exactly like
+// assignment_state/lifecycle_state (this is the field Kanban used to skip).
+function resolveBookingStage(booking) {
+  const b = booking || {};
+  const lifecycle  = String(b.admin_request_view?.lifecycle_state  || b.lifecycle_state  || '').toLowerCase();
+  const assignment = String(b.admin_request_view?.assignment_state || b.assignment_state || '').toLowerCase();
+  const status     = normalizeServiceStatus(b.status || b.job_status || '');
+  const hasVendor  = !!(b.vendor_id || b.admin_request_view?.vendor_id);
+
+  if (status === 'cancelled') return null;
+  if (status === 'completed' || lifecycle === 'completed' || lifecycle === 'payment_pending') return 'completed';
+  if (
+    status === 'in_progress' ||
+    ['service_in_progress','inspection_queued','inspection_assigned','inspection_scheduled'].includes(lifecycle)
+  ) return 'in_progress';
+  if (
+    hasVendor ||
+    ['worker_assigned','worker_contacted','inspection_unassigned','inspection_assigned'].includes(assignment) ||
+    lifecycle === 'worker_assigned'
+  ) return 'assigned';
+  return 'new';
+}
+
 // ── Toast Notifications ──────────────────────────────────────
 const Toast = {
   show(msg, type = 'success', duration = 3500) {
