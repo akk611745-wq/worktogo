@@ -1450,13 +1450,19 @@ window.WtgSheet = (function () {
       const svcBase = _vendors.find(v => String(v.id || v.vendor_id) === String(vendorId))
         || { id: vendorId, vendor_id: vendorId, request_source: 'worker_card' };
 
-      // Map the first selected chip name to its service_id via service_map so
-      // the booking API receives the correct service_id for the chosen category.
+      // Resolve the real services.id via service_map ({categoryName: serviceId},
+      // built server-side by GET /api/services) — same pattern as
+      // confirmBooking()'s resolvedServiceId. Key must be the vendor's
+      // category name (svcBase.category_name, the same value the server used
+      // to build service_map's keys), NOT the selected issue-chip text:
+      // selectedChips holds issue labels like "leakage"/"wall repaint", which
+      // never matched a service_map key, so this always fell through to
+      // svcBase.id (the vendor's id, not a service id) and 404'd on checkout.
       const svc = { ...svcBase };
-      if (svcBase.service_map && selectedChips.length) {
-        const mapped = svcBase.service_map[selectedChips[0]];
-        if (mapped) svc.id = mapped;
-      }
+      const mapped = svcBase.service_map && svcBase.category_name
+        ? svcBase.service_map[svcBase.category_name]
+        : null;
+      if (mapped) svc.id = mapped;
 
       if (window.HomeModals && HomeModals.prepareVendorDirectSubmit) {
         HomeModals.prepareVendorDirectSubmit(
