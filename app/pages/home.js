@@ -667,6 +667,15 @@ window.HomeModals = (() => {
     const issueSummary = _issueSummary(issueList.length ? issueList : serviceContext);
     const submittedCategorySlug = document.getElementById("booking-category-context")?.value || _currentService.category_slug || _currentService.category || _activeCategory || _inspectionCategorySlug("");
     const category = _categoryMeta(submittedCategorySlug);
+    // GET /api/services groups rows by vendor, so _currentService.id is the
+    // vendor's id (used to render one card per vendor) — NOT a real
+    // services.id. Resolve the actual per-category services.id via
+    // service_map ({categoryName: serviceId}, built server-side) before
+    // submitting; sending the vendor id as service_id is what caused
+    // "Service not found" on checkout (confirmed: not a cache issue).
+    const resolvedServiceId = (_currentService.service_map && _currentService.service_map[category.label])
+      || _currentService.service_id
+      || _currentService.id;
     bookingMode = _canonicalBookingMode(document.getElementById("booking-mode")?.value, _currentService, category);
     const savedInspectionPayment = bookingMode === "inspection" ? _readInspectionPaymentReturn() : null;
     if (savedInspectionPayment?.booking && _normalizePaymentState(savedInspectionPayment.status_state || savedInspectionPayment.booking.payment_status) !== "paid") {
@@ -763,7 +772,7 @@ window.HomeModals = (() => {
     }
 
     const res = await API.createBooking({
-        service_id: _currentService.id,
+        service_id: resolvedServiceId,
         ...(dateVal ? { scheduled_at: new Date(dateVal).toISOString() } : {}),
         booking_mode: bookingMode,
         lifecycle_type: bookingMode,
