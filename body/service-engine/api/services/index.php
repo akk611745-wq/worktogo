@@ -1171,6 +1171,11 @@ if ($method === 'POST' && $uri === '/api/service/request') {
     }
     if (!$service) Response::notFound('Service');
 
+    // Normalize $serviceId to the resolved service row — for category-routed
+    // (inspection/free_lead) requests $service_id is not in the POST body so
+    // $serviceId stays 0, which violates the bookings.service_id FK constraint.
+    $serviceId = (int)$service['id'];
+
     $bookingMode = canonicalBookingMode($input, $service);
     $operationalRequest = serviceNormalizeOperationalRequest($input, $bookingMode, $service);
     $paymentMethod = strtolower(trim($input['payment_method'] ?? 'cod'));
