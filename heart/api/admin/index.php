@@ -664,13 +664,109 @@ try {
         ]);
     }
 
+    // ── GET /api/admin/categories/{id}/stats ─────────────────
+    if ($method === 'GET' && preg_match('#^/api/admin/categories/(\d+)/stats$#', $uri, $m)) {
+        $categoryId = (int)$m[1];
+
+        // Category core fields + optional pricing columns
+        $cols = "id, name, slug, type, status";
+        foreach (['inspection_price','commission_pct','commission_rate'] as $col) {
+            $chk = $db->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categories' AND COLUMN_NAME = ?");
+            $chk->execute([$col]);
+            $cols .= ((int)$chk->fetchColumn() > 0) ? ", {$col}" : ", NULL AS {$col}";
+        }
+        $stmt = $db->prepare("SELECT {$cols} FROM categories WHERE id = ? LIMIT 1");
+        $stmt->execute([$categoryId]);
+        $category = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$category) Response::notFound('Category');
+
+        // Stats counters
+        $stats = ['total_bookings' => 0, 'active_vendors' => 0, 'pending_bookings' => 0, 'completed_bookings' => 0];
+        try {
+            $stmt = $db->prepare("SELECT COUNT(*) FROM bookings b JOIN services s ON s.id = b.service_id WHERE s.category_id = ?");
+            $stmt->execute([$categoryId]);
+            $stats['total_bookings'] = (int)$stmt->fetchColumn();
+
+            $stmt = $db->prepare("SELECT COUNT(*) FROM bookings b JOIN services s ON s.id = b.service_id WHERE s.category_id = ? AND b.status IN ('completed','done','delivered')");
+            $stmt->execute([$categoryId]);
+            $stats['completed_bookings'] = (int)$stmt->fetchColumn();
+
+            $stmt = $db->prepare("SELECT COUNT(*) FROM bookings b JOIN services s ON s.id = b.service_id WHERE s.category_id = ? AND b.vendor_id IS NULL AND b.status NOT IN ('completed','done','delivered','cancelled','rejected')");
+            $stmt->execute([$categoryId]);
+            $stats['pending_bookings'] = (int)$stmt->fetchColumn();
+        } catch (PDOException $ignored) {}
+
+        // Vendors with per-category job counts and acceptance rate
+        $vendors = [];
+        try {
+            $hasRating = (int)$db->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vendors' AND COLUMN_NAME = 'rating'")->fetchColumn() > 0;
+            $ratingCol = $hasRating ? 'COALESCE(v.rating, 0)' : '0';
+
+            $stmt = $db->prepare(
+                "SELECT v.id, v.business_name, v.status,
+                        {$ratingCol} AS rating,
+                        COUNT(DISTINCT b.id) AS total_jobs,
+                        SUM(CASE WHEN b.status IN ('completed','done','delivered') THEN 1 ELSE 0 END) AS completed_jobs
+                 FROM vendors v
+                 LEFT JOIN bookings b ON b.vendor_id = v.id
+                     AND b.service_id IN (SELECT id FROM services WHERE category_id = ?)
+                 WHERE v.category_id = ?
+                    OR v.id IN (SELECT DISTINCT vendor_id FROM services WHERE category_id = ? AND vendor_id IS NOT NULL)
+                 GROUP BY v.id, v.business_name, v.status, {$ratingCol}
+                 ORDER BY v.status = 'active' DESC, completed_jobs DESC
+                 LIMIT 50"
+            );
+            $stmt->execute([$categoryId, $categoryId, $categoryId]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $stats['active_vendors'] = count(array_filter($rows, fn($r) => $r['status'] === 'active'));
+
+            foreach ($rows as $r) {
+                $total     = (int)($r['total_jobs']     ?? 0);
+                $completed = (int)($r['completed_jobs'] ?? 0);
+                $vendors[] = [
+                    'id'              => (int)$r['id'],
+                    'business_name'   => $r['business_name'],
+                    'is_active'       => $r['status'] === 'active',
+                    'rating'          => ($r['rating'] > 0) ? (float)$r['rating'] : null,
+                    'total_jobs'      => $total,
+                    'completed_jobs'  => $completed,
+                    'acceptance_rate' => $total > 0 ? round($completed / $total * 100) : null,
+                ];
+            }
+        } catch (PDOException $ignored) {}
+
+        // Top locations from bookings.customer_locality
+        $topLocations = [];
+        try {
+            $hasLocality = (int)$db->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'customer_locality'")->fetchColumn() > 0;
+            if ($hasLocality) {
+                $stmt = $db->prepare(
+                    "SELECT COALESCE(b.customer_locality, 'Unknown') AS locality, COUNT(*) AS count
+                     FROM bookings b JOIN services s ON s.id = b.service_id
+                     WHERE s.category_id = ? AND b.customer_locality IS NOT NULL AND b.customer_locality != ''
+                     GROUP BY locality ORDER BY count DESC LIMIT 8"
+                );
+                $stmt->execute([$categoryId]);
+                $topLocations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+        } catch (PDOException $ignored) {}
+
+        Response::success([
+            'category'      => $category,
+            'stats'         => $stats,
+            'vendors'       => $vendors,
+            'top_locations' => $topLocations,
+        ]);
+    }
+
     // ── PATCH /api/admin/categories/{id} ───────────────────────
     if ($method === 'PATCH' && preg_match('#^/api/admin/categories/(\d+)$#', $uri, $m)) {
         $categoryId = (int)$m[1];
         $input = json_decode(file_get_contents('php://input'), true) ?? [];
         $updates = [];
         $bind = [':id' => $categoryId];
-        foreach (['name','slug','status','icon','image_url','sort_order','commission_rate','inspection_price'] as $col) {
+        foreach (['name','slug','status','icon','image_url','sort_order','commission_rate','commission_pct','inspection_price'] as $col) {
             if (!array_key_exists($col, $input)) continue;
             $chk = $db->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categories' AND COLUMN_NAME = ?");
             $chk->execute([$col]);
@@ -678,7 +774,7 @@ try {
             $updates[] = "{$col} = :{$col}";
             $bind[":{$col}"] = match($col) {
                 'sort_order'                  => (int)$input[$col],
-                'commission_rate',
+                'commission_rate', 'commission_pct',
                 'inspection_price'            => (float)$input[$col],
                 default                       => trim((string)$input[$col]),
             };
