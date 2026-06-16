@@ -147,6 +147,10 @@ const API = (() => {
       return res.ok ? { ...res, data: _unwrapServicePayload(res) } : res;
     },
 
+    async getServiceCategories() {
+      return _request("GET", "/api/service/categories");
+    },
+
     async getPublicSettings() {
       return _request("GET", "/api/settings");
     },

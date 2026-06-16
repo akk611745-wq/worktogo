@@ -1714,7 +1714,20 @@ function _startFreshInspectionBooking() {
 // ── Loaders ─────────────────────────────────────────────────────────────────
 
 async function _loadServices() {
-  const res = await API.getServices();
+  // Fetch vendor cards and the full category list in parallel.
+  // Categories come from the dedicated endpoint (all active, vendor-independent)
+  // so filter chips always show every admin-defined category.
+  const [res, catRes] = await Promise.all([
+    API.getServices(),
+    API.getServiceCategories().catch(() => null),
+  ]);
+  const allCats = catRes?.ok
+    ? (catRes.data?.data?.categories || catRes.data?.categories || [])
+    : [];
+  if (allCats.length) {
+    _serviceCategories = allCats.map(c => ({ slug: c.slug, label: c.name, icon: c.icon || '🔧' }));
+    _renderCategoryChips();
+  }
   _renderServices(res);
   _resumePendingBooking();
 }
@@ -1751,7 +1764,7 @@ function _renderServices(res) {
   const payload = _unwrapData(res.data);
   let list = Array.isArray(payload) ? payload : (payload?.services || payload?.data || []);
   if (payload?.pilot_config) _pilotConfig = { ..._pilotConfig, ...payload.pilot_config };
-  if (Array.isArray(payload?.categories) && payload.categories.length) {
+  if (!_serviceCategories.length && Array.isArray(payload?.categories) && payload.categories.length) {
     _serviceCategories = payload.categories.map(c => ({ slug: c.slug, label: c.name, icon: c.icon || "🔧" }));
     _renderCategoryChips();
   }
