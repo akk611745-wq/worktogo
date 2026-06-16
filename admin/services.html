@@ -1272,7 +1272,7 @@ async function saveCategoryDetail(categoryId) {
 async function loadCategories() {
   tableLoading('categories-tbody', 4);
   try {
-    const data = await API.get('/api/admin/categories');
+    const data = await API.get(CONFIG.ENDPOINTS.CATEGORIES);
     const cats = data.data?.categories || data.categories || [];
     document.getElementById('cat-mgmt-count').textContent =
       `${cats.length} categor${cats.length !== 1 ? 'ies' : 'y'}`;
@@ -1303,7 +1303,7 @@ async function toggleCategory(id, newStatus) {
   const action = newStatus === 'active' ? 'activate' : 'deactivate';
   if (!await confirmAction(`${Fmt.capitalize(action)} this category?`)) return;
   try {
-    await API.patch('/api/admin/categories/' + id, { status: newStatus });
+    await API.patch(CONFIG.ENDPOINTS.CATEGORY_DETAIL(id), { status: newStatus });
     Toast.success(`Category ${action}d.`);
     loadCategories();
   } catch(e) { Toast.error(e.message || 'Failed'); }
@@ -1331,7 +1331,7 @@ async function submitAddCategory() {
   const slug = document.getElementById('new-cat-slug').value.trim();
   if (!name) { Toast.warn('Category name is required.'); return; }
   try {
-    await API.post('/api/admin/categories', { name, ...(slug ? { slug } : {}) });
+    await API.post(CONFIG.ENDPOINTS.CATEGORIES, { name, ...(slug ? { slug } : {}) });
     Toast.success('Category created.');
     hideAddCategoryForm();
     loadCategories();
