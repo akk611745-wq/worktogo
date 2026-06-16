@@ -202,7 +202,6 @@
       <div class="wtg-tabs">
         <button class="wtg-tab active" data-tab="ops"     onclick="switchTab('ops')">Operations Board</button>
         <button class="wtg-tab"        data-tab="kanban"  onclick="switchTab('kanban')">Kanban Pipeline</button>
-        <button class="wtg-tab"        data-tab="catalog"     onclick="switchTab('catalog')">Service Catalog</button>
         <button class="wtg-tab"        data-tab="categories" onclick="switchTab('categories')">Categories</button>
       </div>
 
@@ -364,7 +363,10 @@
                 <h2 class="page-title" style="font-size:16px">Category Management</h2>
                 <p class="page-subtitle" id="cat-mgmt-count">Manage service categories.</p>
               </div>
-              <button class="btn btn-primary btn-sm" onclick="showAddCategoryForm()">+ Add Category</button>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-ghost btn-sm" onclick="switchTab('catalog')">Service Catalog →</button>
+                <button class="btn btn-primary btn-sm" onclick="showAddCategoryForm()">+ Add Category</button>
+              </div>
             </div>
             <div id="add-cat-form" style="display:none;background:var(--bg-raised);border:1px solid var(--border-dim);border-radius:8px;padding:14px;margin-bottom:14px">
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
@@ -441,7 +443,8 @@ function normalizeServiceStatus(status) {
 function switchTab(name) {
   document.querySelectorAll('.wtg-tab').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.wtg-tab-panel').forEach(p => p.classList.remove('active'));
-  document.querySelector('.wtg-tab[data-tab="' + name + '"]').classList.add('active');
+  const _tabBtn = document.querySelector('.wtg-tab[data-tab="' + name + '"]');
+  if (_tabBtn) _tabBtn.classList.add('active');
   document.getElementById('tab-' + name).classList.add('active');
   if (name === 'kanban') renderKanban();
   if (name === 'categories') loadCategories();
@@ -1268,6 +1271,37 @@ async function saveCategoryDetail(categoryId) {
   } catch(e) { Toast.error(e.message || 'Failed to save category'); }
 }
 
+// ── Category Inline Name Edit ────────────────────────────────
+function editCategoryName(id) {
+  const cell = document.getElementById('cat-name-' + id);
+  if (!cell) return;
+  const currentName = cell.dataset.catname || cell.textContent.trim();
+  cell.onclick = null;
+  const inp = document.createElement('input');
+  inp.className = 'form-control';
+  inp.style.cssText = 'font-size:13px;padding:3px 8px;width:160px';
+  inp.value = currentName;
+  cell.innerHTML = '';
+  cell.appendChild(inp);
+  inp.focus(); inp.select();
+  let committed = false;
+  const commit = async () => {
+    if (committed) return; committed = true;
+    const newName = inp.value.trim();
+    if (!newName || newName === currentName) { loadCategories(); return; }
+    try {
+      await API.patch(CONFIG.ENDPOINTS.CATEGORY_DETAIL(id), { name: newName });
+      Toast.success('Category renamed.');
+    } catch(e) { Toast.error(e.message || 'Failed to rename'); }
+    loadCategories();
+  };
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+    if (e.key === 'Escape') { committed = true; loadCategories(); }
+  });
+}
+
 // ── Category Management ──────────────────────────────────────
 async function loadCategories() {
   tableLoading('categories-tbody', 4);
@@ -1288,12 +1322,17 @@ function renderCategoryMgmt(cats) {
   if (!cats.length) { tableEmpty('categories-tbody', 4); return; }
   tbody.innerHTML = cats.map(c => {
     const isActive = c.status === 'active';
+    const id = parseInt(c.id);
     return `<tr>
-      <td style="font-weight:600">${escHtml(c.name)}</td>
+      <td id="cat-name-${id}" data-catname="${escHtml(c.name)}"
+          style="font-weight:600;cursor:pointer;color:var(--accent)"
+          title="Click to open detail"
+          onclick="openCategoryStats(${id})">${escHtml(c.name)}</td>
       <td><code style="font-size:11px;background:var(--bg-raised);padding:2px 6px;border-radius:3px">${escHtml(c.slug)}</code></td>
       <td>${statusBadge(c.status)}</td>
       <td><div class="td-actions">
-        <button class="btn btn-sm ${isActive ? 'btn-warn' : 'btn-success'}" onclick="toggleCategory(${parseInt(c.id)},'${isActive ? 'inactive' : 'active'}')">${isActive ? 'Deactivate' : 'Activate'}</button>
+        <button class="btn btn-sm btn-ghost" onclick="editCategoryName(${id})">Edit</button>
+        <button class="btn btn-sm ${isActive ? 'btn-warn' : 'btn-success'}" onclick="toggleCategory(${id},'${isActive ? 'inactive' : 'active'}')">${isActive ? 'Deactivate' : 'Activate'}</button>
       </div></td>
     </tr>`;
   }).join('');
