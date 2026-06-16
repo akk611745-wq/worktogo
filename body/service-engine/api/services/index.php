@@ -832,29 +832,36 @@ if ($method === 'GET' && $uri === '/api/services') {
     $categorySelect .= serviceTableHasColumn($db, 'categories', 'image_url') ? ', c.image_url AS category_image' : ", NULL AS category_image";
 
     $svcDeletedAt = serviceTableHasColumn($db, 'services', 'deleted_at') ? 'AND s.deleted_at IS NULL' : '';
-    // vendor_categories was meant to be the source of truth for which
-    // categories a vendor claims, but nothing in the admin/vendor UI writes
-    // to it yet (admin's vendor-category editor still writes the legacy
-    // single-value vendors.category_id column) — it's only ever populated
-    // by a one-off manual migration backfill. Using INNER JOIN here silently
-    // dropped every active, correctly-seeded service row whose vendor/
-    // category pair hadn't been backfilled into vendor_categories, which is
-    // exactly what caused "Service not found" on checkout for Electrician/
-    // Plumber/Painting/Waterproofing (confirmed live: services 6-9 exist and
-    // are status='active', but GET /api/services only returned CCTV/id 10,
-    // the one category that happened to have a vendor_categories row).
-    // LEFT JOIN here is purely additive — vc.* isn't selected — so this
-    // restores every active service to the catalog regardless of whether
-    // vendor_categories has caught up, while still supporting it once it has.
-    $vcJoin = serviceTableHasColumn($db, 'vendor_categories', 'vendor_id')
-        ? "LEFT JOIN vendor_categories vc ON vc.vendor_id = s.vendor_id AND vc.category_id = s.category_id"
+    // Scope each vendor's catalog lanes to their CURRENT profile category
+    // selection (vendors.category_id) instead of every raw services-table
+    // row tied to vendor_id. vendors.category_id is written directly — no
+    // migration/backfill lag — by both vendor/profile.php's
+    // PATCH /api/vendor/profile and the admin panel's
+    // PATCH /api/admin/vendors/{id}/category, so it reflects whichever
+    // category was selected last the instant either UI saves; no redeploy
+    // or cache delay needed. (vendor_categories, by contrast, is only kept
+    // in sync by the vendor/profile.php path — the admin path never writes
+    // it — so it can't be trusted as the single scoping signal here.)
+    //
+    // This fixes: vendor "wtg" selected only CCTV in their profile, but
+    // legacy/seeded services rows for Electrician, Plumber, Painting, and
+    // Waterproofing (still status='active' from the 2026_06_14 seed
+    // migration) kept showing up in those lanes too, because this query
+    // never filtered by the vendor's selection at all — only by raw,
+    // possibly-stale services rows.
+    //
+    // When category_id is NULL (vendor has never set one — e.g. vendors
+    // created before this column existed), we don't restrict, so those
+    // vendors keep showing in every category their services rows cover,
+    // exactly as before — no regression for vendors who haven't opted in.
+    $vendorCategoryScope = serviceTableHasColumn($db, 'vendors', 'category_id')
+        ? "AND (v.category_id IS NULL OR v.category_id = s.category_id)"
         : "";
     $sql  = "SELECT s.*, v.business_name AS vendor_name, c.name AS category_name, c.slug AS category_slug {$categorySelect}
              FROM services s
              LEFT JOIN vendors v ON v.id = s.vendor_id
              LEFT JOIN categories c ON c.id = s.category_id
-             {$vcJoin}
-             WHERE s.status = 'active' {$svcDeletedAt}";
+             WHERE s.status = 'active' {$svcDeletedAt} {$vendorCategoryScope}";
     $bind = [];
 
     if ($category) {
