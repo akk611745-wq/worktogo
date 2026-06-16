@@ -36,6 +36,16 @@ RewriteRule ^(.*)$ index.php [QSA,L]
     Header always set Referrer-Policy "no-referrer"
 </IfModule>
 
+# ── API no-cache (bypass Hostinger/LiteSpeed server-side cache) ──
+# heart/.htaccess already scopes to /heart/* (all API calls), so no
+# LocationMatch needed. X-LiteSpeed-Cache-Control bypasses LiteSpeed's
+# smart cache layer before PHP Cache-Control headers can be inspected.
+<IfModule mod_headers.c>
+    Header always set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Header always set Pragma "no-cache"
+    Header always set X-LiteSpeed-Cache-Control "no-cache"
+</IfModule>
+
 # ── PHP settings ─────────────────────────────────────────────
 php_flag  display_errors        Off
 php_flag  log_errors            On
