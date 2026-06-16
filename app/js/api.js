@@ -143,12 +143,12 @@ const API = (() => {
     },
 
     async getServices() {
-      const res = await _intent("service:list_services");
+      const res = await _request("GET", `/api/services?_t=${Date.now()}`);
       return res.ok ? { ...res, data: _unwrapServicePayload(res) } : res;
     },
 
     async getServiceCategories() {
-      return _request("GET", "/api/service/categories");
+      return _request("GET", `/api/service/categories?_t=${Date.now()}`);
     },
 
     async getPublicSettings() {
