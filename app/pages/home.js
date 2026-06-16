@@ -667,16 +667,21 @@ window.HomeModals = (() => {
     const issueSummary = _issueSummary(issueList.length ? issueList : serviceContext);
     const submittedCategorySlug = document.getElementById("booking-category-context")?.value || _currentService.category_slug || _currentService.category || _activeCategory || _inspectionCategorySlug("");
     const category = _categoryMeta(submittedCategorySlug);
-    // GET /api/services groups rows by vendor, so _currentService.id is the
-    // vendor's id (used to render one card per vendor) — NOT a real
-    // services.id. Resolve the actual per-category services.id via
-    // service_map ({categoryName: serviceId}, built server-side) before
-    // submitting; sending the vendor id as service_id is what caused
-    // "Service not found" on checkout (confirmed: not a cache issue).
-    const resolvedServiceId = (_currentService.service_map && _currentService.service_map[category.label])
-      || _currentService.service_id
-      || _currentService.id;
     bookingMode = _canonicalBookingMode(document.getElementById("booking-mode")?.value, _currentService, category);
+    // Vendor-card "BOOK NOW" (direct_vendor) is the only entry point that
+    // should bind to one specific vendor's services.id — resolved via that
+    // vendor's service_map ({categoryName: serviceId}, built server-side by
+    // GET /api/services). "₹299 Inspection" and "Free booking" haven't had
+    // a vendor chosen at all (admin assigns one later, after inspection for
+    // the paid flow / manually for free_lead), so they must NOT resolve a
+    // service through whichever vendor's card _currentService happens to
+    // have been merged from (_syncCurrentServiceForCategory picks one
+    // arbitrarily for display purposes only). Leaving service_id unresolved
+    // here and sending category_slug instead lets the backend pick a
+    // service for that category on its own — see POST /api/service/request.
+    const resolvedServiceId = bookingMode === "direct_vendor"
+      ? ((_currentService.service_map && _currentService.service_map[category.label]) || _currentService.service_id || _currentService.id)
+      : null;
     const savedInspectionPayment = bookingMode === "inspection" ? _readInspectionPaymentReturn() : null;
     if (savedInspectionPayment?.booking && _normalizePaymentState(savedInspectionPayment.status_state || savedInspectionPayment.booking.payment_status) !== "paid") {
       const _savedPayState = _normalizePaymentState(savedInspectionPayment.status_state || savedInspectionPayment.booking.payment_status);

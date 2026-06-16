@@ -1096,9 +1096,24 @@ if ($method === 'POST' && $uri === '/api/service/request') {
     $notes       = trim($input['notes']          ?? '');
     $addressId   = isset($input['address_id']) ? (int)$input['address_id'] : null;
 
-    // Required field validation
-    if (!$serviceId || !$scheduledAt) {
-        Response::validation('service_id and scheduled_at are required');
+    // Booking-mode routing: "inspection" (₹299) and "free_lead" (Free
+    // booking) requests come from category-lane buttons where no vendor has
+    // been chosen yet — admin assigns one later (after agent inspection for
+    // the paid flow, or manually for free_lead). Only "direct_vendor"
+    // (vendor-card "BOOK NOW") legitimately targets one vendor's exact
+    // service_id. Read the raw requested mode here, before any service row
+    // is resolved, so the resolution strategy below can branch on it.
+    $requestedMode    = strtolower(trim((string)($input['booking_mode'] ?? $input['lifecycle_type'] ?? '')));
+    $categorySlug      = trim((string)($input['category_slug'] ?? ''));
+    $categoryIdInput   = isset($input['category_id']) ? (int)$input['category_id'] : 0;
+    $isCategoryRouted  = in_array($requestedMode, ['inspection', 'premium_inspection', 'free_lead'], true);
+    $hasCategoryContext = $categorySlug !== '' || $categoryIdInput > 0;
+
+    // Required field validation — service_id is only mandatory for the
+    // vendor-specific (direct_vendor) path; inspection/free_lead resolve
+    // by category instead (see below), so they need category context.
+    if (!$scheduledAt || (!$serviceId && !($isCategoryRouted && $hasCategoryContext))) {
+        Response::validation('service_id (or category_slug/category_id for inspection and free bookings) and scheduled_at are required');
     }
 
     // Validate scheduled_at is a parseable future datetime
@@ -1119,12 +1134,33 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         }
     }
 
-    // Fetch the active service
-    $svcStmt = $db->prepare(
-        "SELECT * FROM services WHERE id = ? AND status = 'active' LIMIT 1"
-    );
-    $svcStmt->execute([$serviceId]);
-    $service = $svcStmt->fetch(PDO::FETCH_ASSOC);
+    // Resolve the active service row.
+    $service = null;
+    if ($isCategoryRouted && $hasCategoryContext) {
+        // Category + admin-side catalog resolution — picks a representative
+        // active service for the category (deterministic: lowest id), not
+        // whichever vendor's card the frontend happened to render first.
+        // This is what keeps inspection/free_lead requests from silently
+        // binding to one specific vendor's row before admin has assigned
+        // anyone.
+        $catStmt = $db->prepare(
+            "SELECT s.* FROM services s
+             LEFT JOIN categories c ON c.id = s.category_id
+             WHERE s.status = 'active'
+               AND (:slug = '' OR c.slug = :slug)
+               AND (:cid = 0 OR s.category_id = :cid)
+             ORDER BY s.id ASC LIMIT 1"
+        );
+        $catStmt->execute([':slug' => $categorySlug, ':cid' => $categoryIdInput]);
+        $service = $catStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+    if (!$service && $serviceId) {
+        $svcStmt = $db->prepare(
+            "SELECT * FROM services WHERE id = ? AND status = 'active' LIMIT 1"
+        );
+        $svcStmt->execute([$serviceId]);
+        $service = $svcStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
     if (!$service) Response::notFound('Service');
 
     $bookingMode = canonicalBookingMode($input, $service);
