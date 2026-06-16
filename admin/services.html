@@ -1294,9 +1294,24 @@ async function openCategoryStats(id) {
     const stats = rsp.stats        || {};
     const vendors   = rsp.vendors  || [];
     const topLocs   = rsp.top_locations || [];
+    const modes      = rsp.booking_modes || {};
 
     const inspPrice = cat.inspection_price ?? 299;
     const commPct   = cat.commission_pct   ?? cat.commission_rate ?? 10;
+    const catIdNum  = parseInt(cat.id || id);
+
+    const modeRows = [
+      { key: 'inspection',    label: 'Rs. 299 Inspection', color: 'var(--orange)' },
+      { key: 'free_lead',     label: 'Free Booking',       color: 'var(--green)'  },
+      { key: 'direct_vendor', label: 'Direct Vendor',      color: 'var(--blue)'   },
+    ].map(m => `<div class="card"><div class="card-body" style="text-align:center;padding:16px">
+        <div style="font-size:26px;font-weight:700;color:${m.color}">${modes[m.key] ?? 0}</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:4px;letter-spacing:0.06em">${m.label.toUpperCase()}</div>
+      </div></div>`).join('');
+
+    const vendorOptions = vendors.length
+      ? vendors.map(v => `<option value="${parseInt(v.id)}">${escHtml(v.business_name || ('Vendor #' + v.id))}</option>`).join('')
+      : '';
 
     const vendorRows = vendors.length
       ? vendors.map(v => `<tr>
@@ -1347,6 +1362,24 @@ async function openCategoryStats(id) {
             <div style="font-size:26px;font-weight:700;color:var(--blue)">${stats.completed_bookings ?? 0}</div>
             <div style="font-size:10px;color:var(--text-muted);margin-top:4px;letter-spacing:0.06em">COMPLETED</div>
           </div></div>
+        </div>
+
+        <!-- BOOKING TYPE BREAKDOWN -->
+        <div>
+          <h3 style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.06em;color:var(--text-muted)">BOOKING TYPE BREAKDOWN</h3>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">${modeRows}</div>
+        </div>
+
+        <!-- VENDOR LOOKUP -->
+        <div class="card">
+          <div class="card-body">
+            <h3 style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.06em;color:var(--text-muted)">VENDOR LOOKUP</h3>
+            <select class="form-control" id="cat-stats-vendor-select" style="max-width:280px" onchange="_onCatVendorSelect(${catIdNum})">
+              <option value="">— All vendors (category totals) —</option>
+              ${vendorOptions}
+            </select>
+            <div id="cat-stats-vendor-row" style="display:none;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:14px"></div>
+          </div>
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 300px;gap:20px">
@@ -1419,6 +1452,36 @@ async function openCategoryStats(id) {
 
 function closeCategoryStats() {
   document.getElementById('cat-stats-overlay')?.remove();
+}
+
+async function _onCatVendorSelect(categoryId) {
+  const sel = document.getElementById('cat-stats-vendor-select');
+  const row = document.getElementById('cat-stats-vendor-row');
+  if (!sel || !row) return;
+  const vendorId = sel.value;
+  if (!vendorId) { row.style.display = 'none'; row.innerHTML = ''; return; }
+
+  row.style.display = 'grid';
+  row.innerHTML = '<div class="spinner" style="margin:10px auto;grid-column:1/-1"></div>';
+  try {
+    const data = await API.get('/categories/' + categoryId + '/vendor/' + vendorId + '/stats');
+    const rsp = data.data || data;
+    const s = rsp.stats || {};
+    const cards = [
+      { label: 'TOTAL',     value: s.total ?? 0,     color: 'var(--accent)' },
+      { label: 'ACCEPTED',  value: s.accepted ?? 0,  color: 'var(--green)'  },
+      { label: 'REJECTED',  value: s.rejected ?? 0,  color: 'var(--red)'    },
+      { label: 'COMPLETED', value: s.completed ?? 0, color: 'var(--blue)'   },
+      { label: 'PENDING',   value: s.pending ?? 0,   color: 'var(--orange)' },
+    ];
+    row.innerHTML = cards.map(c => `<div class="card"><div class="card-body" style="text-align:center;padding:14px">
+        <div style="font-size:22px;font-weight:700;color:${c.color}">${c.value}</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:4px;letter-spacing:0.06em">${c.label}</div>
+      </div></div>`).join('');
+  } catch(e) {
+    row.innerHTML = `<div style="color:var(--text-muted);text-align:center;padding:14px;grid-column:1/-1">Failed to load vendor stats</div>`;
+    Toast.error(e.message || 'Failed to load vendor stats');
+  }
 }
 
 async function saveCategorySettings(id) {

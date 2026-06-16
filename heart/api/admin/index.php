@@ -752,11 +752,70 @@ try {
             }
         } catch (PDOException $ignored) {}
 
+        // Booking-type breakdown: inspection / free_lead / direct_vendor
+        $bookingModes = ['inspection' => 0, 'free_lead' => 0, 'direct_vendor' => 0];
+        try {
+            $hasMode = (int)$db->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'booking_mode'")->fetchColumn() > 0;
+            if ($hasMode) {
+                $stmt = $db->prepare(
+                    "SELECT COALESCE(LOWER(b.booking_mode), 'free_lead') AS mode, COUNT(*) AS cnt
+                     FROM bookings b JOIN services s ON s.id = b.service_id
+                     WHERE s.category_id = ?
+                     GROUP BY mode"
+                );
+                $stmt->execute([$categoryId]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                    $mode = trim((string)$row['mode']) ?: 'free_lead';
+                    $bookingModes[$mode] = (int)$row['cnt'];
+                }
+            }
+        } catch (PDOException $ignored) {}
+
         Response::success([
             'category'      => $category,
             'stats'         => $stats,
             'vendors'       => $vendors,
             'top_locations' => $topLocations,
+            'booking_modes' => $bookingModes,
+        ]);
+    }
+
+    // ── GET /api/admin/categories/{id}/vendor/{vendor_id}/stats ──
+    if ($method === 'GET' && preg_match('#^/api/admin/categories/(\d+)/vendor/(\d+)/stats$#', $uri, $m)) {
+        $categoryId = (int)$m[1];
+        $vendorId   = (int)$m[2];
+
+        $vendorStats = ['total' => 0, 'accepted' => 0, 'rejected' => 0, 'completed' => 0, 'pending' => 0];
+        try {
+            $hasVendorResp = (int)$db->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'vendor_response_status'")->fetchColumn() > 0;
+            $respExpr = $hasVendorResp ? 'b.vendor_response_status' : "''";
+
+            $stmt = $db->prepare(
+                "SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN {$respExpr} = 'vendor_accepted' THEN 1 ELSE 0 END) AS accepted,
+                    SUM(CASE WHEN {$respExpr} = 'vendor_rejected' OR b.status = 'cancelled' THEN 1 ELSE 0 END) AS rejected,
+                    SUM(CASE WHEN b.status IN ('completed','done','delivered') THEN 1 ELSE 0 END) AS completed,
+                    SUM(CASE WHEN b.status NOT IN ('completed','done','delivered','cancelled','rejected') THEN 1 ELSE 0 END) AS pending
+                 FROM bookings b
+                 JOIN services s ON s.id = b.service_id
+                 WHERE s.category_id = ? AND b.vendor_id = ?"
+            );
+            $stmt->execute([$categoryId, $vendorId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+            $vendorStats = [
+                'total'     => (int)($row['total']     ?? 0),
+                'accepted'  => (int)($row['accepted']  ?? 0),
+                'rejected'  => (int)($row['rejected']  ?? 0),
+                'completed' => (int)($row['completed'] ?? 0),
+                'pending'   => (int)($row['pending']   ?? 0),
+            ];
+        } catch (PDOException $ignored) {}
+
+        Response::success([
+            'category_id' => $categoryId,
+            'vendor_id'   => $vendorId,
+            'stats'       => $vendorStats,
         ]);
     }
 
