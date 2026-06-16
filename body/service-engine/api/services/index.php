@@ -1143,15 +1143,23 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         // This is what keeps inspection/free_lead requests from silently
         // binding to one specific vendor's row before admin has assigned
         // anyone.
+        // Build the condition from whichever of slug/id was actually
+        // provided instead of binding the same named placeholder twice —
+        // Database.php sets PDO::ATTR_EMULATE_PREPARES => false, and MySQL's
+        // native prepared statements reject a named parameter that's bound
+        // once but referenced twice in the query text ("number of bound
+        // variables does not match number of tokens"), which is exactly
+        // what was throwing the uncaught PDOException behind every
+        // inspection/free_lead booking's silent 500 since this was added.
+        $catCond = $categorySlug !== '' ? 'c.slug = :slug' : 's.category_id = :cid';
+        $catBind = $categorySlug !== '' ? [':slug' => $categorySlug] : [':cid' => $categoryIdInput];
         $catStmt = $db->prepare(
             "SELECT s.* FROM services s
              LEFT JOIN categories c ON c.id = s.category_id
-             WHERE s.status = 'active'
-               AND (:slug = '' OR c.slug = :slug)
-               AND (:cid = 0 OR s.category_id = :cid)
+             WHERE s.status = 'active' AND {$catCond}
              ORDER BY s.id ASC LIMIT 1"
         );
-        $catStmt->execute([':slug' => $categorySlug, ':cid' => $categoryIdInput]);
+        $catStmt->execute($catBind);
         $service = $catStmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
     if (!$service && $serviceId) {
