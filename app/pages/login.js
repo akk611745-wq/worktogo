@@ -34,7 +34,12 @@ export async function render(container) {
 
         <div id="step-phone" class="login-step active">
           <h2>Welcome back</h2>
-          <p class="step-hint">Enter your mobile number to book and track local services</p>
+          <p class="step-hint">Sign in to book and track local services</p>
+          <button id="btn-google-login" class="btn-google ${CONFIG.FEATURES?.GOOGLE_LOGIN ? "" : "feature-hidden"}" onclick="LoginPage.googleLogin()">
+            <span class="google-mark">G</span>
+            Continue with Google
+          </button>
+          <div class="auth-divider"><span>or</span></div>
           <div class="input-group">
             <span class="input-prefix">+91</span>
             <input
@@ -49,10 +54,6 @@ export async function render(container) {
           <button id="btn-send-otp" class="btn-primary" onclick="LoginPage.sendOtp()">
             <span class="btn-label">Send OTP</span>
             <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </button>
-          <button id="btn-google-login" class="btn-google ${CONFIG.FEATURES?.GOOGLE_LOGIN ? "" : "feature-hidden"}" onclick="LoginPage.googleLogin()">
-            <span class="google-mark">G</span>
-            Continue with Google
           </button>
           <p class="login-note">We'll send a 6-digit OTP. No password needed.</p>
           <div class="trust-panel">
