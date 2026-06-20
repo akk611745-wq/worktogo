@@ -870,6 +870,11 @@ window.HomeModals = (() => {
     _persistPendingBookingForm();
     _bookingOpenToken += 1;
     _isBookingSubmitting = false;
+    // User explicitly dismissed the payment verification popup — clear persisted
+    // state so it doesn't auto-reopen on the next page load.
+    if (document.querySelector("#booking-modal .inspection-verification-state")) {
+      _clearInspectionPaymentReturn();
+    }
     document.getElementById("booking-modal")?.classList.add("hidden");
     _currentService = null;
     if (_swipeCleanup) { _swipeCleanup(); _swipeCleanup = null; }
@@ -1715,7 +1720,8 @@ function _continueInspectionVerification(saved = {}) {
       _clearInspectionPaymentReturn();
       HomeModals.showInspectionConfirmation?.(saved.booking, { ...(saved.payload || {}), locality: saved.locality?.label || _resolvedLocality().label });
       document.getElementById("booking-modal")?.classList.remove("hidden");
-    } else {
+    } else if (_readInspectionPaymentReturn()) {
+      // Only re-persist if state wasn't already cleared by the user dismissing.
       _saveInspectionPaymentReturn(saved.booking, { payload: saved.payload, locality: saved.locality, state: status });
     }
   }, 3000);
@@ -2731,13 +2737,18 @@ function _bookingModeOption(value, label, note, selected, disabled = false, tone
 
 function _inspectionCategorySlug(slug = "") {
   const normalized = _slug(slug);
-  const allowed = _inspectionCategories().map(c => c.slug);
+  const cats = _inspectionCategories();
+  const allowed = cats.map(c => c.slug);
   if (allowed.includes(normalized)) return normalized;
-  if (normalized === "carpenter") return "carpentry";
-  return _activeCategory && allowed.includes(_slug(_activeCategory)) ? _slug(_activeCategory) : "electrician";
+  if (normalized === "carpenter" && allowed.includes("carpentry")) return "carpentry";
+  if (_activeCategory && allowed.includes(_slug(_activeCategory))) return _slug(_activeCategory);
+  return allowed[0] || "electrician";
 }
 
 function _inspectionCategories() {
+  if (_serviceCategories.length) {
+    return _serviceCategories.map(c => ({ slug: c.slug, label: c.label }));
+  }
   return [
     { slug: "electrician", label: "Electrician" },
     { slug: "plumber", label: "Plumbing" },
@@ -2745,6 +2756,7 @@ function _inspectionCategories() {
     { slug: "cctv", label: "CCTV" },
     { slug: "waterproofing", label: "Waterproofing" },
     { slug: "carpentry", label: "Carpenter" },
+    { slug: "ac-repair", label: "AC Repair" },
   ];
 }
 
