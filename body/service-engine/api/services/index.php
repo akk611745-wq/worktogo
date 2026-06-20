@@ -1338,7 +1338,7 @@ if ($method === 'POST' && $uri === '/api/service/request') {
                         'status'             => 'created',
                         'payment_session_id' => $cfData['payment_session_id'] ?? null,
                         'order_token'        => $cfData['order_token'] ?? null,
-                        'mode'               => strtolower(CASHFREE_ENV),
+                        'mode'               => strtoupper(CASHFREE_ENV) === 'PRODUCTION' ? 'production' : 'sandbox',
                         'gateway_data'       => $cfData,
                     ];
 
