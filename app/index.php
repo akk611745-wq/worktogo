@@ -40,9 +40,12 @@
 
   <!-- Core Scripts (order matters) -->
   <script>
-    window.WTG_BASE_URL = "<?php echo rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?? 'https://worktogo.in', '/'); ?>";
+    window.WTG_BASE_URL         = "<?php echo rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?? 'https://worktogo.in', '/'); ?>";
     window.WTG_GOOGLE_CLIENT_ID = "<?php echo htmlspecialchars(getenv('GOOGLE_CLIENT_ID') ?: ''); ?>";
-    window.WTG_ASSET_VERSION = "20260524-customer-stabilization";
+    window.WTG_ASSET_VERSION    = "20260524-customer-stabilization";
+    window.WTG_OTP_METHOD       = "<?php echo htmlspecialchars(getenv('OTP_METHOD') ?: 'sms'); ?>";
+    window.WTG_WIDGET_ID        = "<?php echo htmlspecialchars(getenv('MSG91_WIDGET_ID') ?: ''); ?>";
+    window.WTG_WIDGET_TOKEN     = "<?php echo htmlspecialchars(getenv('MSG91_WIDGET_TOKEN_AUTH') ?: ''); ?>";
   </script>
   <script src="js/config.js?v=20260524-customer-stabilization"></script>
   <script src="js/ui.js?v=20260524-customer-stabilization"></script>

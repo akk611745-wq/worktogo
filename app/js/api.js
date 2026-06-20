@@ -124,6 +124,10 @@ const API = (() => {
       return _request("POST", CONFIG.ENDPOINTS.OTP_VERIFY, { phone, otp });
     },
 
+    async verifyWidgetToken(phone, accessToken) {
+      return _request("POST", "/api/auth/widget/verify-token", { phone, access_token: accessToken });
+    },
+
     // ── Auth: Email / Google Flow (REST - Direct) ───────────────────────
     async emailLogin(email, password) {
       return _request("POST", "/api/auth/email/login", { email, password });

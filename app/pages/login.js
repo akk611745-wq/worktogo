@@ -159,6 +159,71 @@ function _loginLocalityContext() {
 window.LoginPage = (() => {
   let _phone = "";
   let _resendInterval = null;
+  let _msg91ScriptLoaded = false;
+
+  function _loadMsg91Widget() {
+    if (_msg91ScriptLoaded) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const urls = [
+        "https://verify.msg91.com/otp-provider.js",
+        "https://verify.phone91.com/otp-provider.js",
+      ];
+      let i = 0;
+      function attempt() {
+        const s = document.createElement("script");
+        s.src = urls[i];
+        s.async = true;
+        s.onload = () => { _msg91ScriptLoaded = true; resolve(); };
+        s.onerror = () => { i++; if (i < urls.length) attempt(); else reject(new Error("Widget unavailable")); };
+        document.head.appendChild(s);
+      }
+      attempt();
+    });
+  }
+
+  async function _launchWidget() {
+    try {
+      await _loadMsg91Widget();
+    } catch {
+      _setLoading("btn-send-otp", false);
+      UI.toast("OTP service unavailable. Please try again.", "error");
+      return;
+    }
+    if (typeof window.initSendOTP !== "function") {
+      _setLoading("btn-send-otp", false);
+      UI.toast("OTP widget failed to initialize. Please try again.", "error");
+      return;
+    }
+    window.initSendOTP({
+      widgetId:     window.WTG_WIDGET_ID,
+      tokenAuth:    window.WTG_WIDGET_TOKEN,
+      identifier:   "+91" + _phone,
+      exposeMethods: false,
+      success: (data) => {
+        _onWidgetSuccess(data?.message || data?.token || data);
+      },
+      failure: (error) => {
+        UI.toast((error && (error.message || error.description)) || "OTP verification failed. Please try again.", "error");
+      },
+    });
+    _setLoading("btn-send-otp", false);
+  }
+
+  async function _onWidgetSuccess(accessToken) {
+    if (!accessToken) {
+      UI.toast("OTP verification failed. Please try again.", "error");
+      return;
+    }
+    UI.toast("Verifying…", "info");
+    const result = await AUTH.verifyWidgetToken(_phone, String(accessToken));
+    if (result.ok) {
+      _clearPendingOtpState();
+      UI.toast("Login successful!", "success");
+      redirectAfterLogin(result.user);
+    } else {
+      UI.toast(result.error || "Login failed. Please try again.", "error");
+    }
+  }
 
   function _setLoading(btnId, loading) {
     const btn = document.getElementById(btnId);
@@ -225,6 +290,10 @@ window.LoginPage = (() => {
       document.getElementById("step-otp")?.classList.add("active");
       document.querySelectorAll(".otp-digit")[0]?.focus();
       _startResendTimer(Math.max(1, Number(savedOtp.resendRemaining || 1)));
+    }
+
+    if (window.WTG_OTP_METHOD === "widget") {
+      _loadMsg91Widget().catch(() => {});
     }
   }
 
@@ -413,7 +482,7 @@ window.LoginPage = (() => {
     }, 1000);
   }
 
-  // ── Send OTP — calls real API ──────────────────────────────────────────
+  // ── Send OTP ───────────────────────────────────────────────────────────
 
   async function sendOtp() {
     const inp = document.getElementById("inp-phone");
@@ -426,6 +495,12 @@ window.LoginPage = (() => {
 
     _setLoading("btn-send-otp", true);
 
+    if (window.WTG_OTP_METHOD === "widget") {
+      await _launchWidget();
+      return;
+    }
+
+    // SMS path (OTP_METHOD=sms or default)
     const result = await AUTH.sendOtp(_phone);
 
     _setLoading("btn-send-otp", false);
@@ -474,11 +549,16 @@ window.LoginPage = (() => {
     }
   }
 
-  // ── Resend OTP — calls real API ───────────────────────────────────────
+  // ── Resend OTP ────────────────────────────────────────────────────────
 
   async function resendOtp() {
     if (!_phone) {
       UI.toast("Please go back and enter your number again.", "error");
+      return;
+    }
+
+    if (window.WTG_OTP_METHOD === "widget") {
+      await _launchWidget();
       return;
     }
 

@@ -116,6 +116,11 @@ const AUTH = (() => {
     return { ok: false, error: result.error || result.data?.message || "Login failed" };
   }
 
+  async function verifyWidgetToken(phone, accessToken) {
+    const result = await API.verifyWidgetToken(phone, accessToken);
+    return _saveAuthResult(result, "OTP verification failed");
+  }
+
   // ── Email / Google Login Flow ──────────────────────────────────────────
 
   async function emailLogin(email, password) {
@@ -134,7 +139,7 @@ const AUTH = (() => {
   }
 
   return {
-    sendOtp, verifyAndLogin,
+    sendOtp, verifyAndLogin, verifyWidgetToken,
     emailLogin, emailRegister, googleLogin,
     logout, getUser, getToken, isLoggedIn, requireAuth, resolvePostLogin, getRole, hasRole,
   };
