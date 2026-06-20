@@ -220,10 +220,8 @@
             </div>
             <div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:10px">
               <input class="form-control" id="booking-search" placeholder="Booking ID, name, vendor…" style="max-width:220px">
-              <input class="form-control" id="ops-city" placeholder="City" list="city-datalist" autocomplete="off" style="max-width:120px">
-              <datalist id="city-datalist"></datalist>
-              <input class="form-control" id="ops-category" placeholder="Category" list="category-datalist" autocomplete="off" style="max-width:130px">
-              <datalist id="category-datalist"></datalist>
+              <select class="form-control" id="ops-city" style="max-width:130px"><option value="">All Cities</option></select>
+              <select class="form-control" id="ops-category" style="max-width:150px"><option value="">All Categories</option></select>
               <select class="form-control" id="ops-payment" style="max-width:145px"><option value="">All</option><option value="free_request">Free</option><option value="paid_inspection">Inspection</option><option value="direct_vendor">Direct</option></select>
               <select class="form-control" id="ops-priority" style="max-width:145px"><option value="">Priority</option><option value="normal_priority">Normal</option><option value="high_priority">High</option></select>
               <select class="form-control" id="ops-assignment" style="max-width:165px"><option value="">Assignment</option><option value="unassigned_searching">Unassigned</option><option value="worker_contacted">Contacted</option><option value="worker_assigned">Assigned</option><option value="inspection_unassigned">Inspection unassigned</option><option value="inspection_assigned">Inspection assigned</option></select>
@@ -515,10 +513,12 @@ async function loadMasterCategories() {
     const data = await API.get(CONFIG.ENDPOINTS.CATEGORIES);
     const cats = data.data?.categories || data.categories || [];
     masterCategories = cats.filter(c => c.status === 'active');
-    const catDL = document.getElementById('category-datalist');
-    if (catDL) catDL.innerHTML = masterCategories
-      .slice().sort((a, b) => a.name.localeCompare(b.name))
-      .map(c => `<option value="${escHtml(c.name)}">`).join('');
+    const catSel = document.getElementById('ops-category');
+    if (catSel) {
+      const opts = masterCategories.slice().sort((a, b) => a.name.localeCompare(b.name))
+        .map(c => `<option value="${escHtml(c.slug || c.name)}">${escHtml(c.name)}</option>`).join('');
+      catSel.innerHTML = `<option value="">All Categories</option>${opts}`;
+    }
   } catch(e) { /* silent — booking-derived fallback in populateFilterDataLists */ }
 }
 
@@ -529,10 +529,14 @@ function populateFilterDataLists(bookings) {
     const city = b.city || b.admin_request_view?.location?.city || '';
     if (city) cities.add(city);
   });
-  const cityDL = document.getElementById('city-datalist');
-  if (cityDL) cityDL.innerHTML = [...cities].sort().map(c => `<option value="${escHtml(c)}">`).join('');
+  const citySel = document.getElementById('ops-city');
+  if (citySel) {
+    const opts = [...cities].sort().map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+    citySel.innerHTML = `<option value="">All Cities</option>${opts}`;
+  }
 
-  // Categories: use master list from loadMasterCategories(); fall back to booking-derived if not yet loaded
+  // Categories: master list wins (loadMasterCategories already populated the select);
+  // only write booking-derived fallback if master fetch hasn't resolved yet
   if (!masterCategories.length) {
     const catSet = new Set();
     bookings.forEach(b => {
@@ -541,8 +545,11 @@ function populateFilterDataLists(bookings) {
         || b.category_slug || b.category_name || '';
       if (cat) catSet.add(cat);
     });
-    const catDL = document.getElementById('category-datalist');
-    if (catDL) catDL.innerHTML = [...catSet].sort().map(c => `<option value="${escHtml(c)}">`).join('');
+    const catSel = document.getElementById('ops-category');
+    if (catSel && catSet.size) {
+      const opts = [...catSet].sort().map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+      catSel.innerHTML = `<option value="">All Categories</option>${opts}`;
+    }
   }
 }
 
