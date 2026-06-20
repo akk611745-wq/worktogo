@@ -95,12 +95,12 @@ function _sendMsg91(string $phone, string $otp): bool
 
     $payload = json_encode([
         'template_id' => $templateId,
-        'short_url'   => '0',
-        'realTimeResponse' => '1',
-        'recipients'  => [['mobiles' => '91' . $cleanPhone, 'otp' => $otp]],
+        'mobile'      => '91' . $cleanPhone,
+        'otp'         => $otp,
+        'sender'      => getenv('MSG91_SENDER_ID') ?: 'WRKGO',
     ]);
 
-    return _httpPost('https://api.msg91.com/api/v5/flow/', $payload, [
+    return _httpPost('https://api.msg91.com/api/v5/otp', $payload, [
         'authkey: ' . $key,
         'content-type: application/json',
     ]);
