@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Price Control</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  :root { --accent: #e94560; }
+  body { font-family: 'Inter', system-ui, sans-serif; margin: 0; }
+  .page-content { background: #fff; min-height: 100vh; padding: 1.5rem; }
+  .page-header { margin-bottom: 2rem; }
+  .page-title { margin: 0 0 0.25rem; font-size: 1.5rem; color: #333; }
+  .page-subtitle { margin: 0; font-size: 0.875rem; color: #666; }
+
+  .price-card {
+    max-width: 480px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 2rem;
+  }
+  .price-card h2 {
+    margin: 0 0 0.25rem;
+    font-size: 1.1rem;
+    color: #333;
+  }
+  .price-card .card-desc {
+    margin: 0 0 1.75rem;
+    font-size: 0.8rem;
+    color: #888;
+  }
+
+  .price-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+  .rupee-prefix {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #333;
+    line-height: 1;
+  }
+  .price-input-row input[type="number"] {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #111;
+    width: 180px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .price-input-row input[type="number"]:focus { border-color: var(--accent); }
+  .helper-text { font-size: 0.8rem; color: #888; margin-bottom: 1.5rem; }
+
+  .btn-save {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 0.6rem 1.5rem;
+    border-radius: 5px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .btn-save:hover { opacity: 0.88; }
+  .btn-save:disabled { opacity: 0.5; cursor: default; }
+
+  .scope-note {
+    margin-top: 1.5rem;
+    padding: 0.75rem 1rem;
+    background: #f8f9fa;
+    border-left: 3px solid #ddd;
+    border-radius: 0 4px 4px 0;
+    font-size: 0.78rem;
+    color: #777;
+    line-height: 1.5;
+  }
+
+  /* Toast */
+  #toast-container {
+    position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .toast {
+    padding: 12px 24px; border-radius: 4px; color: #fff;
+    animation: slideIn 0.3s ease-out forwards;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  }
+  .toast.success { background: #10b981; }
+  .toast.error   { background: #ef4444; }
+  @keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to   { transform: translateX(0);   opacity: 1; }
+  }
+
+  #loader {
+    display: none; position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(255,255,255,0.9); padding: 1rem; border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 2000;
+  }
+  .spinner {
+    border: 3px solid #f3f3f3; border-top: 3px solid var(--accent);
+    border-radius: 50%; width: 24px; height: 24px;
+    animation: spin 1s linear infinite; margin: 0 auto 0.5rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+
+      <div class="page-header">
+        <h1 class="page-title">Price Control</h1>
+        <p class="page-subtitle">Live pricing settings — changes apply immediately to customer checkout.</p>
+      </div>
+
+      <div class="price-card">
+        <h2>Inspection Fee</h2>
+        <p class="card-desc">Charged when a customer books a paid inspection (diagnosis before final work).</p>
+
+        <div class="price-input-row">
+          <span class="rupee-prefix">₹</span>
+          <input type="number" id="inspection_price" min="1" max="10000" step="1" placeholder="299">
+        </div>
+        <div class="helper-text">Valid range: ₹1 – ₹10,000 &nbsp;·&nbsp; Default: ₹299</div>
+
+        <button class="btn-save" id="btn-save" onclick="saveInspectionPrice()">Save Price</button>
+
+        <div class="scope-note">
+          This is the single global inspection price. Per-category pricing is not yet active —
+          the "Inspection Fee" field in the Categories tab is read-only and does not affect checkout.
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<div id="loader"><div class="spinner"></div><div style="font-weight:500">Loading…</div></div>
+
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/shell.js"></script>
+
+<script>
+  const API_BASE = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL) ? CONFIG.API_BASE_URL : '/heart/api';
+
+  function checkAuth() {
+    const token = localStorage.getItem(CONFIG.TOKEN_KEY);
+    if (!token) { window.location.href = '/admin/index.html'; return null; }
+    return token;
+  }
+
+  function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+  }
+
+  async function fetchApi(endpoint, options = {}) {
+    const token = checkAuth();
+    if (!token) return;
+    const url = `${API_BASE}${endpoint}`;
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...(options.headers || {}) };
+    const res = await fetch(url, { ...options, headers });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || data.error || 'Request failed');
+    return data;
+  }
+
+  async function loadPrice() {
+    try {
+      document.getElementById('loader').style.display = 'block';
+      const res = await fetchApi('/admin/settings');
+      const raw = res.data || res || {};
+      const data = {};
+      ['text', 'number', 'boolean', 'json'].forEach(type => {
+        if (Array.isArray(raw[type])) raw[type].forEach(row => { data[row.setting_key] = row.setting_value; });
+      });
+      const el = document.getElementById('inspection_price');
+      if (el && data.inspection_price !== undefined) el.value = data.inspection_price;
+    } catch (e) {
+      showToast('Could not load current price', 'error');
+    } finally {
+      document.getElementById('loader').style.display = 'none';
+    }
+  }
+
+  async function saveInspectionPrice() {
+    const el = document.getElementById('inspection_price');
+    const val = parseFloat(el.value);
+    if (isNaN(val) || val < 1 || val > 10000) {
+      showToast('Price must be between ₹1 and ₹10,000', 'error');
+      el.focus();
+      return;
+    }
+    const btn = document.getElementById('btn-save');
+    btn.textContent = 'Saving…';
+    btn.disabled = true;
+    try {
+      await fetchApi('/admin/settings/inspection_price', {
+        method: 'PUT',
+        body: JSON.stringify({ value: val })
+      });
+      showToast(`Inspection price updated to ₹${val}`);
+    } catch (e) {
+      showToast(e.message || 'Save failed', 'error');
+    } finally {
+      btn.textContent = 'Save Price';
+      btn.disabled = false;
+    }
+  }
+
+  if (checkAuth()) {
+    if (typeof Shell !== 'undefined') Shell.init({ title: 'Price Control', active: 'pricing.html' });
+    loadPrice();
+  }
+</script>
+</body>
+</html>
