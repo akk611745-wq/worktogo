@@ -94,6 +94,12 @@ class SettingsController
                 if (!is_numeric($value)) {
                     Response::validation('Value must be numeric');
                 }
+                if ($key === 'inspection_price') {
+                    $fv = (float)$value;
+                    if ($fv < 1 || $fv > 10000) {
+                        Response::validation('Inspection price must be between ₹1 and ₹10,000');
+                    }
+                }
             } elseif ($type === 'boolean') {
                 if ($value !== 0 && $value !== 1 && $value !== '0' && $value !== '1' && $value !== true && $value !== false) {
                     Response::validation('Value must be 0 or 1');

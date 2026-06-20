@@ -313,7 +313,19 @@
     const keys = cardFields[cardType];
     const btn = document.getElementById(`btn-save-${cardType}`);
     const originalText = btn.textContent;
-    
+
+    // Client-side validation
+    if (cardType === 'business') {
+      const ipEl = document.getElementById('inspection_price');
+      if (ipEl && ipEl.value !== '') {
+        const ipVal = parseFloat(ipEl.value);
+        if (isNaN(ipVal) || ipVal < 1 || ipVal > 10000) {
+          showToast('Inspection price must be between ₹1 and ₹10,000', 'error');
+          return;
+        }
+      }
+    }
+
     btn.textContent = 'Saving...';
     btn.disabled = true;
 
