@@ -220,8 +220,10 @@
             </div>
             <div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:10px">
               <input class="form-control" id="booking-search" placeholder="Booking ID, name, vendor…" style="max-width:220px">
-              <input class="form-control" id="ops-city" placeholder="City" style="max-width:120px">
-              <input class="form-control" id="ops-category" placeholder="Category" style="max-width:130px">
+              <input class="form-control" id="ops-city" placeholder="City" list="city-datalist" autocomplete="off" style="max-width:120px">
+              <datalist id="city-datalist"></datalist>
+              <input class="form-control" id="ops-category" placeholder="Category" list="category-datalist" autocomplete="off" style="max-width:130px">
+              <datalist id="category-datalist"></datalist>
               <select class="form-control" id="ops-payment" style="max-width:145px"><option value="">Payment</option><option value="free_request">Free</option><option value="paid_inspection">Inspection</option></select>
               <select class="form-control" id="ops-priority" style="max-width:145px"><option value="">Priority</option><option value="normal_priority">Normal</option><option value="high_priority">High</option></select>
               <select class="form-control" id="ops-assignment" style="max-width:165px"><option value="">Assignment</option><option value="unassigned_searching">Unassigned</option><option value="worker_contacted">Contacted</option><option value="worker_assigned">Assigned</option><option value="inspection_unassigned">Inspection unassigned</option><option value="inspection_assigned">Inspection assigned</option></select>
@@ -462,6 +464,7 @@ async function loadServiceBookings(page = 1) {
     const total = data.total ?? data.data?.total ?? 0;
     bookingTotalPages = data.total_pages ?? data.data?.total_pages ?? (Math.ceil(total / 50) || 1);
     serviceBookingsCache = (data.data?.bookings || data.bookings || []).map(b => ({ ...b, status: normalizeServiceStatus(b.status || b.job_status), amount: b.amount ?? b.total ?? b.price }));
+    populateFilterDataLists(serviceBookingsCache);
     renderServiceBookings(filterServiceBookings(serviceBookingsCache));
     buildPagination('bookings-pagination', bookingPage, bookingTotalPages, loadServiceBookings);
     document.getElementById('booking-count').textContent =
@@ -504,6 +507,23 @@ function filterServiceBookings(bookings) {
 function resetBookingFilters() {
   ['booking-search','booking-status','ops-city','ops-category','ops-payment','ops-priority','ops-assignment','ops-lifecycle'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   loadServiceBookings();
+}
+
+function populateFilterDataLists(bookings) {
+  const cities = new Set();
+  const categories = new Set();
+  bookings.forEach(b => {
+    const city = b.city || b.admin_request_view?.location?.city || '';
+    if (city) cities.add(city);
+    const cat = b.admin_request_view?.issue_summary?.category
+      || b.admin_request_view?.issue_summary?.label
+      || b.category_slug || b.category_name || '';
+    if (cat) categories.add(cat);
+  });
+  const cityDL = document.getElementById('city-datalist');
+  if (cityDL) cityDL.innerHTML = [...cities].sort().map(c => `<option value="${escHtml(c)}">`).join('');
+  const catDL = document.getElementById('category-datalist');
+  if (catDL) catDL.innerHTML = [...categories].sort().map(c => `<option value="${escHtml(c)}">`).join('');
 }
 
 async function loadServiceVendors() {

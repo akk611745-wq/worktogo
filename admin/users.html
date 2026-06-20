@@ -100,9 +100,10 @@ async function loadUsers(page = 1) {
       throw new Error(data.error || data.message || 'Failed to load users');
     }
     
-    allUsers = data.users || data.data || [];
-    // Support multiple response shapes: data.pagination.total, data.total, data.totalCount
-    const total = data.pagination?.total || data.total || data.totalCount || allUsers.length || 0;
+    const payload = data.data || data;
+    allUsers = payload.users || [];
+    // Support multiple response shapes: data.data.pagination.total, data.total, data.totalCount
+    const total = payload.pagination?.total || payload.total || data.totalCount || allUsers.length || 0;
     totalPages = Math.ceil(total / PAGE_SIZE);
     
     // Safe toLocaleString with fallback
