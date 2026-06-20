@@ -1236,8 +1236,10 @@ async function openCategoryDetail(categoryId) {
               <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;letter-spacing:0.06em">INSPECTION FEE (₹)</label>
               <input type="number" id="cat-inspection-price" class="form-control" min="0" step="1"
                 value="${hasInspectPrice ? parseFloat(cat.inspection_price) : ''}"
-                placeholder="${hasInspectPrice ? '0' : 'Column not in schema'}"
-                style="font-size:14px">
+                placeholder="Set in Platform Settings"
+                disabled
+                style="font-size:14px;opacity:0.5;cursor:not-allowed">
+              <div style="font-size:10px;color:var(--text-muted);margin-top:4px">Global price — change in <a href="/admin/settings.html" style="color:var(--accent)">Platform Settings</a>. Per-category pricing: coming soon.</div>
             </div>
             <div>
               <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;letter-spacing:0.06em">COMMISSION (%)</label>
@@ -1281,7 +1283,7 @@ async function saveCategoryDetail(categoryId) {
   const commEl = document.getElementById('cat-commission-rate');
   const payload = {};
 
-  if (inspEl && inspEl.value !== '') {
+  if (inspEl && !inspEl.disabled && inspEl.value !== '') {
     const v = parseFloat(inspEl.value);
     if (isNaN(v) || v < 0) { Toast.warn('Inspection fee must be a positive number.'); return; }
     payload.inspection_price = v;
