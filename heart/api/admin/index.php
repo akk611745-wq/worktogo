@@ -1473,7 +1473,13 @@ try {
         $optSel  = '';
         $optSel .= isset($bc['lifecycle_state'])   ? ', b.lifecycle_state'   : ', b.status AS lifecycle_state';
         $optSel .= isset($bc['assignment_state'])  ? ', b.assignment_state'  : ", IF(b.vendor_id IS NOT NULL, 'worker_assigned', 'unassigned_searching') AS assignment_state";
-        $optSel .= isset($bc['payment_method'])    ? ', b.payment_method AS payment_route' : (isset($bc['payment_route']) ? ', b.payment_route' : ", 'cod' AS payment_route");
+        $optSel .= isset($bc['payment_route'])
+            ? ', b.payment_route'
+            : (isset($bc['booking_mode'])
+                ? ", CASE WHEN b.booking_mode LIKE '%inspect%' OR b.booking_mode LIKE 'paid%' THEN 'paid_inspection' ELSE 'free_request' END AS payment_route"
+                : (isset($bc['payment_method'])
+                    ? ", CASE WHEN b.payment_method = 'online' THEN 'paid_inspection' ELSE 'free_request' END AS payment_route"
+                    : ", 'free_request' AS payment_route"));
         $optSel .= isset($bc['booking_mode'])      ? ', b.booking_mode'      : ", 'free_lead' AS booking_mode";
         $optSel .= isset($bc['priority'])          ? ', b.priority'          : ", 'normal_priority' AS priority";
         $optSel .= isset($bc['request_id'])        ? ', b.request_id'        : ", CONCAT('REQ-', LPAD(b.id, 6, '0')) AS request_id";
