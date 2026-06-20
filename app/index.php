@@ -1,3 +1,29 @@
+<?php
+// app/index.php has no bootstrap; load .env manually so getenv() works here too.
+(static function (): void {
+    $envFile = dirname(__DIR__) . '/.env';
+    if (!is_file($envFile)) return;
+    $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if ($lines === false) return;
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line === '' || $line[0] === '#' || !str_contains($line, '=')) continue;
+        [$name, $value] = explode('=', $line, 2);
+        $name = trim($name); $value = trim($value);
+        if ($value !== '' && $value[0] !== '"' && $value[0] !== "'") {
+            $pos = strpos($value, ' #');
+            if ($pos !== false) $value = trim(substr($value, 0, $pos));
+        }
+        if (strlen($value) >= 2 &&
+            (($value[0] === '"' && $value[-1] === '"') || ($value[0] === "'" && $value[-1] === "'"))) {
+            $value = substr($value, 1, -1);
+        }
+        if (getenv($name) !== false) continue;
+        putenv("{$name}={$value}");
+        $_ENV[$name] = $_SERVER[$name] = $value;
+    }
+})();
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
