@@ -224,7 +224,7 @@
               <datalist id="city-datalist"></datalist>
               <input class="form-control" id="ops-category" placeholder="Category" list="category-datalist" autocomplete="off" style="max-width:130px">
               <datalist id="category-datalist"></datalist>
-              <select class="form-control" id="ops-payment" style="max-width:145px"><option value="">Payment</option><option value="free_request">Free</option><option value="paid_inspection">Inspection</option></select>
+              <select class="form-control" id="ops-payment" style="max-width:145px"><option value="">All</option><option value="free_request">Free</option><option value="paid_inspection">Inspection</option><option value="direct_vendor">Direct</option></select>
               <select class="form-control" id="ops-priority" style="max-width:145px"><option value="">Priority</option><option value="normal_priority">Normal</option><option value="high_priority">High</option></select>
               <select class="form-control" id="ops-assignment" style="max-width:165px"><option value="">Assignment</option><option value="unassigned_searching">Unassigned</option><option value="worker_contacted">Contacted</option><option value="worker_assigned">Assigned</option><option value="inspection_unassigned">Inspection unassigned</option><option value="inspection_assigned">Inspection assigned</option></select>
               <select class="form-control" id="ops-lifecycle" style="max-width:165px"><option value="">Lifecycle</option><option value="pending">New / Pending</option><option value="request_received">Received</option><option value="searching_worker">Searching</option><option value="worker_assigned">Worker assigned</option><option value="service_in_progress">In progress</option><option value="payment_pending">Payment pending</option><option value="inspection_queued">Inspection queued</option><option value="inspection_assigned">Inspection assigned</option><option value="completed">Completed</option></select>
@@ -435,6 +435,7 @@ let currentPage = 1, totalPages = 1;
 let bookingPage = 1, bookingTotalPages = 1;
 let serviceVendors = [];
 let serviceBookingsCache = [];
+let masterCategories = [];
 // SERVICE_STATUS_ALIASES / normalizeServiceStatus / resolveBookingStage now
 // live in assets/app.js (loaded above) — single canonical source shared
 // with Follow-up Center. See ADMIN_AUDIT_2026_06_16.md §8.
@@ -509,21 +510,40 @@ function resetBookingFilters() {
   loadServiceBookings();
 }
 
+async function loadMasterCategories() {
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.CATEGORIES);
+    const cats = data.data?.categories || data.categories || [];
+    masterCategories = cats.filter(c => c.status === 'active');
+    const catDL = document.getElementById('category-datalist');
+    if (catDL) catDL.innerHTML = masterCategories
+      .slice().sort((a, b) => a.name.localeCompare(b.name))
+      .map(c => `<option value="${escHtml(c.name)}">`).join('');
+  } catch(e) { /* silent — booking-derived fallback in populateFilterDataLists */ }
+}
+
 function populateFilterDataLists(bookings) {
+  // Cities: derived from booking data (no separate master city list)
   const cities = new Set();
-  const categories = new Set();
   bookings.forEach(b => {
     const city = b.city || b.admin_request_view?.location?.city || '';
     if (city) cities.add(city);
-    const cat = b.admin_request_view?.issue_summary?.category
-      || b.admin_request_view?.issue_summary?.label
-      || b.category_slug || b.category_name || '';
-    if (cat) categories.add(cat);
   });
   const cityDL = document.getElementById('city-datalist');
   if (cityDL) cityDL.innerHTML = [...cities].sort().map(c => `<option value="${escHtml(c)}">`).join('');
-  const catDL = document.getElementById('category-datalist');
-  if (catDL) catDL.innerHTML = [...categories].sort().map(c => `<option value="${escHtml(c)}">`).join('');
+
+  // Categories: use master list from loadMasterCategories(); fall back to booking-derived if not yet loaded
+  if (!masterCategories.length) {
+    const catSet = new Set();
+    bookings.forEach(b => {
+      const cat = b.admin_request_view?.issue_summary?.category
+        || b.admin_request_view?.issue_summary?.label
+        || b.category_slug || b.category_name || '';
+      if (cat) catSet.add(cat);
+    });
+    const catDL = document.getElementById('category-datalist');
+    if (catDL) catDL.innerHTML = [...catSet].sort().map(c => `<option value="${escHtml(c)}">`).join('');
+  }
 }
 
 async function loadServiceVendors() {
@@ -1666,6 +1686,7 @@ async function submitAddCategory() {
 document.getElementById('apply-filter').addEventListener('click', () => loadServices(1));
 document.getElementById('search-input').addEventListener('keydown', e => { if(e.key==='Enter') loadServices(1); });
 loadServices(1);
+loadMasterCategories();
 loadServiceVendors().then(loadServiceBookings);
 _initKanbanDragDrop();
 </script>

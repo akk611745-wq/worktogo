@@ -1476,7 +1476,7 @@ try {
         $optSel .= isset($bc['payment_route'])
             ? ', b.payment_route'
             : (isset($bc['booking_mode'])
-                ? ", CASE WHEN b.booking_mode LIKE '%inspect%' OR b.booking_mode LIKE 'paid%' THEN 'paid_inspection' ELSE 'free_request' END AS payment_route"
+                ? ", CASE WHEN b.booking_mode LIKE '%inspect%' OR b.booking_mode LIKE 'paid%' THEN 'paid_inspection' WHEN b.booking_mode = 'direct_vendor' OR b.booking_mode LIKE 'direct%' THEN 'direct_vendor' ELSE 'free_request' END AS payment_route"
                 : (isset($bc['payment_method'])
                     ? ", CASE WHEN b.payment_method = 'online' THEN 'paid_inspection' ELSE 'free_request' END AS payment_route"
                     : ", 'free_request' AS payment_route"));
