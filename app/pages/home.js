@@ -2154,12 +2154,19 @@ function _vendorCardHTML(s) {
       .wtg-vc-info { flex:1; }
       .wtg-vc-name { font-size:16px; font-weight:700; color:#1a1a1a; }
       .wtg-vc-meta { font-size:13px; color:#888; margin-top:2px; }
+      .wtg-vc-new-badge { color:#FF6B35; font-weight:600; }
       .wtg-vc-avail { width:10px; height:10px; border-radius:50%;
         background:#22c55e; flex-shrink:0; }
+      .wtg-vc-bio { font-size:13px; color:#666; margin-top:10px;
+        line-height:1.4; }
       .wtg-vc-chips { display:flex; flex-wrap:wrap; gap:6px;
         margin-top:10px; }
       .wtg-vc-chip { padding:5px 12px; border-radius:20px;
         background:#F5F5F5; color:#555; font-size:12px; }
+      .wtg-vc-areas { display:flex; flex-wrap:wrap; gap:6px;
+        margin-top:8px; }
+      .wtg-vc-area-tag { padding:4px 10px; border-radius:20px;
+        background:#EFF6FF; color:#2563eb; font-size:11px; }
       .wtg-vc-book { width:100%; margin-top:14px; padding:14px;
         background:#FF6B35; color:#fff; border:none;
         border-radius:12px; font-size:16px; font-weight:700;
@@ -2207,10 +2214,26 @@ function _vendorCardHTML(s) {
   const initial = name.charAt(0).toUpperCase();
   const photo = s.image || s.photo || '';
   const jobs = s.jobs_done || s.completed_jobs || s.jobs_count || 0;
-  const rating = (s.rating_is_verified && s.rating)
-    ? `⭐ ${parseFloat(s.rating).toFixed(1)}` : '';
+  const totalReviews = parseInt(s.total_reviews, 10) || 0;
+  const rating = totalReviews > 0
+    ? `⭐ ${parseFloat(s.rating || 0).toFixed(1)} (${totalReviews} review${totalReviews === 1 ? '' : 's'})`
+    : '';
   const meta = [rating, jobs ? `${jobs} jobs` : ''].filter(Boolean).join(' · ');
   const available = s.available_today;
+
+  const bioRaw = (s.description || '').trim();
+  const bio = bioRaw.length > 80 ? bioRaw.slice(0, 80).trim() + '…' : bioRaw;
+
+  let areaNames = [];
+  try {
+    const parsed = typeof s.service_localities === 'string'
+      ? JSON.parse(s.service_localities)
+      : s.service_localities;
+    if (Array.isArray(parsed)) areaNames = parsed.filter(Boolean);
+  } catch (_) { /* leave areaNames empty on malformed data */ }
+  const areaHTML = areaNames.length
+    ? `<div class="wtg-vc-areas">${areaNames.map(a => `<span class="wtg-vc-area-tag">📍 ${_esc(a)}</span>`).join('')}</div>`
+    : '';
 
   const svcs = Array.isArray(s.vendor_services) ? s.vendor_services
     : Array.isArray(s.services) ? s.services : [];
@@ -2230,11 +2253,15 @@ function _vendorCardHTML(s) {
         <div class="wtg-vc-avatar">${avatarInner}</div>
         <div class="wtg-vc-info">
           <div class="wtg-vc-name">${_esc(name)}</div>
-          ${meta ? `<div class="wtg-vc-meta">${_esc(meta)}</div>` : ''}
+          ${meta
+            ? `<div class="wtg-vc-meta">${_esc(meta)}</div>`
+            : `<div class="wtg-vc-meta wtg-vc-new-badge">New on WorkToGo</div>`}
         </div>
         ${available ? '<div class="wtg-vc-avail"></div>' : ''}
       </div>
+      ${bio ? `<div class="wtg-vc-bio">${_esc(bio)}</div>` : ''}
       ${chipHTML ? `<div class="wtg-vc-chips">${chipHTML}</div>` : ''}
+      ${areaHTML}
       <button class="wtg-vc-book"
         onclick="WtgSheet.open('${_esc(String(id))}')">
         BOOK NOW

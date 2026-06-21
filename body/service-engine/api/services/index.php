@@ -857,7 +857,10 @@ if ($method === 'GET' && $uri === '/api/services') {
     $vendorCategoryScope = serviceTableHasColumn($db, 'vendors', 'category_id')
         ? "AND (v.category_id IS NULL OR v.category_id = s.category_id)"
         : "";
-    $sql  = "SELECT s.*, v.business_name AS vendor_name, c.name AS category_name, c.slug AS category_slug {$categorySelect}
+    $sql  = "SELECT s.*, v.business_name AS vendor_name, v.description AS vendor_description,
+                    v.rating AS vendor_rating, v.total_reviews AS vendor_total_reviews,
+                    v.service_localities AS vendor_service_localities,
+                    c.name AS category_name, c.slug AS category_slug {$categorySelect}
              FROM services s
              LEFT JOIN vendors v ON v.id = s.vendor_id
              LEFT JOIN categories c ON c.id = s.category_id
@@ -893,8 +896,11 @@ if ($method === 'GET' && $uri === '/api/services') {
                 'vendor_name'        => $row['vendor_name'] ?? '',
                 'category_slug'      => $slug,
                 'category_name'      => $catName,
-                'rating'             => $row['rating'] ?? null,
-                'rating_is_verified' => $row['rating_is_verified'] ?? false,
+                'rating'             => $row['vendor_rating'] ?? null,
+                'total_reviews'      => (int)($row['vendor_total_reviews'] ?? 0),
+                'description'        => $row['vendor_description'] ?? null,
+                'service_localities' => $row['vendor_service_localities'] ?? null,
+                'rating_is_verified' => (int)($row['vendor_total_reviews'] ?? 0) > 0,
                 'is_featured'        => $row['is_featured'] ?? false,
                 'available_today'    => $row['available_today'] ?? null,
                 'image'              => $row['image'] ?? null,
