@@ -1288,6 +1288,7 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         if ($paymentMethod === 'online') {
             require_once SYSTEM_ROOT . '/config/payment.config.php';
             require_once SYSTEM_ROOT . '/lib/CashfreeClient.php';
+            require_once SYSTEM_ROOT . '/core/helpers/Logger.php';
 
             // ── Credential guard: fail fast if Cashfree is not yet configured ──
             $cfAppId = (string)(getenv('CASHFREE_APP_ID') ?: '');
@@ -1322,6 +1323,18 @@ if ($method === 'POST' && $uri === '/api/service/request') {
                             'reference_type'      => 'booking',
                             'platform'            => 'worktogo',
                         ],
+                    ]);
+
+                    // TEMP DEBUG — CASHFREE-PROD-FAILURE investigation. Remove once root cause confirmed.
+                    Logger::error('CASHFREE_ORDER_DEBUG', [
+                        'booking_id' => $bookingId,
+                        'cf_order_id' => $cfOrderId,
+                        'env' => CASHFREE_ENV,
+                        'api_base' => CASHFREE_API_BASE,
+                        'http_code' => $cfResult['http_code'] ?? null,
+                        'success' => $cfResult['success'] ?? null,
+                        'error' => $cfResult['error'] ?? null,
+                        'data' => $cfResult['data'] ?? null,
                     ]);
 
                     if (!$cfResult['success']) {
