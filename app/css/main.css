@@ -972,7 +972,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   z-index: 60;
   padding-top: calc(12px + env(safe-area-inset-top, 0px));
   padding-bottom: 10px;
-  background: rgba(255,250,243,0.88);
+  background: rgba(255,250,243,0.97);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   transition: transform 180ms var(--ease), opacity 180ms var(--ease);
@@ -992,7 +992,7 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
   padding: 6px 10px 6px 8px;
   border: 1px solid rgba(255,107,0,0.18);
   border-radius: var(--r-full);
-  background: rgba(255,255,255,0.78);
+  background: rgba(255,255,255,0.95);
   box-shadow: 0 8px 20px rgba(17,17,17,0.05);
 }
 
