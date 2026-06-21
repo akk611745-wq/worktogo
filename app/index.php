@@ -1,4 +1,25 @@
 <?php
+// Cache-busting version: derived automatically from the newest mtime among
+// the app's CSS/JS files, so every deploy that touches any of them changes
+// the version with zero manual steps (no hand-edited version string).
+function wtg_build_version(): string {
+    static $version = null;
+    if ($version !== null) return $version;
+    $latest = 0;
+    $paths = array_merge(
+        glob(__DIR__ . '/js/*.js') ?: [],
+        glob(__DIR__ . '/css/*.css') ?: [],
+        glob(__DIR__ . '/pages/*.js') ?: [],
+        [__DIR__ . '/env.js']
+    );
+    foreach ($paths as $path) {
+        $mtime = @filemtime($path);
+        if ($mtime !== false && $mtime > $latest) $latest = $mtime;
+    }
+    $version = (string) ($latest > 0 ? $latest : time());
+    return $version;
+}
+
 // app/index.php has no bootstrap; load .env manually so getenv() works here too.
 (static function (): void {
     $envFile = dirname(__DIR__) . '/.env';
@@ -36,7 +57,7 @@
   <title>WorkToGo</title>
 
   <!-- Styles -->
-  <link rel="stylesheet" href="css/main.css?v=20260524-customer-stabilization"/>
+  <link rel="stylesheet" href="css/main.css?v=<?php echo wtg_build_version(); ?>"/>
 
   <!-- Preconnect for fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -62,24 +83,24 @@
   -->
 
   <!-- Environment (set BASE_URL here) — MUST be first -->
-  <script src="env.js?v=20260524-customer-stabilization"></script>
+  <script src="env.js?v=<?php echo wtg_build_version(); ?>"></script>
 
   <!-- Core Scripts (order matters) -->
   <script>
     window.WTG_BASE_URL         = "<?php echo rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?? 'https://worktogo.in', '/'); ?>";
     window.WTG_GOOGLE_CLIENT_ID = "<?php echo htmlspecialchars(getenv('GOOGLE_CLIENT_ID') ?: ''); ?>";
-    window.WTG_ASSET_VERSION    = "20260524-customer-stabilization";
+    window.WTG_ASSET_VERSION    = "<?php echo wtg_build_version(); ?>";
     window.WTG_OTP_METHOD       = "<?php echo htmlspecialchars(getenv('OTP_METHOD') ?: 'sms'); ?>";
     window.WTG_WIDGET_ID        = "<?php echo htmlspecialchars(getenv('MSG91_WIDGET_ID') ?: ''); ?>";
     window.WTG_WIDGET_TOKEN     = "<?php echo htmlspecialchars(getenv('MSG91_WIDGET_TOKEN_AUTH') ?: ''); ?>";
   </script>
-  <script src="js/config.js?v=20260524-customer-stabilization"></script>
-  <script src="js/ui.js?v=20260524-customer-stabilization"></script>
-  <script src="js/api.js?v=20260524-customer-stabilization"></script>
-  <script src="js/auth.js?v=20260524-customer-stabilization"></script>
-  <script src="js/router.js?v=20260524-customer-stabilization"></script>
+  <script src="js/config.js?v=<?php echo wtg_build_version(); ?>"></script>
+  <script src="js/ui.js?v=<?php echo wtg_build_version(); ?>"></script>
+  <script src="js/api.js?v=<?php echo wtg_build_version(); ?>"></script>
+  <script src="js/auth.js?v=<?php echo wtg_build_version(); ?>"></script>
+  <script src="js/router.js?v=<?php echo wtg_build_version(); ?>"></script>
   <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
-  <script src="/app/pages/vendor-apply-modal.js?v=20260524-customer-stabilization"></script>
+  <script src="/app/pages/vendor-apply-modal.js?v=<?php echo wtg_build_version(); ?>"></script>
 
   <!-- Bootstrap -->
   <script>
