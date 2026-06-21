@@ -1166,6 +1166,31 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
   display: grid;
   gap: var(--sp-sm);
   box-shadow: 0 14px 30px rgba(17,17,17,0.12);
+  position: relative;
+  isolation: isolate;
+}
+
+.service-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: -1;
+  opacity: 0.5;
+  pointer-events: none;
+  background-image: radial-gradient(circle, rgba(17,17,17,0.05) 1px, transparent 1.4px);
+  background-size: 16px 16px;
+}
+
+.service-hero[data-pattern="waterproofing"]::before {
+  background-image: repeating-radial-gradient(circle at 20% 30%, rgba(22,163,74,0.10) 0 2px, transparent 2px 26px),
+    repeating-radial-gradient(circle at 75% 70%, rgba(22,163,74,0.08) 0 2px, transparent 2px 30px);
+  background-size: auto;
+}
+
+.service-hero[data-pattern="cctv"]::before {
+  background-image: repeating-linear-gradient(115deg, rgba(17,17,17,0.06) 0 1.5px, transparent 1.5px 22px);
+  background-size: auto;
 }
 
 .marketplace-hero {
@@ -1204,7 +1229,7 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
   margin: 10px 0;
   grid-template-columns: 1fr 1fr;
 }
-.booking-distinction-grid div,
+.booking-distinction-grid .distinction-toggle,
 .inspection-line {
   padding: 10px;
   border: 1px solid var(--market-line);
@@ -1214,7 +1239,30 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
 .inspection-line strong,
 .booking-distinction-grid strong { display: block; color: var(--market-text); font-size: 0.84rem; }
 .inspection-line span,
-.booking-distinction-grid span { display: block; color: var(--market-muted); font-size: 0.7rem; line-height: 1.25; margin-top: 2px; }
+.distinction-detail { display: block; color: var(--market-muted); font-size: 0.7rem; line-height: 1.25; margin-top: 2px; }
+
+.distinction-toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.distinction-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.distinction-arrow {
+  display: inline-block;
+  color: var(--market-muted);
+  font-size: 0.8rem;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+.distinction-toggle.expanded .distinction-arrow { transform: rotate(180deg); }
+.distinction-detail { display: none; }
+.distinction-toggle.expanded .distinction-detail { display: block; }
 
 .hero-live-strip {
   display: flex;

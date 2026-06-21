@@ -46,7 +46,7 @@ export async function render(container) {
           </div>
         </section>
 
-        <section class="service-hero marketplace-hero" id="category-hero">
+        <section class="service-hero marketplace-hero" id="category-hero" data-pattern="${_esc(_activeCategory || "default")}">
           ${_heroHTML(_activeCategory)}
         </section>
 
@@ -148,6 +148,26 @@ export async function render(container) {
   window.HomePage = {
     scrollToServices() {
       document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    },
+    toggleHeroInfoCard(key = "") {
+      const grid = document.getElementById("hero-distinction-grid");
+      if (!grid) return;
+      const btn = grid.querySelector(`[data-key="${key}"]`);
+      if (!btn) return;
+      const willOpen = !btn.classList.contains("expanded");
+      grid.querySelectorAll(".distinction-toggle").forEach(b => {
+        b.classList.remove("expanded");
+        b.setAttribute("aria-expanded", "false");
+      });
+      if (willOpen) {
+        btn.classList.add("expanded");
+        btn.setAttribute("aria-expanded", "true");
+      }
+      const note = document.getElementById("hero-distinction-note");
+      if (note) {
+        note.textContent = key === "inspection" ? "Unclear issue? choose inspection." : "Clear job? choose free booking.";
+        note.style.display = willOpen ? "block" : "none";
+      }
     },
     focusSearch(seed = "") {
       HomePage.openExploreOverlay();
@@ -1862,7 +1882,9 @@ function _renderContextProof() {
 
 function _renderHeroForCategory() {
   const el = document.getElementById("category-hero");
-  if (el) el.innerHTML = _heroHTML(_activeCategory);
+  if (!el) return;
+  el.innerHTML = _heroHTML(_activeCategory);
+  el.dataset.pattern = _activeCategory || "default";
 }
 
 function _renderLocalityHeader() {
@@ -2057,15 +2079,21 @@ function _heroHTML(slug = "") {
       <p class="service-hero-kicker">${_esc(slug ? `${meta.label} lane · ${localityContext.label}` : `${localityContext.label} local operating network`)}</p>
       <h1>${_esc(slug ? `${meta.label} services for ${localityContext.label}` : `Trusted services for ${localityContext.label}`)}</h1>
       <p>${_esc(meta.subtitle || _pilotConfig.hero_subtitle)} ${_esc(`${localityContext.label} near you.`)}</p>
-      <div class="booking-distinction-grid">
-        <div><strong>Inspection</strong><span>${_esc(`${price} · expert diagnosis first`)}</span></div>
-        <div><strong>Free booking</strong><span>Nearby worker confirmation</span></div>
+      <div class="booking-distinction-grid" id="hero-distinction-grid">
+        <button type="button" class="distinction-toggle" data-key="inspection" aria-expanded="false" onclick="HomePage.toggleHeroInfoCard('inspection')">
+          <span class="distinction-head"><strong>Inspection</strong><span class="distinction-arrow">⌄</span></span>
+          <span class="distinction-detail">${_esc(`${price} · expert diagnosis first`)}</span>
+        </button>
+        <button type="button" class="distinction-toggle" data-key="free_lead" aria-expanded="false" onclick="HomePage.toggleHeroInfoCard('free_lead')">
+          <span class="distinction-head"><strong>Free booking</strong><span class="distinction-arrow">⌄</span></span>
+          <span class="distinction-detail">Nearby worker confirmation</span>
+        </button>
       </div>
       <div class="hero-cta-row">
         <button class="btn-primary marketplace-cta hero-primary" id="hero-category-cta" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'inspection')">${_esc(primaryText)}</button>
         <button class="hero-secondary" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Free booking</button>
       </div>
-      <p class="action-hierarchy-note">Unclear issue? choose inspection. Clear job? choose free booking.</p>
+      <p class="action-hierarchy-note" id="hero-distinction-note" style="display:none"></p>
     </div>`;
 }
 
