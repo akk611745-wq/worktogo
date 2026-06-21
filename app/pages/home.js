@@ -937,7 +937,11 @@ window.HomeModals = (() => {
     const locality = _resolvedLocality();
     const activeCategory = _initialIntakeCategory(category, restored, service);
     const issues = activeCategory ? _inspectionIssues(activeCategory) : [];
-    const restoredIssues = _normalizeIssueList(restored.issue_list || restored.service_context || service.selected_issues || selectedService || "");
+    // Only resume a previously persisted issue selection when this open is
+    // genuinely the same booking context (same category + same chip) — a
+    // different quick-chip click must always win over a stale draft left
+    // behind by closing the modal on a prior, different selection.
+    const restoredIssues = sameRestoredContext ? _normalizeIssueList(restored.issue_list || restored.service_context || service.selected_issues || "") : [];
     const matchingRestoredIssues = restoredIssues.filter(issue => issues.includes(issue));
     const activeIssues = _normalizeIssueList(matchingRestoredIssues.length ? matchingRestoredIssues : (selectedService && issues.includes(selectedService) ? [selectedService] : issues.includes(service.quick_service) ? [service.quick_service] : (issues[0] ? [issues[0]] : [])));
     const authUser = AUTH.getUser?.() || {};
