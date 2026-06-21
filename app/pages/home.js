@@ -2167,6 +2167,11 @@ function _vendorCardHTML(s) {
         margin-top:8px; }
       .wtg-vc-area-tag { padding:4px 10px; border-radius:20px;
         background:#EFF6FF; color:#2563eb; font-size:11px; }
+      .wtg-vc-area-more { padding:4px 10px; border-radius:20px;
+        background:#F5F5F5; color:#2563eb; font-size:11px;
+        font-weight:600; cursor:pointer; }
+      .wtg-vc-area-extra { display:none; }
+      .wtg-vc-area-extra.expanded { display:contents; }
       .wtg-vc-book { width:100%; margin-top:14px; padding:14px;
         background:#FF6B35; color:#fff; border:none;
         border-radius:12px; font-size:16px; font-weight:700;
@@ -2231,8 +2236,16 @@ function _vendorCardHTML(s) {
       : s.service_localities;
     if (Array.isArray(parsed)) areaNames = parsed.filter(Boolean);
   } catch (_) { /* leave areaNames empty on malformed data */ }
+  const visibleAreas = areaNames.slice(0, 3);
+  const hiddenAreas = areaNames.slice(3);
+  const areaExtraId = `wtg-vc-area-extra-${_esc(String(id))}`;
+  const visibleAreaHTML = visibleAreas.map(a => `<span class="wtg-vc-area-tag">📍 ${_esc(a)}</span>`).join('');
+  const hiddenAreaHTML = hiddenAreas.map(a => `<span class="wtg-vc-area-tag">📍 ${_esc(a)}</span>`).join('');
+  const areaMoreHTML = hiddenAreas.length
+    ? `<span class="wtg-vc-area-more" onclick="document.getElementById('${areaExtraId}').classList.add('expanded'); this.remove();">+${hiddenAreas.length} more</span>`
+    : '';
   const areaHTML = areaNames.length
-    ? `<div class="wtg-vc-areas">${areaNames.map(a => `<span class="wtg-vc-area-tag">📍 ${_esc(a)}</span>`).join('')}</div>`
+    ? `<div class="wtg-vc-areas">${visibleAreaHTML}${areaMoreHTML}<span id="${areaExtraId}" class="wtg-vc-area-extra">${hiddenAreaHTML}</span></div>`
     : '';
 
   const svcs = Array.isArray(s.vendor_services) ? s.vendor_services
