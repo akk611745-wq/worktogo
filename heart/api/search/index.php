@@ -68,6 +68,20 @@ try {
             $featuredOrder = $hasFeatured ? 's.is_featured DESC, ' : '';
             $ratingOrder = $hasRating ? 's.rating DESC, ' : '';
 
+            // Match the broader field set the frontend's client-side fallback
+            // (_searchText in app/pages/home.js) already covers, so full-catalog
+            // search works the same regardless of what's currently loaded on
+            // screen: vendor business name, category name/slug, and the
+            // vendor's service localities (the last is an optional column —
+            // guarded like the other Phase 2A columns above).
+            $hasServiceLocalities = false;
+            $localitiesStmt = $db->query("SHOW COLUMNS FROM vendors LIKE 'service_localities'");
+            if ($localitiesStmt && $localitiesStmt->rowCount() > 0) {
+                $hasServiceLocalities = true;
+            }
+            $localitiesWhere = $hasServiceLocalities ? ' OR v.service_localities LIKE :q' : '';
+            $vendorCategoryWhere = " OR v.business_name LIKE :q OR c.name LIKE :q OR c.slug LIKE :q{$localitiesWhere}";
+
             if ($hasPhase2A) {
                 $svcQuery = "SELECT s.id, s.name, {$slugSelect}, {$shortDescSelect}, s.base_price, {$ratingSelect},
                         'service' AS result_type,
@@ -79,7 +93,7 @@ try {
                  LEFT JOIN vendors v ON v.id = s.vendor_id
                  LEFT JOIN categories c ON c.id = s.category_id
                  WHERE s.status = 'active' AND s.deleted_at IS NULL
-                   AND (s.name LIKE :q OR s.description LIKE :q{$shortDescWhere})
+                   AND (s.name LIKE :q OR s.description LIKE :q{$shortDescWhere}{$vendorCategoryWhere})
                  ORDER BY {$featuredOrder}{$ratingOrder}s.name ASC
                  LIMIT :limit OFFSET :offset";
             } else {
@@ -93,7 +107,7 @@ try {
                  LEFT JOIN vendors v ON v.id = s.vendor_id
                  LEFT JOIN categories c ON c.id = s.category_id
                  WHERE s.status = 'active'
-                   AND (s.name LIKE :q{$shortDescWhere})
+                   AND (s.name LIKE :q{$shortDescWhere}{$vendorCategoryWhere})
                  ORDER BY {$featuredOrder}{$ratingOrder}s.id DESC
                  LIMIT :limit OFFSET :offset";
             }
