@@ -859,7 +859,7 @@ if ($method === 'GET' && $uri === '/api/services') {
         : "";
     $sql  = "SELECT s.*, v.business_name AS vendor_name, v.description AS vendor_description,
                     v.rating AS vendor_rating, v.total_reviews AS vendor_total_reviews,
-                    v.service_localities AS vendor_service_localities,
+                    v.service_localities AS vendor_service_localities, v.logo_url AS vendor_logo_url,
                     c.name AS category_name, c.slug AS category_slug {$categorySelect}
              FROM services s
              LEFT JOIN vendors v ON v.id = s.vendor_id
@@ -905,6 +905,7 @@ if ($method === 'GET' && $uri === '/api/services') {
                 'available_today'    => $row['available_today'] ?? null,
                 'image'              => $row['image'] ?? null,
                 'photo'              => $row['photo'] ?? null,
+                'logo_url'           => $row['vendor_logo_url'] ?? null,
                 'jobs_done'          => $row['jobs_done'] ?? 0,
                 'vendor_services'    => [],
                 'category_slugs'     => [],

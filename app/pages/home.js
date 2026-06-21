@@ -2212,7 +2212,7 @@ function _vendorCardHTML(s) {
   const id = s.id || s.vendor_id;
   const name = s.vendor_name || s.name || 'Vendor';
   const initial = name.charAt(0).toUpperCase();
-  const photo = s.image || s.photo || '';
+  const photo = s.image || s.photo || s.logo_url || '';
   const jobs = s.jobs_done || s.completed_jobs || s.jobs_count || 0;
   const totalReviews = parseInt(s.total_reviews, 10) || 0;
   const rating = totalReviews > 0
