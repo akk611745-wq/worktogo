@@ -99,8 +99,19 @@ class UploadHelper
         $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         $name = bin2hex(random_bytes(16)) . '.' . $ext;
 
-        // Store outside webroot when possible; fall back to uploads/ inside public_html
-        $uploadBase = rtrim(getenv('UPLOAD_PATH') ?: '../uploads', '/');
+        // Anchor to this file's own location (core/helpers/), not request CWD.
+        // The app routes every request through the docroot's index.php
+        // (.htaccess catch-all), so getcwd() is always the docroot regardless
+        // of which endpoint handles the upload — a relative fallback like
+        // '../uploads' would resolve one level ABOVE the docroot, outside
+        // public_html, never reachable via the public URL this method returns.
+        // Only honor UPLOAD_PATH from .env if it's already an absolute path;
+        // otherwise always fall back to <docroot>/uploads.
+        $docRoot    = dirname(__DIR__, 2);
+        $envPath    = getenv('UPLOAD_PATH');
+        $uploadBase = ($envPath && preg_match('#^(/|[A-Za-z]:[\\\\/])#', $envPath))
+            ? rtrim($envPath, '/')
+            : $docRoot . '/uploads';
         $dir  = $uploadBase . '/' . preg_replace('/[^a-z0-9_\-]/i', '', $folder);
         $path = $dir . '/' . $name;
 
