@@ -2076,17 +2076,16 @@ function _heroHTML(slug = "") {
   const primaryText = `${price} Inspection`;
   return `
     <div class="service-hero-copy">
-      <p class="service-hero-kicker">${_esc(slug ? `${meta.label} lane · ${localityContext.label}` : `${localityContext.label} local operating network`)}</p>
       <h1>${_esc(slug ? `${meta.label} services for ${localityContext.label}` : `Trusted services for ${localityContext.label}`)}</h1>
       <p>${_esc(meta.subtitle || _pilotConfig.hero_subtitle)} ${_esc(`${localityContext.label} near you.`)}</p>
       <div class="booking-distinction-grid" id="hero-distinction-grid">
         <button type="button" class="distinction-toggle" data-key="inspection" aria-expanded="false" onclick="HomePage.toggleHeroInfoCard('inspection')">
           <span class="distinction-head"><strong>Inspection</strong><span class="distinction-arrow">⌄</span></span>
-          <span class="distinction-detail">${_esc(`${price} · expert diagnosis first`)}</span>
+          <span class="distinction-detail">${_esc(`${price} · worker visits to diagnose first.`)}</span>
         </button>
         <button type="button" class="distinction-toggle" data-key="free_lead" aria-expanded="false" onclick="HomePage.toggleHeroInfoCard('free_lead')">
           <span class="distinction-head"><strong>Free booking</strong><span class="distinction-arrow">⌄</span></span>
-          <span class="distinction-detail">Nearby worker confirmation</span>
+          <span class="distinction-detail">Goes straight to nearby worker matching.</span>
         </button>
       </div>
       <div class="hero-cta-row">
