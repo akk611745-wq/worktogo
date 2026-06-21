@@ -54,10 +54,6 @@ export async function render(container) {
           ${_serviceCardsHTML(_activeCategory)}
         </section>
 
-        <section class="free-booking-strip" id="free-booking-strip">
-          ${_freeBookingStripHTML(_activeCategory)}
-        </section>
-
         <section class="operating-feed" id="operating-feed">
           ${_operatingFeedHTML(_activeCategory)}
         </section>
@@ -227,7 +223,6 @@ export async function render(container) {
       _renderOperatingFeed();
       _renderHeroForCategory();
       _renderQuickServiceCards();
-      _renderFreeBookingStrip();
       _renderContextProof();
       _renderServices({ ok: true, data: { services: _allServices } });
       _syncOperatingMode();
@@ -245,7 +240,6 @@ export async function render(container) {
       _renderOperatingFeed();
       _renderHeroForCategory();
       _renderQuickServiceCards();
-      _renderFreeBookingStrip();
       _renderContextProof();
       _renderServices({ ok: true, data: { services: _allServices } });
       document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -1853,11 +1847,6 @@ function _renderOperatingFeed() {
   if (el) el.innerHTML = _operatingFeedHTML(_activeCategory);
 }
 
-function _renderFreeBookingStrip() {
-  const el = document.getElementById("free-booking-strip");
-  if (el) el.innerHTML = _freeBookingStripHTML(_activeCategory);
-}
-
 function _renderContextProof() {
   const trust = document.getElementById("trust-proof-section");
   if (trust) trust.innerHTML = _trustProofHTML(_activeCategory);
@@ -2075,22 +2064,15 @@ function _heroHTML(slug = "") {
 }
 
 function _serviceCardsHTML(slug = "") {
+  // "All" has no single category, so its examples would just repeat the
+  // category names already shown in the top "What do you need?" bar — skip.
+  if (!slug) return "";
   const meta = _categoryMeta(slug);
   const cards = (meta.examples?.length ? meta.examples : CATEGORY_META.all.examples).slice(0, 4);
-  const localityContext = _resolvedLocality();
   return `
     <div class="quick-service-rail">
-      ${cards.map(name => `<button class="quick-service-card" onclick="HomePage.bookQuickService('${_esc(meta.slug || "")}', '${_esc(name)}')"><span>${meta.icon}</span><strong>${_esc(name)}</strong></button>`).join("")}
+      ${cards.map(name => `<button class="quick-service-card" onclick="HomePage.bookQuickService('${_esc(meta.slug || "")}', '${_esc(name)}')"><span>${_matchIssueIcon(name)}</span><strong>${_esc(name)}</strong></button>`).join("")}
     </div>`;
-}
-
-function _freeBookingStripHTML(slug = "") {
-  const meta = _categoryMeta(slug);
-  return `<div>
-    <strong>Free booking</strong>
-    <span>Nearby worker confirmation</span>
-  </div>
-  <button onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Request</button>`;
 }
 
 function _trustProofHTML(slug = "") {
@@ -3192,6 +3174,58 @@ function _matchCategoryIcon(name = "") {
   const n = String(name || "").toLowerCase();
   for (const [pattern, icon] of _CATEGORY_ICON_RULES) if (pattern.test(n)) return icon;
   return _CATEGORY_ICON_DEFAULT;
+}
+
+// Issue/example-level keyword rules so the per-category quick-service chips
+// (e.g. CCTV's Camera install/DVR setup/Wiring/Shop security) get distinct
+// icons instead of all repeating the category's single icon. Checked before
+// falling back to the category-level matcher, then the generic default.
+const _ISSUE_ICON_RULES = [
+  [/camera/, "📷"],
+  [/\bdvr\b|\bnvr\b|wiring|\bwire\b/, "🔌"],
+  [/security/, "🛡️"],
+  [/\bfan\b/, "🌀"],
+  [/switch/, "🔌"],
+  [/\bmcb\b/, "⚡"],
+  [/light/, "💡"],
+  [/\btap\b/, "🚿"],
+  [/pipe/, "🧰"],
+  [/bathroom/, "🚽"],
+  [/leak/, "💧"],
+  [/\broom\b/, "🏠"],
+  [/putty/, "🪣"],
+  [/exterior/, "🧱"],
+  [/colou?r/, "🎨"],
+  [/roof|monsoon/, "🌧️"],
+  [/damp/, "🏚️"],
+  [/crack|seal/, "🧪"],
+  [/\bdoor\b/, "🚪"],
+  [/wardrobe/, "🧱"],
+  [/furniture/, "🪵"],
+  [/polish/, "🪚"],
+  [/kitchen/, "🍳"],
+  [/\bhome\b/, "🏠"],
+  [/move/, "📦"],
+  [/cooling/, "🌬️"],
+  [/\bgas\b/, "🧪"],
+  [/fridge/, "🧊"],
+  [/washer|washing/, "🧺"],
+  [/geyser/, "🔥"],
+  [/\bro\b/, "💧"],
+  [/math/, "➗"],
+  [/science/, "🔬"],
+  [/spoken|english|tuition/, "🗣️"],
+  [/\bsite\b/, "🧭"],
+  [/diagnosis/, "🔍"],
+  [/estimate/, "🧾"],
+  [/scope/, "🛡️"],
+  [/\binstall/, "🔧"],
+];
+
+function _matchIssueIcon(name = "") {
+  const n = String(name || "").toLowerCase();
+  for (const [pattern, icon] of _ISSUE_ICON_RULES) if (pattern.test(n)) return icon;
+  return _matchCategoryIcon(name);
 }
 function _jsString(v = "") { return JSON.stringify(String(v || "")); }
 
