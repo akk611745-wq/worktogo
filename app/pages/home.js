@@ -308,6 +308,7 @@ export async function render(container) {
         if (_searchQuery.length < 2) {
           _searchRemoteServices = [];
           _renderServices({ ok: true, data: { services: _allServices } });
+          _renderInstantSearch();
           return;
         }
         const res = await API.search(_searchQuery, "services", 20).catch(() => null);
@@ -315,6 +316,7 @@ export async function render(container) {
           const payload = _unwrapData(res.data);
           _searchRemoteServices = (payload?.results?.services || []).map(_normalizeSearchService);
           _renderServices({ ok: true, data: { services: _allServices } });
+          _renderInstantSearch();
         }
       }, 260);
       _renderServices({ ok: true, data: { services: _allServices } });
@@ -2274,14 +2276,24 @@ function _vendorCardHTML(s) {
 function _renderInstantSearch() {
   const panel = document.getElementById("search-results-panel");
   if (!panel) return;
-  const list = _allServices.length ? _allServices : [];
+  const hasQuery = _searchQuery.length > 0;
+  // With a query, prefer the backend's broader match (vendor name, category,
+  // locality — see commit a6bcbe2) once it has landed; below the 2-char
+  // minimum (or before the debounced call resolves) fall back to an instant
+  // client-side filter over whatever's already loaded, same field set as the
+  // home feed's own fallback (_searchText). No query: show everything, same
+  // as before.
+  let list = _allServices.length ? _allServices : [];
+  if (hasQuery) {
+    list = _searchRemoteServices.length ? _searchRemoteServices : list.filter(s => _searchText(s).includes(_searchQuery));
+  }
   panel.classList.remove("hidden");
   panel.innerHTML = `
-    <div class="instant-search-head"><strong>Available Vendors</strong></div>
+    <div class="instant-search-head"><strong>${hasQuery ? `Results for "${_esc(_searchQuery)}"` : "Available Vendors"}</strong></div>
     <div style="padding:4px 0">
       ${list.length
         ? list.map(s => _vendorCardHTML(s)).join("")
-        : '<p style="color:#888;text-align:center;padding:20px">No vendors available in your area.</p>'}
+        : `<p style="color:#888;text-align:center;padding:20px">${hasQuery ? "No vendors match that search." : "No vendors available in your area."}</p>`}
     </div>`;
   if (window.WtgSheet) WtgSheet.setVendors(list);
 }
@@ -2294,8 +2306,6 @@ function _setupExploreOverlay() {
   slot.appendChild(section);
   section.classList.remove("top-search-hidden");
   section.removeAttribute("aria-hidden");
-  const searchBox = section.querySelector(".market-search-box");
-  if (searchBox) searchBox.style.display = "none";
   overlay.addEventListener("click", e => { if (e.target === overlay) _closeExploreOverlay(); });
 }
 
