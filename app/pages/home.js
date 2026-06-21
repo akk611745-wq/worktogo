@@ -2786,15 +2786,14 @@ function _inspectionCategories() {
 }
 
 function _inspectionIssues(slug = "") {
-  const map = {
-    plumber: ["leakage", "tap issue", "blockage", "motor issue"],
-    electrician: ["fan issue", "wiring", "switch board", "inverter"],
-    painting: ["wall repaint", "seepage marks", "putty issue"],
-    cctv: ["camera install", "DVR setup", "wiring", "not working"],
-    waterproofing: ["roof seepage", "wall dampness", "bathroom leakage", "crack sealing"],
-    carpentry: ["door repair", "wardrobe", "furniture fix", "polish work"],
-  };
-  return map[_inspectionCategorySlug(slug)] || map.electrician;
+  // Reuse the same example labels shown on the category's quick-service
+  // chips (CATEGORY_META[...].examples) instead of a separate hardcoded
+  // list — keeping a single source of truth means a clicked quick-chip
+  // (e.g. "Gas check" under AC repair) always matches an Issue-type option
+  // by exact label, so the modal highlights and submits the right one.
+  const resolved = _inspectionCategorySlug(slug);
+  const meta = _categoryMeta(resolved);
+  return meta.examples?.length ? meta.examples : _categoryMeta("electrician").examples;
 }
 
 function _inspectionCategoryChips(active = "") {
