@@ -2238,11 +2238,13 @@ function _vendorCardHTML(s) {
   } catch (_) { /* leave areaNames empty on malformed data */ }
   const visibleAreas = areaNames.slice(0, 3);
   const hiddenAreas = areaNames.slice(3);
-  const areaExtraId = `wtg-vc-area-extra-${_esc(String(id))}`;
+  const areaExtraId  = `wtg-vc-area-extra-${_esc(String(id))}`;
+  const areaToggleId = `wtg-vc-area-toggle-${_esc(String(id))}`;
   const visibleAreaHTML = visibleAreas.map(a => `<span class="wtg-vc-area-tag">📍 ${_esc(a)}</span>`).join('');
   const hiddenAreaHTML = hiddenAreas.map(a => `<span class="wtg-vc-area-tag">📍 ${_esc(a)}</span>`).join('');
+  const areaMoreLabel = `▼ +${hiddenAreas.length} more`;
   const areaMoreHTML = hiddenAreas.length
-    ? `<span class="wtg-vc-area-more" onclick="document.getElementById('${areaExtraId}').classList.add('expanded'); this.remove();">+${hiddenAreas.length} more</span>`
+    ? `<span class="wtg-vc-area-more" id="${areaToggleId}" onclick="var ex=document.getElementById('${areaExtraId}'); var exp=ex.classList.toggle('expanded'); this.textContent = exp ? '▲ Show less' : '${areaMoreLabel}';">${areaMoreLabel}</span>`
     : '';
   const areaHTML = areaNames.length
     ? `<div class="wtg-vc-areas">${visibleAreaHTML}${areaMoreHTML}<span id="${areaExtraId}" class="wtg-vc-area-extra">${hiddenAreaHTML}</span></div>`
