@@ -706,9 +706,9 @@ window.HomeModals = (() => {
       UI.toast(_savedPayState === "failed" ? "Previous payment did not go through. Use New booking to start fresh." : "Your existing inspection request is safely saved. No duplicate request was created.", "info", 5000);
       return;
     }
-    if (bookingMode === "inspection" && !dateVal) dateVal = _defaultScheduledLocal();
-
-    if (!dateVal) { _markInvalid("booking-date", "Please choose preferred date and time"); return; }
+    // No date selected is no longer a hard block — fall back to the next
+    // available slot (tomorrow) instead of forcing the user to pick one.
+    if (!dateVal) dateVal = _tomorrowScheduledLocal();
     if (Number.isNaN(new Date(dateVal).getTime()) || new Date(dateVal).getTime() <= Date.now()) {
       _markInvalid("booking-date", "Please choose a future date and time");
       return;
@@ -1235,6 +1235,12 @@ window.HomeModals = (() => {
 
   function _defaultScheduledLocal() {
     const d = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0);
+    return d.toISOString().slice(0, 16);
+  }
+
+  function _tomorrowScheduledLocal() {
+    const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
     d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0);
     return d.toISOString().slice(0, 16);
   }
