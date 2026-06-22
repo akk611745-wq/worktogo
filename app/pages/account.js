@@ -75,7 +75,7 @@ export async function render(container) {
           </div>` : ""}
 
           ${!AUTH.hasRole(CONFIG.ROLES.VENDOR) ? `
-          <div class="menu-item" onclick="VendorApplyModal.show()">
+          <div class="menu-item" onclick="window.location.href='/vendor/'">
             <div class="menu-icon">🔧</div>
             <div class="menu-body">
               <span>Become a WorkToGo vendor</span>
