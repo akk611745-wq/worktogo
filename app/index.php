@@ -100,7 +100,6 @@ function wtg_build_version(): string {
   <script src="js/auth.js?v=<?php echo wtg_build_version(); ?>"></script>
   <script src="js/router.js?v=<?php echo wtg_build_version(); ?>"></script>
   <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
-  <script src="/app/pages/vendor-apply-modal.js?v=<?php echo wtg_build_version(); ?>"></script>
 
   <!-- Bootstrap -->
   <script>
