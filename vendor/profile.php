@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <title>Profile — WorkToGo Vendor</title>
+  <link rel="icon" href="/app/assets/favicon.png"/>
 <link rel="stylesheet" href="assets/style.css"/>
 <script>
   window.WTG_BASE_URL = "<?php echo rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?? 'https://worktogo.in', '/'); ?>";

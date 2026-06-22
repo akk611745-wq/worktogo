@@ -56,6 +56,13 @@ function wtg_build_version(): string {
   <meta name="format-detection" content="telephone=no"/>
   <title>WorkToGo</title>
 
+  <!-- Branding / PWA -->
+  <link rel="icon" href="/app/assets/favicon.png"/>
+  <link rel="apple-touch-icon" href="/app/assets/icon-192.png"/>
+  <link rel="manifest" href="/app/manifest.json"/>
+  <meta property="og:image" content="https://worktogo.in/app/assets/icon-512.png"/>
+  <meta property="og:title" content="WorkToGo — Trusted local services for Haldwani"/>
+
   <!-- Styles -->
   <link rel="stylesheet" href="css/main.css?v=<?php echo wtg_build_version(); ?>"/>
 

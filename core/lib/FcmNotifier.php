@@ -81,7 +81,7 @@ class FcmNotifier
                 ],
                 'webpush' => [
                     'notification' => [
-                        'icon' => (getenv('APP_URL') ?: '') . '/assets/icon-192.png',
+                        'icon' => (getenv('APP_URL') ?: '') . '/app/assets/icon-192.png',
                     ],
                     'fcm_options' => array_filter([
                         'link' => $data['url'] ?? null,
