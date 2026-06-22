@@ -19,6 +19,8 @@ require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Respon
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/JWT.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/ServiceVendorEligibility.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/heart/middleware/AuthMiddleware.php';
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/lib/PushSubscription.php';
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/lib/FcmNotifier.php';
 
 $db = getDB();
 
@@ -1289,6 +1291,28 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         $bStmt->execute($bookingBind);
 
         $bookingId = (int)$db->lastInsertId();
+
+        FcmNotifier::notifyRole(
+            $db,
+            ROLE_ADMIN,
+            'New Booking Created',
+            "Booking #{$bookingNum} was just placed and needs attention.",
+            ['url' => '/admin/services.html', 'booking_id' => (string)$bookingId]
+        );
+        if ($initialVendorId) {
+            $vendorOwnerStmt = $db->prepare("SELECT user_id FROM vendors WHERE id = ? LIMIT 1");
+            $vendorOwnerStmt->execute([$initialVendorId]);
+            $vendorUserId = $vendorOwnerStmt->fetchColumn();
+            if ($vendorUserId) {
+                FcmNotifier::notifyUser(
+                    $db,
+                    (int)$vendorUserId,
+                    'New Booking Assigned',
+                    "You have a new booking #{$bookingNum}.",
+                    ['url' => '/vendor/bookings.php', 'booking_id' => (string)$bookingId]
+                );
+            }
+        }
 
         // Online Payment logic — CashfreeClient (API v2023-08-01) with credential guard
         $paymentData = null;

@@ -84,6 +84,8 @@ function initShell(pageTitle, contentId = "pageContent") {
   const user = Auth.guard();
   if (!user) return null;
 
+  if (typeof WTGPush !== 'undefined') WTGPush.register();
+
   const topbar = `
 <header class="topbar">
   <button class="menu-toggle" id="menuToggle" title="Menu">

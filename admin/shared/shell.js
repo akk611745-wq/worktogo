@@ -97,5 +97,9 @@ const Shell = {
     const topbarTarget  = document.getElementById('shell-topbar');
     if (sidebarTarget) sidebarTarget.innerHTML = sidebarHTML;
     if (topbarTarget)  topbarTarget.innerHTML  = topbarHTML;
+
+    if (typeof Auth !== 'undefined' && Auth.isLoggedIn() && typeof WTGPush !== 'undefined') {
+      WTGPush.register();
+    }
   },
 };

@@ -8,6 +8,7 @@ const AUTH = (() => {
     localStorage.setItem(CONFIG.TOKEN_KEY, token);
     localStorage.setItem(CONFIG.USER_KEY, JSON.stringify(user));
     if (refreshToken) localStorage.setItem(CONFIG.REFRESH_TOKEN_KEY, refreshToken);
+    if (typeof WTG_registerPush === "function") WTG_registerPush();
   }
 
   function getUser() {

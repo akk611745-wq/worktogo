@@ -65,6 +65,10 @@ function wtg_build_version(): string {
 
   <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <!-- Firebase Cloud Messaging (browser push notifications) -->
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js"></script>
 </head>
 <body>
 
@@ -93,6 +97,11 @@ function wtg_build_version(): string {
     window.WTG_OTP_METHOD       = "<?php echo htmlspecialchars(getenv('OTP_METHOD') ?: 'sms'); ?>";
     window.WTG_WIDGET_ID        = "<?php echo htmlspecialchars(getenv('MSG91_WIDGET_ID') ?: ''); ?>";
     window.WTG_WIDGET_TOKEN     = "<?php echo htmlspecialchars(getenv('MSG91_WIDGET_TOKEN_AUTH') ?: ''); ?>";
+    window.WTG_FCM_API_KEY      = "<?php echo htmlspecialchars(getenv('FCM_API_KEY') ?: ''); ?>";
+    window.WTG_FCM_PROJECT_ID   = "<?php echo htmlspecialchars(getenv('FCM_PROJECT_ID') ?: ''); ?>";
+    window.WTG_FCM_SENDER_ID    = "<?php echo htmlspecialchars(getenv('FCM_SENDER_ID') ?: ''); ?>";
+    window.WTG_FCM_APP_ID       = "<?php echo htmlspecialchars(getenv('FCM_APP_ID') ?: ''); ?>";
+    window.WTG_FCM_VAPID_KEY    = "<?php echo htmlspecialchars(getenv('FCM_VAPID_KEY') ?: ''); ?>";
   </script>
   <script src="js/config.js?v=<?php echo wtg_build_version(); ?>"></script>
   <script src="js/ui.js?v=<?php echo wtg_build_version(); ?>"></script>
@@ -100,6 +109,7 @@ function wtg_build_version(): string {
   <script src="js/auth.js?v=<?php echo wtg_build_version(); ?>"></script>
   <script src="js/router.js?v=<?php echo wtg_build_version(); ?>"></script>
   <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
+  <script src="js/push.js?v=<?php echo wtg_build_version(); ?>"></script>
 
   <!-- Bootstrap -->
   <script>

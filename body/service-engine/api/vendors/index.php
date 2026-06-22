@@ -16,6 +16,8 @@ require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Respon
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/JWT.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/ServiceVendorEligibility.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/heart/middleware/AuthMiddleware.php';
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/lib/PushSubscription.php';
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/lib/FcmNotifier.php';
 
 $db = getDB();
 
@@ -101,6 +103,14 @@ if ($method === 'POST' && $uri === '/api/vendors') {
         }
 
         $db->commit();
+
+        FcmNotifier::notifyRole(
+            $db,
+            ROLE_ADMIN,
+            'New Vendor Registration',
+            "{$businessName} has applied to become a vendor and is awaiting approval.",
+            ['url' => '/admin/vendors.html', 'vendor_id' => (string)$vendorId]
+        );
 
         $stmt = $db->prepare("SELECT * FROM vendors WHERE id = ?");
         $stmt->execute([$vendorId]);

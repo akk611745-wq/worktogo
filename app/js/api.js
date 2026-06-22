@@ -141,6 +141,11 @@ const API = (() => {
       return _request("POST", "/api/auth/google", { google_token: credential });
     },
 
+    // ── Push Notifications (FCM) ─────────────────────────────────────────
+    async saveFcmToken(token, deviceType = "web") {
+      return _request("POST", "/api/auth/device/fcm", { token, device_type: deviceType });
+    },
+
     // ── Catalog (Intent Pipeline) ───────────────────────────────────────
     async getProducts() {
       return _intent("shopping:list_products");

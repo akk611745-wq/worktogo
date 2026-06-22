@@ -9,6 +9,9 @@
 //  DELETE /api/admin/logs         — purge old log files
 // ============================================================
 
+require_once SYSTEM_ROOT . '/core/lib/PushSubscription.php';
+require_once SYSTEM_ROOT . '/core/lib/FcmNotifier.php';
+
 $auth = AuthMiddleware::requireRole(ROLE_ADMIN);
 
 try {
@@ -1008,8 +1011,16 @@ try {
             $newRole = ($vData['type'] === 'service') ? 'vendor_service' : 'vendor_shopping';
             $db->prepare("UPDATE users SET role = ?, updated_at = NOW() WHERE id = ?")
                ->execute([$newRole, $vData['user_id']]);
+
+            FcmNotifier::notifyUser(
+                $db,
+                (int)$vData['user_id'],
+                'Vendor Account Approved',
+                'Your vendor account has been approved. Logout and login again to access your dashboard.',
+                ['url' => '/vendor/index.php']
+            );
         }
-        
+
         Logger::info('Admin approved vendor', ['admin_id' => $auth['user_id'], 'vendor_id' => $vendorId]);
         Response::success([
             'require_relogin' => true,
@@ -1208,6 +1219,20 @@ try {
         $db->prepare("UPDATE bookings SET vendor_id = ? WHERE id = ?")
            ->execute([$vendorId, $bookingId]);
         Logger::info('Admin assigned vendor to booking', ['admin_id' => $auth['user_id'], 'booking_id' => $bookingId, 'vendor_id' => $vendorId]);
+
+        $vendorOwnerStmt = $db->prepare("SELECT user_id FROM vendors WHERE id = ? LIMIT 1");
+        $vendorOwnerStmt->execute([$vendorId]);
+        $vendorUserId = $vendorOwnerStmt->fetchColumn();
+        if ($vendorUserId) {
+            FcmNotifier::notifyUser(
+                $db,
+                (int)$vendorUserId,
+                'New Booking Assigned',
+                "You have been assigned booking #{$bookingId}.",
+                ['url' => '/vendor/bookings.php', 'booking_id' => (string)$bookingId]
+            );
+        }
+
         Response::success(null, 200, 'Vendor assigned');
     }
 
@@ -1649,6 +1674,20 @@ try {
 
         $db->prepare('UPDATE bookings SET ' . implode(', ', $sets) . ' WHERE id = :id')->execute($bind);
         Logger::info('Admin assigned vendor to booking', ['admin_id' => $auth['user_id'], 'booking_id' => $bookingId, 'vendor_id' => $vendorId]);
+
+        $vendorOwnerStmt = $db->prepare("SELECT user_id FROM vendors WHERE id = ? LIMIT 1");
+        $vendorOwnerStmt->execute([$vendorId]);
+        $vendorUserId = $vendorOwnerStmt->fetchColumn();
+        if ($vendorUserId) {
+            FcmNotifier::notifyUser(
+                $db,
+                (int)$vendorUserId,
+                'New Booking Assigned',
+                "You have been assigned booking #{$bookingId}.",
+                ['url' => '/vendor/bookings.php', 'booking_id' => (string)$bookingId]
+            );
+        }
+
         Response::success(['id' => $bookingId, 'vendor_id' => $vendorId], 200, 'Vendor assigned');
     }
 

@@ -11,6 +11,7 @@
 <script src="config.js"></script>
 <script src="shared/auth.js"></script>
 <script src="shared/api.js"></script>
+<script src="shared/push.js"></script>
 <script src="shared/shell.js"></script>
 <script src="assets/app.js"></script>
 <script src="shared/realtime.js"></script>

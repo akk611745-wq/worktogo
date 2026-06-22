@@ -1,4 +1,5 @@
 .env
+core/secrets/
 
 # Local verification artifacts — never deploy/commit
 logs/
