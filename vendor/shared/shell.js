@@ -94,6 +94,16 @@ function initShell(pageTitle, contentId = "pageContent") {
   <span class="topbar-title">${pageTitle}</span>
   <div class="topbar-spacer"></div>
   <div class="topbar-actions">
+    <!-- Account/system notification bell (FCM-backed, separate from RealtimeEngine's live-order bell) -->
+    <div class="wtg-notif-wrap" id="wtgNotifWrap">
+      <button class="wtg-notif-btn" id="wtgNotifBtn" title="Notifications">
+        🔔<span class="wtg-notif-badge" id="wtgNotifBadge" style="display:none;">0</span>
+      </button>
+      <div class="wtg-notif-panel" id="wtgNotifPanel">
+        <div class="wtg-notif-panel-header">Notifications</div>
+        <div class="wtg-notif-list" id="wtgNotifList"><div class="wtg-notif-empty">No notifications yet</div></div>
+      </div>
+    </div>
     <!-- Notification bell injected here by RealtimeEngine -->
     <div class="refresh-indicator" id="refreshIndicator" style="display:none;">
       <span class="refresh-dot"></span>
@@ -126,5 +136,138 @@ function initShell(pageTitle, contentId = "pageContent") {
   if (typeof renderVendorInfo === 'function') renderVendorInfo();
   if (typeof setActiveNav     === 'function') setActiveNav();
 
+  _initWtgNotifBell();
+
   return user;
+}
+
+/**
+ * Account/system notification bell (FCM-backed feed from the
+ * notifications table) — distinct from RealtimeEngine's live
+ * new-order/booking popup bell.
+ */
+let _wtgNotifPolling = null;
+
+function _wtgEscapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function _wtgFmtNotifTime(dateStr) {
+  try {
+    return new Date(dateStr.replace(' ', 'T')).toLocaleString('en-IN', {
+      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true,
+    });
+  } catch (e) { return dateStr; }
+}
+
+async function _wtgFetchNotifications() {
+  try {
+    const res = await API.get('/api/auth/notifications');
+    return res?.data?.data || {};
+  } catch (e) { return {}; }
+}
+
+async function _wtgMarkNotificationsRead() {
+  try { await API.post('/api/auth/notifications/read'); } catch (e) {}
+}
+
+function _wtgRenderNotifBadge(count) {
+  const badge = document.getElementById('wtgNotifBadge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.style.display = 'flex';
+    badge.textContent = count > 99 ? '99+' : count;
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function _wtgRenderNotifList(items) {
+  const list = document.getElementById('wtgNotifList');
+  if (!list) return;
+  if (!items || !items.length) {
+    list.innerHTML = '<div class="wtg-notif-empty">No notifications yet</div>';
+    return;
+  }
+  list.innerHTML = items.map(n => `
+    <div class="wtg-notif-item ${n.is_read ? '' : 'unread'}">
+      <div class="wtg-notif-msg">${_wtgEscapeHtml(n.title)}</div>
+      <div class="wtg-notif-time">${_wtgFmtNotifTime(n.created_at)}</div>
+    </div>
+  `).join('');
+}
+
+function _initWtgNotifBell() {
+  const btn = document.getElementById('wtgNotifBtn');
+  const panel = document.getElementById('wtgNotifPanel');
+  if (!btn || !panel) return;
+
+  _injectWtgNotifStyles();
+
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const isOpen = panel.classList.toggle('open');
+    if (isOpen) {
+      const data = await _wtgFetchNotifications();
+      _wtgRenderNotifList(data.notifications);
+      if ((data.unread_count || 0) > 0) {
+        await _wtgMarkNotificationsRead();
+        _wtgRenderNotifBadge(0);
+      }
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!panel.contains(e.target) && e.target !== btn) panel.classList.remove('open');
+  });
+
+  const poll = async () => {
+    const data = await _wtgFetchNotifications();
+    _wtgRenderNotifBadge(data.unread_count || 0);
+  };
+  poll();
+  if (_wtgNotifPolling) clearInterval(_wtgNotifPolling);
+  _wtgNotifPolling = setInterval(poll, 60000);
+}
+
+function _injectWtgNotifStyles() {
+  if (document.getElementById('wtg-notif-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'wtg-notif-styles';
+  style.textContent = `
+    .wtg-notif-wrap { position:relative; }
+    .wtg-notif-btn {
+      width:38px;height:38px;border-radius:10px;
+      background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);
+      cursor:pointer;font-size:1.1rem;
+      display:flex;align-items:center;justify-content:center;position:relative;
+    }
+    .wtg-notif-badge {
+      position:absolute;top:-4px;right:-4px;
+      background:#ef4444;color:#fff;border-radius:20px;
+      min-width:16px;height:16px;font-size:9px;font-weight:700;
+      display:flex;align-items:center;justify-content:center;padding:0 3px;
+    }
+    .wtg-notif-panel {
+      display:none;position:absolute;top:calc(100% + 8px);right:0;
+      width:300px;max-height:400px;
+      background:var(--surface,#fff);border:1px solid var(--border,#e2e8f0);
+      border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.25);
+      z-index:9999;overflow:hidden;flex-direction:column;
+    }
+    .wtg-notif-panel.open { display:flex; }
+    .wtg-notif-panel-header {
+      padding:0.75rem 1rem;border-bottom:1px solid var(--border,#e2e8f0);
+      font-weight:600;font-size:0.85rem;
+    }
+    .wtg-notif-list { overflow-y:auto;max-height:320px; }
+    .wtg-notif-empty { padding:2rem;text-align:center;color:#6b7280;font-size:0.82rem; }
+    .wtg-notif-item { padding:0.75rem 1rem;border-bottom:1px solid rgba(0,0,0,0.05); }
+    .wtg-notif-item.unread { background:rgba(245,166,35,0.08); }
+    .wtg-notif-msg { font-size:0.82rem;line-height:1.4; }
+    .wtg-notif-time { font-size:0.7rem;color:#6b7280;margin-top:2px; }
+  `;
+  document.head.appendChild(style);
 }

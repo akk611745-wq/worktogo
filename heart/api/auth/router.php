@@ -23,6 +23,8 @@ $_authRoute = match (true) {
     $method === 'POST'  && in_array($uri, ['/api/auth/otp/verify', '/api/auth/verify-otp'], true) => 'verify-otp.php',
     $method === 'POST'  && $uri === '/api/auth/widget/verify-token'                               => 'verify-widget-token.php',
     $method === 'POST'  && $uri === '/api/auth/device/fcm'                                        => 'device-fcm.php',
+    $method === 'GET'   && $uri === '/api/auth/notifications'                                     => 'notifications.php',
+    $method === 'POST'  && $uri === '/api/auth/notifications/read'                                => 'notifications-read.php',
     // New routes
     $method === 'POST'  && $uri === '/api/auth/email/register' => 'AuthController.php',
     $method === 'POST'  && $uri === '/api/auth/email/login'    => 'AuthController.php',

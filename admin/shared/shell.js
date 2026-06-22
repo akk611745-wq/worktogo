@@ -89,7 +89,17 @@ const Shell = {
     <header class="topbar">
       <button class="menu-toggle" id="menu-toggle">${this.ICONS.menu}</button>
       <div class="topbar-title">${title}</div>
-      <div class="topbar-actions" id="topbar-actions"></div>
+      <div class="topbar-actions" id="topbar-actions">
+        <div class="notif-bell-wrap" id="adminNotifBellWrap">
+          <button class="notif-bell-btn" id="adminNotifBellBtn" title="Notifications">
+            🔔<span class="notif-badge" id="adminNotifBadge" style="display:none;">0</span>
+          </button>
+          <div class="notif-panel" id="adminNotifPanel">
+            <div class="notif-panel-header"><span>Notifications</span></div>
+            <div class="notif-list" id="adminNotifList"><div class="notif-empty">No notifications yet</div></div>
+          </div>
+        </div>
+      </div>
     </header>`;
 
     // Inject into shell targets
@@ -98,8 +108,138 @@ const Shell = {
     if (sidebarTarget) sidebarTarget.innerHTML = sidebarHTML;
     if (topbarTarget)  topbarTarget.innerHTML  = topbarHTML;
 
+    this._injectNotifStyles();
+    this._wireNotifBell();
+
     if (typeof Auth !== 'undefined' && Auth.isLoggedIn() && typeof WTGPush !== 'undefined') {
       WTGPush.register();
     }
+  },
+
+  // ── Notification Bell ───────────────────────────────────────
+  _notifPolling: null,
+
+  async _fetchNotifications() {
+    try {
+      const res = await API.get('/admin/notifications');
+      return res?.data || {};
+    } catch (e) { return {}; }
+  },
+
+  async _markNotificationsRead() {
+    try { await API.post('/admin/notifications/read'); } catch (e) {}
+  },
+
+  _renderNotifBadge(count) {
+    const badge = document.getElementById('adminNotifBadge');
+    if (!badge) return;
+    if (count > 0) {
+      badge.style.display = 'flex';
+      badge.textContent = count > 99 ? '99+' : count;
+    } else {
+      badge.style.display = 'none';
+    }
+  },
+
+  _escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+  },
+
+  _fmtNotifTime(dateStr) {
+    try {
+      return new Date(dateStr.replace(' ', 'T')).toLocaleString('en-IN', {
+        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true,
+      });
+    } catch (e) { return dateStr; }
+  },
+
+  _renderNotifList(items) {
+    const list = document.getElementById('adminNotifList');
+    if (!list) return;
+    if (!items || !items.length) {
+      list.innerHTML = '<div class="notif-empty">No notifications yet</div>';
+      return;
+    }
+    list.innerHTML = items.map(n => `
+      <div class="notif-item ${n.is_read ? '' : 'unread'}">
+        <div class="notif-content">
+          <div class="notif-msg">${this._escapeHtml(n.title)}</div>
+          <div class="notif-time">${this._fmtNotifTime(n.created_at)}</div>
+        </div>
+      </div>
+    `).join('');
+  },
+
+  _wireNotifBell() {
+    const btn = document.getElementById('adminNotifBellBtn');
+    const panel = document.getElementById('adminNotifPanel');
+    if (!btn || !panel) return;
+
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const isOpen = panel.classList.toggle('open');
+      if (isOpen) {
+        const data = await this._fetchNotifications();
+        this._renderNotifList(data.notifications);
+        if ((data.unread_count || 0) > 0) {
+          await this._markNotificationsRead();
+          this._renderNotifBadge(0);
+        }
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!panel.contains(e.target) && e.target !== btn) panel.classList.remove('open');
+    });
+
+    const poll = async () => {
+      const data = await this._fetchNotifications();
+      this._renderNotifBadge(data.unread_count || 0);
+    };
+    poll();
+    if (this._notifPolling) clearInterval(this._notifPolling);
+    this._notifPolling = setInterval(poll, 60000);
+  },
+
+  _injectNotifStyles() {
+    if (document.getElementById('admin-notif-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'admin-notif-styles';
+    style.textContent = `
+      .notif-bell-wrap { position:relative; }
+      .notif-bell-btn {
+        width:38px;height:38px;border-radius:10px;
+        background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);
+        cursor:pointer;font-size:1.1rem;
+        display:flex;align-items:center;justify-content:center;position:relative;
+      }
+      .notif-badge {
+        position:absolute;top:-4px;right:-4px;
+        background:#ef4444;color:#fff;border-radius:20px;
+        min-width:16px;height:16px;font-size:9px;font-weight:700;
+        display:flex;align-items:center;justify-content:center;padding:0 3px;
+      }
+      .notif-panel {
+        display:none;position:absolute;top:calc(100% + 8px);right:0;
+        width:320px;max-height:420px;
+        background:var(--bg-card,#1a2030);border:1px solid var(--border,#2a3348);
+        border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.4);
+        z-index:9999;overflow:hidden;flex-direction:column;
+      }
+      .notif-panel.open { display:flex; }
+      .notif-panel-header {
+        padding:0.75rem 1rem;border-bottom:1px solid var(--border,#2a3348);
+        font-weight:600;font-size:0.85rem;
+      }
+      .notif-list { overflow-y:auto;max-height:340px; }
+      .notif-empty { padding:2rem;text-align:center;color:#6b7280;font-size:0.82rem; }
+      .notif-item { padding:0.75rem 1rem;border-bottom:1px solid rgba(255,255,255,0.04); }
+      .notif-item.unread { background:rgba(245,166,35,0.08); }
+      .notif-msg { font-size:0.82rem;line-height:1.4; }
+      .notif-time { font-size:0.7rem;color:#6b7280;margin-top:2px; }
+    `;
+    document.head.appendChild(style);
   },
 };

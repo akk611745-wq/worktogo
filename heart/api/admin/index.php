@@ -16,6 +16,28 @@ $auth = AuthMiddleware::requireRole(ROLE_ADMIN);
 
 try {
 
+    // ── GET /api/admin/notifications ──────────────────────────
+    if ($method === 'GET' && $uri === '/api/admin/notifications') {
+        $stmt = $db->prepare(
+            "SELECT id, title, body, type, is_read, created_at
+             FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 10"
+        );
+        $stmt->execute([(int)$auth['user_id']]);
+        $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $unreadStmt = $db->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0");
+        $unreadStmt->execute([(int)$auth['user_id']]);
+
+        Response::success(['notifications' => $notifications, 'unread_count' => (int)$unreadStmt->fetchColumn()]);
+    }
+
+    // ── POST /api/admin/notifications/read ────────────────────
+    if ($method === 'POST' && $uri === '/api/admin/notifications/read') {
+        $db->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0")
+           ->execute([(int)$auth['user_id']]);
+        Response::success(['marked_read' => true]);
+    }
+
     // ── GET /api/admin/dashboard ──────────────────────────────
     if ($method === 'GET' && $uri === '/api/admin/dashboard') {
         $todayStart = date('Y-m-d 00:00:00');
@@ -1017,7 +1039,7 @@ try {
                 (int)$vData['user_id'],
                 'Vendor Account Approved',
                 'Your vendor account has been approved. Logout and login again to access your dashboard.',
-                ['url' => '/vendor/index.php']
+                ['url' => '/vendor/index.php', 'type' => 'vendor_approved']
             );
         }
 
@@ -1229,7 +1251,7 @@ try {
                 (int)$vendorUserId,
                 'New Booking Assigned',
                 "You have been assigned booking #{$bookingId}.",
-                ['url' => '/vendor/bookings.php', 'booking_id' => (string)$bookingId]
+                ['url' => '/vendor/bookings.php', 'booking_id' => (string)$bookingId, 'type' => 'booking_assigned']
             );
         }
 
@@ -1684,7 +1706,7 @@ try {
                 (int)$vendorUserId,
                 'New Booking Assigned',
                 "You have been assigned booking #{$bookingId}.",
-                ['url' => '/vendor/bookings.php', 'booking_id' => (string)$bookingId]
+                ['url' => '/vendor/bookings.php', 'booking_id' => (string)$bookingId, 'type' => 'booking_assigned']
             );
         }
 

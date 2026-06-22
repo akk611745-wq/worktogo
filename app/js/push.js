@@ -43,3 +43,9 @@ async function WTG_registerPush() {
     console.warn("Push registration skipped:", err?.message || err);
   }
 }
+
+// Already-logged-in users (revisiting / reloading) never fire saveSession(),
+// so they'd otherwise never get the permission prompt — check on load too.
+if (localStorage.getItem("wtg_token")) {
+  WTG_registerPush();
+}

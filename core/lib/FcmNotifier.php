@@ -14,6 +14,7 @@ class FcmNotifier
     // ── Public: notify every token belonging to one user ────────
     public static function notifyUser(PDO $db, int $userId, string $title, string $body, array $data = []): void
     {
+        self::insertNotification($db, $userId, $title, $body, $data);
         $tokens = PushSubscription::tokensForUser($db, $userId);
         self::sendToTokens($db, $tokens, $title, $body, $data);
     }
@@ -21,8 +22,26 @@ class FcmNotifier
     // ── Public: notify every token belonging to a role (e.g. admin) ─
     public static function notifyRole(PDO $db, string $role, string $title, string $body, array $data = []): void
     {
+        $stmt = $db->prepare("SELECT id FROM users WHERE role = ? AND deleted_at IS NULL");
+        $stmt->execute([$role]);
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $userId) {
+            self::insertNotification($db, (int)$userId, $title, $body, $data);
+        }
+
         $tokens = PushSubscription::tokensForRole($db, $role);
         self::sendToTokens($db, $tokens, $title, $body, $data);
+    }
+
+    // ── In-app notification feed row (bell icon), independent of push delivery ─
+    private static function insertNotification(PDO $db, int $userId, string $title, string $body, array $data): void
+    {
+        try {
+            $db->prepare(
+                "INSERT INTO notifications (user_id, title, body, type, is_read) VALUES (?, ?, ?, ?, 0)"
+            )->execute([$userId, $title, $body, $data['type'] ?? 'general']);
+        } catch (PDOException $e) {
+            Logger::error('Failed to insert notification row', ['error' => $e->getMessage()]);
+        }
     }
 
     // ── Send the same notification to a batch of tokens ─────────

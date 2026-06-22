@@ -69,3 +69,10 @@ const WTGPush = {
     }
   },
 };
+
+// Already-logged-in vendors (revisiting / reloading) also need the prompt —
+// initShell() also calls register() on every page, but the _started guard
+// makes this safe to call from both places.
+if (localStorage.getItem("wtg_vendor_token")) {
+  WTGPush.register();
+}

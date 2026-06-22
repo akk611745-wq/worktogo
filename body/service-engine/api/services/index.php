@@ -1297,7 +1297,7 @@ if ($method === 'POST' && $uri === '/api/service/request') {
             ROLE_ADMIN,
             'New Booking Created',
             "Booking #{$bookingNum} was just placed and needs attention.",
-            ['url' => '/admin/services.html', 'booking_id' => (string)$bookingId]
+            ['url' => '/admin/services.html', 'booking_id' => (string)$bookingId, 'type' => 'booking_created']
         );
         if ($initialVendorId) {
             $vendorOwnerStmt = $db->prepare("SELECT user_id FROM vendors WHERE id = ? LIMIT 1");
@@ -1309,7 +1309,7 @@ if ($method === 'POST' && $uri === '/api/service/request') {
                     (int)$vendorUserId,
                     'New Booking Assigned',
                     "You have a new booking #{$bookingNum}.",
-                    ['url' => '/vendor/bookings.php', 'booking_id' => (string)$bookingId]
+                    ['url' => '/vendor/bookings.php', 'booking_id' => (string)$bookingId, 'type' => 'booking_assigned']
                 );
             }
         }

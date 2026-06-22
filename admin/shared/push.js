@@ -68,3 +68,10 @@ const WTGPush = {
     }
   },
 };
+
+// Already-logged-in admins (revisiting / reloading) also need the prompt —
+// Shell.init() also calls register() on every page, but the _started guard
+// makes this safe to call from both places.
+if (localStorage.getItem("wtg_admin_token")) {
+  WTGPush.register();
+}

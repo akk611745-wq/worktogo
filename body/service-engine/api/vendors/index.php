@@ -109,7 +109,7 @@ if ($method === 'POST' && $uri === '/api/vendors') {
             ROLE_ADMIN,
             'New Vendor Registration',
             "{$businessName} has applied to become a vendor and is awaiting approval.",
-            ['url' => '/admin/vendors.html', 'vendor_id' => (string)$vendorId]
+            ['url' => '/admin/vendors.html', 'vendor_id' => (string)$vendorId, 'type' => 'vendor_registered']
         );
 
         $stmt = $db->prepare("SELECT * FROM vendors WHERE id = ?");
