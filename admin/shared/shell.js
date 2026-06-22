@@ -68,7 +68,7 @@ const Shell = {
     const sidebarHTML = `
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
-        <div class="brand-icon">W</div>
+        <img src="/app/assets/icon-192.png" style="width:32px;height:32px;border-radius:8px" alt="WorkToGo"/>
         <div class="brand-name">Work<span>ToGo</span></div>
         <div class="brand-badge">ADMIN</div>
       </div>

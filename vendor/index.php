@@ -18,7 +18,7 @@
 <div class="login-card">
   <!-- Logo -->
   <div class="login-logo">
-    <div class="logo-mark">W</div>
+    <img src="/app/assets/icon-192.png" style="width:32px;height:32px;border-radius:8px" alt="WorkToGo"/>
     <div>
       <div class="logo-text">WorkToGo</div>
       <div class="logo-sub">Vendor Portal</div>

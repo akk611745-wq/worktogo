@@ -90,7 +90,7 @@ function renderPage(user) {
               <input type="tel" id="ePhone" placeholder="+91 XXXXX XXXXX"/>
             </div>
             <div class="field" style="grid-column:1/-1">
-              <label>Category (sab select karo jo laagu ho)</label>
+              <label>APNI CATEGORY CHUNEIN (Jo kaam aap karte hain)</label>
               <div id="cat-chips-container" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;min-height:36px;"></div>
               <input type="hidden" id="eCategoryIds" value="[]">
             </div>

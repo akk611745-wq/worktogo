@@ -8,7 +8,7 @@ function getSidebarHTML() {
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-header">
     <div class="sidebar-logo">
-      <div class="logo-mark">W</div>
+      <img src="/app/assets/icon-192.png" style="width:32px;height:32px;border-radius:8px" alt="WorkToGo"/>
       <div>
         <div class="logo-name">WorkToGo</div>
         <span class="logo-tag">Vendor Panel</span>
