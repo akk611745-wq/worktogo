@@ -178,6 +178,10 @@ function renderVendors(vendors) {
     const onlineHtml = isOnline
       ? '<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--green)"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span>Online</span>'
       : '<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--text-muted)"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;opacity:0.4;display:inline-block"></span>Offline</span>';
+    const isVerified = v.is_verified == 1 || v.is_verified === true || v.is_verified === '1';
+    const verifiedBadge = isVerified
+      ? '<span style="display:inline-flex;align-items:center;gap:2px;font-size:10px;color:var(--green);font-weight:600;margin-left:6px" title="Verified vendor">&#10003; Verified</span>'
+      : '';
     return `<tr>
       <td>
         <div style="display:flex;align-items:center;gap:8px">
@@ -185,8 +189,12 @@ function renderVendors(vendors) {
             ${escHtml((v.business_name||v.name||'V').charAt(0).toUpperCase())}
           </div>
           <div>
-            <div style="font-size:12px;color:var(--text-primary)">${escHtml(Fmt.truncate(v.business_name||v.name,22))}</div>
+            <div style="font-size:12px;color:var(--text-primary);display:flex;align-items:center">${escHtml(Fmt.truncate(v.business_name||v.name,22))}${verifiedBadge}</div>
             <div style="font-size:10px;color:var(--text-muted)">${escHtml(v.owner_name||'')}</div>
+            <label style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--text-muted);margin-top:3px;cursor:pointer">
+              <input type="checkbox" ${isVerified ? 'checked' : ''} onchange="toggleVerified('${escHtml(id)}', this.checked)" style="margin:0;cursor:pointer">
+              Verified
+            </label>
           </div>
         </div>
       </td>
@@ -233,6 +241,14 @@ async function toggleVendorStatus(id, action) {
   } catch(e) { Toast.error(e.message||'Failed'); }
 }
 
+async function toggleVerified(id, checked) {
+  try {
+    await API.patch(CONFIG.ENDPOINTS.VENDOR_VERIFY(id), { is_verified: checked ? 1 : 0 });
+    Toast.success(checked ? 'Vendor verified.' : 'Verified badge removed.');
+    loadVendors(currentPage);
+  } catch(e) { Toast.error(e.message||'Failed'); loadVendors(currentPage); }
+}
+
 async function viewVendor(id) {
   Modal.open('vendor-modal');
   document.getElementById('vendor-modal-body').innerHTML = '<div style="text-align:center;padding:20px"><div class="spinner" style="margin:auto"></div></div>';
@@ -260,6 +276,8 @@ async function viewVendor(id) {
   ${(window._serviceCategories||[]).map(c=>`<option value="${c.id}" ${v.category_id==c.id?'selected':''}>${c.name}</option>`).join('')}
 </select>`)}
         ${field('Status', statusBadge(v.status))}
+        ${field('Verified', (v.is_verified == 1 || v.is_verified === true || v.is_verified === '1') ? '<span style="color:var(--green);font-weight:600">&#10003; Verified</span>' : '<span style="color:var(--text-muted)">Not verified</span>')}
+        ${v.experience_years ? field('Experience', `${escHtml(v.experience_years)} yrs`) : ''}
         ${field('Rating', v.rating > 0 ? `&#11088; ${parseFloat(v.rating).toFixed(1)} / 5` : 'Not rated yet')}
         ${field('Online', (v.is_online == 1 || v.is_online === true || v.is_online === '1') ? '<span style="color:var(--green);font-weight:600">&#9679; Online</span>' : '<span style="color:var(--text-muted)">&#9675; Offline</span>')}
         ${v.service_localities ? field('Service Areas', escHtml(v.service_localities)) : ''}

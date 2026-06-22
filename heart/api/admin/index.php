@@ -432,12 +432,23 @@ try {
         $serviceLocalitiesSelect = $hasServiceLocalities ? ', v.service_localities' : ', NULL AS service_localities';
         $serviceAreaNotesSelect  = $hasServiceAreaNotes  ? ', v.service_area_notes'  : ', NULL AS service_area_notes';
 
+        $hasIsVerified = (int)$db->query(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vendors' AND COLUMN_NAME = 'is_verified'"
+        )->fetchColumn() > 0;
+        $hasExperienceYears = (int)$db->query(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vendors' AND COLUMN_NAME = 'experience_years'"
+        )->fetchColumn() > 0;
+        $isVerifiedSelect      = $hasIsVerified      ? ', v.is_verified'      : ', NULL AS is_verified';
+        $experienceYearsSelect = $hasExperienceYears ? ', v.experience_years' : ', NULL AS experience_years';
+
         $stmt = $db->prepare(
             "SELECT v.id, v.user_id, v.business_name, v.slug, v.type, v.type AS vendor_type,
                     v.status, v.commission_rate, v.rating, v.is_online, v.lat, v.lng,
                     v.created_at, v.updated_at, v.category_id,
                     u.name AS owner_name, u.phone AS owner_phone, u.email AS owner_email
-                    {$serviceLocalitiesSelect}{$serviceAreaNotesSelect}
+                    {$serviceLocalitiesSelect}{$serviceAreaNotesSelect}{$isVerifiedSelect}{$experienceYearsSelect}
              FROM vendors v
              LEFT JOIN users u ON u.id = v.user_id
              {$whereSQL}
@@ -1091,6 +1102,17 @@ try {
            ->execute([$categoryId, $vendorId]);
         Logger::info('Admin updated vendor category', ['admin_id' => $auth['user_id'], 'vendor_id' => $vendorId, 'category_id' => $categoryId]);
         Response::success(null, 200, 'Vendor category updated');
+    }
+
+    // ── PATCH /api/admin/vendors/{id}/verify ────────────────────
+    if ($method === 'PATCH' && preg_match('#^/api/admin/vendors/(\d+)/verify$#', $uri, $m)) {
+        $vendorId   = (int) $m[1];
+        $input      = json_decode(file_get_contents('php://input'), true) ?? [];
+        $isVerified = !empty($input['is_verified']) ? 1 : 0;
+        $db->prepare("UPDATE vendors SET is_verified = ?, updated_at = NOW() WHERE id = ?")
+           ->execute([$isVerified, $vendorId]);
+        Logger::info('Admin updated vendor verified flag', ['admin_id' => $auth['user_id'], 'vendor_id' => $vendorId, 'is_verified' => $isVerified]);
+        Response::success(null, 200, 'Vendor verification status updated');
     }
 
     // ── GET /api/admin/vendors/{id} ────────────────────────────

@@ -71,6 +71,7 @@ function renderPage(user) {
             <div class="field"><label>Status</label>              <div id="vStatus" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
             <div class="field"><label>Member Since</label>        <div id="vSince"  class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
             <div class="field"><label>Category</label>            <div id="vCategory" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
+            <div class="field"><label>Experience</label>          <div id="vExperience" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
             <div class="field"><label>Photo</label>               <div id="vPhoto"  class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
             <div class="field" style="grid-column:1/-1"><label>Bio / Description</label>
               <div id="vBio" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);white-space:pre-wrap;">&mdash;</div>
@@ -88,6 +89,10 @@ function renderPage(user) {
             <div class="field">
               <label for="ePhone">Phone Number</label>
               <input type="tel" id="ePhone" placeholder="+91 XXXXX XXXXX"/>
+            </div>
+            <div class="field">
+              <label for="eExperienceYears">Years of experience</label>
+              <input type="number" id="eExperienceYears" min="1" max="50" placeholder="e.g. 5"/>
             </div>
             <div class="field" style="grid-column:1/-1">
               <label>APNI CATEGORY CHUNEIN (Jo kaam aap karte hain)</label>
@@ -204,6 +209,7 @@ function populateProfile(p) {
   // View fields — new 3
   const catObj = categoriesCache.find(c => String(c.id) === String(p.category_id));
   document.getElementById("vCategory").textContent = catObj ? catObj.name : (p.category_id ? `Category #${p.category_id}` : '—');
+  document.getElementById("vExperience").textContent = p.experience_years ? `${p.experience_years} years of experience` : '—';
   document.getElementById("vBio").textContent      = p.description || '—';
 
   const vPhoto = document.getElementById("vPhoto");
@@ -220,6 +226,7 @@ function populateProfile(p) {
   // Edit prefill — new 3
   document.getElementById("eDescription").value = p.description || '';
   document.getElementById("eLogoUrl").value      = p.logo_url    || '';
+  document.getElementById("eExperienceYears").value = p.experience_years || '';
 
   // Photo preview sync in edit mode
   const _preview = document.getElementById('photoPreview');
@@ -348,6 +355,8 @@ async function saveProfile() {
   const _catIds     = (() => { try { return JSON.parse(document.getElementById("eCategoryIds").value || '[]'); } catch (_) { return []; } })();
   const category_id = _catIds.length ? (parseInt(_catIds[0]) || null) : null;
   const service_localities = document.getElementById("eServiceLocalities").value || '[]';
+  const expRaw = document.getElementById("eExperienceYears").value.trim();
+  const experience_years = expRaw ? Math.max(1, Math.min(50, parseInt(expRaw, 10) || 1)) : null;
 
   if (!name) { showToast("Name is required.", "warning"); return; }
 
@@ -355,7 +364,7 @@ async function saveProfile() {
   btn.disabled    = true;
   btn.textContent = "Saving…";
 
-  const payload = { name, phone, description, logo_url, category_id, service_localities };
+  const payload = { name, phone, description, logo_url, category_id, service_localities, experience_years };
   const res = await API.Profile.update(payload);
 
   btn.disabled    = false;

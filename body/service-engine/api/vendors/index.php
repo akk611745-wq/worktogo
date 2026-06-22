@@ -288,13 +288,15 @@ if ($method === 'GET' && $uri === '/api/vendor/profile') {
     $userId = (int)$auth['user_id'];
 
     $typeCol = ServiceVendorEligibility::vendorTypeColumn($db);
-    $descSel = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'description') ? 'v.description' : 'NULL AS description';
-    $logoSel = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'logo_url')    ? 'v.logo_url'    : 'NULL AS logo_url';
-    $catSel  = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'category_id') ? 'v.category_id' : 'NULL AS category_id';
+    $descSel = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'description')      ? 'v.description'      : 'NULL AS description';
+    $logoSel = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'logo_url')          ? 'v.logo_url'         : 'NULL AS logo_url';
+    $catSel  = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'category_id')       ? 'v.category_id'     : 'NULL AS category_id';
+    $expSel  = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'experience_years')  ? 'v.experience_years' : 'NULL AS experience_years';
+    $verSel  = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'is_verified')        ? 'v.is_verified'      : 'NULL AS is_verified';
 
     $stmt = $db->prepare(
         "SELECT v.id, v.business_name, v.{$typeCol} AS type, v.status, v.rating,
-                {$descSel}, {$logoSel}, {$catSel},
+                {$descSel}, {$logoSel}, {$catSel}, {$expSel}, {$verSel},
                 v.created_at, v.updated_at,
                 u.name, u.phone, u.email, u.role
          FROM vendors v
@@ -320,6 +322,10 @@ if ($method === 'PATCH' && $uri === '/api/vendor/profile') {
     $description = array_key_exists('description', $input) ? trim((string)$input['description']) : null;
     $categoryId  = array_key_exists('category_id', $input) ? (int)$input['category_id'] : null;
     $logoUrl     = array_key_exists('logo_url', $input)    ? trim((string)$input['logo_url'])    : null;
+    $experienceYears = null;
+    if (array_key_exists('experience_years', $input) && $input['experience_years'] !== '' && $input['experience_years'] !== null) {
+        $experienceYears = max(1, min(50, (int)$input['experience_years']));
+    }
     $localities  = null;
     if (array_key_exists('service_localities', $input)) {
         $raw        = $input['service_localities'];
@@ -345,6 +351,10 @@ if ($method === 'PATCH' && $uri === '/api/vendor/profile') {
     if ($logoUrl !== null && ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'logo_url')) {
         $vendorSets[]   = 'logo_url = ?';
         $vendorParams[] = $logoUrl ?: null;
+    }
+    if ($experienceYears !== null && ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'experience_years')) {
+        $vendorSets[]   = 'experience_years = ?';
+        $vendorParams[] = $experienceYears;
     }
     if ($localities !== null && ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'service_localities')) {
         $vendorSets[]   = 'service_localities = ?';

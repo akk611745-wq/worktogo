@@ -41,6 +41,7 @@ const CONFIG = {
     VENDOR_APPROVE:    (id) => `/vendors/${id}/approve`,
     VENDOR_REJECT:     (id) => `/vendors/${id}/reject`,
     VENDOR_STATUS:     (id) => `/vendors/${id}/status`,
+    VENDOR_VERIFY:     (id) => `/vendors/${id}/verify`,
     VENDOR_DETAIL:     (id) => `/vendors/${id}`,
     PRODUCTS:          "/products",
     PRODUCT_STATUS:    (id) => `/products/${id}/status`,

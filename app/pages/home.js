@@ -2179,12 +2179,21 @@ function _vendorCardHTML(s) {
       .wtg-vc-new-badge { color:#FF6B35; font-weight:600; }
       .wtg-vc-avail { width:10px; height:10px; border-radius:50%;
         background:#22c55e; flex-shrink:0; }
+      .wtg-vc-verified { color:#16a34a; font-weight:600; font-size:12px;
+        margin-left:6px; white-space:nowrap; }
       .wtg-vc-bio { font-size:13px; color:#666; margin-top:10px;
-        line-height:1.4; }
+        line-height:1.4; display:-webkit-box; -webkit-line-clamp:2;
+        -webkit-box-orient:vertical; overflow:hidden; }
+      .wtg-vc-bio.expanded { display:block; -webkit-line-clamp:unset;
+        overflow:visible; }
+      .wtg-vc-bio-more { font-size:12px; color:#FF6B35; font-weight:600;
+        cursor:pointer; margin-top:4px; display:inline-block; }
       .wtg-vc-chips { display:flex; flex-wrap:wrap; gap:6px;
         margin-top:10px; }
       .wtg-vc-chip { padding:5px 12px; border-radius:20px;
         background:#F5F5F5; color:#555; font-size:12px; }
+      .wtg-vc-exp-chip { padding:5px 12px; border-radius:20px;
+        background:#FFF3EF; color:#FF6B35; font-size:12px; font-weight:600; }
       .wtg-vc-areas { display:flex; flex-wrap:wrap; gap:6px;
         margin-top:8px; }
       .wtg-vc-area-tag { padding:4px 10px; border-radius:20px;
@@ -2247,9 +2256,18 @@ function _vendorCardHTML(s) {
     : '';
   const meta = [rating, jobs ? `${jobs} jobs` : ''].filter(Boolean).join(' · ');
   const available = s.available_today;
+  const isVerified = s.is_verified === true || s.is_verified === 1 || s.is_verified === '1';
+  const experienceYears = parseInt(s.experience_years, 10) || 0;
 
   const bioRaw = (s.description || '').trim();
-  const bio = bioRaw.length > 80 ? bioRaw.slice(0, 80).trim() + '…' : bioRaw;
+  const bioId = `wtg-vc-bio-${_esc(String(id))}`;
+  const bioNeedsExpand = bioRaw.length > 110;
+  const bioHTML = bioRaw
+    ? `<div class="wtg-vc-bio" id="${bioId}">${_esc(bioRaw)}</div>` +
+      (bioNeedsExpand
+        ? `<span class="wtg-vc-bio-more" onclick="var b=document.getElementById('${bioId}'); var exp=b.classList.toggle('expanded'); this.textContent = exp ? 'Read less' : 'Read more';">Read more</span>`
+        : '')
+    : '';
 
   let areaNames = [];
   try {
@@ -2276,7 +2294,9 @@ function _vendorCardHTML(s) {
     : Array.isArray(s.services) ? s.services : [];
   const svcNames = svcs.map(x => x.name || x).filter(Boolean);
   const extra = svcNames.length > 3 ? `+${svcNames.length - 3} more` : '';
-  const chipHTML = svcNames.slice(0, 3)
+  const expChipHTML = experienceYears
+    ? `<span class="wtg-vc-exp-chip">${experienceYears} yrs exp</span>` : '';
+  const chipHTML = expChipHTML + svcNames.slice(0, 3)
     .map(n => `<span class="wtg-vc-chip">${_esc(n)}</span>`).join('')
     + (extra ? `<span class="wtg-vc-chip">${extra}</span>` : '');
 
@@ -2289,14 +2309,14 @@ function _vendorCardHTML(s) {
       <div class="wtg-vc-top">
         <div class="wtg-vc-avatar">${avatarInner}</div>
         <div class="wtg-vc-info">
-          <div class="wtg-vc-name">${_esc(name)}</div>
+          <div class="wtg-vc-name">${_esc(name)}${isVerified ? '<span class="wtg-vc-verified">&#10003; Verified</span>' : ''}</div>
           ${meta
             ? `<div class="wtg-vc-meta">${_esc(meta)}</div>`
             : `<div class="wtg-vc-meta wtg-vc-new-badge">New on WorkToGo</div>`}
         </div>
         ${available ? '<div class="wtg-vc-avail"></div>' : ''}
       </div>
-      ${bio ? `<div class="wtg-vc-bio">${_esc(bio)}</div>` : ''}
+      ${bioHTML}
       ${chipHTML ? `<div class="wtg-vc-chips">${chipHTML}</div>` : ''}
       ${areaHTML}
       <button class="wtg-vc-book"
