@@ -64,7 +64,6 @@ try {
                     $categoryIconSelect = 'c.icon AS category_icon';
                 }
             } catch (PDOException) {}
-            $shortDescWhere = $hasShortDesc ? ' OR s.short_desc LIKE :q' : '';
             $featuredOrder = $hasFeatured ? 's.is_featured DESC, ' : '';
             $ratingOrder = $hasRating ? 's.rating DESC, ' : '';
 
@@ -79,8 +78,35 @@ try {
             if ($localitiesStmt && $localitiesStmt->rowCount() > 0) {
                 $hasServiceLocalities = true;
             }
-            $localitiesWhere = $hasServiceLocalities ? ' OR v.service_localities LIKE :q' : '';
-            $vendorCategoryWhere = " OR v.business_name LIKE :q OR c.name LIKE :q OR c.slug LIKE :q{$localitiesWhere}";
+
+            // Database.php sets PDO::ATTR_EMULATE_PREPARES => false, and
+            // MySQL's native prepared statements reject a named parameter
+            // that's bound once but referenced more than once in the query
+            // text ("number of bound variables does not match number of
+            // tokens") — see the same gotcha documented in
+            // body/service-engine/api/services/index.php around the
+            // category-routed booking fix. The single :q reused across
+            // every OR'd LIKE clause below was throwing a PDOException on
+            // every search, silently caught into an empty result set by the
+            // catch block at the bottom of this try — which is why category
+            // (and even plain service-name) search returned nothing. Give
+            // each LIKE its own uniquely-numbered placeholder instead, all
+            // bound to the same $searchTerm value.
+            $searchFields = $hasPhase2A ? ['s.name', 's.description'] : ['s.name'];
+            if ($hasShortDesc) $searchFields[] = 's.short_desc';
+            $searchFields[] = 'v.business_name';
+            $searchFields[] = 'c.name';
+            $searchFields[] = 'c.slug';
+            if ($hasServiceLocalities) $searchFields[] = 'v.service_localities';
+
+            $searchBind = [];
+            $searchConditions = [];
+            foreach ($searchFields as $i => $field) {
+                $placeholder = ":q{$i}";
+                $searchConditions[] = "{$field} LIKE {$placeholder}";
+                $searchBind[$placeholder] = $searchTerm;
+            }
+            $searchWhere = implode(' OR ', $searchConditions);
 
             if ($hasPhase2A) {
                 $svcQuery = "SELECT s.id, s.name, {$slugSelect}, {$shortDescSelect}, s.base_price, {$ratingSelect},
@@ -93,7 +119,7 @@ try {
                  LEFT JOIN vendors v ON v.id = s.vendor_id
                  LEFT JOIN categories c ON c.id = s.category_id
                  WHERE s.status = 'active' AND s.deleted_at IS NULL
-                   AND (s.name LIKE :q OR s.description LIKE :q{$shortDescWhere}{$vendorCategoryWhere})
+                   AND ({$searchWhere})
                  ORDER BY {$featuredOrder}{$ratingOrder}s.name ASC
                  LIMIT :limit OFFSET :offset";
             } else {
@@ -107,13 +133,15 @@ try {
                  LEFT JOIN vendors v ON v.id = s.vendor_id
                  LEFT JOIN categories c ON c.id = s.category_id
                  WHERE s.status = 'active'
-                   AND (s.name LIKE :q{$shortDescWhere}{$vendorCategoryWhere})
+                   AND ({$searchWhere})
                  ORDER BY {$featuredOrder}{$ratingOrder}s.id DESC
                  LIMIT :limit OFFSET :offset";
             }
 
             $svcStmt = $db->prepare($svcQuery);
-            $svcStmt->bindValue(':q',      $searchTerm);
+            foreach ($searchBind as $placeholder => $value) {
+                $svcStmt->bindValue($placeholder, $value);
+            }
             $svcStmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
             $svcStmt->bindValue(':offset', $offset, PDO::PARAM_INT);
             $svcStmt->execute();
@@ -135,11 +163,15 @@ try {
                  FROM products p
                  LEFT JOIN vendors v ON v.id = p.vendor_id
                  WHERE p.status = 'active' AND p.deleted_at IS NULL
-                   AND (p.name LIKE :q OR p.description LIKE :q)
+                   AND (p.name LIKE :q0 OR p.description LIKE :q1)
                  ORDER BY p.is_featured DESC, p.rating DESC
                  LIMIT :limit OFFSET :offset"
             );
-            $prdStmt->bindValue(':q',      $searchTerm);
+            // Same fix as the services query above: a single :q reused
+            // twice throws under native prepares (ATTR_EMULATE_PREPARES =>
+            // false) — each LIKE needs its own placeholder.
+            $prdStmt->bindValue(':q0',     $searchTerm);
+            $prdStmt->bindValue(':q1',     $searchTerm);
             $prdStmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
             $prdStmt->bindValue(':offset', $offset, PDO::PARAM_INT);
             $prdStmt->execute();
