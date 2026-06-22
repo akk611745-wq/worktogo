@@ -22,6 +22,12 @@ RewriteCond %{REQUEST_METHOD} GET
 RewriteCond %{REQUEST_URI} ^/$
 RewriteRule ^$ /app/ [R=302,L]
 
+# Legacy WordPress URLs indexed by Google, now 404/empty — 301 to the live app
+RewriteRule ^all-stores/$ /app/ [R=301,L]
+RewriteRule ^all-stores$ /app/ [R=301,L]
+RewriteRule ^all-listings/$ /app/ [R=301,L]
+RewriteRule ^all-listings$ /app/ [R=301,L]
+
 # Block direct access to sensitive folders
 RewriteRule ^(core|brain|config|database|logs|tests|lib)(/.*)?$ - [F,L]
 
