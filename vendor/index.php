@@ -9,9 +9,9 @@
 <script>
   window.WTG_BASE_URL = "<?php echo rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?? 'https://worktogo.in', '/'); ?>";
 </script>
-<script src="config.js"></script>
-<script src="shared/auth.js"></script>
-<script src="shared/api.js"></script>
+<script defer src="config.js"></script>
+<script defer src="shared/auth.js"></script>
+<script defer src="shared/api.js"></script>
 </head>
 <body class="login-page">
 

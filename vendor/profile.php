@@ -9,14 +9,14 @@
 <script>
   window.WTG_BASE_URL = "<?php echo rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?? 'https://worktogo.in', '/'); ?>";
 </script>
-<script src="config.js"></script>
-<script src="shared/auth.js"></script>
-<script src="shared/api.js"></script>
-<script src="shared/push.js"></script>
-<script src="shared/shell.js"></script>
-<script src="assets/app.js"></script>
-<script src="shared/realtime.js"></script>
-<script src="shared/analytics.js"></script>
+<script defer src="config.js"></script>
+<script defer src="shared/auth.js"></script>
+<script defer src="shared/api.js"></script>
+<script defer src="shared/push.js"></script>
+<script defer src="shared/shell.js"></script>
+<script defer src="assets/app.js"></script>
+<script defer src="shared/realtime.js"></script>
+<script defer src="shared/analytics.js"></script>
 </head>
 <body>
 <script>
