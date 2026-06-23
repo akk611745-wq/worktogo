@@ -37,6 +37,13 @@ RewriteRule ^(core|brain|config|database|logs|tests|lib)(/.*)?$ - [F,L]
     Deny from all
 </FilesMatch>
 
+# PWA manifest must be publicly readable (browsers fetch it directly) —
+# overrides the .json block above for this one file only.
+<Files "manifest.json">
+    Order allow,deny
+    Allow from all
+</Files>
+
 <Files "database-structure.sql">
   Order allow,deny
   Deny from all
