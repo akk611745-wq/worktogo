@@ -234,9 +234,22 @@ async function _handleGoogleCredential(response) {
       return;
     }
 
+    // /api/auth/google's `user` payload never includes `role` (it's only
+    // embedded in the JWT) — fetch the real vendor profile, which does
+    // carry role, to find out if this Google account is an existing vendor.
     Auth.setSession(token, userData);
+    const profileRes = await API.Profile.get();
 
-    const role = userData?.role || "";
+    if (!profileRes.ok) {
+      showErr("No vendor account found for this Google account. Please register as a vendor first.");
+      Auth.logout();
+      return;
+    }
+
+    const profile = profileRes.data?.data || profileRes.data || userData;
+    Auth.setSession(token, profile);
+
+    const role = profile?.role || "";
     if (role === CONFIG.ROLES.SERVICE) {
       window.location.href = "bookings.php";
     } else {
