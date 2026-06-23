@@ -400,8 +400,10 @@ if ($method === 'POST' && $uri === '/api/vendor/profile/photo') {
         Response::error($e->getMessage(), 400);
     }
 
-    $db->prepare("UPDATE vendors SET logo_url = ?, updated_at = NOW() WHERE id = ?")
-       ->execute([$url, $vendorId]);
+    if (ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'logo_url')) {
+        $db->prepare("UPDATE vendors SET logo_url = ?, updated_at = NOW() WHERE id = ?")
+           ->execute([$url, $vendorId]);
+    }
 
     Response::success(['url' => $url], 200, 'Photo updated');
 }
