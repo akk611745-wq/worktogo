@@ -158,9 +158,11 @@ if ($method === 'GET' && $uri === '/api/vendors') {
     $sql = "SELECT v.id, v.business_name, v.slug, v.{$typeColumn} AS type, v.{$typeColumn} AS vendor_type,
                    v.status, v.rating, v.commission_rate, v.is_online,
                    v.lat, v.lng, {$serviceLocalitiesSelect}, {$serviceAreaNotesSelect}, v.created_at,
+                   v.category_id, c.name AS category_name,
                    u.name AS owner_name, u.phone AS owner_phone, u.email AS owner_email
             FROM vendors v
             LEFT JOIN users u ON u.id = v.user_id
+            LEFT JOIN categories c ON c.id = v.category_id
             $whereSQL
             ORDER BY v.rating DESC, v.created_at DESC
             LIMIT :limit OFFSET :offset";
