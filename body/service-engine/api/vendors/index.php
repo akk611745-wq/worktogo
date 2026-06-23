@@ -132,7 +132,13 @@ if ($method === 'GET' && $uri === '/api/vendors') {
     $offset = ($page - 1) * $limit;
 
     // Production schema uses vendors.type; no deleted_at, no description, no logo_url, no address_id
-    $where = ["v.status = 'active'"];
+    $where = [
+        "v.status = 'active'",
+        'v.category_id IS NOT NULL',
+        'v.service_localities IS NOT NULL',
+        "v.service_localities != '[]'",
+        "v.service_localities != ''",
+    ];
     $bind  = [];
     $typeColumn = ServiceVendorEligibility::vendorTypeColumn($db);
 
