@@ -111,7 +111,9 @@
 
 <script>
 // Redirect if already logged in
-if (Auth.isLoggedIn()) window.location.href = "dashboard.php";
+window.addEventListener('DOMContentLoaded', function() {
+  if (Auth.isLoggedIn()) window.location.href = "dashboard.php";
+});
 
 // Allow Enter key to submit (context-aware: login vs register)
 document.addEventListener("keydown", e => {
