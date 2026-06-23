@@ -32,32 +32,46 @@ class AuthController {
             Response::error('Invalid email format', 400);
         }
 
-        $stmt = $this->db->prepare("SELECT id FROM users WHERE email = ?");
+        $stmt = $this->db->prepare("SELECT id, name, email, password, role, status FROM users WHERE email = ?");
         $stmt->execute([$email]);
-        if ($stmt->fetch()) {
-            Response::error('Email already registered', 409);
-        }
+        $existingUser = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        $hash = password_hash($password, PASSWORD_BCRYPT);
-        
-        $stmt = $this->db->prepare("
-            INSERT INTO users (uuid, name, email, password, phone, auth_type, role, status, created_at, updated_at)
-            VALUES (UUID(), ?, ?, ?, ?, 'email', 'customer', 'active', NOW(), NOW())
-        ");
-        $stmt->execute([$name, $email, $hash, $phone]);
-        $userId = $this->db->lastInsertId();
+        if ($existingUser) {
+            // Email already has an account — reuse it (e.g. an existing customer applying as
+            // a vendor) instead of failing, but require the correct password to avoid
+            // letting someone "register" their way into another person's account.
+            if (!password_verify((string)$password, (string)($existingUser['password'] ?? ''))) {
+                Response::error('Email already registered. Please login instead.', 409);
+            }
+            if (($existingUser['status'] ?? '') !== 'active') {
+                Response::error('Account is inactive', 403);
+            }
+            $userId = $existingUser['id'];
+            $name = $existingUser['name'];
+            $role = $existingUser['role'];
+        } else {
+            $hash = password_hash($password, PASSWORD_BCRYPT);
+
+            $stmt = $this->db->prepare("
+                INSERT INTO users (uuid, name, email, password, phone, auth_type, role, status, created_at, updated_at)
+                VALUES (UUID(), ?, ?, ?, ?, 'email', 'customer', 'active', NOW(), NOW())
+            ");
+            $stmt->execute([$name, $email, $hash, $phone]);
+            $userId = $this->db->lastInsertId();
+            $role = 'customer';
+        }
 
         $user = [
             'id' => $userId,
             'name' => $name,
             'email' => $email,
             'auth_type' => 'email',
-            'role' => 'customer'
+            'role' => $role
         ];
 
         $token = JWT::encode([
             'user_id' => $userId,
-            'role' => 'customer',
+            'role' => $role,
             'iat' => time(),
             'exp' => time() + (86400 * 30) // 30 days
         ], JWT_SECRET);
