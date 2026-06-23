@@ -1500,6 +1500,19 @@ window.WtgSheet = (function () {
         : null;
       if (mapped) svc.id = mapped;
 
+      // Vendor-only cards (backfilled from /api/vendors, no real services
+      // row) have no service_map entry to resolve — route through the
+      // existing category-based free-lead flow instead of sending the
+      // vendor's own id as a fake services.id (would 404 at checkout).
+      if (!mapped && svcBase.is_vendor_only) {
+        close();
+        if (window.HomePage && HomePage.bookCategoryCta) {
+          HomePage.bookCategoryCta(svcBase.category_slug || '', 'free_lead');
+        }
+        if (btn) { btn.disabled = false; btn.textContent = 'CONFIRM BOOKING'; }
+        return;
+      }
+
       if (window.HomeModals && HomeModals.prepareVendorDirectSubmit) {
         HomeModals.prepareVendorDirectSubmit(
           svc,
@@ -1766,12 +1779,15 @@ function _startFreshInspectionBooking() {
 // ── Loaders ─────────────────────────────────────────────────────────────────
 
 async function _loadServices() {
-  // Fetch vendor cards and the full category list in parallel.
-  // Categories come from the dedicated endpoint (all active, vendor-independent)
-  // so filter chips always show every admin-defined category.
-  const [res, catRes] = await Promise.all([
+  // Fetch vendor cards, the full category list, and the raw vendor directory
+  // in parallel. Categories come from the dedicated endpoint (all active,
+  // vendor-independent) so filter chips always show every admin-defined
+  // category. The vendor directory backfills any approved vendor that has
+  // no /api/services row yet, so clicking their category still shows them.
+  const [res, catRes, vendorRes] = await Promise.all([
     API.getServices(),
     API.getServiceCategories().catch(() => null),
+    fetch(`${CONFIG.BASE_URL}/api/vendors?_t=${Date.now()}`).then(r => r.json()).catch(() => null),
   ]);
   const allCats = catRes?.ok
     ? (catRes.data?.data?.categories || catRes.data?.categories || [])
@@ -1781,7 +1797,41 @@ async function _loadServices() {
     _renderCategoryChips();
   }
   _renderServices(res);
+  _mergeVendorOnlyCards(vendorRes);
   _resumePendingBooking();
+}
+
+// Backfills vendor cards for approved vendors who don't have a /api/services
+// row yet (e.g. just approved, hasn't added a bookable service). Without
+// this, a vendor never appears in their category's listing no matter how
+// many times the customer taps that category, since the home feed only
+// renders from _allServices, sourced from /api/services.
+function _mergeVendorOnlyCards(vendorRes) {
+  const vendors = vendorRes?.data?.vendors;
+  if (!Array.isArray(vendors) || !vendors.length) return;
+  const known = new Set(_allServices.map(s => String(s.vendor_id || s.id)));
+  const extras = vendors
+    .filter(v => v.status === 'active' && !known.has(String(v.id)))
+    .map(v => ({
+      id: `vendor-${v.id}`,
+      vendor_id: v.id,
+      vendor_name: v.business_name,
+      name: v.business_name,
+      category_name: v.category_name || '',
+      category_slug: _slug(v.category_name || ''),
+      category_slugs: v.category_name ? [_slug(v.category_name)] : [],
+      vendor_services: v.category_name ? [v.category_name] : [],
+      rating: v.rating,
+      logo_url: v.logo_url,
+      is_verified: v.is_verified,
+      experience_years: v.experience_years,
+      service_localities: v.service_localities,
+      request_source: 'worker_card',
+      is_vendor_only: true,
+    }));
+  if (!extras.length) return;
+  _allServices = [..._allServices, ...extras];
+  _renderServices({ ok: true, data: { services: _allServices } });
 }
 
 async function _loadProducts() {
