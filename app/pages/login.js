@@ -448,10 +448,13 @@ window.LoginPage = (() => {
 
   function _launchGSI(clientId, elapsed) {
     if (window.google?.accounts?.id) {
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: _handleGoogleCredential,
-      });
+      if (!window._gsiInitDone) {
+        window._gsiInitDone = true;
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: _handleGoogleCredential,
+        });
+      }
       window.google.accounts.id.prompt();
       return;
     }
