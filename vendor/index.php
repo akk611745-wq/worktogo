@@ -8,7 +8,9 @@
 <link rel="stylesheet" href="assets/style.css"/>
 <script>
   window.WTG_BASE_URL = "<?php echo rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?? 'https://worktogo.in', '/'); ?>";
+  window.WTG_GOOGLE_CLIENT_ID = "<?php echo htmlspecialchars($_ENV['GOOGLE_CLIENT_ID'] ?? getenv('GOOGLE_CLIENT_ID') ?? ''); ?>";
 </script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script defer src="config.js"></script>
 <script defer src="shared/auth.js"></script>
 <script defer src="shared/api.js"></script>
@@ -44,6 +46,17 @@
 
     <!-- Error message -->
     <div class="login-error" id="loginError"></div>
+
+    <button type="button" id="googleLoginBtn" onclick="handleGoogleLogin()"
+      style="display:flex;align-items:center;justify-content:center;gap:0.5rem;width:100%;min-height:48px;padding:0.65rem 1rem;margin-bottom:0.25rem;background:#fff;color:#1f2937;border:1px solid #e5e7eb;border-radius:0.5rem;font-family:inherit;font-size:0.9rem;font-weight:700;cursor:pointer;">
+      <span style="width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:#f3f4f6;color:#4285F4;font-weight:800;font-family:Arial,sans-serif;">G</span>
+      Continue with Google
+    </button>
+    <div style="display:flex;align-items:center;gap:0.5rem;margin:1rem 0;color:#9ca3af;font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">
+      <span style="flex:1;height:1px;background:#e5e7eb;"></span>
+      <span>or</span>
+      <span style="flex:1;height:1px;background:#e5e7eb;"></span>
+    </div>
 
     <div class="form-group">
       <label class="form-label" for="email">Email address</label>
@@ -158,6 +171,80 @@ function showErr(msg) {
   const el = document.getElementById("loginError");
   el.textContent = msg;
   el.classList.add("show");
+}
+
+function handleGoogleLogin() {
+  const clientId = window.WTG_GOOGLE_CLIENT_ID || "";
+  if (!clientId) {
+    showErr("Google Sign-In is not configured");
+    return;
+  }
+  _launchGoogleGSI(clientId, 0);
+}
+
+function _launchGoogleGSI(clientId, elapsed) {
+  if (window.google?.accounts?.id) {
+    if (!window._vendorGsiInitDone) {
+      window._vendorGsiInitDone = true;
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: _handleGoogleCredential,
+      });
+    }
+    window.google.accounts.id.prompt();
+    return;
+  }
+  if (elapsed >= 3000) {
+    showErr("Google Sign-In is not configured");
+    return;
+  }
+  setTimeout(() => _launchGoogleGSI(clientId, elapsed + 200), 200);
+}
+
+async function _handleGoogleCredential(response) {
+  const credential = response?.credential;
+  if (!credential) {
+    showErr("Google login was cancelled");
+    return;
+  }
+
+  const btn = document.getElementById("googleLoginBtn");
+  if (btn) btn.disabled = true;
+
+  try {
+    const res  = await fetch(window.WTG_BASE_URL + "/api/auth/google", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ google_token: credential }),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      showErr(data?.message || data?.error || "Google login failed. Please try again.");
+      return;
+    }
+
+    const token    = data?.token;
+    const userData = data?.vendor || data?.user || data;
+
+    if (!token) {
+      showErr("Login response missing token. Please contact support.");
+      return;
+    }
+
+    Auth.setSession(token, userData);
+
+    const role = userData?.role || "";
+    if (role === CONFIG.ROLES.SERVICE) {
+      window.location.href = "bookings.php";
+    } else {
+      window.location.href = "dashboard.php";
+    }
+  } catch (_) {
+    showErr("Network error. Please check your connection and try again.");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 function showRegisterForm() {
