@@ -159,6 +159,7 @@ if ($method === 'GET' && $uri === '/api/vendors') {
                    v.status, v.rating, v.commission_rate, v.is_online,
                    v.lat, v.lng, {$serviceLocalitiesSelect}, {$serviceAreaNotesSelect}, v.created_at,
                    v.category_id, c.name AS category_name,
+                   v.experience_years, v.is_verified, v.logo_url,
                    u.name AS owner_name, u.phone AS owner_phone, u.email AS owner_email
             FROM vendors v
             LEFT JOIN users u ON u.id = v.user_id
