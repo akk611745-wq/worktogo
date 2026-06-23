@@ -72,6 +72,7 @@ class AuthController {
             'id' => $userId,
             'name' => $name,
             'email' => $email,
+            'phone' => $phone,
             'auth_type' => 'email',
             'role' => $role
         ];
@@ -141,6 +142,7 @@ class AuthController {
             'id' => $userRow['id'],
             'name' => $userRow['name'],
             'email' => $userRow['email'],
+            'phone' => $userRow['phone'],
             'role' => $userRow['role']
         ];
 
@@ -234,7 +236,7 @@ class AuthController {
         }
 
         // Find or create user
-        $stmt = $this->db->prepare("SELECT id, name, email, google_id, role, auth_type FROM users WHERE google_id = ? OR email = ?");
+        $stmt = $this->db->prepare("SELECT id, name, email, phone, google_id, role, auth_type FROM users WHERE google_id = ? OR email = ?");
         $stmt->execute([$googleId, $email]);
         $existingUser = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -250,6 +252,7 @@ class AuthController {
                 'id' => $userId,
                 'name' => $existingUser['name'],
                 'email' => $existingUser['email'],
+                'phone' => $existingUser['phone'] ?? null,
                 'auth_type' => $existingUser['auth_type']
             ];
         } else {
@@ -266,6 +269,7 @@ class AuthController {
                 'id' => $userId,
                 'name' => $name,
                 'email' => $email,
+                'phone' => null,
                 'auth_type' => 'google'
             ];
         }
