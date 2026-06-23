@@ -25,14 +25,26 @@
     </div>
   </div>
 
-  <h1 class="login-title">Welcome back</h1>
-  <p class="login-sub">Sign in to manage your vendor account.</p>
-
-  <!-- Error message -->
-  <div class="login-error" id="loginError"></div>
+  <!-- Auth Tabs -->
+  <div class="auth-tabs" style="display:flex;gap:0.5rem;margin-bottom:1.25rem;border-bottom:1px solid #e5e7eb;">
+    <button type="button" id="tabSignIn" class="auth-tab active" onclick="showLoginForm();return false;"
+      style="flex:1;padding:0.65rem 0;background:none;border:none;border-bottom:2px solid #f5a623;font-family:inherit;font-size:0.9rem;font-weight:700;color:#111827;cursor:pointer;">
+      Sign In
+    </button>
+    <button type="button" id="tabRegister" class="auth-tab" onclick="showRegisterForm();return false;"
+      style="flex:1;padding:0.65rem 0;background:none;border:none;border-bottom:2px solid transparent;font-family:inherit;font-size:0.9rem;font-weight:700;color:#6b7280;cursor:pointer;">
+      Register
+    </button>
+  </div>
 
   <!-- Login Form -->
-  <div>
+  <div id="loginSection">
+    <h1 class="login-title">Welcome back</h1>
+    <p class="login-sub">Sign in to manage your vendor account.</p>
+
+    <!-- Error message -->
+    <div class="login-error" id="loginError"></div>
+
     <div class="form-group">
       <label class="form-label" for="email">Email address</label>
       <input class="form-input" type="email" id="email" placeholder="you@example.com" autocomplete="email" required/>
@@ -46,19 +58,14 @@
     <button class="btn-login" id="loginBtn" onclick="handleLogin()">
       Sign In
     </button>
+
+    <p style="margin-top:1.5rem;font-size:0.75rem;color:#374151;text-align:center;">
+      Having trouble? Contact your administrator.
+    </p>
   </div>
 
-  <p style="margin-top:1.5rem;font-size:0.75rem;color:#374151;text-align:center;">
-    Having trouble? Contact your administrator.
-  </p>
-
-  <p style="margin-top:0.75rem;font-size:0.8rem;text-align:center;">
-    New vendor? <a href="#" id="showRegisterLink" onclick="showRegisterForm();return false;" style="color:#4f46e5;font-weight:600;text-decoration:none;">Register as Vendor</a>
-  </p>
-
   <!-- Registration Form -->
-  <div id="registerSection" style="display:none;margin-top:1rem;">
-    <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 1.5rem;"/>
+  <div id="registerSection" style="display:none;">
     <h2 style="font-size:1.1rem;font-weight:700;color:#111827;margin:0 0 0.25rem;">Create Vendor Account</h2>
     <p style="font-size:0.8rem;color:#6b7280;margin:0 0 1rem;">Fill in your details to apply as a vendor.</p>
     <div class="login-error" id="registerError"></div>
@@ -84,7 +91,7 @@
     </div>
     <button class="btn-login" id="registerBtn" onclick="handleRegister()">Register</button>
     <p style="margin-top:0.75rem;font-size:0.8rem;text-align:center;">
-      Already have an account? <a href="#" onclick="showLoginForm();return false;" style="color:#4f46e5;font-weight:600;text-decoration:none;">Sign In</a>
+      Already registered? <a href="#" onclick="showLoginForm();return false;" style="color:#4f46e5;font-weight:600;text-decoration:none;">Sign In</a>
     </p>
   </div>
 </div>
@@ -154,15 +161,27 @@ function showErr(msg) {
 }
 
 function showRegisterForm() {
+  document.getElementById("loginSection").style.display = "none";
   document.getElementById("registerSection").style.display = "block";
-  document.getElementById("showRegisterLink").style.display = "none";
   document.getElementById("registerError").classList.remove("show");
+  setActiveTab("register");
 }
 
 function showLoginForm() {
   document.getElementById("registerSection").style.display = "none";
-  document.getElementById("showRegisterLink").style.display = "";
+  document.getElementById("loginSection").style.display = "block";
   document.getElementById("loginError").classList.remove("show");
+  setActiveTab("signin");
+}
+
+function setActiveTab(which) {
+  const tabSignIn   = document.getElementById("tabSignIn");
+  const tabRegister = document.getElementById("tabRegister");
+  const signInActive = which === "signin";
+  tabSignIn.style.borderBottomColor   = signInActive ? "#f5a623" : "transparent";
+  tabSignIn.style.color               = signInActive ? "#111827" : "#6b7280";
+  tabRegister.style.borderBottomColor = signInActive ? "transparent" : "#f5a623";
+  tabRegister.style.color             = signInActive ? "#6b7280" : "#111827";
 }
 
 async function handleRegister() {
