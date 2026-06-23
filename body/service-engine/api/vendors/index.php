@@ -153,8 +153,8 @@ if ($method === 'GET' && $uri === '/api/vendors') {
     $total = (int)$countStmt->fetchColumn();
 
     // FIX: Only select columns that actually exist in the vendors table
-    $serviceLocalitiesSelect = serviceTableHasColumn($db, 'vendors', 'service_localities') ? 'v.service_localities' : 'NULL AS service_localities';
-    $serviceAreaNotesSelect = serviceTableHasColumn($db, 'vendors', 'service_area_notes') ? 'v.service_area_notes' : 'NULL AS service_area_notes';
+    $serviceLocalitiesSelect = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'service_localities') ? 'v.service_localities' : 'NULL AS service_localities';
+    $serviceAreaNotesSelect = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'service_area_notes') ? 'v.service_area_notes' : 'NULL AS service_area_notes';
     $sql = "SELECT v.id, v.business_name, v.slug, v.{$typeColumn} AS type, v.{$typeColumn} AS vendor_type,
                    v.status, v.rating, v.commission_rate, v.is_online,
                    v.lat, v.lng, {$serviceLocalitiesSelect}, {$serviceAreaNotesSelect}, v.created_at,
