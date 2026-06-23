@@ -2145,8 +2145,8 @@ function _heroHTML(slug = "") {
         </button>
       </div>
       <div class="hero-cta-row">
-        <button class="btn-primary marketplace-cta hero-primary" id="hero-category-cta" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'inspection')">${_esc(primaryText)}</button>
-        <button class="hero-secondary" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Free booking</button>
+        <button class="btn-primary marketplace-cta hero-primary" id="hero-category-cta" style="display:none" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'inspection')">${_esc(primaryText)}</button>
+        <button class="hero-secondary" style="width:100%" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Free booking</button>
       </div>
       <p class="action-hierarchy-note" id="hero-distinction-note" style="display:none"></p>
     </div>`;
