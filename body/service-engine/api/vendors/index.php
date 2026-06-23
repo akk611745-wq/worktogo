@@ -288,15 +288,16 @@ if ($method === 'GET' && $uri === '/api/vendor/profile') {
     $userId = (int)$auth['user_id'];
 
     $typeCol = ServiceVendorEligibility::vendorTypeColumn($db);
-    $descSel = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'description')      ? 'v.description'      : 'NULL AS description';
-    $logoSel = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'logo_url')          ? 'v.logo_url'         : 'NULL AS logo_url';
-    $catSel  = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'category_id')       ? 'v.category_id'     : 'NULL AS category_id';
-    $expSel  = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'experience_years')  ? 'v.experience_years' : 'NULL AS experience_years';
-    $verSel  = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'is_verified')        ? 'v.is_verified'      : 'NULL AS is_verified';
+    $descSel = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'description')          ? 'v.description'          : 'NULL AS description';
+    $logoSel = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'logo_url')              ? 'v.logo_url'             : 'NULL AS logo_url';
+    $catSel  = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'category_id')           ? 'v.category_id'         : 'NULL AS category_id';
+    $expSel  = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'experience_years')      ? 'v.experience_years'    : 'NULL AS experience_years';
+    $verSel  = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'is_verified')            ? 'v.is_verified'         : 'NULL AS is_verified';
+    $localitiesSel = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'service_localities') ? 'v.service_localities' : 'NULL AS service_localities';
 
     $stmt = $db->prepare(
         "SELECT v.id, v.business_name, v.{$typeCol} AS type, v.status, v.rating,
-                {$descSel}, {$logoSel}, {$catSel}, {$expSel}, {$verSel},
+                {$descSel}, {$logoSel}, {$catSel}, {$expSel}, {$verSel}, {$localitiesSel},
                 v.created_at, v.updated_at,
                 u.name, u.phone, u.email, u.role
          FROM vendors v
