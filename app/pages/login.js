@@ -23,15 +23,6 @@ export async function render(container) {
       </header>
 
       <div class="login-card">
-        <div class="login-tabs" role="tablist" aria-label="Login options">
-          <button id="tab-phone" class="login-tab active" type="button" role="tab" aria-selected="true" onclick="LoginPage.switchAuthTab('phone')">
-            Mobile OTP
-          </button>
-          <button id="tab-email" class="login-tab ${serviceOnly && !CONFIG.FEATURES?.EMAIL_AUTH ? "feature-hidden" : ""}" type="button" role="tab" aria-selected="false" onclick="LoginPage.switchAuthTab('email')">
-            Email
-          </button>
-        </div>
-
         <div id="step-phone" class="login-step active">
           <h2>Welcome back</h2>
           <p class="step-hint">Sign in to book and track local services</p>
@@ -61,6 +52,11 @@ export async function render(container) {
             <span>🛠️ Verified local providers</span>
             <span>💬 Human support available</span>
           </div>
+          <p class="${serviceOnly && !CONFIG.FEATURES?.EMAIL_AUTH ? "feature-hidden" : ""}" style="margin-top:0.9rem;text-align:center;">
+            <a href="#" id="link-email-fallback" onclick="LoginPage.switchAuthTab('email');return false;" style="font-size:0.78rem;color:var(--clr-text-3,#9ca3af);text-decoration:underline;">
+              Login karne mein problem? Email se login karein
+            </a>
+          </p>
         </div>
 
         <div id="step-email" class="login-step ${serviceOnly && !CONFIG.FEATURES?.EMAIL_AUTH ? "feature-hidden" : ""}">
