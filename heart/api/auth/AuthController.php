@@ -32,15 +32,22 @@ class AuthController {
             Response::error('Invalid email format', 400);
         }
 
-        $stmt = $this->db->prepare("SELECT id, name, email, password, role, status FROM users WHERE email = ?");
+        $stmt = $this->db->prepare("SELECT id, name, email, password, google_id, role, status FROM users WHERE email = ?");
         $stmt->execute([$email]);
         $existingUser = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($existingUser) {
             // Email already has an account — reuse it (e.g. an existing customer applying as
-            // a vendor) instead of failing, but require the correct password to avoid
-            // letting someone "register" their way into another person's account.
-            if (!password_verify((string)$password, (string)($existingUser['password'] ?? ''))) {
+            // a vendor) instead of failing.
+            if (!empty($existingUser['google_id'])) {
+                // Google-only account has no password to verify against — trust the email
+                // match and set the password they just chose so they can also log in with it.
+                $hash = password_hash($password, PASSWORD_BCRYPT);
+                $this->db->prepare("UPDATE users SET password = ? WHERE id = ?")
+                    ->execute([$hash, $existingUser['id']]);
+            } elseif (!password_verify((string)$password, (string)($existingUser['password'] ?? ''))) {
+                // Email account — require the correct password to avoid letting someone
+                // "register" their way into another person's account.
                 Response::error('Email already registered. Please login instead.', 409);
             }
             if (($existingUser['status'] ?? '') !== 'active') {
