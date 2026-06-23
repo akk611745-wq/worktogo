@@ -614,7 +614,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-
   /* FIX: account for iOS safe area at bottom */
   padding-bottom: calc(var(--sp-xl) + env(safe-area-inset-bottom, 0px));
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .login-glow {
