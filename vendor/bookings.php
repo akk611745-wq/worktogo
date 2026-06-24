@@ -35,6 +35,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
+  const profileRes = await API.Profile.get();
+  const p = profileRes.ok ? (profileRes.data?.data || profileRes.data) : null;
+  if (p) {
+    let areas;
+    try { areas = JSON.parse(p.service_localities || '[]'); } catch (_) { areas = []; }
+    if (!p.category_id || !Array.isArray(areas) || areas.length === 0) {
+      window.location = 'profile.php';
+      return;
+    }
+  }
+
   renderPage();
   await loadBookings();
 
