@@ -90,8 +90,9 @@ if ($method === 'POST' && $uri === '/api/vendors') {
 
     $db->beginTransaction();
     try {
+        $typeCol = ServiceVendorEligibility::vendorTypeColumn($db);
         $stmt = $db->prepare(
-            "INSERT INTO vendors (user_id, business_name, slug, type, status)
+            "INSERT INTO vendors (user_id, business_name, slug, {$typeCol}, status)
              VALUES (?, ?, ?, ?, 'pending')"
         );
         $stmt->execute([$userId, $businessName, $slug, $type]);
