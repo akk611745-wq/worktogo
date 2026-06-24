@@ -672,7 +672,8 @@ window.HomeModals = (() => {
       return;
     }
     if (!_currentService) return;
-    let dateVal = document.getElementById("booking-date")?.value;
+    const dateField = document.getElementById("booking-date");
+    let dateVal = dateField?.value;
     const name    = document.getElementById("booking-name")?.value?.trim() || "";
     const mobile  = document.getElementById("booking-mobile")?.value?.trim() || "";
     const area    = document.getElementById("booking-area")?.value?.trim() || _resolvedLocality().label || "";
@@ -710,8 +711,17 @@ window.HomeModals = (() => {
     // available slot (tomorrow) instead of forcing the user to pick one.
     if (!dateVal) dateVal = _tomorrowScheduledLocal();
     if (Number.isNaN(new Date(dateVal).getTime()) || new Date(dateVal).getTime() <= Date.now()) {
-      _markInvalid("booking-date", "Please choose a future date and time");
-      return;
+      // free_lead/direct_vendor flows carry booking-date as a hidden field
+      // with no picker the user can fix — silently refresh it instead of
+      // blocking on a field they can never see or edit. Only the visible
+      // datetime-local input (inspection / generic modal) enforces the hard
+      // block, since there the user really did pick a bad date.
+      if (dateField && dateField.type === "hidden") {
+        dateVal = _tomorrowScheduledLocal();
+      } else {
+        _markInvalid("booking-date", "Please choose a future date and time");
+        return;
+      }
     }
     if (!mobile) { _markInvalid("booking-mobile", "Please enter mobile number"); return; }
     const mobileDigits = mobile.replace(/\D/g, "");
@@ -1091,7 +1101,7 @@ window.HomeModals = (() => {
     _persistPendingBookingForm();
   }
 
-  function prepareVendorDirectSubmit(service, { phone = "", issues = "", address = "", notes = "", name = "" } = {}) {
+  function prepareVendorDirectSubmit(service, { phone = "", issues = "", address = "", notes = "", name = "", mode = "direct_vendor", preferredVendorName = "" } = {}) {
     if (!AUTH.isLoggedIn()) {
       const digits = phone.replace(/\D/g, "");
       if (digits) _persistCustomerProfile({ phone: digits, ...(name ? { name } : {}) });
@@ -1119,13 +1129,13 @@ window.HomeModals = (() => {
         <input type="hidden" id="booking-date" value="${_esc(_defaultScheduledLocal())}" />
         <input type="hidden" id="booking-area" value="${_esc(_resolvedLocality().label || "")}" />
         <input type="hidden" id="booking-address" value="${_esc(address)}" />
-        <input type="hidden" id="booking-notes" value="${_esc(notes)}" />
-        <input type="hidden" id="booking-mode" value="direct_vendor" />
+        <input type="hidden" id="booking-notes" value="${_esc(preferredVendorName ? `Requested worker: ${preferredVendorName}. ${notes}`.trim() : notes)}" />
+        <input type="hidden" id="booking-mode" value="${_esc(mode)}" />
         <input type="hidden" id="booking-service-context" value="${_esc(issues || selectedService)}" />
         <input type="hidden" id="booking-category-context" value="${_esc(category.slug || _activeCategory || "")}" />
       `;
     }
-    _resetBookingActions("direct_vendor", _inspectionPrice(_currentService, category));
+    _resetBookingActions(mode, _inspectionPrice(_currentService, category));
     confirmBooking();
   }
 
@@ -1501,15 +1511,24 @@ window.WtgSheet = (function () {
       if (mapped) svc.id = mapped;
 
       // Vendor-only cards (backfilled from /api/vendors, no real services
-      // row) have no service_map entry to resolve — route through the
-      // existing category-based free-lead flow instead of sending the
-      // vendor's own id as a fake services.id (would 404 at checkout).
+      // row) have no service_map entry to resolve, and the backend requires
+      // a real service_id for direct_vendor bookings — sending the vendor's
+      // own id as a fake services.id 404s at checkout. Submit as a category
+      // free_lead request instead (backend resolves a real service by
+      // category, no service_id needed), but keep everything the customer
+      // already typed in this sheet and tag the chosen vendor's name into
+      // the notes so admin can still manually route it to them — previously
+      // this discarded the filled-in name/phone/address/note and reopened a
+      // blank booking modal with no record of which vendor was requested.
       if (!mapped && svcBase.is_vendor_only) {
-        close();
-        if (window.HomePage && HomePage.bookCategoryCta) {
-          HomePage.bookCategoryCta(svcBase.category_slug || '', 'free_lead');
+        if (window.HomeModals && HomeModals.prepareVendorDirectSubmit) {
+          HomeModals.prepareVendorDirectSubmit(
+            svc,
+            { phone: digits, issues: selected, address: addr, notes: note, name: uname, mode: 'free_lead', preferredVendorName: svcBase.vendor_name || svcBase.name || '' }
+          );
         }
         if (btn) { btn.disabled = false; btn.textContent = 'CONFIRM BOOKING'; }
+        close();
         return;
       }
 
