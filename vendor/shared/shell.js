@@ -252,7 +252,7 @@ function _injectWtgNotifStyles() {
     }
     .wtg-notif-panel {
       display:none;position:absolute;top:calc(100% + 8px);right:0;
-      width:300px;max-height:400px;
+      width:340px;max-width:90vw;max-height:400px;
       background:var(--surface,#fff);border:1px solid var(--border,#e2e8f0);
       border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.25);
       z-index:9999;overflow:hidden;flex-direction:column;
@@ -266,7 +266,11 @@ function _injectWtgNotifStyles() {
     .wtg-notif-empty { padding:2rem;text-align:center;color:#6b7280;font-size:0.82rem; }
     .wtg-notif-item { padding:0.75rem 1rem;border-bottom:1px solid rgba(0,0,0,0.05); }
     .wtg-notif-item.unread { background:rgba(245,166,35,0.08); }
-    .wtg-notif-msg { font-size:0.82rem;line-height:1.4; }
+    .wtg-notif-msg {
+      font-size:0.82rem;line-height:1.4;white-space:normal;
+      overflow-wrap:break-word;word-wrap:break-word;
+      display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+    }
     .wtg-notif-time { font-size:0.7rem;color:#6b7280;margin-top:2px; }
   `;
   document.head.appendChild(style);
