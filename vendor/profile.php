@@ -33,6 +33,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 function renderPage(user) {
   const el = document.getElementById("pageContent");
   el.innerHTML = `
+    <div id="profileIncompleteBanner" style="display:none;background:#FFF7ED;border:1px solid #FDBA74;color:#9A3412;padding:0.75rem 1rem;border-radius:8px;margin-bottom:1rem;font-size:0.85rem;">
+      Apni profile complete karein — category aur service area select karein taaki customers aapko dhundh sakein.
+    </div>
+
     <div class="page-header">
       <div>
         <h1 class="page-title">My Profile</h1>
@@ -247,6 +251,21 @@ function populateProfile(p) {
   populateCategorySelect();
   const _initAreas = (() => { try { return JSON.parse(p.service_localities || '[]'); } catch (_) { return []; } })();
   renderAreaChips(_initAreas);
+
+  // Incomplete profile (no category and/or no service areas) — force edit mode + banner
+  const banner = document.getElementById("profileIncompleteBanner");
+  if (banner) banner.style.display = isProfileComplete(p) ? 'none' : 'block';
+  if (!isProfileComplete(p)) {
+    document.getElementById("viewMode").style.display = 'none';
+    document.getElementById("editMode").style.display = 'block';
+  }
+}
+
+function isProfileComplete(p) {
+  if (!p || !p.category_id) return false;
+  let areas;
+  try { areas = JSON.parse(p.service_localities || '[]'); } catch (_) { areas = []; }
+  return Array.isArray(areas) && areas.length > 0;
 }
 
 const WTG_AREAS = [
