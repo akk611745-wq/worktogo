@@ -11,6 +11,7 @@
 
 require_once SYSTEM_ROOT . '/core/lib/PushSubscription.php';
 require_once SYSTEM_ROOT . '/core/lib/FcmNotifier.php';
+require_once SYSTEM_ROOT . '/core/helpers/ServiceVendorEligibility.php';
 
 $auth = AuthMiddleware::requireRole(ROLE_ADMIN);
 
@@ -1037,7 +1038,8 @@ try {
            ->execute([$vendorId]);
         
         // Also update the user's role to match vendor type
-        $vendorRow = $db->prepare("SELECT type, user_id FROM vendors WHERE id = ? LIMIT 1");
+        $typeCol = ServiceVendorEligibility::vendorTypeColumn($db);
+        $vendorRow = $db->prepare("SELECT {$typeCol} AS type, user_id FROM vendors WHERE id = ? LIMIT 1");
         $vendorRow->execute([$vendorId]);
         $vData = $vendorRow->fetch(PDO::FETCH_ASSOC);
         if ($vData) {
