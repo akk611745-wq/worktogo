@@ -1807,6 +1807,7 @@ try {
             Response::validation('status must be: completed, cancelled, or escalated');
         }
         // Try jobs table first; if absent, treat job_id as booking id
+        $completedBookingId = null;
         try {
             $db->prepare('UPDATE jobs SET status = :st, updated_at = NOW() WHERE id = :id')
                ->execute([':st' => $status, ':id' => $jobId]);
@@ -1816,10 +1817,19 @@ try {
             if ($bId) {
                 $db->prepare('UPDATE bookings SET status = :st, updated_at = NOW() WHERE id = :id')
                    ->execute([':st' => $status, ':id' => (int) $bId]);
+                if ($status === 'completed') {
+                    $completedBookingId = (int) $bId;
+                }
             }
         } catch (PDOException $jobEx) {
             $db->prepare('UPDATE bookings SET status = :st, updated_at = NOW() WHERE id = :id')
                ->execute([':st' => $status, ':id' => $jobId]);
+            if ($status === 'completed') {
+                $completedBookingId = $jobId;
+            }
+        }
+        if ($completedBookingId !== null) {
+            \Core\Helpers\LedgerEngine::processBookingCompletion($completedBookingId, $db);
         }
         Logger::info('Admin force-set job status', ['admin_id' => $auth['user_id'], 'job_id' => $jobId, 'status' => $status]);
         Response::success(['id' => $jobId, 'status' => $status], 200, 'Status updated');
