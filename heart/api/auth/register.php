@@ -27,51 +27,82 @@ $data = $v->validated();
 $data['email'] = isset($data['email']) && trim((string)$data['email']) !== '' ? trim((string)$data['email']) : null;
 
 try {
-    // Check phone uniqueness
-    $check = $db->prepare("SELECT id FROM users WHERE phone = ? LIMIT 1");
-    $check->execute([$data['phone']]);
-
-    if ($check->fetchColumn()) {
-        Response::validation('This phone number is already registered');
-    }
-
-    // Check email uniqueness (if provided)
-    if ($data['email'] !== null) {
-        $emailCheck = $db->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
-        $emailCheck->execute([$data['email']]);
-        if ($emailCheck->fetchColumn()) {
-            Response::validation('This email address is already registered');
-        }
-    }
-
-    // Hash password
-    $hash = password_hash($data['password'], PASSWORD_BCRYPT);
     $role = $data['role'] ?? ROLE_CUSTOMER;
 
-    // Insert user
-    $stmt = $db->prepare(
-        "INSERT INTO users (uuid, name, phone, email, password, role, status, created_at, updated_at)
-         VALUES (UUID(), :name, :phone, :email, :password, :role, 'active', NOW(), NOW())"
-    );
+    // Phone already has an account — reuse it (e.g. an existing customer
+    // applying as a vendor) instead of failing outright, same pattern as
+    // the email-reuse fix in AuthController::registerEmail (0c12617).
+    // Only the customer-becoming-vendor direction is allowed here: an
+    // existing vendor/admin account re-registering keeps the original
+    // "already registered" rejection, so vendor-only/admin-only flows are
+    // unaffected.
+    $check = $db->prepare("SELECT id, name, password, role, status FROM users WHERE phone = ? LIMIT 1");
+    $check->execute([$data['phone']]);
+    $existingUser = $check->fetch(PDO::FETCH_ASSOC);
 
-    $stmt->execute([
-        ':name'     => $data['name'],
-        ':phone'    => $data['phone'],
-        ':email'    => $data['email'],
-        ':password' => $hash,
-        ':role'     => $role,
-    ]);
+    if ($existingUser) {
+        $canUpgradeToVendor = str_starts_with($role, 'vendor_') && $existingUser['role'] === ROLE_CUSTOMER;
+        if (!$canUpgradeToVendor) {
+            Response::validation('This phone number is already registered');
+        }
+        if (empty($existingUser['password'])) {
+            // OTP-only account has no password to verify against — trust the
+            // phone match and set the password they just chose so they can
+            // also log in with phone+password.
+            $hash = password_hash($data['password'], PASSWORD_BCRYPT);
+            $db->prepare("UPDATE users SET password = ? WHERE id = ?")
+               ->execute([$hash, $existingUser['id']]);
+        } elseif (!password_verify((string)$data['password'], (string)$existingUser['password'])) {
+            Response::validation('This phone number is already registered. Please login instead.');
+        }
+        if (($existingUser['status'] ?? '') !== 'active') {
+            Response::validation('Account is inactive');
+        }
+        $userId = (int) $existingUser['id'];
+        $data['name'] = $existingUser['name'];
+        $db->prepare("UPDATE users SET role = ? WHERE id = ?")->execute([$role, $userId]);
+    } else {
+        // Check email uniqueness (if provided)
+        if ($data['email'] !== null) {
+            $emailCheck = $db->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
+            $emailCheck->execute([$data['email']]);
+            if ($emailCheck->fetchColumn()) {
+                Response::validation('This email address is already registered');
+            }
+        }
 
-    $userId = (int) $db->lastInsertId();
+        // Hash password
+        $hash = password_hash($data['password'], PASSWORD_BCRYPT);
+
+        // Insert user
+        $stmt = $db->prepare(
+            "INSERT INTO users (uuid, name, phone, email, password, role, status, created_at, updated_at)
+             VALUES (UUID(), :name, :phone, :email, :password, :role, 'active', NOW(), NOW())"
+        );
+
+        $stmt->execute([
+            ':name'     => $data['name'],
+            ':phone'    => $data['phone'],
+            ':email'    => $data['email'],
+            ':password' => $hash,
+            ':role'     => $role,
+        ]);
+
+        $userId = (int) $db->lastInsertId();
+    }
 
     // Vendor profile creation
     if (str_starts_with($role, 'vendor_')) {
-        $type = ($role === ROLE_VENDOR_SERVICE) ? 'service' : 'shopping';
-        $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $data['business_name']), '-'));
-        $typeColumn = ServiceVendorEligibility::vendorTypeColumn($db);
+        $existingVendor = $db->prepare("SELECT id FROM vendors WHERE user_id = ? LIMIT 1");
+        $existingVendor->execute([$userId]);
+        if (!$existingVendor->fetchColumn()) {
+            $type = ($role === ROLE_VENDOR_SERVICE) ? 'service' : 'shopping';
+            $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $data['business_name']), '-'));
+            $typeColumn = ServiceVendorEligibility::vendorTypeColumn($db);
 
-        $db->prepare("INSERT INTO vendors (user_id, business_name, slug, {$typeColumn}, status) VALUES (?, ?, ?, ?, 'pending')")
-           ->execute([$userId, $data['business_name'], $slug . '-' . $userId, $type]);
+            $db->prepare("INSERT INTO vendors (user_id, business_name, slug, {$typeColumn}, status) VALUES (?, ?, ?, ?, 'pending')")
+               ->execute([$userId, $data['business_name'], $slug . '-' . $userId, $type]);
+        }
     }
 
     // Issue JWT
