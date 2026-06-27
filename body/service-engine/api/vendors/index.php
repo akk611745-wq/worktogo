@@ -255,6 +255,15 @@ if ($method === 'GET' && $uri === '/api/vendor/jobs') {
     $stmt->execute($bind);
     $jobs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    if ($auth['role'] === ROLE_VENDOR_SERVICE) {
+        foreach ($jobs as &$job) {
+            if (!in_array($job['status'], ['in_progress', 'completed'], true)) {
+                $job['customer_phone'] = null;
+            }
+        }
+        unset($job);
+    }
+
     Response::success(['jobs' => $jobs, 'total' => count($jobs)]);
 }
 
@@ -286,6 +295,9 @@ if ($method === 'GET' && preg_match('#^/api/vendor/jobs/(\d+)$#', $uri, $m)) {
         $vendorId = resolveVendorId($db, (int)$auth['user_id']);
         if ((int)$job['vendor_id'] !== $vendorId) {
             Response::forbidden('Job not assigned to your account');
+        }
+        if (!in_array($job['status'], ['in_progress', 'completed'], true)) {
+            $job['customer_phone'] = null;
         }
     }
 
