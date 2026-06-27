@@ -1244,20 +1244,33 @@ window.HomeModals = (() => {
     if (next) _currentService = { ..._currentService, ...next, category_slug: slug || next.category_slug || next.category };
   }
 
+  // datetime-local input values carry no timezone — the browser (and
+  // new Date(value) downstream) reads them as local wall-clock time.
+  // toISOString() returns UTC digits, so on any non-UTC timezone (e.g.
+  // IST, UTC+5:30) the previous d.toISOString().slice(0,16) silently
+  // shifted the displayed/default time by the local UTC offset. For the
+  // free-booking hidden date field specifically, that shift could even
+  // push the +2h default into the past once re-parsed as local time,
+  // tripping confirmBooking()'s "must be a future datetime" check.
+  function _toLocalInputValue(d) {
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
   function _isoNow() {
-    return new Date().toISOString().slice(0, 16);
+    return _toLocalInputValue(new Date());
   }
 
   function _defaultScheduledLocal() {
     const d = new Date(Date.now() + 2 * 60 * 60 * 1000);
     d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0);
-    return d.toISOString().slice(0, 16);
+    return _toLocalInputValue(d);
   }
 
   function _tomorrowScheduledLocal() {
     const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
     d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0);
-    return d.toISOString().slice(0, 16);
+    return _toLocalInputValue(d);
   }
 
   function _markInvalid(id, message) {
