@@ -68,8 +68,9 @@ try {
     if (str_starts_with($role, 'vendor_')) {
         $type = ($role === ROLE_VENDOR_SERVICE) ? 'service' : 'shopping';
         $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $data['business_name']), '-'));
-        
-        $db->prepare("INSERT INTO vendors (user_id, business_name, slug, type, status) VALUES (?, ?, ?, ?, 'pending')")
+        $typeColumn = ServiceVendorEligibility::vendorTypeColumn($db);
+
+        $db->prepare("INSERT INTO vendors (user_id, business_name, slug, {$typeColumn}, status) VALUES (?, ?, ?, ?, 'pending')")
            ->execute([$userId, $data['business_name'], $slug . '-' . $userId, $type]);
     }
 
