@@ -55,7 +55,7 @@ function renderPage(user) {
     </div>
 
     <!-- Details card -->
-    <div class="card" style="max-width:640px;">
+    <div class="card" style="max-width:640px;margin-left:auto;margin-right:auto;">
       <div class="card-header">
         <span class="card-title">Account Details</span>
         <button class="btn btn-primary btn-sm" onclick="enableEdit()">
@@ -143,7 +143,7 @@ function renderPage(user) {
     </div>
 
     <!-- Security info card -->
-    <div class="card" style="max-width:640px;margin-top:0;">
+    <div class="card" style="max-width:640px;margin-top:0;margin-left:auto;margin-right:auto;">
       <div class="card-header">
         <span class="card-title">Security</span>
       </div>
