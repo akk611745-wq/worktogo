@@ -696,8 +696,13 @@ window.HomeModals = (() => {
     // arbitrarily for display purposes only). Leaving service_id unresolved
     // here and sending category_slug instead lets the backend pick a
     // service for that category on its own — see POST /api/service/request.
+    // Vendor-only cards (is_vendor_only) have no real services.id — their
+    // _currentService.id is a "vendor-N" placeholder used only for DOM/list
+    // matching. Sending that as service_id 404s, so leave it unresolved and
+    // rely on vendor_id (sent separately below) for the backend to resolve
+    // a real service itself.
     const resolvedServiceId = bookingMode === "direct_vendor"
-      ? ((_currentService.service_map && _currentService.service_map[category.label]) || _currentService.service_id || _currentService.id)
+      ? ((_currentService.service_map && _currentService.service_map[category.label]) || _currentService.service_id || (_currentService.is_vendor_only ? null : _currentService.id))
       : null;
     const savedInspectionPayment = bookingMode === "inspection" ? _readInspectionPaymentReturn() : null;
     if (savedInspectionPayment?.booking && _normalizePaymentState(savedInspectionPayment.status_state || savedInspectionPayment.booking.payment_status) !== "paid") {
@@ -1511,20 +1516,20 @@ window.WtgSheet = (function () {
       if (mapped) svc.id = mapped;
 
       // Vendor-only cards (backfilled from /api/vendors, no real services
-      // row) have no service_map entry to resolve, and the backend requires
-      // a real service_id for direct_vendor bookings — sending the vendor's
-      // own id as a fake services.id 404s at checkout. Submit as a category
-      // free_lead request instead (backend resolves a real service by
-      // category, no service_id needed), but keep everything the customer
-      // already typed in this sheet and tag the chosen vendor's name into
-      // the notes so admin can still manually route it to them — previously
-      // this discarded the filled-in name/phone/address/note and reopened a
-      // blank booking modal with no record of which vendor was requested.
+      // row) have no service_map entry to resolve and svc.id is a fake
+      // "vendor-N" placeholder, not a real services.id. The backend now
+      // accepts a bare vendor_id for direct_vendor bookings (it resolves a
+      // representative service row itself, see POST /api/service/request),
+      // so submit as a real direct_vendor request bound to this vendor
+      // instead of falling back to free_lead — svc.vendor_id (set in
+      // _mergeVendorOnlyCards) carries the real vendor id through, and
+      // resolvedServiceId in confirmBooking() skips svc.id for is_vendor_only
+      // cards so the fake placeholder never gets sent as service_id.
       if (!mapped && svcBase.is_vendor_only) {
         if (window.HomeModals && HomeModals.prepareVendorDirectSubmit) {
           HomeModals.prepareVendorDirectSubmit(
             svc,
-            { phone: digits, issues: selected, address: addr, notes: note, name: uname, mode: 'free_lead', preferredVendorName: svcBase.vendor_name || svcBase.name || '' }
+            { phone: digits, issues: selected, address: addr, notes: note, name: uname, mode: 'direct_vendor', preferredVendorName: svcBase.vendor_name || svcBase.name || '' }
           );
         }
         if (btn) { btn.disabled = false; btn.textContent = 'CONFIRM BOOKING'; }

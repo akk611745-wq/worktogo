@@ -1125,11 +1125,32 @@ if ($method === 'POST' && $uri === '/api/service/request') {
     $isCategoryRouted  = in_array($requestedMode, ['inspection', 'premium_inspection', 'free_lead'], true);
     $hasCategoryContext = $categorySlug !== '' || $categoryIdInput > 0;
 
+    // vendor-only cards (a vendor approved but with no /api/services row of
+    // their own yet) have no real service_id to send. For these, accept a
+    // bare vendor_id instead and resolve a representative service below
+    // (the vendor's own row if it exists, else one from the vendor's
+    // category) purely to satisfy bookings.service_id's NOT NULL/FK — the
+    // booking still gets bound to the actual requested vendor_id, not
+    // whichever service row was used to fill that column.
+    $vendorIdInput   = isset($input['vendor_id']) ? (int)$input['vendor_id'] : 0;
+    $isVendorRouted  = $requestedMode === 'direct_vendor' && $vendorIdInput > 0;
+
     // Required field validation — service_id is only mandatory for the
     // vendor-specific (direct_vendor) path; inspection/free_lead resolve
-    // by category instead (see below), so they need category context.
-    if (!$scheduledAt || (!$serviceId && !($isCategoryRouted && $hasCategoryContext))) {
-        Response::validation('service_id (or category_slug/category_id for inspection and free bookings) and scheduled_at are required');
+    // by category instead, and direct_vendor may resolve by vendor_id
+    // instead (see below), so they need category/vendor context.
+    if (!$scheduledAt || (!$serviceId && !($isCategoryRouted && $hasCategoryContext) && !$isVendorRouted)) {
+        Response::validation('service_id (or category_slug/category_id for inspection and free bookings, or vendor_id for direct vendor bookings) and scheduled_at are required');
+    }
+
+    // Resolve the requested vendor up front so we can bind the booking to
+    // it regardless of which service row ends up filling service_id.
+    $directVendorRow = null;
+    if ($isVendorRouted) {
+        $dvStmt = $db->prepare("SELECT id, category_id FROM vendors WHERE id = ? AND status = 'active' LIMIT 1");
+        $dvStmt->execute([$vendorIdInput]);
+        $directVendorRow = $dvStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$directVendorRow) Response::notFound('Vendor');
     }
 
     // Validate scheduled_at is a parseable future datetime
@@ -1185,7 +1206,28 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         $svcStmt->execute([$serviceId]);
         $service = $svcStmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
+    if (!$service && $directVendorRow) {
+        // Prefer the vendor's own service row if it has one.
+        $vsvcStmt = $db->prepare("SELECT * FROM services WHERE vendor_id = ? AND status = 'active' ORDER BY id ASC LIMIT 1");
+        $vsvcStmt->execute([$directVendorRow['id']]);
+        $service = $vsvcStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$service && $directVendorRow['category_id']) {
+            // Vendor has no services row at all — borrow a representative
+            // active service from the same category just to satisfy
+            // bookings.service_id; vendor_id below is overridden to the
+            // actually-requested vendor, not this service's owner.
+            $csvcStmt = $db->prepare("SELECT * FROM services WHERE category_id = ? AND status = 'active' ORDER BY id ASC LIMIT 1");
+            $csvcStmt->execute([$directVendorRow['category_id']]);
+            $service = $csvcStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+    }
     if (!$service) Response::notFound('Service');
+
+    if ($directVendorRow) {
+        // Bind to the actually-requested vendor, not whichever vendor (if
+        // any) happens to own the service row used to fill service_id.
+        $service['vendor_id'] = $directVendorRow['id'];
+    }
 
     // Normalize $serviceId to the resolved service row — for category-routed
     // (inspection/free_lead) requests $service_id is not in the POST body so
