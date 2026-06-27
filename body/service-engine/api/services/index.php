@@ -2181,6 +2181,10 @@ if ($method === 'PATCH' && preg_match('#^/api/jobs/(\d+)/status$#', $uri, $m)) {
         Response::error('Job status could not be synchronized', 500);
     }
 
+    if ($bookingStatus === 'completed' && $jobRow['booking_id']) {
+        \Core\Helpers\LedgerEngine::processBookingCompletion((int)$jobRow['booking_id'], $db);
+    }
+
     Response::success([
         'message' => "Job status updated to '{$newStatus}'",
         'job_id'  => $jobId,

@@ -138,6 +138,68 @@ class LedgerEngine {
     }
 
     /**
+     * Service Booking Completion Logic
+     * Triggers when a service booking (bookings table) is completed.
+     * Calculates platform commission vs vendor earning and updates wallets.
+     */
+    public static function processBookingCompletion($booking_id, $db = null) {
+        $pdo = $db ?: Database::getConnection();
+
+        try {
+            $pdo->beginTransaction();
+
+            // 1. Read booking total and vendor commission rate, FOR UPDATE to prevent race conditions
+            $stmt = $pdo->prepare("
+                SELECT b.total, b.vendor_id, b.payment_status, v.commission_rate
+                FROM bookings b
+                JOIN vendors v ON v.id = b.vendor_id
+                WHERE b.id = ?
+                FOR UPDATE
+            ");
+            $stmt->execute([$booking_id]);
+            $booking = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$booking) {
+                throw new Exception("Booking not found.");
+            }
+
+            // Idempotency: skip if a vendor credit already exists for this booking
+            $checkStmt = $pdo->prepare("SELECT id FROM wallet_transactions WHERE order_id = ? AND entity_type = 'vendor' AND status != 'refunded' FOR UPDATE");
+            $checkStmt->execute([$booking_id]);
+            if ($checkStmt->fetch()) {
+                $pdo->rollBack();
+                return true; // Already processed, fail-safe.
+            }
+
+            // 2. Calculate Shares
+            $total = (float)$booking['total'];
+            $commission_rate = $booking['commission_rate'] ? (float)$booking['commission_rate'] : 10.0;
+            $platform_commission = ($total * $commission_rate) / 100;
+            $vendor_earning = $total - $platform_commission;
+
+            // 3. Update Vendor Wallet
+            self::ensureVendorWallet($pdo, $booking['vendor_id']);
+
+            $updateVendor = $pdo->prepare("UPDATE vendor_wallets SET pending_balance = pending_balance + ? WHERE vendor_id = ?");
+            $updateVendor->execute([$vendor_earning, $booking['vendor_id']]);
+
+            $insertTx = $pdo->prepare("INSERT INTO wallet_transactions (entity_type, entity_id, order_id, type, amount, description, status) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $insertTx->execute(['vendor', $booking['vendor_id'], $booking_id, 'credit', $vendor_earning, 'Booking earnings', 'pending']);
+
+            // 4. Platform commission
+            $insertTx = $pdo->prepare("INSERT INTO wallet_transactions (entity_type, entity_id, order_id, type, amount, description, status) VALUES (?, NULL, ?, ?, ?, ?, ?)");
+            $insertTx->execute(['platform', $booking_id, 'credit', $platform_commission, 'Platform commission (booking)', 'settled']);
+
+            $pdo->commit();
+            return true;
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            Logger::error("LedgerEngine: Failed to process booking completion", ['error' => $e->getMessage(), 'booking_id' => $booking_id]);
+            return false;
+        }
+    }
+
+    /**
      * TASK 4: Settlement Flow
      * Moves pending_balance to available_balance and marks transactions as 'settled'
      */
