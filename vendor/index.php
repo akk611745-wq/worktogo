@@ -130,11 +130,11 @@
     <h2 style="font-size:1.1rem;font-weight:700;color:#111827;margin:0 0 0.25rem;">Create Vendor Account</h2>
     <p style="font-size:0.8rem;color:#6b7280;margin:0 0 1rem;">Fill in your details to apply as a vendor.</p>
     <div class="login-error" id="registerError"></div>
-    <div class="form-group">
+    <div class="form-group" id="regNameGroup">
       <label class="form-label" for="reg-name">Full Name</label>
       <input class="form-input" type="text" id="reg-name" placeholder="Your full name" autocomplete="name"/>
     </div>
-    <div class="form-group">
+    <div class="form-group" id="regEmailGroup">
       <label class="form-label" for="reg-email">Email address</label>
       <input class="form-input" type="email" id="reg-email" placeholder="you@example.com" autocomplete="email"/>
     </div>
@@ -146,7 +146,20 @@
       <label class="form-label" for="reg-business">Business Name</label>
       <input class="form-input" type="text" id="reg-business" placeholder="Your business name" autocomplete="organization"/>
     </div>
-    <div class="form-group">
+    <div class="form-group" id="regCategoryGroup">
+      <label class="form-label" for="reg-category">Category</label>
+      <select class="form-input" id="reg-category">
+        <option value="">Select category</option>
+        <option value="electrician">Electrician</option>
+        <option value="plumber">Plumber</option>
+        <option value="carpenter">Carpenter</option>
+        <option value="ac_repair">AC Repair</option>
+        <option value="cleaning">Cleaning</option>
+        <option value="painting">Painting</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+    <div class="form-group" id="regPhoneGroup">
       <label class="form-label" for="reg-phone">Phone Number</label>
       <input class="form-input" type="tel" id="reg-phone" placeholder="+91XXXXXXXXXX" autocomplete="tel"/>
     </div>
@@ -167,7 +180,42 @@ let _pendingVendorApplication = null;
 // Redirect if already logged in
 window.addEventListener('DOMContentLoaded', function() {
   if (Auth.isLoggedIn()) window.location.href = "dashboard.php";
+
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('apply') === '1') {
+    showRegisterForm();
+    _applyCustomerPrefill();
+  }
 });
+
+// Pulls whatever the customer app already has saved (name/phone/email) so a
+// customer applying to become a vendor doesn't have to retype it — only
+// business name + category are new info we actually need from them.
+function _customerPrefillData() {
+  const data = {};
+  try {
+    const profile = JSON.parse(localStorage.getItem('wtg_customer_profile') || '{}');
+    if (profile.name) data.name = profile.name;
+  } catch (_) {}
+  try {
+    const user = JSON.parse(localStorage.getItem('wtg_user') || '{}');
+    if (user.name && !data.name) data.name = user.name;
+    if (user.email) data.email = user.email;
+    if (user.phone) data.phone = user.phone;
+  } catch (_) {}
+  return data;
+}
+
+function _applyCustomerPrefill() {
+  const data = _customerPrefillData();
+  if (data.name) document.getElementById('reg-name').value = data.name;
+  if (data.email) document.getElementById('reg-email').value = data.email;
+  if (data.phone) document.getElementById('reg-phone').value = data.phone;
+
+  if (data.name) document.getElementById('regNameGroup').style.display = 'none';
+  if (data.email) document.getElementById('regEmailGroup').style.display = 'none';
+  if (data.phone) document.getElementById('regPhoneGroup').style.display = 'none';
+}
 
 // Allow Enter key to submit (context-aware: login vs register)
 document.addEventListener("keydown", e => {
@@ -224,7 +272,7 @@ async function handleLogin() {
       const vendorRes = await fetch(window.WTG_BASE_URL + "/api/vendors", {
         method:  "POST",
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
-        body:    JSON.stringify({ business_name: pending.businessName, type: "service" }),
+        body:    JSON.stringify({ business_name: pending.businessName, category: pending.category, type: "service" }),
       });
       const vendorData = await vendorRes.json().catch(() => ({}));
       if (!vendorRes.ok && vendorData?.error?.code !== 'VENDOR_ALREADY_EXISTS') {
@@ -472,14 +520,15 @@ async function handleRegister() {
   const name         = (document.getElementById("reg-name")?.value     || "").trim();
   const email        = (document.getElementById("reg-email")?.value    || "").trim();
   const password     =  document.getElementById("reg-password")?.value || "";
-  const businessName = (document.getElementById("reg-business")?.value || "").trim();
+  const businessName = (document.getElementById("reg-business")?.value  || "").trim();
+  const category      = (document.getElementById("reg-category")?.value || "").trim();
   const phone        = (document.getElementById("reg-phone")?.value    || "").trim();
   const btn          =  document.getElementById("registerBtn");
   const errEl        =  document.getElementById("registerError");
 
   errEl.classList.remove("show");
 
-  if (!name || !email || !password || !businessName || !phone) {
+  if (!name || !email || !password || !businessName || !category || !phone) {
     showRegErr("Please fill in all fields.");
     return;
   }
@@ -509,7 +558,7 @@ async function handleRegister() {
         // guess at their existing password) is what links the vendor
         // application to their account. handleLogin() submits the vendor
         // application below once that real login succeeds.
-        _pendingVendorApplication = { businessName, phone };
+        _pendingVendorApplication = { businessName, category, phone };
         showLoginForm({
           email,
           message: "Aapka account pehle se hai. Login karein — vendor account automatically link ho jaayega.",
@@ -536,7 +585,7 @@ async function handleRegister() {
     const vendorRes  = await fetch(window.WTG_BASE_URL + "/api/vendors", {
       method:  "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
-      body:    JSON.stringify({ business_name: businessName, type: "service" }),
+      body:    JSON.stringify({ business_name: businessName, category, type: "service" }),
     });
     const vendorData = await vendorRes.json().catch(() => ({}));
     if (!vendorRes.ok) {

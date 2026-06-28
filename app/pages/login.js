@@ -412,6 +412,8 @@ window.LoginPage = (() => {
   function _handleGoogleCredential(response) {
     const credential = response?.credential;
     if (!credential) {
+      _setLoading("btn-google-login", false);
+      window._gsiInitDone = false;
       UI.toast("Google login was cancelled", "error");
       return;
     }
@@ -427,6 +429,7 @@ window.LoginPage = (() => {
       UI.toast("Login successful!", "success");
       redirectAfterLogin(result.user);
     } else {
+      window._gsiInitDone = false;
       UI.toast(result.error || "Google login failed. Try again.", "error");
     }
   }
@@ -439,6 +442,7 @@ window.LoginPage = (() => {
       return;
     }
 
+    _setLoading("btn-google-login", true);
     _launchGSI(googleClientId, 0);
   }
 
@@ -451,10 +455,17 @@ window.LoginPage = (() => {
           callback: _handleGoogleCredential,
         });
       }
-      window.google.accounts.id.prompt();
+      window.google.accounts.id.prompt((notification) => {
+        if (notification?.isNotDisplayed?.() || notification?.isSkippedMoment?.()) {
+          _setLoading("btn-google-login", false);
+          window._gsiInitDone = false;
+        }
+      });
       return;
     }
     if (elapsed >= 3000) {
+      _setLoading("btn-google-login", false);
+      window._gsiInitDone = false;
       UI.toast("Google Sign-In is not configured", "error");
       return;
     }

@@ -99,12 +99,12 @@ window.BookingsPage = (() => {
             <span class="booking-chevron"></span>
           </div>
           <div class="request-status-pill-row">
-            <span class="request-mini-pill state-${_esc(state.key)}">${_esc(state.short)}</span>
+            <span class="request-mini-pill state-${_esc(state.key)}">${_esc(_hindiStatusLabel(state.key, state.short))}</span>
             <span class="request-mini-pill ${_esc(paymentBadge.tone)}">${_esc(paymentBadge.label)}</span>
           </div>
           <div class="item-row muted small">
             <span>${b.scheduled_at ? `📅 ${UI.formatDate(b.scheduled_at)}` : UI.formatDate(b.created_at)}</span>
-            ${b.amount ? `<span class="item-amount">${UI.formatCurrency(b.amount)}</span>` : ""}
+            ${b.booking_mode === "free_lead" ? `<span class="item-amount">Free</span>` : (b.amount ? `<span class="item-amount">${UI.formatCurrency(b.amount)}</span>` : "")}
           </div>
 
           <!-- Collapsible detail -->
@@ -322,6 +322,19 @@ window.BookingsPage = (() => {
     };
     const row = table[key] || table.pending;
     return { key, label: row[0], short: _statusShortLabel(key, row[0]), next: row[1], message: row[2] };
+  }
+
+  function _hindiStatusLabel(key = "", fallback = "Pending") {
+    const pendingKeys = ["pending", "payment_pending", "request_received", "nearby_matching", "worker_contacting", "worker_requested", "awaiting_response", "inspection_requested", "coordinator_reviewing", "inspection_queued"];
+    const assignedKeys = ["assigned", "confirmed", "worker_assigned", "worker_confirmed", "inspection_assigned", "inspection_scheduled"];
+    const inProgressKeys = ["in_progress", "service_in_progress"];
+    const completedKeys = ["completed", "done", "inspection_completed"];
+    const k = String(key || "").toLowerCase();
+    if (pendingKeys.includes(k)) return "Request bheja gaya";
+    if (assignedKeys.includes(k)) return "Karigar assign hua";
+    if (inProgressKeys.includes(k)) return "Kaam chal raha hai";
+    if (completedKeys.includes(k)) return "Kaam complete hua";
+    return _statusShortLabel(key, fallback);
   }
 
   function _statusShortLabel(key = "", fallback = "Pending") {
