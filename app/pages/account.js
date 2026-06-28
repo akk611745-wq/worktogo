@@ -28,10 +28,10 @@ export async function render(container) {
           <div class="profile-avatar">${_initials(user)}</div>
           <div class="profile-info">
             <div style="display:flex;align-items:center;gap:8px">
-              <h3 style="margin:0">${_escapeHtml(profile.name || _phoneLabel(profile.phone))}</h3>
+              <h3 style="margin:0">${_escapeHtml(profile.name || _phoneLabel(profile.phone) || "WorkToGo User")}</h3>
               <button onclick="AccountPage.editProfile()" style="padding:3px 10px;font-size:12px;border:1px solid var(--clr-border);border-radius:6px;background:transparent;color:var(--clr-text-2);cursor:pointer;line-height:1.4">Edit</button>
             </div>
-            ${profile.name ? `<p class="phone-number">${_escapeHtml(_phoneLabel(profile.phone))}</p>` : ""}
+            ${(profile.name && _phoneLabel(profile.phone)) ? `<p class="phone-number">${_escapeHtml(_phoneLabel(profile.phone))}</p>` : ""}
           </div>
         </div>
 
@@ -222,7 +222,7 @@ function _escapeHtml(str) {
 
 function _phoneLabel(phone = "") {
   const digits = String(phone || "").replace(/\D/g, "");
-  if (!digits) return "Phone not available";
+  if (!digits) return "";
   return `+91 ${digits.slice(-10)}`;
 }
 

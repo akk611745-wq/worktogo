@@ -140,7 +140,7 @@ export async function render(container) {
         <div class="modal-actions">
           <button class="btn-secondary" onclick="HomeModals.closeBooking()">Cancel</button>
           <button class="btn-primary" id="btn-confirm-booking" onclick="HomeModals.confirmBooking()">
-            <span class="btn-label">Request Service</span>
+            <span class="btn-label">Confirm Booking</span>
           </button>
         </div>
       </div>
@@ -1152,7 +1152,7 @@ window.HomeModals = (() => {
     const isInspection = mode === "inspection";
     actions.innerHTML = isInspection
       ? `<button class="btn-primary inspection-pay-cta" id="btn-confirm-booking" onclick="HomeModals.confirmBooking()"><span class="btn-label">Proceed to ${UI.formatCurrency(inspectionPrice)} inspection</span></button>`
-      : `<button class="btn-secondary" onclick="HomeModals.closeBooking()">Cancel</button><button class="btn-primary" id="btn-confirm-booking" onclick="HomeModals.confirmBooking()"><span class="btn-label">Request Service</span></button>`;
+      : `<button class="btn-secondary" onclick="HomeModals.closeBooking()">Cancel</button><button class="btn-primary" id="btn-confirm-booking" onclick="HomeModals.confirmBooking()"><span class="btn-label">Confirm Booking</span></button>`;
   }
 
   function _showInspectionConfirmation(booking = {}, payload = {}) {
@@ -1439,9 +1439,9 @@ window.WtgSheet = (function () {
       <div class="wtg-sheet-vendor">${UI.escapeHtml(name)}</div>
       ${cat ? `<div class="wtg-sheet-cat">${UI.escapeHtml(cat)}</div>` : ''}
       ${chipsHTML ? `<div class="wtg-sheet-label">Select issue</div><div class="wtg-sheet-issue-chips">${chipsHTML}</div>` : ''}
-      <div class="wtg-sheet-label">Aapka naam</div>
+      <div class="wtg-sheet-label">Your name</div>
       <input id="wtg-sh-name" class="wtg-sheet-input" type="text"
-        placeholder="Name"
+        placeholder="Full name"
         value="${UI.escapeHtml(savedName)}">
       <div class="wtg-sheet-label">Mobile number</div>
       <div class="wtg-sheet-phone-group">
@@ -1495,7 +1495,7 @@ window.WtgSheet = (function () {
       const selected = selectedChips.join(', ');
 
       if (!uname || uname.length < 2) {
-        UI.toast('Apna naam likhein', 'error');
+        UI.toast('Please enter your name', 'error');
         _sheet.querySelector('#wtg-sh-name')?.focus();
         if (btn) { btn.disabled = false; btn.textContent = 'CONFIRM BOOKING'; }
         return;
@@ -2193,7 +2193,7 @@ function _heroHTML(slug = "") {
   return `
     <div class="service-hero-copy">
       <h1>${_esc(slug ? `${meta.label} services for ${localityContext.label}` : `Trusted services for ${localityContext.label}`)}</h1>
-      <p>${_esc(meta.subtitle || _pilotConfig.hero_subtitle)}</p>
+      <p>Verified local experts. Book in 60 seconds.</p>
       <div class="booking-distinction-grid" id="hero-distinction-grid">
         <button type="button" class="distinction-toggle" data-key="inspection" aria-expanded="false" onclick="HomePage.toggleHeroInfoCard('inspection')">
           <span class="distinction-head"><strong>Inspection</strong><span class="distinction-arrow">⌄</span></span>
@@ -2206,7 +2206,7 @@ function _heroHTML(slug = "") {
       </div>
       <div class="hero-cta-row">
         <button class="btn-primary marketplace-cta hero-primary" id="hero-category-cta" style="display:none" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'inspection')">${_esc(primaryText)}</button>
-        <button class="hero-secondary" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Book a Service — Free</button>
+        <button class="hero-secondary" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Book a Service</button>
       </div>
       <p class="action-hierarchy-note" id="hero-distinction-note" style="display:none"></p>
     </div>`;
@@ -2315,11 +2315,12 @@ function _vendorCardHTML(s) {
         font-weight:600; cursor:pointer; }
       .wtg-vc-area-extra { display:none; }
       .wtg-vc-area-extra.expanded { display:contents; }
-      .wtg-vc-book { width:100%; margin-top:14px; padding:14px;
-        min-height:48px;
+      .wtg-vc-book { width:100%; margin-top:14px; padding:0;
+        min-height:48px; max-height:48px;
         background:linear-gradient(135deg, #FF6B35, #ff8a00);
         color:#fff; border:none; letter-spacing:0.5px;
-        border-radius:12px; font-size:16px; font-weight:700;
+        text-transform:uppercase;
+        border-radius:10px; font-size:15px; font-weight:700;
         cursor:pointer; }
       .wtg-vc-book:active { transform:scale(0.97); }
 
@@ -2350,18 +2351,18 @@ function _vendorCardHTML(s) {
         font-size:13px; cursor:pointer; color:#444; }
       .wtg-issue-chip.sel { border-color:#FF6B35;
         background:#FFF3EF; color:#FF6B35; font-weight:600; }
-      .wtg-sheet-input { width:100%; padding:14px 16px;
-        border:1.5px solid #e0e0e0; border-radius:12px;
-        font-size:16px; box-sizing:border-box; margin-top:0;
+      .wtg-sheet-input { width:100%; min-height:48px; padding:13px 16px;
+        border:1.5px solid #e0e0e0; border-radius:10px;
+        font-size:15px; box-sizing:border-box; margin-top:0;
         transition:border-color 0.15s ease; }
       .wtg-sheet-input:focus { outline:none; border-color:#FF6B35; }
-      .wtg-sheet-phone-group { display:flex; align-items:center;
-        border:1.5px solid #e0e0e0; border-radius:12px; overflow:hidden;
+      .wtg-sheet-phone-group { display:flex; align-items:center; min-height:48px;
+        border:1.5px solid #e0e0e0; border-radius:10px; overflow:hidden;
         transition:border-color 0.15s ease; }
       .wtg-sheet-phone-group:focus-within { border-color:#FF6B35; }
-      .wtg-sheet-phone-prefix { padding:14px 0 14px 16px;
-        font-size:16px; color:#555; font-weight:600; }
-      .wtg-sheet-phone-input { border:none; border-radius:0; }
+      .wtg-sheet-phone-prefix { padding:13px 0 13px 16px;
+        font-size:15px; color:#555; font-weight:600; }
+      .wtg-sheet-phone-input { border:none; border-radius:0; min-height:46px; }
       .wtg-sheet-submit { width:100%; margin-top:20px; min-height:52px;
         padding:16px; background:#FF6B35; color:#fff;
         border:none; border-radius:12px; font-size:16px;
@@ -2436,9 +2437,7 @@ function _vendorCardHTML(s) {
         <div class="wtg-vc-avatar">${avatarInner}</div>
         <div class="wtg-vc-info">
           <div class="wtg-vc-name">${_esc(name)}${isVerified ? '<span class="wtg-vc-verified">&#10003; Verified</span>' : ''}</div>
-          ${meta
-            ? `<div class="wtg-vc-meta">${_esc(meta)}</div>`
-            : `<div class="wtg-vc-meta wtg-vc-new-badge">New on WorkToGo</div>`}
+          ${meta ? `<div class="wtg-vc-meta">${_esc(meta)}</div>` : ''}
         </div>
         ${available ? '<div class="wtg-vc-avail"></div>' : ''}
       </div>

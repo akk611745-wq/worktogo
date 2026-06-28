@@ -64,7 +64,7 @@
 
 /* ── Reset ─────────────────────────────────────────────────────────────── */
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
 html {
   font-size: 16px;
@@ -92,6 +92,7 @@ body {
 
 h1, h2, h3, h4, h5, h6 { font-weight: 700; }
 
+button { transition: transform 0.1s, background 0.2s ease, opacity 0.2s ease, border-color 0.2s ease; }
 button:active { transform: scale(0.97); }
 
 /* ── Card / list entrance ──────────────────────────────────────────────── */
@@ -2861,7 +2862,8 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
 }
 
 .modal-sheet {
-  background: var(--clr-surface);
+  background: #ffffff;
+  color: #111111;
   border-radius: var(--r-xl) var(--r-xl) 0 0;
   padding: var(--sp-md) var(--sp-lg) calc(var(--sp-xl) + env(safe-area-inset-bottom));
   width: 100%;
@@ -2881,7 +2883,7 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
   z-index: 2;
   margin: var(--sp-md) calc(-1 * var(--sp-lg)) calc(-1 * (var(--sp-xl) + env(safe-area-inset-bottom, 0px)));
   padding: var(--sp-sm) var(--sp-lg) calc(var(--sp-md) + env(safe-area-inset-bottom, 0px));
-  background: linear-gradient(180deg, rgba(255,255,255,0), var(--clr-surface) 22%, var(--clr-surface));
+  background: linear-gradient(180deg, rgba(255,255,255,0), #ffffff 22%, #ffffff);
 }
 
 @keyframes slideUp {
@@ -2892,7 +2894,7 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
 .modal-handle {
   width: 36px;
   height: 4px;
-  background: var(--clr-border);
+  background: #e5e7eb;
   border-radius: var(--r-full);
   margin: 0 auto var(--sp-md);
 }
@@ -2900,6 +2902,7 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
 .modal-sheet h3 {
   font-size: 1.05rem;
   font-weight: 700;
+  color: #111111;
   margin-bottom: var(--sp-md);
   text-align: center;
 }
@@ -3024,23 +3027,27 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
 
 .modal-field label {
   display: block;
-  font-size: 0.8rem;
+  font-size: 11px;
   font-weight: 600;
-  color: var(--clr-text-2);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #6b7280;
   margin-bottom: 6px;
 }
 
 .modal-input {
   width: 100%;
   min-width: 0;
-  background: var(--clr-surface-2);
-  border: 1px solid var(--clr-border);
-  border-radius: var(--r-md);
-  padding: 13px 12px;
-  color: var(--clr-text);
-  font-size: 1rem;
+  background: #ffffff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 13px 16px;
+  color: #111111;
+  font-size: 15px;
   font-family: inherit;
   box-sizing: border-box;
+  min-height: 48px;
+  transition: border-color 0.2s ease;
 }
 
 .modal-input:focus {
@@ -3057,15 +3064,16 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
 .modal-textarea {
   width: 100%;
   min-width: 0;
-  background: var(--clr-surface-2);
-  border: 1px solid var(--clr-border);
-  border-radius: var(--r-md);
-  padding: 13px 12px;
-  color: var(--clr-text);
-  font-size: 1rem;
+  background: #ffffff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 13px 16px;
+  color: #111111;
+  font-size: 15px;
   font-family: inherit;
   resize: none;
   box-sizing: border-box;
+  transition: border-color 0.2s ease;
 }
 
 .modal-textarea:focus {
@@ -3084,11 +3092,19 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
   flex: 1;
 }
 
+.modal-actions .btn-primary {
+  background: #e8540a;
+  min-height: 52px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 16px;
+}
+
 .btn-secondary {
-  background: var(--clr-surface-2);
-  color: var(--clr-text);
-  border: 1px solid var(--clr-border);
-  border-radius: var(--r-md);
+  background: #f3f4f6;
+  color: #6b7280;
+  border: none;
+  border-radius: 12px;
   padding: 13px;
   font-weight: 600;
   font-size: 0.95rem;
