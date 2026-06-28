@@ -42,6 +42,9 @@
     <h1 class="login-title">Welcome back</h1>
     <p class="login-sub">Sign in to manage your vendor account.</p>
 
+    <!-- Info banner (e.g. redirected here from registration) -->
+    <div id="loginInfo" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:0.65rem 0.9rem;border-radius:0.5rem;font-size:0.8rem;line-height:1.5;margin-bottom:1rem;"></div>
+
     <!-- Error message -->
     <div class="login-error" id="loginError"></div>
 
@@ -97,6 +100,12 @@
 </div>
 
 <script>
+// Set when registration finds an existing account (409) and redirects to
+// Sign In instead of failing outright — picked up by handleLogin() so the
+// vendor application that prompted this redirect actually gets submitted
+// once the user proves account ownership via a real login.
+let _pendingVendorApplication = null;
+
 // Redirect if already logged in
 window.addEventListener('DOMContentLoaded', function() {
   if (Auth.isLoggedIn()) window.location.href = "dashboard.php";
@@ -147,6 +156,29 @@ async function handleLogin() {
 
   Auth.setSession(token, userData);
 
+  // A registration attempt redirected here because this account already
+  // existed — now that the real login succeeded, submit the vendor
+  // application that prompted the redirect.
+  if (_pendingVendorApplication) {
+    const pending = _pendingVendorApplication;
+    _pendingVendorApplication = null;
+    try {
+      const vendorRes = await fetch(window.WTG_BASE_URL + "/api/vendors", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body:    JSON.stringify({ business_name: pending.businessName, type: "service" }),
+      });
+      const vendorData = await vendorRes.json().catch(() => ({}));
+      if (!vendorRes.ok && vendorData?.error?.code !== 'VENDOR_ALREADY_EXISTS') {
+        showErr(vendorData?.message || vendorData?.error || "Logged in, but the vendor application could not be linked. Please try registering again.");
+        return;
+      }
+    } catch (_) {
+      showErr("Logged in, but a network error stopped the vendor application from linking. Please try registering again.");
+      return;
+    }
+  }
+
   // Role-based redirect
   const role = userData?.role || "";
   if (role === CONFIG.ROLES.SERVICE) {
@@ -169,11 +201,23 @@ function showRegisterForm() {
   setActiveTab("register");
 }
 
-function showLoginForm() {
+function showLoginForm(prefill) {
   document.getElementById("registerSection").style.display = "none";
   document.getElementById("loginSection").style.display = "block";
   document.getElementById("loginError").classList.remove("show");
   setActiveTab("signin");
+
+  const infoEl = document.getElementById("loginInfo");
+  if (prefill && prefill.email) {
+    document.getElementById("email").value = prefill.email;
+  }
+  if (prefill && prefill.message) {
+    infoEl.textContent = prefill.message;
+    infoEl.style.display = "block";
+    document.getElementById("password")?.focus();
+  } else {
+    infoEl.style.display = "none";
+  }
 }
 
 function setActiveTab(which) {
@@ -219,8 +263,22 @@ async function handleRegister() {
     });
     const authData = await authRes.json().catch(() => ({}));
     if (!authRes.ok) {
-      showRegErr(authData?.message || authData?.error || "Account creation failed. Please try again.");
       btn.disabled = false; btn.textContent = "Register";
+      if (authRes.status === 409) {
+        // Account already exists under this email/phone — sending them
+        // back into the same form to fail again isn't useful. Send them to
+        // Sign In instead, pre-filled, so a real login (not a re-typed
+        // guess at their existing password) is what links the vendor
+        // application to their account. handleLogin() submits the vendor
+        // application below once that real login succeeds.
+        _pendingVendorApplication = { businessName, phone };
+        showLoginForm({
+          email,
+          message: "Aapka account pehle se hai. Login karein — vendor account automatically link ho jaayega.",
+        });
+        return;
+      }
+      showRegErr(authData?.message || authData?.error || "Account creation failed. Please try again.");
       return;
     }
     token = authData?.token || authData?.data?.token;
