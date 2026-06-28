@@ -26,55 +26,90 @@ if ($v->fails()) {
 $data = $v->validated();
 $data['email'] = isset($data['email']) && trim((string)$data['email']) !== '' ? trim((string)$data['email']) : null;
 
+// Resolves what to do with an existing account hit during registration —
+// either terminates the request with a specific, accurate error message
+// (never a generic failure), or returns the user_id/name/phone to reuse.
+// Same pattern as the email-reuse fix in AuthController::registerEmail
+// (0c12617): trust an OTP-only account's identity (no password to check),
+// otherwise require the correct password before reusing someone's account.
+function _registerResolveExisting(PDO $db, array $existingUser, string $role, string $password): array
+{
+    $existingRole = (string)$existingUser['role'];
+
+    if (str_starts_with($existingRole, 'vendor_')) {
+        $vStmt = $db->prepare("SELECT status FROM vendors WHERE user_id = ? LIMIT 1");
+        $vStmt->execute([$existingUser['id']]);
+        $vendorStatus = $vStmt->fetchColumn();
+        Response::validation($vendorStatus
+            ? "You have already applied as a vendor (status: {$vendorStatus}). Please login instead."
+            : 'You have already applied as a vendor. Please login instead.');
+    }
+
+    if ($existingRole === ROLE_ADMIN) {
+        Response::validation('This account already exists. Please login instead.');
+    }
+
+    // existingRole === customer from here on
+    if (!str_starts_with($role, 'vendor_')) {
+        Response::validation('This account is already registered. Please login instead.');
+    }
+
+    if (empty($existingUser['password'])) {
+        // OTP-only account has no password to verify against — trust the
+        // phone/email match and set the password they just chose so they
+        // can also log in with phone/email + password.
+        $hash = password_hash($password, PASSWORD_BCRYPT);
+        $db->prepare("UPDATE users SET password = ? WHERE id = ?")
+           ->execute([$hash, $existingUser['id']]);
+    } elseif (!password_verify($password, (string)$existingUser['password'])) {
+        Response::validation('This account already exists, but the password is incorrect. Please login instead.');
+    }
+
+    if (($existingUser['status'] ?? '') !== 'active') {
+        Response::validation('Account is inactive');
+    }
+
+    $db->prepare("UPDATE users SET role = ? WHERE id = ?")->execute([$role, $existingUser['id']]);
+
+    return [
+        'id'    => (int)$existingUser['id'],
+        'name'  => $existingUser['name'],
+        'phone' => $existingUser['phone'] ?? null,
+    ];
+}
+
 try {
     $role = $data['role'] ?? ROLE_CUSTOMER;
 
-    // Phone already has an account — reuse it (e.g. an existing customer
-    // applying as a vendor) instead of failing outright, same pattern as
-    // the email-reuse fix in AuthController::registerEmail (0c12617).
-    // Only the customer-becoming-vendor direction is allowed here: an
-    // existing vendor/admin account re-registering keeps the original
-    // "already registered" rejection, so vendor-only/admin-only flows are
-    // unaffected.
-    $check = $db->prepare("SELECT id, name, password, role, status FROM users WHERE phone = ? LIMIT 1");
+    // Match an existing account by phone first, then by email — covers
+    // "existing customer applying as vendor" whichever identity they typed
+    // matches, instead of only catching the phone case and dead-ending on
+    // email with no reuse path.
+    $check = $db->prepare("SELECT id, name, phone, password, role, status FROM users WHERE phone = ? LIMIT 1");
     $check->execute([$data['phone']]);
     $existingUser = $check->fetch(PDO::FETCH_ASSOC);
 
-    if ($existingUser) {
-        $canUpgradeToVendor = str_starts_with($role, 'vendor_') && $existingUser['role'] === ROLE_CUSTOMER;
-        if (!$canUpgradeToVendor) {
-            Response::validation('This phone number is already registered');
-        }
-        if (empty($existingUser['password'])) {
-            // OTP-only account has no password to verify against — trust the
-            // phone match and set the password they just chose so they can
-            // also log in with phone+password.
-            $hash = password_hash($data['password'], PASSWORD_BCRYPT);
-            $db->prepare("UPDATE users SET password = ? WHERE id = ?")
-               ->execute([$hash, $existingUser['id']]);
-        } elseif (!password_verify((string)$data['password'], (string)$existingUser['password'])) {
-            Response::validation('This phone number is already registered. Please login instead.');
-        }
-        if (($existingUser['status'] ?? '') !== 'active') {
-            Response::validation('Account is inactive');
-        }
-        $userId = (int) $existingUser['id'];
-        $data['name'] = $existingUser['name'];
-        $db->prepare("UPDATE users SET role = ? WHERE id = ?")->execute([$role, $userId]);
-    } else {
-        // Check email uniqueness (if provided)
-        if ($data['email'] !== null) {
-            $emailCheck = $db->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
-            $emailCheck->execute([$data['email']]);
-            if ($emailCheck->fetchColumn()) {
-                Response::validation('This email address is already registered');
-            }
-        }
+    if (!$existingUser && $data['email'] !== null) {
+        $emailCheck = $db->prepare("SELECT id, name, phone, password, role, status FROM users WHERE email = ? LIMIT 1");
+        $emailCheck->execute([$data['email']]);
+        $existingUser = $emailCheck->fetch(PDO::FETCH_ASSOC);
+    }
 
-        // Hash password
+    if ($existingUser) {
+        $resolved = _registerResolveExisting($db, $existingUser, $role, $data['password']);
+        $userId = $resolved['id'];
+        $data['name'] = $resolved['name'];
+        // Reflect the phone actually on file (the account may have been
+        // matched by email with a different/no phone on record) rather
+        // than whatever was typed into this form, since we never write a
+        // new phone onto a reused account.
+        if ($resolved['phone']) {
+            $data['phone'] = $resolved['phone'];
+        }
+    } else {
+        // Brand new identity on both phone and email — create fresh.
         $hash = password_hash($data['password'], PASSWORD_BCRYPT);
 
-        // Insert user
         $stmt = $db->prepare(
             "INSERT INTO users (uuid, name, phone, email, password, role, status, created_at, updated_at)
              VALUES (UUID(), :name, :phone, :email, :password, :role, 'active', NOW(), NOW())"
@@ -91,7 +126,9 @@ try {
         $userId = (int) $db->lastInsertId();
     }
 
-    // Vendor profile creation
+    // Vendor profile creation — idempotent, so a repeat call (or a
+    // customer-to-vendor upgrade that already has a vendor row) never
+    // errors, it just leaves the existing application alone.
     if (str_starts_with($role, 'vendor_')) {
         $existingVendor = $db->prepare("SELECT id FROM vendors WHERE user_id = ? LIMIT 1");
         $existingVendor->execute([$userId]);

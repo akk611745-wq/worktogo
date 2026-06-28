@@ -32,23 +32,36 @@ class AuthController {
             Response::error('Invalid email format', 400);
         }
 
-        $stmt = $this->db->prepare("SELECT id, name, email, password, google_id, role, status FROM users WHERE email = ?");
+        $stmt = $this->db->prepare("SELECT id, name, email, phone, password, google_id, role, status FROM users WHERE email = ?");
         $stmt->execute([$email]);
         $existingUser = $stmt->fetch(PDO::FETCH_ASSOC);
 
+        if (!$existingUser && $phone !== null) {
+            // No account under this email, but the phone they entered might
+            // already belong to one (e.g. an existing OTP-only customer
+            // applying as a vendor through this form, which never set an
+            // email). Without this check the INSERT below would crash on
+            // users.phone's UNIQUE constraint with an uncaught PDOException
+            // (surfaced to the user as a generic "unexpected system error").
+            $phoneStmt = $this->db->prepare("SELECT id, name, email, phone, password, google_id, role, status FROM users WHERE phone = ?");
+            $phoneStmt->execute([$phone]);
+            $existingUser = $phoneStmt->fetch(PDO::FETCH_ASSOC);
+        }
+
         if ($existingUser) {
-            // Email already has an account — reuse it (e.g. an existing customer applying as
-            // a vendor) instead of failing.
+            // Email or phone already has an account — reuse it (e.g. an existing
+            // customer applying as a vendor) instead of failing.
             if (!empty($existingUser['google_id'])) {
-                // Google-only account has no password to verify against — trust the email
-                // match and set the password they just chose so they can also log in with it.
+                // Google-only account has no password to verify against — trust the
+                // email/phone match and set the password they just chose so they can
+                // also log in with it.
                 $hash = password_hash($password, PASSWORD_BCRYPT);
                 $this->db->prepare("UPDATE users SET password = ? WHERE id = ?")
                     ->execute([$hash, $existingUser['id']]);
             } elseif (!password_verify((string)$password, (string)($existingUser['password'] ?? ''))) {
-                // Email account — require the correct password to avoid letting someone
-                // "register" their way into another person's account.
-                Response::error('Email already registered. Please login instead.', 409);
+                // Require the correct password to avoid letting someone "register"
+                // their way into another person's account.
+                Response::error('An account with this email or phone already exists. Please login instead.', 409);
             }
             if (($existingUser['status'] ?? '') !== 'active') {
                 Response::error('Account is inactive', 403);
@@ -56,6 +69,10 @@ class AuthController {
             $userId = $existingUser['id'];
             $name = $existingUser['name'];
             $role = $existingUser['role'];
+            // Reflect what's actually on file rather than whatever was typed,
+            // since reuse never overwrites email/phone on an existing account.
+            $email = $existingUser['email'] ?? $email;
+            $phone = $existingUser['phone'] ?? $phone;
         } else {
             $hash = password_hash($password, PASSWORD_BCRYPT);
 

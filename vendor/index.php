@@ -46,8 +46,8 @@
     <div class="login-error" id="loginError"></div>
 
     <div class="form-group">
-      <label class="form-label" for="email">Email address</label>
-      <input class="form-input" type="email" id="email" placeholder="you@example.com" autocomplete="email" required/>
+      <label class="form-label" for="email">Email or Phone Number</label>
+      <input class="form-input" type="text" id="email" placeholder="you@example.com or 9876543210" autocomplete="username" required/>
     </div>
 
     <div class="form-group">

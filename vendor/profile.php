@@ -149,8 +149,22 @@ function renderPage(user) {
       </div>
       <div class="card-body">
         <p class="text-sm text-muted" style="margin-bottom:0.75rem;">
-          To change your password or email, please contact the system administrator.
+          To change your email, please contact the system administrator.
         </p>
+        <div id="passwordChangeMsg" style="display:none;font-size:0.8rem;padding:0.5rem 0.75rem;border-radius:6px;margin-bottom:0.75rem;"></div>
+        <div class="form-grid" style="margin-bottom:1rem;">
+          <div class="field">
+            <label for="curPassword">Current password</label>
+            <input type="password" id="curPassword" autocomplete="current-password"/>
+          </div>
+          <div class="field">
+            <label for="newPassword">New password (min 8 characters)</label>
+            <input type="password" id="newPassword" autocomplete="new-password"/>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="changePasswordBtn" onclick="changePassword()" style="margin-bottom:1rem;">
+          Change Password
+        </button>
         <button class="btn btn-danger btn-sm" onclick="confirmLogout()">
           <svg viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px;"><path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z"/></svg>
           Log Out from All Sessions
@@ -158,6 +172,51 @@ function renderPage(user) {
       </div>
     </div>
   `;
+}
+
+async function changePassword() {
+  const curPassword = document.getElementById("curPassword")?.value || "";
+  const newPassword = document.getElementById("newPassword")?.value || "";
+  const msgEl = document.getElementById("passwordChangeMsg");
+  const btn = document.getElementById("changePasswordBtn");
+
+  const showMsg = (text, ok) => {
+    msgEl.textContent = text;
+    msgEl.style.display = "block";
+    msgEl.style.background = ok ? "#dcfce7" : "#fee2e2";
+    msgEl.style.color = ok ? "#166534" : "#991b1b";
+    msgEl.style.border = "1px solid " + (ok ? "#bbf7d0" : "#fecaca");
+  };
+
+  if (!curPassword || !newPassword) {
+    showMsg("Please enter both current and new password.", false);
+    return;
+  }
+  if (newPassword.length < 8) {
+    showMsg("New password must be at least 8 characters.", false);
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Changing…";
+
+  const res = await API.Profile.update({
+    name: profileData?.name || profileData?.business_name || "",
+    current_password: curPassword,
+    new_password: newPassword,
+  });
+
+  btn.disabled = false;
+  btn.textContent = "Change Password";
+
+  if (!res.ok) {
+    showMsg(res.data?.message || res.error || "Could not change password.", false);
+    return;
+  }
+
+  document.getElementById("curPassword").value = "";
+  document.getElementById("newPassword").value = "";
+  showMsg("Password changed successfully.", true);
 }
 
 /* ── Data loaders ─────────────────────────────────────────── */

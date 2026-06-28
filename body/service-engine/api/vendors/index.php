@@ -357,6 +357,30 @@ if ($method === 'PATCH' && $uri === '/api/vendor/profile') {
 
     if ($name === '') Response::validation('Name is required');
 
+    // Optional password change — only acted on if both fields are sent.
+    if (array_key_exists('current_password', $input) || array_key_exists('new_password', $input)) {
+        $currentPassword = (string)($input['current_password'] ?? '');
+        $newPassword     = (string)($input['new_password'] ?? '');
+
+        if ($currentPassword === '' || $newPassword === '') {
+            Response::validation('Current password and new password are both required to change your password');
+        }
+        if (strlen($newPassword) < 8) {
+            Response::validation('New password must be at least 8 characters');
+        }
+
+        $pwStmt = $db->prepare("SELECT password FROM users WHERE id = ? LIMIT 1");
+        $pwStmt->execute([$userId]);
+        $storedHash = (string)($pwStmt->fetchColumn() ?: '');
+
+        if ($storedHash === '' || !password_verify($currentPassword, $storedHash)) {
+            Response::validation('Current password is incorrect');
+        }
+
+        $db->prepare("UPDATE users SET password = ? WHERE id = ?")
+           ->execute([password_hash($newPassword, PASSWORD_BCRYPT), $userId]);
+    }
+
     $db->prepare("UPDATE users SET name = ?, phone = ?, updated_at = NOW() WHERE id = ?")
        ->execute([$name, $phone ?: null, $userId]);
 
