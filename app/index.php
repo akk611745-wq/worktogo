@@ -55,6 +55,7 @@ function wtg_build_version(): string {
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <meta name="format-detection" content="telephone=no"/>
   <title>WorkToGo</title>
+  <style>html,body{background:#0C0D12;margin:0;}</style>
 
   <!-- Branding / PWA -->
   <link rel="icon" href="/app/assets/favicon.png"/>
@@ -80,9 +81,32 @@ function wtg_build_version(): string {
 <body>
 
   <!-- App Root -->
+  <!-- Inline shimmer skeleton (not main.css's .skel, which isn't loaded yet
+       at this point) so the very first paint is a grey shimmer instead of a
+       blank/black screen while CSS+JS are still downloading. ROUTER.init()
+       replaces this content once the app boots. -->
+  <style>
+    #app-boot-skeleton { padding: 16px; }
+    .boot-skel-bar { background: linear-gradient(90deg, #1c1d26 0%, #262833 50%, #1c1d26 100%);
+      background-size: 800px 100%; animation: boot-shimmer 1.4s infinite; border-radius: 8px; }
+    @keyframes boot-shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+    .boot-skel-search { height: 44px; margin-bottom: 16px; }
+    .boot-skel-row { display: flex; gap: 12px; margin-bottom: 16px; }
+    .boot-skel-chip { width: 64px; height: 64px; border-radius: 16px; flex-shrink: 0; }
+    .boot-skel-card { height: 96px; margin-bottom: 12px; }
+  </style>
   <div id="app">
-    <div class="page-loading">
-      <div class="spinner"></div>
+    <div id="app-boot-skeleton" style="background:#0C0D12;min-height:100dvh;">
+      <div class="boot-skel-bar boot-skel-search"></div>
+      <div class="boot-skel-row">
+        <div class="boot-skel-bar boot-skel-chip"></div>
+        <div class="boot-skel-bar boot-skel-chip"></div>
+        <div class="boot-skel-bar boot-skel-chip"></div>
+        <div class="boot-skel-bar boot-skel-chip"></div>
+      </div>
+      <div class="boot-skel-bar boot-skel-card"></div>
+      <div class="boot-skel-bar boot-skel-card"></div>
+      <div class="boot-skel-bar boot-skel-card"></div>
     </div>
   </div>
 

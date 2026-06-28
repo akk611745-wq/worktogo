@@ -1026,7 +1026,7 @@ window.HomeModals = (() => {
           </div>`}
           <div class="modal-field">
             <label for="booking-address">Full address</label>
-            <textarea id="booking-address" class="modal-textarea" placeholder="House / street / landmark" rows="2" autocomplete="street-address" oninput="HomePage.persistPendingBookingForm?.()">${_esc(restored.address || profile.address || "")}</textarea>
+            <textarea id="booking-address" class="modal-textarea" placeholder="Address" rows="2" autocomplete="street-address" oninput="HomePage.persistPendingBookingForm?.()">${_esc(restored.address || profile.address || "")}</textarea>
           </div>
         </section>
         <section class="inspection-step">
@@ -1069,7 +1069,7 @@ window.HomeModals = (() => {
       <div class="vendor-direct-form">
         <div class="modal-field">
           <label for="booking-mobile">Mobile</label>
-          <input type="tel" id="booking-mobile" class="modal-input" placeholder="10-digit mobile number" autocomplete="tel" value="${_esc(phoneValue)}" oninput="HomePage.persistPendingBookingForm?.()" />
+          <input type="tel" id="booking-mobile" class="modal-input" placeholder="Mobile" autocomplete="off" value="${_esc(phoneValue)}" oninput="HomePage.persistPendingBookingForm?.()" />
         </div>
         <div class="modal-field">
           <label>Select issue</label>
@@ -1079,7 +1079,7 @@ window.HomeModals = (() => {
         </div>
         <div class="modal-field">
           <label for="booking-address">Address</label>
-          <textarea id="booking-address" class="modal-textarea" rows="2" placeholder="House / street / landmark" oninput="HomePage.persistPendingBookingForm?.()">${_esc(addressValue)}</textarea>
+          <textarea id="booking-address" class="modal-textarea" rows="2" placeholder="Address" oninput="HomePage.persistPendingBookingForm?.()">${_esc(addressValue)}</textarea>
         </div>
         <div class="modal-field">
           <label for="booking-notes">Problem description <small>(optional)</small></label>
@@ -1439,15 +1439,18 @@ window.WtgSheet = (function () {
       ${chipsHTML ? `<div class="wtg-sheet-label">Select issue</div><div class="wtg-sheet-issue-chips">${chipsHTML}</div>` : ''}
       <div class="wtg-sheet-label">Aapka naam</div>
       <input id="wtg-sh-name" class="wtg-sheet-input" type="text"
-        placeholder="Apna naam likhein"
+        placeholder="Name"
         value="${UI.escapeHtml(savedName)}">
       <div class="wtg-sheet-label">Mobile number</div>
-      <input id="wtg-sh-phone" class="wtg-sheet-input" type="tel"
-        placeholder="10-digit mobile number" autocomplete="tel"
-        value="${UI.escapeHtml(savedPhone)}">
+      <div class="wtg-sheet-phone-group">
+        <span class="wtg-sheet-phone-prefix">+91</span>
+        <input id="wtg-sh-phone" class="wtg-sheet-input wtg-sheet-phone-input" type="tel"
+          placeholder="Mobile" autocomplete="off" inputmode="numeric" maxlength="10"
+          value="${UI.escapeHtml(savedPhone)}">
+      </div>
       <div class="wtg-sheet-label">Address</div>
       <textarea id="wtg-sh-addr" class="wtg-sheet-input" rows="2"
-        placeholder="House / street / landmark"
+        placeholder="Address"
         style="resize:vertical">${UI.escapeHtml(savedAddress)}</textarea>
       <div class="wtg-sheet-label">Describe your problem
         <span style="font-weight:400;color:#aaa">(optional)</span></div>
@@ -2047,6 +2050,23 @@ function _servicePrice(service) {
   return service?.price ?? service?.base_price ?? service?.amount ?? service?.starting_price ?? 0;
 }
 
+// Fixed display order for the homepage category grid — highest-demand
+// services first, regardless of what order the backend/fallback list
+// returns them in. Anything not listed here keeps its original order,
+// appended after these.
+const CATEGORY_ORDER = ["waterproofing", "plumber", "painting", "electrician", "ac-repair", "cctv"];
+
+function _sortCategories(list) {
+  return [...list].sort((a, b) => {
+    const ia = CATEGORY_ORDER.indexOf(a.slug);
+    const ib = CATEGORY_ORDER.indexOf(b.slug);
+    if (ia === -1 && ib === -1) return 0;
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+}
+
 function _categoryChips() {
   const dynamic = _serviceCategories.length ? _serviceCategories : [];
   // FALLBACK — use only if backend returns nothing.
@@ -2063,7 +2083,8 @@ function _categoryChips() {
     { slug: "tutor", icon: "📚", label: "Tutor" },
     { slug: "inspection", icon: "🛡️", label: "Inspection" },
   ];
-  return dynamic.length ? _mergeCategories(dynamic, []) : _mergeCategories([], fallback);
+  const merged = dynamic.length ? _mergeCategories(dynamic, []) : _mergeCategories([], fallback);
+  return _sortCategories(merged);
 }
 
 function _mergeCategories(dynamic, base) {
@@ -2324,6 +2345,11 @@ function _vendorCardHTML(s) {
       .wtg-sheet-input { width:100%; padding:12px 14px;
         border:1.5px solid #e0e0e0; border-radius:10px;
         font-size:14px; box-sizing:border-box; margin-top:0; }
+      .wtg-sheet-phone-group { display:flex; align-items:center;
+        border:1.5px solid #e0e0e0; border-radius:10px; overflow:hidden; }
+      .wtg-sheet-phone-prefix { padding:12px 0 12px 14px;
+        font-size:14px; color:#555; font-weight:600; }
+      .wtg-sheet-phone-input { border:none; border-radius:0; }
       .wtg-sheet-submit { width:100%; margin-top:20px;
         padding:16px; background:#FF6B35; color:#fff;
         border:none; border-radius:12px; font-size:16px;
