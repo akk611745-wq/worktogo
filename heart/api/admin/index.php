@@ -1031,6 +1031,50 @@ try {
         Response::success(null, 200, 'User updated');
     }
 
+    // ── POST /api/admin/users/{id}/role ────────────────────────
+    // Promotes a user to vendor_service/vendor_shopping and creates a
+    // pending vendors row if one doesn't already exist — unlike the
+    // generic PATCH above, which only flips users.role and leaves the
+    // account with no vendor profile to actually use the vendor panel.
+    if ($method === 'POST' && preg_match('#^/api/admin/users/(\d+)/role$#', $uri, $m)) {
+        $userId = (int) $m[1];
+        $input  = json_decode(file_get_contents('php://input'), true) ?? [];
+
+        $v = Validator::make($input, [
+            'role' => 'required|in:customer,vendor_service,vendor_shopping,admin',
+        ]);
+        if ($v->fails()) {
+            Response::validation($v->firstError(), $v->errors());
+        }
+        $role = $v->validated()['role'];
+
+        $userRow = $db->prepare("SELECT id, name FROM users WHERE id = ? LIMIT 1");
+        $userRow->execute([$userId]);
+        $user = $userRow->fetch(PDO::FETCH_ASSOC);
+        if (!$user) Response::notFound('User');
+
+        $db->prepare("UPDATE users SET role = ?, updated_at = NOW() WHERE id = ?")
+           ->execute([$role, $userId]);
+
+        if (str_starts_with($role, 'vendor_')) {
+            $existingVendor = $db->prepare("SELECT id FROM vendors WHERE user_id = ? LIMIT 1");
+            $existingVendor->execute([$userId]);
+            if (!$existingVendor->fetchColumn()) {
+                $type = ($role === ROLE_VENDOR_SERVICE) ? 'service' : 'shopping';
+                $businessName = $user['name'] ?: ('Vendor #' . $userId);
+                $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $businessName), '-')) . '-' . $userId;
+                $typeColumn = ServiceVendorEligibility::vendorTypeColumn($db);
+
+                $db->prepare("INSERT INTO vendors (user_id, business_name, slug, {$typeColumn}, status) VALUES (?, ?, ?, ?, 'pending')")
+                   ->execute([$userId, $businessName, $slug, $type]);
+            }
+        }
+
+        Logger::info('Admin changed user role', ['admin_id' => $auth['user_id'], 'target_user' => $userId, 'role' => $role]);
+
+        Response::success(['user_id' => $userId, 'role' => $role], 200, 'Role updated');
+    }
+
     // ── POST /api/admin/vendors/{id}/approve ───────────────────
     if ($method === 'POST' && preg_match('#^/api/admin/vendors/(\d+)/approve$#', $uri, $m)) {
         $vendorId = (int) $m[1];

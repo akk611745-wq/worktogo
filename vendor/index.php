@@ -62,8 +62,66 @@
       Sign In
     </button>
 
-    <p style="margin-top:1.5rem;font-size:0.75rem;color:#374151;text-align:center;">
+    <p style="margin-top:0.85rem;font-size:0.8rem;text-align:center;">
+      <a href="#" onclick="showOtpLogin();return false;" style="color:#4f46e5;font-weight:600;text-decoration:none;">Login with OTP</a>
+      &nbsp;·&nbsp;
+      <a href="#" onclick="showForgotPassword();return false;" style="color:#4f46e5;font-weight:600;text-decoration:none;">Forgot Password?</a>
+    </p>
+
+    <p style="margin-top:1rem;font-size:0.75rem;color:#374151;text-align:center;">
       Having trouble? Contact your administrator.
+    </p>
+  </div>
+
+  <!-- OTP Login -->
+  <div id="otpLoginSection" style="display:none;">
+    <h1 class="login-title">Login with OTP</h1>
+    <p class="login-sub">We'll text a 6-digit code to your phone.</p>
+    <div class="login-error" id="otpLoginError"></div>
+
+    <div class="form-group">
+      <label class="form-label" for="otpPhone">Phone Number</label>
+      <input class="form-input" type="tel" id="otpPhone" placeholder="9876543210" autocomplete="tel"/>
+    </div>
+    <div class="form-group" id="otpCodeGroup" style="display:none;">
+      <label class="form-label" for="otpCode">6-digit OTP</label>
+      <input class="form-input" type="text" id="otpCode" placeholder="••••••" maxlength="6" autocomplete="one-time-code"/>
+    </div>
+
+    <button class="btn-login" id="otpSendBtn" onclick="sendOtpLogin()">Send OTP</button>
+    <button class="btn-login" id="otpVerifyBtn" onclick="verifyOtpLogin()" style="display:none;margin-top:0.6rem;">Verify &amp; Login</button>
+
+    <p style="margin-top:1rem;font-size:0.8rem;text-align:center;">
+      <a href="#" onclick="showLoginForm();return false;" style="color:#4f46e5;font-weight:600;text-decoration:none;">Back to Sign In</a>
+    </p>
+  </div>
+
+  <!-- Forgot Password -->
+  <div id="forgotPasswordSection" style="display:none;">
+    <h1 class="login-title">Reset Password</h1>
+    <p class="login-sub">Verify your phone, then set a new password.</p>
+    <div class="login-error" id="forgotError"></div>
+
+    <div class="form-group">
+      <label class="form-label" for="fpPhone">Phone Number</label>
+      <input class="form-input" type="tel" id="fpPhone" placeholder="9876543210" autocomplete="tel"/>
+    </div>
+    <div id="fpStep2" style="display:none;">
+      <div class="form-group">
+        <label class="form-label" for="fpCode">6-digit OTP</label>
+        <input class="form-input" type="text" id="fpCode" placeholder="••••••" maxlength="6" autocomplete="one-time-code"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="fpNewPassword">New Password</label>
+        <input class="form-input" type="password" id="fpNewPassword" placeholder="Min 8 characters" autocomplete="new-password"/>
+      </div>
+    </div>
+
+    <button class="btn-login" id="fpSendBtn" onclick="sendForgotPasswordOtp()">Send OTP</button>
+    <button class="btn-login" id="fpResetBtn" onclick="resetPasswordWithOtp()" style="display:none;margin-top:0.6rem;">Reset Password</button>
+
+    <p style="margin-top:1rem;font-size:0.8rem;text-align:center;">
+      <a href="#" onclick="showLoginForm();return false;" style="color:#4f46e5;font-weight:600;text-decoration:none;">Back to Sign In</a>
     </p>
   </div>
 
@@ -194,15 +252,22 @@ function showErr(msg) {
   el.classList.add("show");
 }
 
-function showRegisterForm() {
+function _hideAllAuthSections() {
   document.getElementById("loginSection").style.display = "none";
+  document.getElementById("registerSection").style.display = "none";
+  document.getElementById("otpLoginSection").style.display = "none";
+  document.getElementById("forgotPasswordSection").style.display = "none";
+}
+
+function showRegisterForm() {
+  _hideAllAuthSections();
   document.getElementById("registerSection").style.display = "block";
   document.getElementById("registerError").classList.remove("show");
   setActiveTab("register");
 }
 
 function showLoginForm(prefill) {
-  document.getElementById("registerSection").style.display = "none";
+  _hideAllAuthSections();
   document.getElementById("loginSection").style.display = "block";
   document.getElementById("loginError").classList.remove("show");
   setActiveTab("signin");
@@ -217,6 +282,179 @@ function showLoginForm(prefill) {
     document.getElementById("password")?.focus();
   } else {
     infoEl.style.display = "none";
+  }
+}
+
+function showOtpLogin() {
+  _hideAllAuthSections();
+  document.getElementById("otpLoginSection").style.display = "block";
+  setActiveTab("signin");
+}
+
+function showForgotPassword() {
+  _hideAllAuthSections();
+  document.getElementById("forgotPasswordSection").style.display = "block";
+  setActiveTab("signin");
+}
+
+function _showOtpErr(elId, msg) {
+  const el = document.getElementById(elId);
+  el.textContent = msg;
+  el.classList.add("show");
+}
+
+async function sendOtpLogin() {
+  const phone = (document.getElementById("otpPhone")?.value || "").trim();
+  const btn = document.getElementById("otpSendBtn");
+  const errEl = document.getElementById("otpLoginError");
+  errEl.classList.remove("show");
+
+  if (!/^[6-9]\d{9}$/.test(phone.replace(/\D/g, "").slice(-10))) {
+    _showOtpErr("otpLoginError", "Please enter a valid 10-digit mobile number.");
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = "Sending…";
+  try {
+    const res = await fetch(window.WTG_BASE_URL + "/api/auth/otp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      _showOtpErr("otpLoginError", data?.message || data?.error || "Could not send OTP. Please try again.");
+      btn.disabled = false; btn.textContent = "Send OTP";
+      return;
+    }
+    document.getElementById("otpCodeGroup").style.display = "block";
+    document.getElementById("otpVerifyBtn").style.display = "block";
+    btn.textContent = "Resend OTP";
+    btn.disabled = false;
+  } catch (_) {
+    _showOtpErr("otpLoginError", "Network error. Please try again.");
+    btn.disabled = false; btn.textContent = "Send OTP";
+  }
+}
+
+async function verifyOtpLogin() {
+  const phone = (document.getElementById("otpPhone")?.value || "").trim();
+  const otp = (document.getElementById("otpCode")?.value || "").trim();
+  const btn = document.getElementById("otpVerifyBtn");
+  const errEl = document.getElementById("otpLoginError");
+  errEl.classList.remove("show");
+
+  if (otp.length !== 6) {
+    _showOtpErr("otpLoginError", "Please enter the 6-digit OTP.");
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = "Verifying…";
+  try {
+    const res = await fetch(window.WTG_BASE_URL + "/api/auth/otp/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, otp }),
+    });
+    const data = await res.json().catch(() => ({}));
+    btn.disabled = false; btn.textContent = "Verify & Login";
+    if (!res.ok) {
+      _showOtpErr("otpLoginError", data?.message || data?.error || "Incorrect or expired OTP.");
+      return;
+    }
+    const payload = data?.data || data;
+    const token = payload?.token;
+    const userData = payload?.user || payload;
+    if (!token) {
+      _showOtpErr("otpLoginError", "Login response missing token. Please contact support.");
+      return;
+    }
+    const role = userData?.role || "";
+    if (role !== "vendor_service" && role !== "vendor_shopping") {
+      // OTP login always succeeds for any phone with an account (customer,
+      // vendor, or none yet) — but the vendor panel itself is only usable
+      // by a vendor account, so a non-vendor (e.g. an existing Google/OTP
+      // customer who hasn't applied yet) is told what to do next instead
+      // of being dropped onto a dashboard their role can't access.
+      _showOtpErr("otpLoginError", "This phone is registered, but not as a vendor yet. Use the Register tab to apply, or ask an admin to make you a vendor.");
+      return;
+    }
+    Auth.setSession(token, userData);
+    window.location.href = role === CONFIG.ROLES.SERVICE ? "bookings.php" : "dashboard.php";
+  } catch (_) {
+    btn.disabled = false; btn.textContent = "Verify & Login";
+    _showOtpErr("otpLoginError", "Network error. Please try again.");
+  }
+}
+
+async function sendForgotPasswordOtp() {
+  const phone = (document.getElementById("fpPhone")?.value || "").trim();
+  const btn = document.getElementById("fpSendBtn");
+  const errEl = document.getElementById("forgotError");
+  errEl.classList.remove("show");
+
+  if (!/^[6-9]\d{9}$/.test(phone.replace(/\D/g, "").slice(-10))) {
+    _showOtpErr("forgotError", "Please enter a valid 10-digit mobile number.");
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = "Sending…";
+  try {
+    const res = await fetch(window.WTG_BASE_URL + "/api/auth/otp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      _showOtpErr("forgotError", data?.message || data?.error || "Could not send OTP. Please try again.");
+      btn.disabled = false; btn.textContent = "Send OTP";
+      return;
+    }
+    document.getElementById("fpStep2").style.display = "block";
+    document.getElementById("fpResetBtn").style.display = "block";
+    btn.textContent = "Resend OTP";
+    btn.disabled = false;
+  } catch (_) {
+    _showOtpErr("forgotError", "Network error. Please try again.");
+    btn.disabled = false; btn.textContent = "Send OTP";
+  }
+}
+
+async function resetPasswordWithOtp() {
+  const phone = (document.getElementById("fpPhone")?.value || "").trim();
+  const otp = (document.getElementById("fpCode")?.value || "").trim();
+  const newPassword = document.getElementById("fpNewPassword")?.value || "";
+  const btn = document.getElementById("fpResetBtn");
+  const errEl = document.getElementById("forgotError");
+  errEl.classList.remove("show");
+
+  if (otp.length !== 6) {
+    _showOtpErr("forgotError", "Please enter the 6-digit OTP.");
+    return;
+  }
+  if (newPassword.length < 8) {
+    _showOtpErr("forgotError", "New password must be at least 8 characters.");
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = "Resetting…";
+  try {
+    const res = await fetch(window.WTG_BASE_URL + "/api/auth/otp/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, otp, new_password: newPassword }),
+    });
+    const data = await res.json().catch(() => ({}));
+    btn.disabled = false; btn.textContent = "Reset Password";
+    if (!res.ok) {
+      _showOtpErr("forgotError", data?.message || data?.error || "Incorrect or expired OTP.");
+      return;
+    }
+    showLoginForm({ message: "Password reset. Please sign in with your new password." });
+  } catch (_) {
+    btn.disabled = false; btn.textContent = "Reset Password";
+    _showOtpErr("forgotError", "Network error. Please try again.");
   }
 }
 

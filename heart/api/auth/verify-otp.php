@@ -7,9 +7,10 @@
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
 
 $v = Validator::make($input, [
-    'phone' => 'required|phone',
-    'otp'   => 'required|string|min:6|max:6',
-    'name'  => 'nullable|string|min:2|max:100',
+    'phone'        => 'required|phone',
+    'otp'          => 'required|string|min:6|max:6',
+    'name'         => 'nullable|string|min:2|max:100',
+    'new_password' => 'nullable|string|min:8|max:128',
 ]);
 
 if ($v->fails()) {
@@ -90,6 +91,15 @@ try {
         // Mark phone as verified
         $db->prepare("UPDATE users SET phone_verified_at = NOW(), last_login_at = NOW() WHERE id = ?")
            ->execute([$userId]);
+    }
+
+    // Optional "forgot password" support — a correct OTP already proves
+    // phone ownership, which is exactly what a password reset requires.
+    // No current password is needed or checked.
+    if (!empty($data['new_password'])) {
+        $db->prepare("UPDATE users SET password = ? WHERE id = ?")
+           ->execute([password_hash($data['new_password'], PASSWORD_BCRYPT), $userId]);
+        Logger::info('Password reset via OTP', ['user_id' => $userId]);
     }
 
     // Issue JWT with 30-day expiry (matching AuthController)

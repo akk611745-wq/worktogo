@@ -174,18 +174,32 @@ async function viewUser(id) {
     const phoneHtml = ph
       ? `${escHtml(u.phone||u.mobile)} <a href="https://wa.me/91${ph}" target="_blank" style="font-size:10px;padding:2px 8px;border-radius:4px;text-decoration:none;background:rgba(37,211,102,0.15);color:#25d366;border:1px solid rgba(37,211,102,0.3);margin-left:6px">WhatsApp</a><a href="tel:+91${ph}" style="font-size:10px;padding:2px 8px;border-radius:4px;text-decoration:none;background:rgba(99,102,241,0.15);color:var(--accent);border:1px solid rgba(99,102,241,0.3);margin-left:4px">Call</a>`
       : '—';
+    const role = u.role || 'customer';
+    const canMakeVendor = role !== 'vendor_service' && role !== 'vendor_shopping' && role !== 'admin';
     document.getElementById('user-modal-body').innerHTML = `
       <div style="display:grid;gap:12px">
         ${field('Full Name', escHtml(u.name || ((u.firstName||'') + ' ' + (u.lastName||'')).trim() || '—'))}
         ${field('Email', escHtml(u.email))}
         ${field('Phone', phoneHtml)}
+        ${field('Role', escHtml(role))}
         ${field('Status', statusBadge(u.status || (u.is_blocked?'blocked':'active')))}
         ${field('Total Orders', escHtml(u.order_count ?? u.total_orders ?? '—'))}
         ${field('Joined', Fmt.date(u.created_at))}
         ${field('Last Active', Fmt.date(u.last_login_at || u.updated_at))}
         ${u.address ? field('Address', escHtml(u.address)) : ''}
+        ${canMakeVendor ? `<button class="btn btn-primary btn-sm" onclick="makeVendor('${escHtml(u.id || u.uuid)}')">Make Vendor</button>` : ''}
       </div>`;
   } catch(e) { document.getElementById('user-modal-body').innerHTML = '<p style="color:var(--red)">Failed to load user details.</p>'; }
+}
+
+async function makeVendor(id) {
+  if (!confirm('Make this user a vendor (service)? A pending vendor application will be created if one does not already exist.')) return;
+  try {
+    await API.post(`/users/${id}/role`, { role: 'vendor_service' });
+    Toast.success('User is now a vendor. Application set to pending review.');
+    viewUser(id);
+    loadUsers(currentPage);
+  } catch(e) { Toast.error(e.message || 'Could not change role'); }
 }
 
 function field(label, val) {
