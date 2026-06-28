@@ -83,9 +83,23 @@ body {
   margin: 0 auto;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overscroll-behavior-y: contain;
   touch-action: manipulation;
+  font-size: 15px;
+  line-height: 1.5;
 }
+
+h1, h2, h3, h4, h5, h6 { font-weight: 700; }
+
+button:active { transform: scale(0.97); }
+
+/* ── Card / list entrance ──────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.vendor-card, .list-item { animation: fadeInUp 0.2s var(--ease) both; }
 
 body.modal-open { overflow: hidden; overscroll-behavior: none; }
 
@@ -1211,7 +1225,8 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
 
 .service-hero h1 {
   color: var(--market-text);
-  font-size: clamp(1.22rem, 5.7vw, 1.78rem);
+  font-size: clamp(1.4rem, 7vw, 1.95rem);
+  font-weight: 800;
   line-height: 1.08;
   margin-bottom: 7px;
   letter-spacing: -0.035em;
@@ -1300,15 +1315,28 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
 }
 
 .hero-secondary {
-  min-height: 44px;
-  padding: 0 13px;
-  border-radius: 16px;
-  border: 1px solid rgba(22,163,74,0.24);
-  background: rgba(255,255,255,0.82);
-  color: var(--market-green);
-  font-size: 0.78rem;
-  font-weight: 900;
+  min-height: 48px;
+  width: 100%;
+  padding: 0 16px;
+  border-radius: var(--r-full);
+  border: none;
+  background: linear-gradient(135deg, var(--market-orange), #ff8a00);
+  box-shadow: 0 14px 28px rgba(255,107,0,0.28);
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.2px;
   white-space: nowrap;
+  transition: transform var(--dur);
+}
+.hero-secondary:active { transform: scale(0.97); }
+
+/* Inspection is payment-gated and currently inactive — visually de-emphasize
+   so "Free booking" reads as the primary path without removing the info. */
+.distinction-toggle[data-key="inspection"] {
+  opacity: 0.6;
+  border-style: dashed;
+  background: transparent;
 }
 
 .service-hero-market {
@@ -1486,6 +1514,15 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
 .section-note { color: var(--clr-text-2); font-size: 0.72rem; }
 .section-eyebrow { color: var(--market-green); font-size: 0.68rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 3px; }
 
+.category-chips-wrap { position: relative; }
+.category-chips-wrap::after {
+  content: "";
+  position: absolute;
+  top: 0; right: 0; bottom: 8px;
+  width: 32px;
+  background: linear-gradient(90deg, transparent, var(--market-bg, #fffaf3));
+  pointer-events: none;
+}
 .category-chips {
   display: flex;
   gap: 10px;
@@ -1503,7 +1540,7 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
   justify-content: center;
   gap: 6px;
   min-width: auto;
-  min-height: 42px;
+  min-height: 44px;
   padding: 9px 13px;
   border-radius: var(--r-full);
 

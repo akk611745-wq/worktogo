@@ -309,7 +309,7 @@ function _applyStatusOverrides(list) {
   return list;
 }
 
-const BOOKING_STATUS_COLOR = { pending:'#f59e0b', confirmed:'#3b82f6', in_progress:'#f97316', completed:'#10b981', cancelled:'#6b7280' };
+const BOOKING_STATUS_COLOR = { pending:'#f59e0b', confirmed:'#3b82f6', in_progress:'#8b5cf6', completed:'#10b981', cancelled:'#6b7280' };
 const BOOKING_STATUS_LABEL = { pending:'Pending', confirmed:'Confirmed', in_progress:'In Progress', completed:'Completed', cancelled:'Cancelled', requeued:'Requeued' };
 
 function _chip(status) {
@@ -336,16 +336,19 @@ function renderBookingRows(list) {
     const detailId = 'detail-' + id;
     const arrowId = 'arrow-' + id;
     const detail =
-      '<div class="text-sm"><strong>Customer:</strong> ' + escHtml(b.customer_name || b.user?.name || '—') + ' · ' + escHtml(b.customer_phone || b.user?.phone || '—') + '</div>' +
+      '<div class="text-sm" style="font-size:0.95rem;"><strong style="font-weight:700;">' + escHtml(b.customer_name || b.user?.name || '—') + '</strong> · ' + escHtml(b.customer_phone || b.user?.phone || '—') + '</div>' +
       (b.customer_locality ? '<div style="font-size:13px;color:#666;margin-top:2px;">📍 ' + escHtml(b.customer_locality) + '</div>' : '') +
-      ((b.customer_phone || b.customer_mobile) ? '<div style="display:flex;gap:8px;margin-top:8px;"><a href="' + _waLink(b) + '" target="_blank" rel="noopener noreferrer" style="flex:1;padding:8px;background:#25D366;color:#fff;border-radius:8px;text-align:center;text-decoration:none;font-size:13px;font-weight:600;">WhatsApp</a><a href="tel:+' + _e164(b.customer_phone || b.customer_mobile || '') + '" style="flex:1;padding:8px;background:#FF6B35;color:#fff;border-radius:8px;text-align:center;text-decoration:none;font-size:13px;font-weight:600;">Call</a></div>' : '') +
+      ((b.customer_phone || b.customer_mobile) ? '<div class="job-actions-split" style="margin-top:8px;"><a href="' + _waLink(b) + '" target="_blank" rel="noopener noreferrer" class="btn" style="background:#25D366;color:#fff;text-decoration:none;font-weight:600;">WhatsApp</a><a href="tel:+' + _e164(b.customer_phone || b.customer_mobile || '') + '" class="btn btn-call-outline" style="text-decoration:none;font-weight:600;">Call</a></div>' : '') +
       (cleanNotes(b.notes) ? '<div class="text-sm" style="background:var(--surface-2);padding:0.5rem;border-radius:6px;white-space:pre-wrap;">' + escHtml(cleanNotes(b.notes)).slice(0,220) + '</div>' : '') +
-      '<div class="td-actions" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.3rem;"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();viewBooking(\'' + id + '\')">View</button>' +
-      (status === 'pending' ? '<button class="btn btn-accept btn-sm" onclick="event.stopPropagation();quickAccept(\'' + id + '\',\'' + jobId + '\',this)">Accept</button><button class="btn btn-reject btn-sm" onclick="event.stopPropagation();quickReject(\'' + id + '\',\'' + jobId + '\',this)">Reject</button>' : (status === 'requeued' ? '<span class="text-muted text-sm">Returned to WorkToGo queue</span>' : '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStatusModal(\'' + id + '\',\'' + jobId + '\')">Update</button>')) +
+      '<div class="td-actions" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.3rem;">' +
+      (status === 'pending'
+        ? '<div class="job-actions-split" style="flex:1;"><button class="btn btn-accept" onclick="event.stopPropagation();quickAccept(\'' + id + '\',\'' + jobId + '\',this)">Accept</button><button class="btn btn-reject" onclick="event.stopPropagation();quickReject(\'' + id + '\',\'' + jobId + '\',this)">Reject</button></div>'
+        : (status === 'requeued' ? '<span class="text-muted text-sm">Returned to WorkToGo queue</span>' : '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStatusModal(\'' + id + '\',\'' + jobId + '\')">Update</button>')) +
+      '<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();viewBooking(\'' + id + '\')">View</button>' +
       '</div>';
-    return '<div class="card" id="card-' + id + '" style="border:1px solid var(--border);"><div class="card-body" style="display:grid;gap:0.45rem;">' +
+    return '<div class="card job-' + status + '" id="card-' + id + '" style="border:1px solid var(--border);"><div class="card-body" style="display:grid;gap:0.45rem;">' +
       '<div style="display:flex;justify-content:space-between;gap:0.5rem;align-items:flex-start;' + (collapsedByDefault ? 'cursor:pointer;' : '') + '"' + (collapsedByDefault ? ' onclick="toggleCardDetail(\'' + detailId + '\',\'' + arrowId + '\')"' : '') + '>' +
-      '<div><div class="fw-bold">#' + id + ' · ' + escHtml(b.service_name || b.service?.name || 'Service') + '</div><div class="text-muted text-sm">' + fmtDateTime(b.booking_date || b.date || b.scheduled_at) + '</div></div>' +
+      '<div><div class="fw-bold">#' + id + ' · ' + escHtml(b.service_name || b.service?.name || 'Service') + '</div><div class="text-muted text-sm job-date">' + fmtDateTime(b.booking_date || b.date || b.scheduled_at) + '</div></div>' +
       '<div style="display:flex;align-items:center;gap:6px;">' + _chip(status) + (collapsedByDefault ? '<span id="' + arrowId + '" class="text-muted" style="font-size:0.8rem;">▸</span>' : '') + '</div>' +
       '</div>' +
       '<div id="' + detailId + '" style="display:' + (collapsedByDefault ? 'none' : 'grid') + ';gap:0.45rem;">' + detail + '</div>' +

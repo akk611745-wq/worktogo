@@ -68,22 +68,20 @@ ul { list-style: none; }
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background: #0e1117;
+  background: var(--bg);
   background-image:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(245,166,35,0.14) 0%, transparent 60%),
-    repeating-linear-gradient(90deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 60px),
-    repeating-linear-gradient(0deg,  rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 60px);
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(245,166,35,0.10) 0%, transparent 60%);
   padding: 1.5rem;
 }
 
 .login-card {
   width: 100%;
   max-width: 420px;
-  background: #161b24;
-  border: 1px solid #1e2530;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 2.5rem;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  box-shadow: var(--shadow-lg);
   animation: fadeUp 0.4s ease both;
 }
 
@@ -92,39 +90,61 @@ ul { list-style: none; }
   align-items: center;
   gap: 0.6rem;
   margin-bottom: 2rem;
+  justify-content: center;
 }
 .login-logo .logo-mark {
-  width: 40px; height: 40px;
+  width: 48px; height: 48px;
   background: var(--accent);
-  border-radius: 10px;
+  border-radius: 12px;
   display: grid; place-items: center;
   font-family: var(--font-display);
   font-weight: 800;
   font-size: 1.15rem;
   color: #0e1117;
 }
-.login-logo .logo-text { font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; color: #fff; line-height: 1.2; }
-.login-logo .logo-sub  { font-size: 0.75rem; color: #4b5563; font-weight: 400; }
+.login-logo .logo-text { font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; color: var(--text); line-height: 1.2; }
+.login-logo .logo-sub  { font-size: 0.75rem; color: var(--text-3); font-weight: 400; }
 
-.login-title { font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; color: #fff; margin-bottom: 0.3rem; }
-.login-sub   { font-size: 0.875rem; color: #6b7280; margin-bottom: 1.75rem; }
+.login-title { font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; color: var(--text); margin-bottom: 0.3rem; text-align: center; }
+.login-sub   { font-size: 0.875rem; color: var(--text-2); margin-bottom: 1.75rem; text-align: center; }
 
 .form-group { margin-bottom: 1.1rem; }
-.form-label { display: block; font-size: 0.8rem; font-weight: 600; color: #9ca3af; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 0.4rem; }
+.form-label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-2); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 0.4rem; }
 
 .form-input {
   width: 100%;
-  padding: 0.7rem 0.9rem;
-  background: #0e1117;
-  border: 1px solid #2d3748;
-  border-radius: var(--radius-sm);
-  color: #e5e7eb;
-  font-size: 0.9rem;
+  min-height: 44px;
+  padding: 0.85rem 1rem;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 16px;
   transition: border-color var(--transition), box-shadow var(--transition);
   outline: none;
 }
-.form-input::placeholder { color: #4b5563; }
+.form-input::placeholder { color: var(--text-3); }
 .form-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(245,166,35,0.15); }
+
+/* ── Pill-style auth tabs (Sign In / Register) ──── */
+.auth-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.auth-tab {
+  flex: 1;
+  min-height: 40px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.875rem;
+  transition: background var(--transition), color var(--transition);
+}
+.auth-tab.active { background: var(--accent); color: #0e1117; }
+.auth-tab:not(.active) { color: var(--text-2); }
 
 .btn-login {
   width: 100%;
@@ -380,19 +400,22 @@ ul { list-style: none; }
   box-shadow: var(--shadow);
   margin-bottom: 1.25rem;
   overflow: hidden;
+  animation: fadeUp 0.2s ease both;
 }
+h1, h2, h3, h4, h5, h6 { font-weight: 700; line-height: 1.3; }
 .card-header {
   padding: 1rem 1.25rem;
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
   gap: 0.75rem;
 }
-.card-title { font-family: var(--font-display); font-size: 0.9rem; font-weight: 700; color: var(--text); }
+.card-title { font-family: var(--font-display); font-size: 0.9rem; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 0.05em; }
 .card-body  { padding: 1.25rem; }
 
 /* ── Buttons ───────────────────────────────────── */
 .btn {
-  display: inline-flex; align-items: center; gap: 0.4rem;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+  min-height: 44px;
   padding: 0.55rem 1rem;
   border-radius: var(--radius-sm);
   font-size: 0.82rem; font-weight: 600;
@@ -400,6 +423,7 @@ ul { list-style: none; }
   white-space: nowrap;
 }
 .btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.btn:active { transform: scale(0.97); }
 
 .btn-primary   { background: var(--accent); color: #0e1117; }
 .btn-primary:hover { background: var(--accent-dark); box-shadow: 0 4px 12px rgba(245,166,35,0.3); }
@@ -434,9 +458,10 @@ ul { list-style: none; }
 .badge-delivered { background: var(--success-bg); color: var(--success); }
 .badge-rejected  { background: var(--danger-bg);  color: var(--danger); }
 .badge-cancelled { background: var(--danger-bg);  color: var(--danger); }
-.badge-in_progress { background: rgba(59,130,246,.12); color: var(--info); }
+.badge-in_progress { background: rgba(139,92,246,.12); color: #8b5cf6; }
 .badge-active    { background: var(--success-bg); color: var(--success); }
 .badge-dot::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; display: inline-block; }
+.badge { transition: background var(--transition), color 0.3s ease; }
 
 /* ── Table ─────────────────────────────────────── */
 .table-wrap { overflow-x: auto; }
@@ -633,6 +658,21 @@ tbody tr:hover { background: var(--surface-2); }
   color: var(--accent); text-transform: capitalize;
 }
 
+/* ── Profile edit save bar (sticks to bottom on mobile) ────── */
+@media (max-width: 768px) {
+  .profile-save-bar {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    background: var(--surface);
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.08);
+    z-index: 60;
+    margin: 0 !important;
+  }
+  #editMode { padding-bottom: 76px; }
+}
+
 /* ── Misc helpers ──────────────────────────────── */
 .text-success { color: var(--success); }
 .text-danger  { color: var(--danger); }
@@ -699,7 +739,7 @@ tbody tr:hover { background: var(--surface-2); }
   .table-wrap { margin: 0 -0.75rem; padding: 0 0.75rem; -webkit-overflow-scrolling: touch; }
   table { min-width: 720px; }
   .td-actions { gap: 0.5rem; }
-  .td-actions .btn { min-height: 38px; }
+  .td-actions .btn { min-height: 44px; }
 
   /* overlay when sidebar open */
   .sidebar-overlay {
@@ -897,5 +937,20 @@ tr.rt-new-row { animation: rtRowPulse 1.5s ease both; }
 @media (max-width: 720px) {
   .vendor-job-cards { display: flex !important; }
   .vendor-job-cards + table { display: none; }
-  .td-actions .btn, .vendor-job-cards .btn { min-height: 38px; padding: 0.55rem 0.75rem; }
+  .td-actions .btn, .vendor-job-cards .btn { min-height: 44px; padding: 0.55rem 0.75rem; }
 }
+
+/* ── Job cards (vendor/bookings.php) ───────────── */
+.vendor-job-cards .card { border-radius: 16px; transition: opacity 0.3s ease; }
+.vendor-job-cards .card.job-completed,
+.vendor-job-cards .card.job-cancelled { opacity: 0.7; }
+.vendor-job-cards .card.job-completed .job-date,
+.vendor-job-cards .card.job-cancelled .job-date { font-style: italic; }
+.job-actions-split { display: flex; gap: 0.5rem; }
+.job-actions-split .btn { flex: 1; min-height: 48px; }
+.btn-call-outline {
+  background: transparent;
+  color: var(--accent);
+  border: 1.5px solid var(--accent);
+}
+.btn-call-outline:hover { background: var(--accent-light); }

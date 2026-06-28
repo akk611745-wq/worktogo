@@ -26,13 +26,11 @@
   </div>
 
   <!-- Auth Tabs -->
-  <div class="auth-tabs" style="display:flex;gap:0.5rem;margin-bottom:1.25rem;border-bottom:1px solid #e5e7eb;">
-    <button type="button" id="tabSignIn" class="auth-tab active" onclick="showLoginForm();return false;"
-      style="flex:1;padding:0.65rem 0;background:none;border:none;border-bottom:2px solid #f5a623;font-family:inherit;font-size:0.9rem;font-weight:700;color:#111827;cursor:pointer;">
+  <div class="auth-tabs" style="margin-bottom:1.25rem;">
+    <button type="button" id="tabSignIn" class="auth-tab active" onclick="showLoginForm();return false;">
       Sign In
     </button>
-    <button type="button" id="tabRegister" class="auth-tab" onclick="showRegisterForm();return false;"
-      style="flex:1;padding:0.65rem 0;background:none;border:none;border-bottom:2px solid transparent;font-family:inherit;font-size:0.9rem;font-weight:700;color:#6b7280;cursor:pointer;">
+    <button type="button" id="tabRegister" class="auth-tab" onclick="showRegisterForm();return false;">
       Register
     </button>
   </div>
@@ -62,10 +60,10 @@
       Sign In
     </button>
 
-    <p style="margin-top:0.85rem;font-size:0.8rem;text-align:center;">
-      <a href="#" onclick="showOtpLogin();return false;" style="color:#4f46e5;font-weight:600;text-decoration:none;">Login with OTP</a>
+    <p style="margin-top:0.85rem;font-size:0.78rem;text-align:center;">
+      <a href="#" onclick="showOtpLogin();return false;" style="color:#6b7280;font-weight:600;text-decoration:none;">Login with OTP</a>
       &nbsp;·&nbsp;
-      <a href="#" onclick="showForgotPassword();return false;" style="color:#4f46e5;font-weight:600;text-decoration:none;">Forgot Password?</a>
+      <a href="#" onclick="showForgotPassword();return false;" style="color:#6b7280;font-weight:600;text-decoration:none;">Forgot Password?</a>
     </p>
 
     <p style="margin-top:1rem;font-size:0.75rem;color:#374151;text-align:center;">
@@ -527,10 +525,8 @@ function setActiveTab(which) {
   const tabSignIn   = document.getElementById("tabSignIn");
   const tabRegister = document.getElementById("tabRegister");
   const signInActive = which === "signin";
-  tabSignIn.style.borderBottomColor   = signInActive ? "#f5a623" : "transparent";
-  tabSignIn.style.color               = signInActive ? "#111827" : "#6b7280";
-  tabRegister.style.borderBottomColor = signInActive ? "transparent" : "#f5a623";
-  tabRegister.style.color             = signInActive ? "#6b7280" : "#111827";
+  tabSignIn.classList.toggle("active", signInActive);
+  tabRegister.classList.toggle("active", !signInActive);
 }
 
 async function handleRegister() {

@@ -40,9 +40,11 @@ export async function render(container) {
             </div>
             <button class="see-all" onclick="HomePage.toggleMoreCategories()" id="more-categories-btn">More</button>
           </div>
-          <div class="category-chips" id="category-chips">
-            <button class="active" onclick="HomePage.setCategory('')"><span>🧰</span>All</button>
-            ${_categoryChips().slice(0, 7).map(c => `<button onclick="HomePage.setCategory('${_esc(c.slug || '')}')"><span>${c.icon}</span>${_esc(c.label)}</button>`).join("")}
+          <div class="category-chips-wrap">
+            <div class="category-chips" id="category-chips">
+              <button class="active" onclick="HomePage.setCategory('')"><span>🧰</span>All</button>
+              ${_categoryChips().slice(0, 7).map(c => `<button onclick="HomePage.setCategory('${_esc(c.slug || '')}')"><span>${c.icon}</span>${_esc(c.label)}</button>`).join("")}
+            </div>
           </div>
         </section>
 
@@ -2191,7 +2193,7 @@ function _heroHTML(slug = "") {
   return `
     <div class="service-hero-copy">
       <h1>${_esc(slug ? `${meta.label} services for ${localityContext.label}` : `Trusted services for ${localityContext.label}`)}</h1>
-      <p>${_esc(meta.subtitle || _pilotConfig.hero_subtitle)} ${_esc(`${localityContext.label} near you.`)}</p>
+      <p>${_esc(meta.subtitle || _pilotConfig.hero_subtitle)}</p>
       <div class="booking-distinction-grid" id="hero-distinction-grid">
         <button type="button" class="distinction-toggle" data-key="inspection" aria-expanded="false" onclick="HomePage.toggleHeroInfoCard('inspection')">
           <span class="distinction-head"><strong>Inspection</strong><span class="distinction-arrow">⌄</span></span>
@@ -2204,7 +2206,7 @@ function _heroHTML(slug = "") {
       </div>
       <div class="hero-cta-row">
         <button class="btn-primary marketplace-cta hero-primary" id="hero-category-cta" style="display:none" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'inspection')">${_esc(primaryText)}</button>
-        <button class="hero-secondary" style="width:100%" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Free booking</button>
+        <button class="hero-secondary" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Book a Service — Free</button>
       </div>
       <p class="action-hierarchy-note" id="hero-distinction-note" style="display:none"></p>
     </div>`;
@@ -2273,7 +2275,8 @@ function _vendorCardHTML(s) {
     st.textContent = `
       .wtg-vc { background:#fff; border-radius:16px;
         padding:16px; margin:0 0 12px 0;
-        box-shadow:0 2px 12px rgba(0,0,0,0.08); width:100%; }
+        box-shadow:0 4px 18px rgba(0,0,0,0.09); width:100%;
+        animation:fadeInUp 0.2s ease both; }
       .wtg-vc-top { display:flex; align-items:center; gap:12px; }
       .wtg-vc-avatar { width:48px; height:48px; border-radius:50%;
         background:#FF6B35; color:#fff; display:flex;
@@ -2287,7 +2290,7 @@ function _vendorCardHTML(s) {
       .wtg-vc-new-badge { color:#FF6B35; font-weight:600; }
       .wtg-vc-avail { width:10px; height:10px; border-radius:50%;
         background:#22c55e; flex-shrink:0; }
-      .wtg-vc-verified { color:#16a34a; font-weight:600; font-size:12px;
+      .wtg-vc-verified { color:#16a34a; font-weight:800; font-size:12px;
         margin-left:6px; white-space:nowrap; }
       .wtg-vc-bio { font-size:13px; color:#666; margin-top:10px;
         line-height:1.4; display:-webkit-box; -webkit-line-clamp:2;
@@ -2299,22 +2302,26 @@ function _vendorCardHTML(s) {
       .wtg-vc-chips { display:flex; flex-wrap:wrap; gap:6px;
         margin-top:10px; }
       .wtg-vc-chip { padding:5px 12px; border-radius:20px;
-        background:#F5F5F5; color:#555; font-size:12px; }
+        background:#fff; color:#6b7280; font-size:12px;
+        border:1px solid #e5e7eb; }
       .wtg-vc-exp-chip { padding:5px 12px; border-radius:20px;
         background:#FFF3EF; color:#FF6B35; font-size:12px; font-weight:600; }
       .wtg-vc-areas { display:flex; flex-wrap:wrap; gap:6px;
         margin-top:8px; }
-      .wtg-vc-area-tag { padding:4px 10px; border-radius:20px;
-        background:#EFF6FF; color:#2563eb; font-size:11px; }
-      .wtg-vc-area-more { padding:4px 10px; border-radius:20px;
-        background:#F5F5F5; color:#2563eb; font-size:11px;
+      .wtg-vc-area-tag { padding:3px 9px; border-radius:20px;
+        background:#F5F5F5; color:#6b7280; font-size:10.5px; }
+      .wtg-vc-area-more { padding:3px 9px; border-radius:20px;
+        background:#F5F5F5; color:#6b7280; font-size:10.5px;
         font-weight:600; cursor:pointer; }
       .wtg-vc-area-extra { display:none; }
       .wtg-vc-area-extra.expanded { display:contents; }
       .wtg-vc-book { width:100%; margin-top:14px; padding:14px;
-        background:#FF6B35; color:#fff; border:none;
+        min-height:48px;
+        background:linear-gradient(135deg, #FF6B35, #ff8a00);
+        color:#fff; border:none; letter-spacing:0.5px;
         border-radius:12px; font-size:16px; font-weight:700;
-        cursor:pointer; letter-spacing:0.3px; }
+        cursor:pointer; }
+      .wtg-vc-book:active { transform:scale(0.97); }
 
       /* Bottom Sheet */
       .wtg-sheet-overlay { position:fixed; inset:0;
@@ -2325,35 +2332,41 @@ function _vendorCardHTML(s) {
         background:#fff; border-radius:20px 20px 0 0;
         padding:20px; z-index:1001; max-height:85vh;
         overflow-y:auto; transform:translateY(100%);
-        transition:transform 0.3s ease; }
+        transition:transform 0.25s ease; }
       .wtg-sheet.open { transform:translateY(0); }
       .wtg-sheet-handle { width:40px; height:4px;
         background:#ddd; border-radius:2px;
         margin:0 auto 16px; }
-      .wtg-sheet-vendor { font-size:17px; font-weight:700;
-        color:#1a1a1a; margin-bottom:4px; }
-      .wtg-sheet-cat { font-size:13px; color:#FF6B35;
+      .wtg-sheet-vendor { font-size:18px; font-weight:800;
+        color:#1a1a1a; margin-bottom:2px; }
+      .wtg-sheet-cat { font-size:13px; color:#FF6B35; font-weight:600;
         margin-bottom:16px; }
-      .wtg-sheet-label { font-size:13px; font-weight:600;
-        color:#555; margin:14px 0 8px; }
+      .wtg-sheet-label { font-size:11px; font-weight:700;
+        text-transform:uppercase; letter-spacing:0.05em;
+        color:#888; margin:14px 0 8px; }
       .wtg-sheet-issue-chips { display:flex; flex-wrap:wrap; gap:8px; }
       .wtg-issue-chip { padding:8px 14px; border-radius:20px;
         border:1.5px solid #e0e0e0; background:#fff;
         font-size:13px; cursor:pointer; color:#444; }
       .wtg-issue-chip.sel { border-color:#FF6B35;
         background:#FFF3EF; color:#FF6B35; font-weight:600; }
-      .wtg-sheet-input { width:100%; padding:12px 14px;
-        border:1.5px solid #e0e0e0; border-radius:10px;
-        font-size:14px; box-sizing:border-box; margin-top:0; }
+      .wtg-sheet-input { width:100%; padding:14px 16px;
+        border:1.5px solid #e0e0e0; border-radius:12px;
+        font-size:16px; box-sizing:border-box; margin-top:0;
+        transition:border-color 0.15s ease; }
+      .wtg-sheet-input:focus { outline:none; border-color:#FF6B35; }
       .wtg-sheet-phone-group { display:flex; align-items:center;
-        border:1.5px solid #e0e0e0; border-radius:10px; overflow:hidden; }
-      .wtg-sheet-phone-prefix { padding:12px 0 12px 14px;
-        font-size:14px; color:#555; font-weight:600; }
+        border:1.5px solid #e0e0e0; border-radius:12px; overflow:hidden;
+        transition:border-color 0.15s ease; }
+      .wtg-sheet-phone-group:focus-within { border-color:#FF6B35; }
+      .wtg-sheet-phone-prefix { padding:14px 0 14px 16px;
+        font-size:16px; color:#555; font-weight:600; }
       .wtg-sheet-phone-input { border:none; border-radius:0; }
-      .wtg-sheet-submit { width:100%; margin-top:20px;
+      .wtg-sheet-submit { width:100%; margin-top:20px; min-height:52px;
         padding:16px; background:#FF6B35; color:#fff;
         border:none; border-radius:12px; font-size:16px;
         font-weight:700; cursor:pointer; }
+      .wtg-sheet-submit:active { transform:scale(0.97); }
     `;
     document.head.appendChild(st);
   }

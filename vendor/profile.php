@@ -111,14 +111,17 @@ function renderPage(user) {
             <div class="field" style="grid-column:1/-1">
               <label>Photo</label>
               <div id="photoUploadArea" style="display:flex;align-items:center;gap:16px;margin-top:4px;">
-                <div style="position:relative;width:72px;height:72px;border-radius:10px;overflow:hidden;border:1px solid var(--border);background:#f3f4f6;flex-shrink:0;">
+                <div id="photoCircle" onclick="document.getElementById('ePhotoFile').click()" style="position:relative;width:76px;height:76px;border-radius:50%;overflow:hidden;border:2px dashed var(--border);background:var(--surface-2);flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;">
                   <img id="photoPreview" src="" alt="Preview" style="display:none;width:100%;height:100%;object-fit:cover;">
-                  <div id="photoInitial" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:1.6rem;font-weight:700;color:#9ca3af;background:#f3f4f6;">V</div>
+                  <div id="photoInitial" style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;text-align:center;padding:4px;color:var(--text-3);">
+                    <svg viewBox="0 0 20 20" fill="currentColor" style="width:18px;height:18px;margin-bottom:2px;"><path fill-rule="evenodd" d="M6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/><path d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"/></svg>
+                    <span style="font-size:0.6rem;font-weight:600;line-height:1.2;">Tap to add photo</span>
+                  </div>
                 </div>
                 <div style="flex:1;">
                   <input type="file" id="ePhotoFile" accept="image/*" style="display:none;">
                   <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('ePhotoFile').click()">
-                    <svg viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px;"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg>
+                    <svg viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px;"><path fill-rule="evenodd" d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
                     Choose Photo
                   </button>
                   <span id="photoUploadStatus" style="font-size:0.78rem;color:#6b7280;margin-left:8px;"></span>
@@ -128,10 +131,11 @@ function renderPage(user) {
             </div>
             <div class="field" style="grid-column:1/-1">
               <label for="eDescription">Bio / Description</label>
-              <textarea id="eDescription" rows="3" placeholder="Tell customers about your business&hellip;" style="width:100%;resize:vertical;"></textarea>
+              <textarea id="eDescription" rows="3" maxlength="150" placeholder="Tell customers about your business&hellip;" style="width:100%;resize:vertical;" oninput="document.getElementById('bioCharCount').textContent = this.value.length + ' / 150'"></textarea>
+              <div id="bioCharCount" class="text-muted" style="font-size:0.72rem;text-align:right;margin-top:4px;">0 / 150</div>
             </div>
           </div>
-          <div style="display:flex;gap:0.6rem;margin-top:1.25rem;">
+          <div class="profile-save-bar" style="display:flex;gap:0.6rem;margin-top:1.25rem;">
             <button class="btn btn-ghost" onclick="cancelEdit()">Cancel</button>
             <button class="btn btn-primary" id="saveProfileBtn" onclick="saveProfile()">
               Save Changes
@@ -294,18 +298,21 @@ function populateProfile(p) {
   // Photo preview sync in edit mode
   const _preview = document.getElementById('photoPreview');
   const _initial = document.getElementById('photoInitial');
+  const _circle  = document.getElementById('photoCircle');
   if (_preview && _initial) {
-    const _pname = p.name || p.business_name || 'V';
-    _initial.textContent = _pname.charAt(0).toUpperCase();
     if (p.logo_url) {
       _preview.src = p.logo_url;
       _preview.style.display = 'block';
       _initial.style.display = 'none';
+      if (_circle) _circle.style.borderStyle = 'solid';
     } else {
       _preview.style.display = 'none';
       _initial.style.display = 'flex';
+      if (_circle) _circle.style.borderStyle = 'dashed';
     }
   }
+  const _bioCount = document.getElementById('bioCharCount');
+  if (_bioCount) _bioCount.textContent = (p.description || '').length + ' / 150';
 
   populateCategorySelect();
   const _initAreas = (() => { try { return JSON.parse(p.service_localities || '[]'); } catch (_) { return []; } })();
@@ -335,7 +342,7 @@ const WTG_AREAS = [
 
 function _applyChipStyle(chip, selected) {
   chip.dataset.selected = selected ? 'true' : 'false';
-  chip.style.cssText = 'display:inline-flex;align-items:center;padding:6px 14px;border-radius:20px;font-size:0.8rem;cursor:pointer;transition:all 0.15s;user-select:none;' +
+  chip.style.cssText = 'display:inline-flex;align-items:center;min-height:38px;padding:9px 18px;border-radius:20px;font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.15s;user-select:none;' +
     (selected
       ? 'background:#FF6B35;color:#fff;border:1px solid #FF6B35;'
       : 'background:#F5F5F5;color:#374151;border:1px solid #E5E7EB;');
@@ -490,6 +497,8 @@ document.addEventListener('DOMContentLoaded', () => {
         preview.src = url;
         preview.style.display = 'block';
         initial.style.display = 'none';
+        const _c = document.getElementById('photoCircle');
+        if (_c) _c.style.borderStyle = 'solid';
         status.textContent = '✅ Uploaded';
         status.style.color = '#22c55e';
         showToast('Photo uploaded!', 'success');
