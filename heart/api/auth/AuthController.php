@@ -257,10 +257,14 @@ class AuthController {
             ];
         } else {
             // INSERT
+            // phone is intentionally NULL — Google signup never collects one,
+            // and users.phone has a UNIQUE index where MySQL allows unlimited
+            // NULLs (unlike '', which would collide on the second Google-only
+            // signup). Requires users.phone to allow NULL — see migration.
             $role = 'customer';
             $stmt = $this->db->prepare("
-                INSERT INTO users (uuid, name, email, google_id, auth_type, role, created_at)
-                VALUES (UUID(), ?, ?, ?, 'google', ?, NOW())
+                INSERT INTO users (uuid, name, email, phone, google_id, auth_type, role, created_at)
+                VALUES (UUID(), ?, ?, NULL, ?, 'google', ?, NOW())
             ");
             $stmt->execute([$name, $email, $googleId, $role]);
             $userId = $this->db->lastInsertId();
