@@ -1,0 +1,12 @@
+# ================================================================
+#  WorkToGo — Vendor Portal clean URLs
+#  vendor/.htaccess — Apache configuration for Hostinger
+# ================================================================
+
+RewriteEngine On
+RewriteBase /vendor/
+
+RewriteRule ^$ index.php [L]
+RewriteRule ^bookings/?$ bookings.php [L]
+RewriteRule ^profile/?$ profile.php [L]
+RewriteRule ^dashboard/?$ dashboard.php [L]

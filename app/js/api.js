@@ -201,5 +201,10 @@ const API = (() => {
     async updateProfile(payload) {
       return _request("PATCH", "/api/auth/profile", payload);
     },
+
+    // ── Vendor (own application status) ─────────────────────────────────
+    async getVendorProfile() {
+      return _request("GET", "/api/vendor/profile");
+    },
   };
 })();

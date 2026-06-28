@@ -1240,9 +1240,16 @@ if ($method === 'POST' && $uri === '/api/service/request') {
     $paymentMethod = ($bookingMode === 'inspection' && $paymentMethod === 'online') ? 'online' : 'cod';
     $paymentStatus = servicePaymentStatusForMode($bookingMode, $paymentMethod);
     $canonicalNotes = serviceLifecycleNote($input, $bookingMode, $service);
+    // Only the paid "inspection" mode charges anything upfront. "free_lead"
+    // and "direct_vendor" requests are admin/vendor-matched first — no money
+    // changes hands through the platform until the vendor actually collects
+    // payment on completion — so total must be 0, not $service['base_price']
+    // (which was leaking ₹299 here whenever the resolved representative
+    // service row's base_price happened to be 299, the same value seeded as
+    // the global inspection_price default).
     $bookingTotal = $bookingMode === 'inspection'
         ? (float)(servicePublicSetting($db, 'inspection_price', 299))
-        : (float)$service['base_price'];
+        : 0.0;
     $jobPriority = serviceJobPriorityForMode($bookingMode, $input);
     $existingBooking = null;
     if (serviceTableHasColumn($db, 'bookings', 'client_request_id')) {

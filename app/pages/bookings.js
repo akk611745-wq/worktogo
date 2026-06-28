@@ -85,7 +85,6 @@ window.BookingsPage = (() => {
 
     el.innerHTML = list.map(b => {
       const state = _trackingState(b);
-      const issues = _issueList(b);
       const paymentBadge = _paymentBadge(b);
       return `
       <div class="list-item booking-item collapsed" onclick="this.classList.toggle('collapsed')">
@@ -104,30 +103,20 @@ window.BookingsPage = (() => {
           </div>
           <div class="item-row muted small">
             <span>${b.scheduled_at ? `📅 ${UI.formatDate(b.scheduled_at)}` : UI.formatDate(b.created_at)}</span>
-            ${b.booking_mode === "free_lead" ? `<span class="item-amount">Free</span>` : (b.amount ? `<span class="item-amount">${UI.formatCurrency(b.amount)}</span>` : "")}
+            ${b.booking_mode === "free_lead" ? "" : (b.amount ? `<span class="item-amount">${UI.formatCurrency(b.amount)}</span>` : "")}
           </div>
 
-          <!-- Collapsible detail -->
+          <!-- Collapsible detail — customer-facing fields only: Status, Category, Date, Vendor, Area -->
           <div class="booking-detail">
+            <div class="item-row muted small"><span>Status: ${_esc(state.label)}</span></div>
             <div class="item-row muted small"><span>Category: ${_esc(b.category_label || b.category_name || b.service_name || "Service")}</span></div>
-            ${b.issue_summary ? `<div class="item-row muted small"><span>Issues: ${_esc(b.issue_summary)}</span></div>` : issues.length ? `<div class="item-row muted small"><span>Issues: ${_esc(issues.join(", "))}</span></div>` : b.subservice ? `<div class="item-row muted small"><span>Service: ${_esc(b.subservice)}</span></div>` : ""}
-            ${b.locality ? `<div class="item-row muted small"><span>Area: ${_esc(b.locality)}${b.city ? ` · ${_esc(b.city)}` : ""}</span></div>` : ""}
-            <div class="item-row muted small"><span>Mode: ${_esc(_modeLabel(b.booking_mode))}</span></div>
-            <div class="item-row muted small"><span>Now: ${_esc(state.label)}</span></div>
-            <div class="item-row muted small"><span>Next: ${_esc(state.next)}</span></div>
             <div class="item-row muted small"><span>Date: ${_esc(b.scheduled_at ? UI.formatDate(b.scheduled_at) : UI.formatDate(b.created_at))}</span></div>
-            <div class="item-row muted small"><span>${_esc(_lifecycleLabel(b))}</span></div>
-            ${state.message ? `<div class="item-row muted small"><span>${_esc(state.message)}</span></div>` : ""}
-            ${b.status === "in_progress" ? `<div class="item-row muted small"><span>Service is in progress. Pay after service only.</span></div>` : ""}
             ${b.vendor_name ? `
             <div class="item-row vendor-row">
               <svg viewBox="0 0 24 24" class="vendor-icon"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
               <span class="muted small">${_esc(b.vendor_name)}</span>
             </div>` : ""}
-            ${b.notes ? `<div class="item-row muted small"><span>${_esc(_shortNotes(b.notes))}</span></div>` : ""}
-            <div class="item-row muted small">
-              <span>Payment: ${_esc(_paymentLabel(b.payment_method || "cod", b.payment_status, b.booking_mode))}</span>
-            </div>
+            ${b.locality ? `<div class="item-row muted small"><span>Area: ${_esc(b.locality)}${b.city ? ` · ${_esc(b.city)}` : ""}</span></div>` : ""}
             <div class="item-row muted small">
               <span>ID: ${_esc(b.booking_number ? String(b.booking_number) : (b.id ? `#${b.id}` : "—"))}</span>
             </div>
@@ -247,23 +236,8 @@ window.BookingsPage = (() => {
     return map[String(status || "").toLowerCase()] || _title(status || "pending");
   }
 
-  function _modeLabel(mode = "") {
-    const map = { inspection: "Inspection", free_lead: "Free worker match", free_match: "Free worker match", direct_vendor: "Direct worker request", direct_worker: "Direct worker request" };
-    return map[String(mode || "free_lead").toLowerCase()] || _title(mode);
-  }
-
   function _title(v = "") {
     return String(v || "").replace(/_/g, " ").replace(/\b\w/g, m => m.toUpperCase());
-  }
-
-  function _paymentLabel(method, status, mode) {
-    const state = _normalizePaymentState(status);
-    if (mode === "inspection") {
-      if (state === "paid") return "Inspection payment verified";
-      if (state === "failed" || state === "cancelled") return "Inspection payment not completed";
-      return "Inspection payment pending verification";
-    }
-    return String(method).toLowerCase() === "online" ? "Online" : "Pay after service";
   }
 
   function _normalizePaymentState(value = "") {
@@ -279,13 +253,6 @@ window.BookingsPage = (() => {
   function _localitySourceLabel(source = "") {
     const map = { manual_selected: "manual selection", manual_city: "manual city", manual_typed: "typed area", typed: "typed area", saved: "saved area", browser_hint: "browser hint", fallback: "fallback city" };
     return map[String(source || "").toLowerCase()] || _title(source);
-  }
-
-  function _lifecycleLabel(b) {
-    const mode = b.booking_mode || "free_lead";
-    if (mode === "inspection") return "Inspection request · payment check · visit update tracked here";
-    if (mode === "direct_vendor") return b.vendor_name ? `Selected worker request · ${b.vendor_name}` : "Selected worker request · WorkToGo will confirm availability";
-    return "Free worker match · WorkToGo will contact nearby workers";
   }
 
   function _trackingState(b) {
@@ -370,10 +337,6 @@ window.BookingsPage = (() => {
     return { label: "Free request", tone: "free" };
   }
 
-  function _issueList(b = {}) {
-    return _normalizeIssueList(b.issue_list || b.operational_request?.issue_list || _fieldFromNotes(b.notes, "Issue list") || b.subservice || b.issue_type);
-  }
-
   function _normalizeIssueList(value = "") {
     const source = Array.isArray(value) ? value : String(value || "").split(/[,|]/);
     const seen = new Set();
@@ -401,24 +364,6 @@ window.BookingsPage = (() => {
   function _fieldFromNotes(notes = "", field = "") {
     const prefix = `${field}:`;
     return String(notes || "").split("\n").map(line => line.trim()).find(line => line.toLowerCase().startsWith(prefix.toLowerCase()))?.slice(prefix.length).trim() || "";
-  }
-
-  function _shortNotes(notes) {
-    return String(notes || "")
-      .split("\n")
-      .filter(line => {
-        const t = line.trim();
-        if (!t) return false;
-        // Strip raw JSON lines
-        if (/^\s*[\[{]/.test(t)) return false;
-        // Strip lines with internal field names
-        if (/assigned_vendor_id|assignment_metadata|assignment_state/i.test(t)) return false;
-        // Strip known metadata prefixes
-        return !/^(Request ID|Client request ID|Request schema version|Request type|Category|Issue list|Issue summary|Locality|City|Payment required|Payment route|Priority|Priority score|Assignment state|Assignment metadata|Lifecycle state|Timeline|Operational tags|Booking mode|Vendor route|Customer|Mobile|Address|Preferred time|Selected worker):/i.test(t);
-      })
-      .slice(0, 2)
-      .join(" · ")
-      .slice(0, 140);
   }
 
   function _issueSummary(value = "") {

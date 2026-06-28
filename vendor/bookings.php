@@ -200,7 +200,7 @@ function setFilter(status) {
 function applyFilter() {
   const q = document.getElementById("searchInput")?.value || '';
   let list = currentFilter === "all" ? allBookings : allBookings.filter(b => normalizeStatus(b.status) === currentFilter);
-  if (q.trim()) list = filterItems(list, q, ['id', '_id', 'customer_name', 'service_name']);
+  if (q.trim()) list = filterItems(list, q, ['id', '_id', 'booking_number', 'customer_name', 'customer_phone', 'customer_mobile', 'service_name']);
   renderBookingRows(list);
 }
 

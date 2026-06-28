@@ -75,7 +75,7 @@ export async function render(container) {
           </div>` : ""}
 
           ${!AUTH.hasRole(CONFIG.ROLES.VENDOR) ? `
-          <div class="menu-item" onclick="window.location.href='/vendor/?apply=1&ref=customer'">
+          <div class="menu-item" onclick="AccountPage.becomeVendor()">
             <div class="menu-icon">🔧</div>
             <div class="menu-body">
               <span>Become a WorkToGo vendor</span>
@@ -171,6 +171,26 @@ window.AccountPage = {
     AccountPage._rerender();
   },
   _rerender() { if (_container) render(_container); else ROUTER.go('account', true); },
+  async becomeVendor() {
+    const res = await API.getVendorProfile().catch(() => ({ ok: false }));
+    const vendor = res.ok ? (res.data?.data || res.data) : null;
+
+    if (vendor?.status === 'pending') {
+      UI.toast('Aapki application review mein hai', 'info');
+      return;
+    }
+    if (vendor?.status === 'active') {
+      window.location.href = '/vendor/bookings.php';
+      return;
+    }
+    // GET /api/vendor/profile is role-gated to vendor accounts, so a
+    // customer who never applied (or whose application is still pending —
+    // their role only flips to vendor_service on admin approval) both get a
+    // 403 here, not a distinguishing 404. Either way they aren't an active
+    // vendor yet, so send them to apply; if they already applied, the
+    // vendor portal's own submit handles the "already applied" case.
+    window.location.href = '/vendor/?apply=1&ref=customer';
+  },
   logout() {
     const modal = document.createElement('div');
     modal.innerHTML = `

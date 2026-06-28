@@ -546,7 +546,7 @@ try {
     if ($method === 'GET' && $uri === '/api/admin/categories') {
         $type = $_GET['type'] ?? 'service';
         $cols = "id, name, slug, type, status, parent_id, created_at, updated_at";
-        foreach (['icon','image_url','sort_order'] as $col) {
+        foreach (['icon','image_url','sort_order','commission_rate'] as $col) {
             $chk = $db->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categories' AND COLUMN_NAME = ?");
             $chk->execute([$col]);
             $cols .= ((int)$chk->fetchColumn() > 0) ? ", {$col}" : ", NULL AS {$col}";

@@ -387,10 +387,10 @@
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>NAME</th><th>SLUG</th><th>STATUS</th><th>ACTIONS</th></tr>
+                <tr><th>NAME</th><th>SLUG</th><th>STATUS</th><th>COMMISSION %</th><th>ACTIONS</th></tr>
               </thead>
               <tbody id="categories-tbody">
-                <tr class="loading-row"><td colspan="4"><div class="spinner" style="margin:auto"></div></td></tr>
+                <tr class="loading-row"><td colspan="5"><div class="spinner" style="margin:auto"></div></td></tr>
               </tbody>
             </table>
           </div>
@@ -1618,7 +1618,7 @@ function editCategoryName(id) {
 
 // ── Category Management ──────────────────────────────────────
 async function loadCategories() {
-  tableLoading('categories-tbody', 4);
+  tableLoading('categories-tbody', 5);
   try {
     const data = await API.get(CONFIG.ENDPOINTS.CATEGORIES);
     const cats = data.data?.categories || data.categories || [];
@@ -1626,17 +1626,18 @@ async function loadCategories() {
       `${cats.length} categor${cats.length !== 1 ? 'ies' : 'y'}`;
     renderCategoryMgmt(cats);
   } catch(e) {
-    tableEmpty('categories-tbody', 4, 'Failed: ' + (e.message || ''));
+    tableEmpty('categories-tbody', 5, 'Failed: ' + (e.message || ''));
     Toast.error('Failed to load categories');
   }
 }
 
 function renderCategoryMgmt(cats) {
   const tbody = document.getElementById('categories-tbody');
-  if (!cats.length) { tableEmpty('categories-tbody', 4); return; }
+  if (!cats.length) { tableEmpty('categories-tbody', 5); return; }
   tbody.innerHTML = cats.map(c => {
     const isActive = c.status === 'active';
     const id = parseInt(c.id);
+    const hasCommission = c.commission_rate != null;
     return `<tr>
       <td id="cat-name-${id}" data-catname="${escHtml(c.name)}"
           style="font-weight:600;cursor:pointer;color:var(--accent)"
@@ -1644,12 +1645,51 @@ function renderCategoryMgmt(cats) {
           onclick="openCategoryStats(${id})">${escHtml(c.name)}</td>
       <td><code style="font-size:11px;background:var(--bg-raised);padding:2px 6px;border-radius:3px">${escHtml(c.slug)}</code></td>
       <td>${statusBadge(c.status)}</td>
+      <td id="cat-comm-${id}" data-catcomm="${hasCommission ? parseFloat(c.commission_rate) : ''}"
+          style="cursor:pointer" title="Click to edit commission %"
+          onclick="editCategoryCommission(${id})">${hasCommission ? parseFloat(c.commission_rate) + '%' : '— (10% default)'}</td>
       <td><div class="td-actions">
         <button class="btn btn-sm btn-ghost" onclick="editCategoryName(${id})">Edit</button>
         <button class="btn btn-sm ${isActive ? 'btn-warn' : 'btn-success'}" onclick="toggleCategory(${id},'${isActive ? 'inactive' : 'active'}')">${isActive ? 'Deactivate' : 'Activate'}</button>
       </div></td>
     </tr>`;
   }).join('');
+}
+
+// ── Category Inline Commission Edit ──────────────────────────
+function editCategoryCommission(id) {
+  const cell = document.getElementById('cat-comm-' + id);
+  if (!cell) return;
+  const currentValue = cell.dataset.catcomm || '';
+  cell.onclick = null;
+  const inp = document.createElement('input');
+  inp.type = 'number';
+  inp.min = '0'; inp.max = '100'; inp.step = '0.1';
+  inp.className = 'form-control';
+  inp.style.cssText = 'font-size:13px;padding:3px 8px;width:90px';
+  inp.value = currentValue;
+  inp.placeholder = '10';
+  cell.innerHTML = '';
+  cell.appendChild(inp);
+  inp.focus(); inp.select();
+  let committed = false;
+  const commit = async () => {
+    if (committed) return; committed = true;
+    const raw = inp.value.trim();
+    if (raw === currentValue) { loadCategories(); return; }
+    const value = raw === '' ? null : Math.max(0, Math.min(100, parseFloat(raw)));
+    if (raw !== '' && Number.isNaN(value)) { loadCategories(); return; }
+    try {
+      await API.patch(CONFIG.ENDPOINTS.CATEGORY_DETAIL(id), { commission_rate: value ?? 10 });
+      Toast.success('Commission rate saved.');
+    } catch(e) { Toast.error(e.message || 'Failed to save commission rate'); }
+    loadCategories();
+  };
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+    if (e.key === 'Escape') { committed = true; loadCategories(); }
+  });
 }
 
 async function toggleCategory(id, newStatus) {

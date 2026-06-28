@@ -2297,17 +2297,20 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
    ACCOUNT PAGE
    ═══════════════════════════════════════════════════════════════════════ */
 
-.account-content { flex: 1; padding: 0 var(--sp-md); }
+.account-content { flex: 1; padding: 0 var(--sp-md); max-width: 100%; overflow-x: hidden; box-sizing: border-box; }
 
 .profile-card {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--sp-md);
+  max-width: 100%;
   background: linear-gradient(135deg, var(--clr-surface), var(--clr-surface-2));
   border: 1px solid var(--clr-border);
   border-radius: var(--r-lg);
   padding: var(--sp-lg);
   margin-bottom: var(--sp-lg);
+  box-sizing: border-box;
 }
 
 .account-role-pill {
@@ -2355,9 +2358,16 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
   flex-shrink: 0;
 }
 
+.profile-info {
+  min-width: 0;
+  flex: 1;
+}
+
 .profile-info h3 {
   font-size: 1.125rem;
   font-weight: 700;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .phone-number {
@@ -2394,7 +2404,9 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
 .menu-item {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--sp-md);
+  max-width: 100%;
   background: var(--clr-surface);
   border: 1px solid var(--clr-border);
   border-radius: var(--r-md);
@@ -2403,6 +2415,7 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
   transition: background var(--dur), transform var(--dur);
   -webkit-tap-highlight-color: transparent;
   min-height: 64px;  /* FIX: larger touch target */
+  box-sizing: border-box;
 }
 
 .menu-item:active { transform: scale(0.99); background: var(--clr-surface-2); }
@@ -2420,9 +2433,9 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
   flex-shrink: 0;
 }
 
-.menu-body { flex: 1; }
-.menu-body span { font-weight: 600; font-size: 0.9375rem; }
-.menu-sub { font-size: 0.78rem; color: var(--clr-text-2); margin-top: 2px; }
+.menu-body { flex: 1; min-width: 0; }
+.menu-body span { font-weight: 600; font-size: 0.9375rem; overflow-wrap: break-word; word-break: break-word; }
+.menu-sub { font-size: 0.78rem; color: var(--clr-text-2); margin-top: 2px; overflow-wrap: break-word; word-break: break-word; }
 
 .lock-badge {
   font-size: 0.65rem;

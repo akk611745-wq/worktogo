@@ -138,7 +138,7 @@
       <label class="form-label" for="reg-email">Email address</label>
       <input class="form-input" type="email" id="reg-email" placeholder="you@example.com" autocomplete="email"/>
     </div>
-    <div class="form-group">
+    <div class="form-group" id="regPasswordGroup">
       <label class="form-label" for="reg-password">Password</label>
       <input class="form-input" type="password" id="reg-password" placeholder="Min 8 characters" autocomplete="new-password"/>
     </div>
@@ -185,8 +185,25 @@ window.addEventListener('DOMContentLoaded', function() {
   if (params.get('apply') === '1') {
     showRegisterForm();
     _applyCustomerPrefill();
+    if (_customerToken()) {
+      // Customer is already logged into the main app — there's no need to
+      // create a separate vendor-portal account just to apply. Submit the
+      // application directly against their existing session (POST
+      // /api/vendors accepts a customer-role JWT), so email/password are
+      // irrelevant here — only business name + category are actually new.
+      document.getElementById('regEmailGroup').style.display = 'none';
+      document.getElementById('regPasswordGroup').style.display = 'none';
+    }
   }
 });
+
+// The customer app stores its JWT under localStorage key "wtg_token" (see
+// app/js/config.js TOKEN_KEY) — a different key than this portal's own
+// "wtg_vendor_token" (vendor/config.js), so there's no collision reading it
+// directly here.
+function _customerToken() {
+  try { return localStorage.getItem('wtg_token') || ''; } catch (_) { return ''; }
+}
 
 // Pulls whatever the customer app already has saved (name/phone/email) so a
 // customer applying to become a vendor doesn't have to retype it — only
@@ -517,16 +534,62 @@ function setActiveTab(which) {
 }
 
 async function handleRegister() {
+  const businessName = (document.getElementById("reg-business")?.value  || "").trim();
+  const category      = (document.getElementById("reg-category")?.value || "").trim();
+  const btn          =  document.getElementById("registerBtn");
+  const errEl        =  document.getElementById("registerError");
+  const customerToken = _customerToken();
+  const isApplyFlow  = new URLSearchParams(window.location.search).get('apply') === '1';
+
+  errEl.classList.remove("show");
+
+  // A customer arriving via "Become a Vendor" already has an account and a
+  // valid session — submit the application straight to POST /api/vendors
+  // with that token instead of running them through a second account
+  // creation. No name/email/password needed; only the two new fields.
+  if (isApplyFlow && customerToken) {
+    if (!businessName || !category) {
+      showRegErr("Please fill in business name and category.");
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "Submitting…";
+    try {
+      const vendorRes  = await fetch(window.WTG_BASE_URL + "/api/vendors", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + customerToken },
+        body:    JSON.stringify({ business_name: businessName, category, type: "service" }),
+      });
+      const vendorData = await vendorRes.json().catch(() => ({}));
+      btn.disabled = false;
+      btn.textContent = "Register";
+      if (!vendorRes.ok) {
+        if (vendorRes.status === 409) {
+          showRegErr("Aapki application already submitted hai aur review mein hai.");
+        } else {
+          showRegErr(vendorData?.message || vendorData?.error || "Application failed. Please try again.");
+        }
+        return;
+      }
+    } catch (_) {
+      btn.disabled = false;
+      btn.textContent = "Register";
+      showRegErr("Network error. Please try again.");
+      return;
+    }
+
+    document.getElementById("registerSection").innerHTML =
+      "<p style='text-align:center;color:#166534;background:#dcfce7;border:1px solid #bbf7d0;" +
+      "padding:1rem 1.25rem;border-radius:0.5rem;font-size:0.875rem;line-height:1.6;'>" +
+      "Application submitted! Aapki vendor application review mein hai." +
+      "</p>";
+    return;
+  }
+
   const name         = (document.getElementById("reg-name")?.value     || "").trim();
   const email        = (document.getElementById("reg-email")?.value    || "").trim();
   const password     =  document.getElementById("reg-password")?.value || "";
-  const businessName = (document.getElementById("reg-business")?.value  || "").trim();
-  const category      = (document.getElementById("reg-category")?.value || "").trim();
   const phone        = (document.getElementById("reg-phone")?.value    || "").trim();
-  const btn          =  document.getElementById("registerBtn");
-  const errEl        =  document.getElementById("registerError");
-
-  errEl.classList.remove("show");
 
   if (!name || !email || !password || !businessName || !category || !phone) {
     showRegErr("Please fill in all fields.");

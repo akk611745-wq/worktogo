@@ -148,11 +148,17 @@ class LedgerEngine {
         try {
             $pdo->beginTransaction();
 
-            // 1. Read booking total and vendor commission rate, FOR UPDATE to prevent race conditions
+            // 1. Read booking total, vendor commission rate, and the
+            // category's commission rate (via the booking's service), FOR
+            // UPDATE to prevent race conditions
             $stmt = $pdo->prepare("
-                SELECT b.total, b.vendor_id, b.payment_status, v.commission_rate
+                SELECT b.total, b.vendor_id, b.payment_status,
+                       v.commission_rate AS vendor_commission_rate,
+                       c.commission_rate AS category_commission_rate
                 FROM bookings b
                 JOIN vendors v ON v.id = b.vendor_id
+                LEFT JOIN services s ON s.id = b.service_id
+                LEFT JOIN categories c ON c.id = s.category_id
                 WHERE b.id = ?
                 FOR UPDATE
             ");
@@ -172,8 +178,17 @@ class LedgerEngine {
             }
 
             // 2. Calculate Shares
+            // Commission rate priority: category override > vendor override > 10% default.
+            // Explicit null checks (not truthy checks) so a deliberately-set
+            // 0% rate isn't mistaken for "not set" and overridden by the fallback.
             $total = (float)$booking['total'];
-            $commission_rate = $booking['commission_rate'] ? (float)$booking['commission_rate'] : 10.0;
+            if ($booking['category_commission_rate'] !== null) {
+                $commission_rate = (float)$booking['category_commission_rate'];
+            } elseif ($booking['vendor_commission_rate'] !== null) {
+                $commission_rate = (float)$booking['vendor_commission_rate'];
+            } else {
+                $commission_rate = 10.0;
+            }
             $platform_commission = ($total * $commission_rate) / 100;
             $vendor_earning = $total - $platform_commission;
 
