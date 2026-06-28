@@ -22,6 +22,7 @@
 <script>
 let allBookings   = [];
 let currentFilter = "all";
+const _localStatusOverride = new Map();
 const STATUS_ALIASES = { open:'pending', pending:'pending', assigned:'confirmed', accepted:'confirmed', confirmed:'confirmed', vendor_accepted:'confirmed', started:'in_progress', ongoing:'in_progress', in_progress:'in_progress', delivered:'completed', completed:'completed', rejected:'requeued', requeued:'requeued', cancelled:'cancelled' };
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -49,7 +50,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderPage();
   await loadBookings();
   _seedKnownIds();
-  setInterval(_pollForNewJobs, 15000);
+  _startPolling();
+  document.addEventListener('visibilitychange', _restartPolling);
 
   if (CONFIG.FEATURES?.VENDOR_REALTIME_LABEL) {
     RealtimeEngine.start({
@@ -168,6 +170,16 @@ async function loadBookings() {
   _setRefreshLabel();
 }
 
+// ── Poll interval adapts to tab visibility: 15s while active, 60s while
+// hidden — keeps the server load down without losing the new-job alert.
+let _pollIntervalId = null;
+function _startPolling() {
+  if (_pollIntervalId) clearInterval(_pollIntervalId);
+  const delay = document.hidden ? 60000 : 15000;
+  _pollIntervalId = setInterval(_pollForNewJobs, delay);
+}
+function _restartPolling() { _startPolling(); }
+
 function _updateAnalytics() {
   const strip = document.getElementById('analyticsStrip');
   if (!strip) return;
@@ -284,6 +296,19 @@ function applyFilter() {
   renderBookingRows(list);
 }
 
+// ── A vendor's Accept/Reject is applied to the server inside a DB
+// transaction, but a Refresh or background poll firing immediately after can
+// still read a connection that hasn't seen the commit yet (or a CDN/proxy
+// cache in front of the API). This override keeps the optimistic local
+// status authoritative for 60s so the action never visibly "reverts".
+function _applyStatusOverrides(list) {
+  list.forEach(b => {
+    const id = String(b.id || b._id);
+    if (_localStatusOverride.has(id)) b.status = _localStatusOverride.get(id);
+  });
+  return list;
+}
+
 const BOOKING_STATUS_COLOR = { pending:'#f59e0b', confirmed:'#3b82f6', in_progress:'#f97316', completed:'#10b981', cancelled:'#6b7280' };
 const BOOKING_STATUS_LABEL = { pending:'Pending', confirmed:'Confirmed', in_progress:'In Progress', completed:'Completed', cancelled:'Cancelled', requeued:'Requeued' };
 
@@ -295,6 +320,7 @@ function _chip(status) {
 }
 
 function renderBookingRows(list) {
+  list = _applyStatusOverrides(list);
   const tbody = document.getElementById("bookingTbody");
   const cards = document.getElementById("bookingCards");
   if (!list.length) {
@@ -312,7 +338,7 @@ function renderBookingRows(list) {
     const detail =
       '<div class="text-sm"><strong>Customer:</strong> ' + escHtml(b.customer_name || b.user?.name || '—') + ' · ' + escHtml(b.customer_phone || b.user?.phone || '—') + '</div>' +
       (b.customer_locality ? '<div style="font-size:13px;color:#666;margin-top:2px;">📍 ' + escHtml(b.customer_locality) + '</div>' : '') +
-      ((b.customer_phone || b.customer_mobile) ? '<div style="display:flex;gap:8px;margin-top:8px;"><a href="https://wa.me/' + _e164(b.customer_phone || b.customer_mobile || '') + '" target="_blank" rel="noopener noreferrer" style="flex:1;padding:8px;background:#25D366;color:#fff;border-radius:8px;text-align:center;text-decoration:none;font-size:13px;font-weight:600;">WhatsApp</a><a href="tel:+' + _e164(b.customer_phone || b.customer_mobile || '') + '" style="flex:1;padding:8px;background:#FF6B35;color:#fff;border-radius:8px;text-align:center;text-decoration:none;font-size:13px;font-weight:600;">Call</a></div>' : '') +
+      ((b.customer_phone || b.customer_mobile) ? '<div style="display:flex;gap:8px;margin-top:8px;"><a href="' + _waLink(b) + '" target="_blank" rel="noopener noreferrer" style="flex:1;padding:8px;background:#25D366;color:#fff;border-radius:8px;text-align:center;text-decoration:none;font-size:13px;font-weight:600;">WhatsApp</a><a href="tel:+' + _e164(b.customer_phone || b.customer_mobile || '') + '" style="flex:1;padding:8px;background:#FF6B35;color:#fff;border-radius:8px;text-align:center;text-decoration:none;font-size:13px;font-weight:600;">Call</a></div>' : '') +
       (cleanNotes(b.notes) ? '<div class="text-sm" style="background:var(--surface-2);padding:0.5rem;border-radius:6px;white-space:pre-wrap;">' + escHtml(cleanNotes(b.notes)).slice(0,220) + '</div>' : '') +
       '<div class="td-actions" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.3rem;"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();viewBooking(\'' + id + '\')">View</button>' +
       (status === 'pending' ? '<button class="btn btn-accept btn-sm" onclick="event.stopPropagation();quickAccept(\'' + id + '\',\'' + jobId + '\',this)">Accept</button><button class="btn btn-reject btn-sm" onclick="event.stopPropagation();quickReject(\'' + id + '\',\'' + jobId + '\',this)">Reject</button>' : (status === 'requeued' ? '<span class="text-muted text-sm">Returned to WorkToGo queue</span>' : '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStatusModal(\'' + id + '\',\'' + jobId + '\')">Update</button>')) +
@@ -423,11 +449,18 @@ function _restoreBtn(btnEl, original) {
   btnEl.innerHTML = original;
 }
 
+function _setStatusOverride(id, status) {
+  const key = String(id);
+  _localStatusOverride.set(key, status);
+  setTimeout(() => _localStatusOverride.delete(key), 60000);
+}
+
 async function quickAccept(id, jobId = null, btnEl = null) {
   const original = _setBtnLoading(btnEl, 'Accepting…');
   const res = await API.Bookings.accept(jobId || id);
   if (!res.ok) { _restoreBtn(btnEl, original); showToast(res.data?.message || "Failed to accept.", "error"); return; }
   showToast("Booking accepted!", "success");
+  _setStatusOverride(id, "confirmed");
   const idx = allBookings.findIndex(x => (x.id || x._id) == id);
   if (idx !== -1) allBookings[idx].status = "confirmed";
   _updateAnalytics(); renderChips(); applyFilter();
@@ -438,6 +471,7 @@ async function quickReject(id, jobId = null, btnEl = null) {
   const res = await API.Bookings.reject(jobId || id);
   if (!res.ok) { _restoreBtn(btnEl, original); showToast(res.data?.message || "Failed to reject.", "error"); return; }
   showToast("Request returned to WorkToGo queue.", "info");
+  _setStatusOverride(id, "cancelled");
   const idx = allBookings.findIndex(x => (x.id || x._id) == id);
   if (idx !== -1) allBookings[idx].status = "requeued";
   _updateAnalytics(); renderChips(); applyFilter();
@@ -488,6 +522,22 @@ function cleanNotes(raw) {
   ];
   if (INTERNAL_SIGNALS.some(s => val.includes(s))) return null;
   return val;
+}
+
+// Pre-filled WhatsApp message — only shown once the job is past acceptance
+// (in_progress/completed), since that's when the vendor actually needs to
+// coordinate arrival time with the customer.
+function _waLink(b) {
+  const phone = b.customer_phone || b.customer_mobile || '';
+  const status = normalizeStatus(b.status);
+  if (status !== 'in_progress' && status !== 'completed') return 'https://wa.me/' + _e164(phone);
+  const service = b.service_name || b.service?.name || 'Service';
+  const msg = encodeURIComponent(
+    'Namaste! Main WorkToGo se hoon.\n' +
+    'Aapki ' + service + ' booking (#' + (b.booking_number || b.id || b._id) + ') mili hai.\n' +
+    'Kab aana theek rahega?'
+  );
+  return 'https://wa.me/' + _e164(phone) + '?text=' + msg;
 }
 
 function _e164(phone) {
