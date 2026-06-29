@@ -1007,6 +1007,12 @@ window.HomeModals = (() => {
           </div>
         </section>
         <section class="inspection-step">
+          <h4>Service</h4>
+          <div class="inspection-chip-row" role="radiogroup" aria-label="Inspection category">
+            ${_inspectionCategoryChips(activeCategory)}
+          </div>
+        </section>
+        <section class="inspection-step">
           <h4>What's the issue?</h4>
           <div class="inspection-chip-row issue-multi-chip-row" id="inspection-issue-chips" role="group" aria-label="Issue types">
             ${activeCategory ? _inspectionIssueChips(activeCategory, activeIssues) : `<span class="service-note">Select a service to see matching issue options.</span>`}
