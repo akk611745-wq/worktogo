@@ -102,16 +102,15 @@ a.see-all,
 .free-booking-strip button { color: var(--wtg-accent) !important; background: #fff !important; border-color: var(--wtg-accent-border) !important; }
 
 .inspection-category-chip.active,
-.inspection-issue-chip.active {
-  border-color: var(--wtg-accent) !important;
-  background: var(--wtg-accent-soft) !important;
-  color: var(--wtg-accent) !important;
-}
-
+.inspection-issue-chip.active,
 .vendor-issue-chip.active {
-  border-color: var(--wtg-accent) !important;
-  background: var(--wtg-accent-soft) !important;
-  color: var(--wtg-accent) !important;
+  background: #e8540a !important;
+  color: #ffffff !important;
+  border: 2px solid #e8540a !important;
+  border-radius: 20px !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 8px rgba(232,84,10,0.35) !important;
+  transform: scale(1.04);
 }
 
 .booking-mode-premium.active {
