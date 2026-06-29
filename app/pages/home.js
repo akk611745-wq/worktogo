@@ -1059,7 +1059,7 @@ window.HomeModals = (() => {
     const locality = _resolvedLocality();
     const authUser = AUTH.getUser?.() || {};
     const phoneValue = restored.phone || profile.phone || authUser.phone || authUser.mobile || "";
-    const nameValue = profile.name || authUser.name || "Customer";
+    const nameValue = restored.name || profile.name || authUser.name || "";
     const addressValue = restored.address || profile.address || "";
     const rawSvcs = Array.isArray(service.vendor_services) && service.vendor_services.length
       ? service.vendor_services
@@ -1071,7 +1071,7 @@ window.HomeModals = (() => {
       <div class="vendor-direct-form">
         <div class="modal-field">
           <label for="booking-mobile">Mobile</label>
-          <input type="tel" id="booking-mobile" class="modal-input" placeholder="Mobile" autocomplete="off" value="${_esc(phoneValue)}" oninput="HomePage.persistPendingBookingForm?.()" />
+          <input type="tel" id="booking-mobile" class="modal-input" placeholder="Mobile" autocomplete="tel" value="${_esc(phoneValue)}" oninput="HomePage.persistPendingBookingForm?.()" />
         </div>
         <div class="modal-field">
           <label>Select issue</label>
@@ -1087,7 +1087,7 @@ window.HomeModals = (() => {
           <label for="booking-notes">Problem description <small>(optional)</small></label>
           <textarea id="booking-notes" class="modal-textarea" rows="2" placeholder="Brief description of the issue…" oninput="HomePage.persistPendingBookingForm?.()">${_esc(restored.notes || "")}</textarea>
         </div>
-        <input type="hidden" id="booking-name" value="${_esc(nameValue)}" />
+        <input type="text" id="booking-name" autocomplete="name" value="${_esc(nameValue)}" />
         <input type="hidden" id="booking-date" value="${_esc(_defaultScheduledLocal())}" />
         <input type="hidden" id="booking-area" value="${_esc(locality.label || "")}" />
         <input type="hidden" id="booking-mode" value="direct_vendor" />
@@ -2200,7 +2200,7 @@ function _heroHTML(slug = "") {
           <span class="distinction-detail">Our agent visits you first and checks the actual problem. Then the right worker gets assigned for your job.</span>
         </button>
         <button type="button" class="distinction-toggle" data-key="free_lead" aria-expanded="false" onclick="HomePage.toggleHeroInfoCard('free_lead')">
-          <span class="distinction-head"><strong>Free booking</strong><span class="distinction-arrow">⌄</span></span>
+          <span class="distinction-head"><strong>Book for Free</strong><span class="distinction-arrow">⌄</span></span>
           <span class="distinction-detail">We assign the best available worker in your area right away — no visit needed first.</span>
         </button>
       </div>
