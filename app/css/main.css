@@ -1027,10 +1027,15 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
 }
 
 .locality-modal {
-  align-items: flex-start;
-  padding-top: calc(70px + env(safe-area-inset-top, 0px));
-  max-height: 70vh;
+  align-items: flex-end !important;
+  padding-top: 0 !important;
+}
+.locality-modal .modal-sheet {
+  border-radius: 20px 20px 0 0;
+  max-height: 75vh;
   overflow-y: auto;
+  width: 100%;
+  padding-bottom: env(safe-area-inset-bottom, 16px);
 }
 .locality-search-wrap {
   display: flex;
@@ -3142,7 +3147,7 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
 .btn-secondary:hover { opacity: 0.8; }
 
 @media (max-width: 420px) {
-  .locality-modal { padding-top: calc(62px + env(safe-area-inset-top, 0px)); }
+  .locality-modal { padding-top: 0 !important; }
 
   .modal-sheet {
     padding: var(--sp-md) var(--sp-md) calc(var(--sp-xl) + env(safe-area-inset-bottom));
