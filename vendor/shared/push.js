@@ -45,7 +45,7 @@ const WTGPush = {
         appId: cfg.appId,
       });
       const registration = await navigator.serviceWorker.register(
-        `/app/pages/firebase-sw.js?${swParams.toString()}`
+        `/vendor/firebase-sw.js?${swParams.toString()}`
       );
 
       firebase.initializeApp({
