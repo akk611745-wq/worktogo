@@ -928,7 +928,7 @@ tr.rt-new-row { animation: rtRowPulse 1.5s ease both; }
 @media (max-width: 768px) {
   .analytics-row { grid-template-columns: 1fr 1fr; }
   .refresh-indicator span:last-child { display: none; }
-  .notif-panel { width: 90vw; right: -0.5rem; }
+  .notif-panel { width: 90vw; right: 0; left: auto; }
 }
 @media (max-width: 480px) {
   .analytics-row { grid-template-columns: 1fr; }
