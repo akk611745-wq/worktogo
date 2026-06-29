@@ -440,3 +440,73 @@ a.see-all,
   color: #6b7280 !important;
   text-transform: uppercase;
 }
+
+/* ── Direct-vendor booking sheet: premium, trustworthy, Zomato/UC feel ──── */
+
+.vendor-direct-form {
+  display: grid;
+  gap: 4px;
+}
+
+.vendor-direct-form .modal-field label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.vendor-direct-form .modal-field label small {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  color: #9ca3af;
+}
+
+.vendor-issue-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 8px 16px !important;
+  border-radius: 20px !important;
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.15s var(--ease, ease), box-shadow 0.15s var(--ease, ease), background 0.15s var(--ease, ease);
+}
+
+.vendor-issue-chip:active {
+  transform: scale(0.97);
+}
+
+.vendor-direct-form .modal-input,
+.vendor-direct-form .modal-textarea {
+  background: #fafafa;
+  border-color: #e5e7eb !important;
+}
+
+.vendor-direct-form .modal-input:focus,
+.vendor-direct-form .modal-textarea:focus {
+  background: #ffffff;
+  box-shadow: 0 0 0 3px var(--wtg-accent-soft);
+}
+
+#booking-modal-title {
+  position: relative;
+}
+
+.vendor-direct-form::before {
+  content: "✓ Verified worker · WorkToGo confirms before visit";
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #15803d;
+  background: rgba(21,128,61,0.08);
+  border: 1px solid rgba(21,128,61,0.18);
+  border-radius: 12px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  text-align: center;
+}
