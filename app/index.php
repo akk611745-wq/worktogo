@@ -66,6 +66,7 @@ function wtg_build_version(): string {
 
   <!-- Styles -->
   <link rel="stylesheet" href="css/main.css?v=<?php echo wtg_build_version(); ?>"/>
+  <link rel="stylesheet" href="css/wtg-premium.css?v=<?php echo wtg_build_version(); ?>"/>
 
   <!-- Preconnect for fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com"/>

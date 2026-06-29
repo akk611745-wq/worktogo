@@ -1,0 +1,419 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   WorkToGo — Premium Polish Layer
+   Loaded AFTER main.css. Higher-specificity override rules only —
+   does not replace main.css, just layers a consistent premium look
+   (Zomato/Urban-Company style) on top of the existing markup.
+   Mobile-first, tuned for 360px–420px width. No logic changes.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --wtg-accent:        #e8540a;
+  --wtg-accent-dark:   #c4470a;
+  --wtg-accent-soft:   rgba(232, 84, 10, 0.10);
+  --wtg-accent-border: rgba(232, 84, 10, 0.35);
+}
+
+/* ── Single accent color everywhere ───────────────────────────────────────
+   Replace the mixed purple / orange / dark-navy primary actions with one
+   consistent orange so the app reads as a single coherent brand. */
+
+.btn-primary,
+.modal-actions .btn-primary,
+.vendor-apply-submit,
+.login-tab.active,
+.btn-text,
+.btn-resend:not(:disabled),
+.support-btn,
+a.see-all,
+.see-all {
+  background: var(--wtg-accent) !important;
+}
+
+.btn-text,
+.btn-resend:not(:disabled),
+.support-btn,
+.see-all {
+  background: none !important;
+  color: var(--wtg-accent) !important;
+}
+
+.app-title {
+  background: linear-gradient(135deg, #1a1a1a 30%, var(--wtg-accent)) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+}
+
+.login-glow {
+  background: radial-gradient(ellipse, rgba(232, 84, 10, 0.16) 0%, transparent 70%) !important;
+}
+
+.auth-field input:focus,
+.input-group:focus-within,
+.modal-input:focus,
+.modal-textarea:focus,
+.otp-digit:focus,
+.vendor-apply-form input:focus,
+.vendor-apply-form select:focus {
+  border-color: var(--wtg-accent) !important;
+}
+
+.nav-item.active,
+.home-page .nav-item.active {
+  color: var(--wtg-accent) !important;
+}
+
+.tab.active {
+  background: var(--wtg-accent) !important;
+  border-color: transparent !important;
+}
+
+.category-chips button.active,
+.ops-status-pill.active,
+.ecosystem-visual-rail button.active,
+.ecosystem-tag-row button.active {
+  background: var(--wtg-accent) !important;
+  border-color: var(--wtg-accent) !important;
+  box-shadow: 0 10px 24px rgba(232, 84, 10, 0.22) !important;
+}
+.ops-status-pill.active small { color: var(--wtg-accent) !important; }
+
+.location-pill::after,
+.see-all,
+.section-eyebrow,
+.service-hero-kicker,
+.instant-result-list small,
+.locality-suggestion.active small,
+.support-options strong ~ span {
+  color: var(--wtg-accent) !important;
+}
+
+.locality-suggestion.active {
+  border-color: var(--wtg-accent-border) !important;
+  box-shadow: 0 10px 22px rgba(232, 84, 10, 0.12) !important;
+}
+
+.marketplace-cta,
+.hero-secondary,
+.vendor-book-btn,
+.free-booking-strip button {
+  background: var(--wtg-accent) !important;
+  box-shadow: 0 14px 28px rgba(232, 84, 10, 0.26) !important;
+}
+.free-booking-strip button { color: var(--wtg-accent) !important; background: #fff !important; border-color: var(--wtg-accent-border) !important; }
+
+.inspection-category-chip.active,
+.inspection-issue-chip.active {
+  border-color: var(--wtg-accent) !important;
+  background: var(--wtg-accent-soft) !important;
+  color: var(--wtg-accent) !important;
+}
+
+.vendor-issue-chip.active {
+  border-color: var(--wtg-accent) !important;
+  background: var(--wtg-accent-soft) !important;
+  color: var(--wtg-accent) !important;
+}
+
+.booking-mode-premium.active {
+  border-color: var(--wtg-accent) !important;
+  background: var(--wtg-accent-soft) !important;
+}
+
+.distinction-toggle.expanded .distinction-arrow,
+.premium-inspection-highlight > span {
+  color: var(--wtg-accent) !important;
+}
+
+/* ── Chips / tags: orange OUTLINE style, never solid dark/black ────────── */
+
+.category-chips button,
+.ops-ticker button,
+.ops-status-pill,
+.locality-mini-row button,
+.ecosystem-tag-row button,
+.ecosystem-tag-row span,
+.inspection-category-chip,
+.inspection-issue-chip,
+.vendor-issue-chip {
+  background: #ffffff;
+  border: 1.5px solid var(--wtg-accent-border);
+  color: var(--wtg-accent-dark);
+}
+
+.category-chips button.active,
+.ops-status-pill.active {
+  color: #ffffff !important;
+}
+
+/* Status / request pills — keep semantic colors but make them all outline
+   (transparent/white bg + colored border+text) instead of filled. */
+.status-badge {
+  background: #fff !important;
+  border: 1.5px solid currentColor;
+  padding: 3px 10px !important;
+}
+.status-pending    { color: #b45309 !important; }
+.status-confirmed  { color: #1d4ed8 !important; }
+.status-processing { color: #7e22ce !important; }
+.status-shipped    { color: #0369a1 !important; }
+.status-success    { color: #15803d !important; }
+.status-cancelled  { color: #b91c1c !important; }
+.status-default    { color: #6b7280 !important; border-color: #d1d5db !important; }
+
+.request-mini-pill,
+.request-state-pill {
+  background: #fff !important;
+  border: 1.5px solid var(--clr-border-2, #e5e7eb) !important;
+}
+.request-mini-pill.free,
+.request-state-pill.active { border-color: #16a34a !important; color: #15803d !important; background: #fff !important; }
+.request-mini-pill.paid { border-color: #2563eb !important; color: #1d4ed8 !important; background: #fff !important; }
+.request-mini-pill.payment-pending { border-color: var(--wtg-accent) !important; color: var(--wtg-accent-dark) !important; background: #fff !important; }
+
+.role-chip,
+.account-role-pill,
+.lock-badge {
+  background: #fff !important;
+  border: 1.5px solid currentColor;
+}
+.role-user    { color: var(--wtg-accent-dark) !important; border-color: var(--wtg-accent-border) !important; }
+.role-vendor  { color: #15803d !important; border-color: #16a34a !important; }
+.role-creator { color: #b45309 !important; border-color: #f59e0b !important; }
+.account-role-pill { color: #15803d !important; border-color: #16a34a !important; }
+.lock-badge { color: #6b7280 !important; border-color: #d1d5db !important; }
+
+/* ── Chip / tag rows: ensure horizontal overflow never clips content ───── */
+.category-chips,
+.tab-bar,
+.ops-ticker,
+.ecosystem-tag-row,
+.inspection-chip-row,
+.locality-mini-row,
+.hero-live-strip,
+.vendor-issue-chips {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.category-chips::-webkit-scrollbar,
+.tab-bar::-webkit-scrollbar,
+.ops-ticker::-webkit-scrollbar,
+.ecosystem-tag-row::-webkit-scrollbar,
+.inspection-chip-row::-webkit-scrollbar,
+.locality-mini-row::-webkit-scrollbar,
+.hero-live-strip::-webkit-scrollbar,
+.vendor-issue-chips::-webkit-scrollbar {
+  display: none;
+}
+.vendor-issue-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ── Primary buttons: full width, orange, rounded, comfortable ─────────── */
+
+.btn-primary {
+  width: 100%;
+  border-radius: 14px !important;
+  min-height: 52px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: 0 10px 24px rgba(232, 84, 10, 0.22);
+}
+.btn-primary:active { background: var(--wtg-accent-dark) !important; transform: scale(0.98); }
+
+.modal-actions .btn-primary {
+  border-radius: 14px !important;
+}
+
+.vendor-book-btn { border-radius: 14px !important; }
+.vendor-book-btn:active { background: var(--wtg-accent-dark) !important; }
+
+.marketplace-cta,
+.hero-secondary { border-radius: 14px !important; }
+
+.vendor-apply-submit { border-radius: 14px !important; }
+
+.btn-secondary {
+  border-radius: 14px !important;
+}
+
+/* ── Forms: airy, generous padding, soft borders, clear labels ─────────── */
+
+.modal-input,
+.modal-textarea,
+.auth-field input,
+.vendor-apply-form input,
+.vendor-apply-form select {
+  border-radius: 14px !important;
+  border-width: 1.5px !important;
+  padding: 14px 16px !important;
+  min-height: 52px;
+}
+
+.modal-textarea { min-height: 64px; }
+
+.modal-field { margin-bottom: 14px; }
+
+.modal-field label {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+  margin-bottom: 7px;
+}
+
+.auth-field label {
+  margin-bottom: 8px;
+}
+
+.input-group {
+  border-radius: 14px !important;
+}
+
+.otp-digit {
+  border-radius: 12px !important;
+}
+
+/* ── Modals / bottom sheets: rounded top corners, clean padding, handle ── */
+
+.modal-sheet {
+  border-radius: 22px 22px 0 0 !important;
+  padding-left: 18px !important;
+  padding-right: 18px !important;
+}
+
+.modal-handle {
+  width: 40px;
+  height: 5px;
+  background: #e2e2e2;
+  border-radius: 999px;
+  margin: 4px auto 16px;
+}
+
+.modal-sheet h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.locality-sheet {
+  border-radius: 22px !important;
+}
+
+.support-selector-card,
+.vendor-apply-card {
+  border-radius: 22px !important;
+}
+
+/* ── Typography hierarchy / consistency ─────────────────────────────────── */
+
+.section-header h3,
+.page-header h2 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.card h4,
+.vendor-head h4,
+.quick-service-card strong,
+.item-title {
+  font-weight: 700;
+}
+
+.muted, .small,
+.card-meta,
+.vendor-head p,
+.menu-sub {
+  line-height: 1.4;
+}
+
+/* ── White space: comfortable section/card spacing ──────────────────────── */
+
+.home-section { margin-bottom: 22px; }
+.section-header { padding-bottom: 10px; }
+.list-container { gap: 12px; }
+.menu-list { gap: 10px; }
+
+.list-item,
+.menu-item {
+  border-radius: 16px !important;
+}
+
+.profile-card { border-radius: 20px !important; }
+
+/* ── Vendor card / listing polish ───────────────────────────────────────── */
+
+.vendor-card {
+  border-radius: 20px !important;
+}
+
+.vendor-head h4 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.vendor-stats {
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.vendor-stats::-webkit-scrollbar { display: none; }
+.vendor-stats span {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ── Card grid / price text — prevent any overflow/cut-off at 360px ────── */
+
+.card-price,
+.item-amount,
+.modal-price {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.card h4 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.location-pill strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 38vw;
+  display: inline-block;
+}
+
+.profile-info h3 {
+  word-break: break-word;
+}
+
+/* ── Account page: outline style edit/menu chips ────────────────────────── */
+
+.menu-item {
+  box-shadow: 0 2px 10px rgba(17,17,17,0.03);
+}
+
+/* ── Misc: status colors used for success / whatsapp keep semantic green,
+   but anything that was using purple/blue as a "primary" accent should
+   read as orange instead for brand consistency. ─────────────────────────── */
+
+.login-tab.active {
+  color: #fff !important;
+}
+
+.btn-google:active { border-color: var(--wtg-accent-border); }
+
+@media (max-width: 420px) {
+  .modal-sheet { padding-left: 16px !important; padding-right: 16px !important; }
+  .location-pill strong { max-width: 32vw; }
+}
