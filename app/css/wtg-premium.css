@@ -388,7 +388,7 @@ a.see-all,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 38vw;
+  max-width: 60vw;
   display: inline-block;
 }
 
@@ -414,7 +414,7 @@ a.see-all,
 
 @media (max-width: 420px) {
   .modal-sheet { padding-left: 16px !important; padding-right: 16px !important; }
-  .location-pill strong { max-width: 32vw; }
+  .location-pill strong { max-width: 55vw; }
 }
 
 /* ── Booking sheet: fix dark/black bottom info bar — it was inheriting the

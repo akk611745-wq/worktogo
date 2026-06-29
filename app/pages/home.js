@@ -1994,9 +1994,15 @@ function _renderLocalityHeader() {
   if (status) status.textContent = "near you";
 }
 
-function _renderLocalitySelector(query = "") {
+function _renderLocalitySelector(query = "", { full = false } = {}) {
   const el = document.getElementById("locality-selector-body");
-  if (el) el.innerHTML = _localitySelectorHTML(query);
+  if (!el) return;
+  if (!full && el.querySelector("#locality-manual-input")) {
+    const list = document.getElementById("locality-suggestions");
+    if (list) list.innerHTML = _localitySuggestionsHTML(query);
+    return;
+  }
+  el.innerHTML = _localitySelectorHTML(query);
 }
 
 function _renderHeroStats() {
@@ -2533,7 +2539,7 @@ function _servicePriceLabel(service) {
 }
 
 function _openLocalitySelector() {
-  _renderLocalitySelector();
+  _renderLocalitySelector("", { full: true });
   document.getElementById("locality-modal")?.classList.remove("hidden");
   document.body.classList.add("modal-open");
   document.body.dataset.modalOpen = "locality";
@@ -2546,7 +2552,7 @@ function _openLocalitySelector() {
       _persistLocalityContext();
       _persistHomeState();
       _refreshLocalitySurfaces();
-      _renderLocalitySelector();
+      _renderLocalitySelector("", { full: true });
     }
   }
   setTimeout(() => document.getElementById("locality-manual-input")?.focus({ preventScroll: true }), 40);
@@ -2561,11 +2567,6 @@ function _closeLocalitySelector() {
 }
 
 function _localitySelectorHTML(query = "") {
-  const active = _resolvedLocality();
-  const search = _cleanLocality(query).toLowerCase();
-  const LOCAL_AREAS = ["Mukhani", "Dahariya", "Kathgodam", "Tikonia", "Lalkuan", "Bhimtal", "Ramnagar", "Bazpur", "Kashipur"];
-  const filtered = search ? LOCAL_AREAS.filter(a => a.toLowerCase().includes(search)) : LOCAL_AREAS;
-  const rowStyle = "min-height:56px;padding:14px 12px;display:flex;align-items:center;gap:10px;width:100%;border:none;border-bottom:1px solid var(--clr-border);background:transparent;color:var(--clr-text-1);font-size:15px;text-align:left;cursor:pointer;box-sizing:border-box;";
   return `
     <button id="gps-locate-btn" type="button" onclick="HomePage.detectGPSLocality()" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:14px 12px;margin-bottom:8px;border:1.5px solid var(--clr-border);border-radius:10px;background:var(--clr-surface-2);color:var(--clr-text-1);font-size:15px;font-weight:500;cursor:pointer;text-align:left;box-sizing:border-box;">
       <span>📡</span><span>Use my location</span>
@@ -2574,10 +2575,19 @@ function _localitySelectorHTML(query = "") {
       <span>⌕</span>
       <input id="locality-manual-input" class="modal-input" type="search" placeholder="Search area" value="${_esc(query)}" autocomplete="off" oninput="HomePage.filterLocalitySuggestions(this.value)" onkeydown="if(event.key==='Enter'){HomePage.submitLocalitySearch()}" />
     </div>
-    <div>
+    <div id="locality-suggestions">${_localitySuggestionsHTML(query)}</div>`;
+}
+
+function _localitySuggestionsHTML(query = "") {
+  const active = _resolvedLocality();
+  const search = _cleanLocality(query).toLowerCase();
+  const LOCAL_AREAS = ["Mukhani", "Dahariya", "Kathgodam", "Tikonia", "Lalkuan", "Bhimtal", "Ramnagar", "Bazpur", "Kashipur"];
+  const filtered = search ? LOCAL_AREAS.filter(a => a.toLowerCase().includes(search)) : LOCAL_AREAS;
+  const rowStyle = "min-height:56px;padding:14px 12px;display:flex;align-items:center;gap:10px;width:100%;border:none;border-bottom:1px solid var(--clr-border);background:transparent;color:var(--clr-text-1);font-size:15px;text-align:left;cursor:pointer;box-sizing:border-box;";
+  return `
       ${filtered.map(area => `<button type="button" style="${rowStyle}${_slug(active.label) === _slug(area) ? "font-weight:700;color:var(--clr-accent);" : ""}" onclick="HomePage.chooseLocality('${_esc(area)}', 'selected')"><span>📍</span><strong>${_esc(area)}</strong></button>`).join("")}
       ${search && !filtered.length ? `<button type="button" style="${rowStyle}" onclick="HomePage.chooseLocality('${_esc(query)}', 'typed')"><span>＋</span><strong>${_esc(query)}</strong><small style="margin-left:auto;font-size:12px;color:var(--clr-text-2);">Use this area</small></button>` : ""}
-    </div>`;
+    `;
 }
 
 function _localityOptions(meta = {}) {
