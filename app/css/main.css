@@ -1029,6 +1029,33 @@ body.chrome-hidden:not(.modal-open):not(.explore-open) .marketplace-top-bar { tr
 .locality-modal {
   align-items: flex-start;
   padding-top: calc(70px + env(safe-area-inset-top, 0px));
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.locality-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.locality-search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 16px;
+  background: transparent;
+}
+.locality-search-icon {
+  font-size: 16px;
+  color: #999;
+}
+.locality-gps-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px;
 }
 .locality-sheet {
   width: min(92vw, 420px);

@@ -2066,6 +2066,10 @@ function _servicePrice(service) {
 // appended after these.
 const CATEGORY_ORDER = ["waterproofing", "plumber", "painting", "electrician", "ac-repair", "cctv"];
 
+// Single source of truth for the Haldwani pilot's known local areas — used
+// by both the locality picker suggestions and the city-locality defaults.
+const LOCAL_AREAS = ["Mukhani", "Dahariya", "Kathgodam", "Tikonia", "Lalkuan", "Bhimtal", "Ramnagar", "Bazpur", "Kashipur"];
+
 function _sortCategories(list) {
   return [...list].sort((a, b) => {
     const ia = CATEGORY_ORDER.indexOf(a.slug);
@@ -2568,12 +2572,10 @@ function _closeLocalitySelector() {
 
 function _localitySelectorHTML(query = "") {
   return `
-    <button id="gps-locate-btn" type="button" onclick="HomePage.detectGPSLocality()" style="display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:14px 12px;margin-bottom:8px;border:1.5px solid var(--clr-border);border-radius:10px;background:var(--clr-surface-2);color:var(--clr-text-1);font-size:15px;font-weight:500;cursor:pointer;text-align:left;box-sizing:border-box;">
-      <span>📡</span><span>Use my location</span>
-    </button>
-    <div class="locality-search-box">
-      <span>⌕</span>
-      <input id="locality-manual-input" class="modal-input" type="search" placeholder="Search area" value="${_esc(query)}" autocomplete="off" oninput="HomePage.filterLocalitySuggestions(this.value)" onkeydown="if(event.key==='Enter'){HomePage.submitLocalitySearch()}" />
+    <div class="locality-search-wrap">
+      <span class="locality-search-icon">🔍</span>
+      <input type="text" id="locality-manual-input" class="locality-search-input" placeholder="Search your area..." value="${_esc(query)}" autocomplete="off" oninput="HomePage.filterLocalitySuggestions(this.value)" onkeydown="if(event.key==='Enter'){HomePage.submitLocalitySearch()}">
+      <button id="gps-locate-btn" class="locality-gps-btn" type="button" onclick="HomePage.detectGPSLocality()">📍</button>
     </div>
     <div id="locality-suggestions">${_localitySuggestionsHTML(query)}</div>`;
 }
@@ -2581,7 +2583,6 @@ function _localitySelectorHTML(query = "") {
 function _localitySuggestionsHTML(query = "") {
   const active = _resolvedLocality();
   const search = _cleanLocality(query).toLowerCase();
-  const LOCAL_AREAS = ["Mukhani", "Dahariya", "Kathgodam", "Tikonia", "Lalkuan", "Bhimtal", "Ramnagar", "Bazpur", "Kashipur"];
   const filtered = search ? LOCAL_AREAS.filter(a => a.toLowerCase().includes(search)) : LOCAL_AREAS;
   const rowStyle = "min-height:56px;padding:14px 12px;display:flex;align-items:center;gap:10px;width:100%;border:none;border-bottom:1px solid var(--clr-border);background:transparent;color:var(--clr-text-1);font-size:15px;text-align:left;cursor:pointer;box-sizing:border-box;";
   return `
@@ -2752,7 +2753,7 @@ async function _detectGPSLocality() {
     return;
   }
   const btn = document.getElementById("gps-locate-btn");
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span>📡</span><span>Detecting…</span>'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳'; }
 
   navigator.geolocation.getCurrentPosition(
     async pos => {
@@ -2812,7 +2813,7 @@ function _attachAddressAutocomplete() {
 
 function _resetGPSBtn() {
   const btn = document.getElementById("gps-locate-btn");
-  if (btn) { btn.disabled = false; btn.innerHTML = '<span>📡</span><span>Use my location</span>'; }
+  if (btn) { btn.disabled = false; btn.innerHTML = '📍'; }
 }
 
 function _restoreLocalityContext() {
@@ -2882,7 +2883,7 @@ function _cityLocalities(city = "") {
   const key = _slug(city);
   const configured = _pilotConfig.city_localities?.[city] || _pilotConfig.city_localities?.[key] || [];
   const defaults = {
-    haldwani: ["Mukhani", "Dahariya", "Kathgodam", "Lalkuan", "Tikonia", "Bhimtal", "Ramnagar", "Bazpur", "Kashipur"],
+    haldwani: [...LOCAL_AREAS],
   };
   return (Array.isArray(configured) && configured.length ? configured : defaults[key] || []).map(_cleanLocality).filter(Boolean);
 }
