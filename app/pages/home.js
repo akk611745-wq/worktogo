@@ -569,12 +569,12 @@ window.HomeModals = (() => {
     const defaultMode = _canonicalBookingMode(service.booking_mode || (sameRestoredContext ? restored.booking_mode : "") || (service.vendor_id ? "direct_vendor" : "free_lead"), _currentService, category);
     const inspectionPrice = _inspectionPrice(_currentService, category);
     _resetBookingActions(defaultMode, inspectionPrice);
-    const modalTitleCategory = category.slug ? category.label : "service";
+    const modalTitleCategory = category.slug ? category.label : "Service";
     const isVendorDirect = service.request_source === "worker_card";
     const vendorDisplayName = _currentService.vendor_name || _currentService.name || category.label;
     document.getElementById("booking-modal-title").textContent = isVendorDirect
       ? `Book ${vendorDisplayName}`
-      : defaultMode === "inspection" ? `Inspection for ${modalTitleCategory}` : defaultMode === "free_lead" ? `Free ${modalTitleCategory} booking` : `Book ${category.label}`;
+      : defaultMode === "inspection" ? `${modalTitleCategory} Inspection` : defaultMode === "free_lead" ? `Book ${modalTitleCategory}` : `Book ${category.label}`;
     document.getElementById("booking-modal-body").innerHTML = isVendorDirect
       ? _vendorDirectFormHTML({ service: _currentService, category, selectedService, restored, profile })
       : (defaultMode === "inspection" || defaultMode === "free_lead") ? _intakeRequestHTML({ mode: defaultMode, service: _currentService, category, selectedService, restored, sameRestoredContext, inspectionPrice }) : `
@@ -990,7 +990,7 @@ window.HomeModals = (() => {
     return `
       <div class="inspection-flow" data-flow="${_esc(isInspection ? "inspection-request" : "free-booking-request")}">
         <div class="inspection-summary-row">
-          <strong>${_esc(isInspection ? `${UI.formatCurrency(inspectionPrice)} Inspection` : "Free booking")}</strong>
+          <strong>${_esc(isInspection ? `${UI.formatCurrency(inspectionPrice)} Inspection` : `${category.label || "Service"} request`)}</strong>
           <span>${_esc(locality.label)}</span>
         </div>
         <section class="inspection-step compact-customer-step">
@@ -1007,15 +1007,9 @@ window.HomeModals = (() => {
           </div>
         </section>
         <section class="inspection-step">
-          <h4>Service</h4>
-          <div class="inspection-chip-row" role="radiogroup" aria-label="Inspection category">
-            ${_inspectionCategoryChips(activeCategory)}
-          </div>
-        </section>
-        <section class="inspection-step">
-          <h4>Issue type</h4>
+          <h4>What's the issue?</h4>
           <div class="inspection-chip-row issue-multi-chip-row" id="inspection-issue-chips" role="group" aria-label="Issue types">
-            ${activeCategory ? _inspectionIssueChips(activeCategory, activeIssues) : `<span class="service-note">Choose a service category above to see matching issue chips.</span>`}
+            ${activeCategory ? _inspectionIssueChips(activeCategory, activeIssues) : `<span class="service-note">Select a service to see matching issue options.</span>`}
           </div>
         </section>
         <section class="inspection-step">
@@ -1037,7 +1031,7 @@ window.HomeModals = (() => {
             <textarea id="booking-notes" class="modal-textarea" placeholder="Optional" rows="2" oninput="HomePage.persistPendingBookingForm?.()">${_esc((sameRestoredContext && restored.notes) || "")}</textarea>
           </div>
         </section>
-        <p class="inspection-payment-note">${_esc(isInspection ? "UPI apps and UPI ID are supported at payment." : "Free request: admin receives category, issue, locality and contact details for worker matching.")}</p>
+        <p class="inspection-payment-note">${_esc(isInspection ? "UPI apps and UPI ID are supported at payment." : "We'll match you with a nearby worker and confirm before they arrive.")}</p>
       </div>
       ${isInspection ? `
         <section class="inspection-step">
