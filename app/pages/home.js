@@ -434,6 +434,7 @@ export async function render(container) {
   _syncOperatingMode();
   _renderInstantSearch();
   _restoreInspectionPaymentReturn();
+  _maybeAutoDetectLocality();
 }
 
 // ── Modal Controller ────────────────────────────────────────────────────────
@@ -650,6 +651,7 @@ window.HomeModals = (() => {
     _lockModalBody("booking");
     _bindSwipeToClose(modal?.querySelector(".modal-sheet"));
     _persistPendingBookingForm();
+    _attachAddressAutocomplete();
   }
 
   async function confirmBooking() {
@@ -2746,13 +2748,15 @@ async function _detectGPSLocality() {
     async pos => {
       const { latitude, longitude } = pos.coords;
       try {
-        const url = `https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&format=json&addressdetails=1`;
-        const res = await fetch(url, { headers: { "Accept-Language": "en" } });
+        const key = CONFIG.GOOGLE_MAPS_KEY || "";
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${encodeURIComponent(key)}&language=hi&region=IN`;
+        const res = await fetch(url);
         const data = await res.json();
-        const addr = data.address || {};
-        const area = _cleanLocality(addr.suburb || addr.neighbourhood || addr.village || addr.town || addr.city_district || "");
-        const city = _cleanLocality(addr.city || addr.town || addr.county || addr.state_district || "");
-        const label = area || city;
+        const components = data.results?.[0]?.address_components || [];
+        const findComponent = type => components.find(c => Array.isArray(c.types) && c.types.includes(type))?.long_name || "";
+        const area = _cleanLocality(findComponent("sublocality_level_1") || findComponent("sublocality"));
+        const city = _cleanLocality(findComponent("locality"));
+        const label = area && city ? `${area}, ${city}` : (area || city);
         if (!label) {
           UI.toast("Could not identify area. Select manually.", "error");
           _resetGPSBtn();
@@ -2771,6 +2775,29 @@ async function _detectGPSLocality() {
     },
     { timeout: 8000, maximumAge: 60000 }
   );
+}
+
+function _maybeAutoDetectLocality() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem("wtg_locality_context") || "null"); } catch {}
+  if (!saved?.label) _detectGPSLocality();
+}
+
+function _attachAddressAutocomplete() {
+  const input = document.getElementById("booking-address");
+  if (!input || !window.google?.maps?.places) return;
+  const autocomplete = new google.maps.places.Autocomplete(input, {
+    componentRestrictions: { country: "in" },
+    fields: ["formatted_address", "geometry", "name", "address_components"],
+    types: ["address"],
+  });
+  autocomplete.addListener("place_changed", () => {
+    const place = autocomplete.getPlace();
+    if (place?.formatted_address) {
+      input.value = place.formatted_address;
+      _persistPendingBookingForm();
+    }
+  });
 }
 
 function _resetGPSBtn() {

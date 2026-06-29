@@ -86,6 +86,12 @@ function wtg_build_version(): string {
   <!-- Firebase Cloud Messaging (browser push notifications) -->
   <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js"></script>
+
+  <!-- Google Maps (geocoding + Places autocomplete) -->
+  <script>
+    window.WTG_GOOGLE_KEY = "<?php echo htmlspecialchars(getenv('GOOGLE_MAPS_API_KEY') ?: '', ENT_QUOTES, 'UTF-8'); ?>";
+  </script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=<?php echo urlencode(getenv('GOOGLE_MAPS_API_KEY') ?: ''); ?>&libraries=places&language=hi"></script>
 </head>
 <body>
 

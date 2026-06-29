@@ -10,6 +10,9 @@ const CONFIG = {
   // Set your real backend URL here — no trailing slash
   BASE_URL: (typeof window !== "undefined" && window.WTG_BASE_URL) || "https://worktogo.in",
 
+  // Google Maps key, injected by index.php from GOOGLE_MAPS_API_KEY env var
+  GOOGLE_MAPS_KEY: (typeof window !== "undefined" && window.WTG_GOOGLE_KEY) || "",
+
   ENDPOINTS: {
     // Auth — OTP flow
     OTP_SEND:   "/api/auth/otp/send",
