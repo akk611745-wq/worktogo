@@ -150,5 +150,73 @@ function wtg_build_version(): string {
     });
   </script>
 
+  <script>
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('/app/sw.js');
+    });
+  }
+  </script>
+
+  <script>
+  let deferredPrompt;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    setTimeout(() => {
+      if(deferredPrompt){
+        showInstallBanner();
+      }
+    }, 30000);
+  });
+
+  function showInstallBanner(){
+    const banner = document.createElement('div');
+    banner.id = 'wtg-install-banner';
+    banner.innerHTML = `
+      <div style="position:fixed;bottom:80px;left:16px;right:16px;
+      background:#fff;border-radius:16px;padding:16px;
+      box-shadow:0 4px 20px rgba(0,0,0,0.15);
+      display:flex;align-items:center;gap:12px;z-index:9999;
+      border-left:4px solid #e8681a;">
+        <img src="/app/assets/icon-192.png"
+             style="width:48px;height:48px;border-radius:10px;">
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:14px;">
+            Install WorkToGo App</div>
+          <div style="font-size:12px;color:#666;">
+            Book services faster from home screen</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <button onclick="installApp()"
+            style="background:#e8681a;color:#fff;border:none;
+            border-radius:8px;padding:6px 12px;
+            font-size:12px;font-weight:700;cursor:pointer;">
+            Install</button>
+          <button onclick="dismissBanner()"
+            style="background:transparent;border:none;
+            color:#999;font-size:11px;cursor:pointer;">
+            Not now</button>
+        </div>
+      </div>`;
+    document.body.appendChild(banner);
+  }
+
+  function installApp(){
+    if(deferredPrompt){
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(() => {
+        deferredPrompt = null;
+        dismissBanner();
+      });
+    }
+  }
+
+  function dismissBanner(){
+    const b = document.getElementById('wtg-install-banner');
+    if(b) b.remove();
+  }
+  </script>
+
 </body>
 </html>
