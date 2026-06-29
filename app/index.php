@@ -61,8 +61,16 @@ function wtg_build_version(): string {
   <link rel="icon" href="/app/assets/favicon.png"/>
   <link rel="apple-touch-icon" href="/app/assets/icon-192.png"/>
   <link rel="manifest" href="/app/manifest.json"/>
+
+  <!-- SEO -->
+  <meta name="description" content="WorkToGo — Haldwani ka trusted home service platform. Plumber, Electrician, Painter, Waterproofing, AC Repair. Verified local experts. Book in 60 seconds."/>
+  <meta name="keywords" content="plumber haldwani, electrician haldwani, painter haldwani, waterproofing haldwani, ac repair haldwani, home services haldwani, worktogo"/>
+  <meta name="robots" content="index, follow"/>
+  <link rel="canonical" href="https://worktogo.in/app/"/>
+  <meta property="og:title" content="WorkToGo — Trusted Home Services in Haldwani"/>
+  <meta property="og:description" content="Book verified local experts in Haldwani. Plumber, Electrician, Painter, Waterproofing, AC Repair."/>
+  <meta property="og:url" content="https://worktogo.in"/>
   <meta property="og:image" content="https://worktogo.in/app/assets/icon-512.png"/>
-  <meta property="og:title" content="WorkToGo — Trusted local services for Haldwani"/>
 
   <!-- Styles -->
   <link rel="stylesheet" href="css/main.css?v=<?php echo wtg_build_version(); ?>"/>
