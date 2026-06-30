@@ -205,18 +205,17 @@ export async function render(container) {
       _renderLocalitySelector(query);
       _searchPlacesAsync(query);
     },
-    submitLocalitySearch() {
+    async submitLocalitySearch() {
       const input = document.getElementById("locality-manual-input");
       const value = input?.value?.trim() || "";
       if (!value) return;
-      _setManualLocality(value, "typed");
+      await _geocodeAndSaveTyped(value);
     },
-    saveTypedLocality() {
+    async saveTypedLocality() {
       const input = document.getElementById("locality-manual-input");
       const value = input?.value?.trim() || "";
       if (!value) { UI.toast("Type an area or choose a nearby area", "error"); return; }
-      _setManualLocality(value, "typed");
-      _closeLocalitySelector();
+      await _geocodeAndSaveTyped(value);
     },
     clearLocalitySelection() {
       _clearManualLocality();
@@ -2835,6 +2834,32 @@ function _browserLocalityHint(create = true) {
   const hint = { label, city: _inferCityForLocality(label), source: "browser_hint", updated_at: Date.now() };
   try { sessionStorage.setItem("wtg_browser_locality_hint", JSON.stringify(hint)); } catch {}
   return hint;
+}
+
+async function _geocodeAndSaveTyped(value = "") {
+  const key = CONFIG.GOOGLE_MAPS_KEY || "";
+  if (!key) {
+    UI.toast("Could not find that area. Please select from search suggestions instead.", "error");
+    return false;
+  }
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(value)}&components=country:IN&key=${encodeURIComponent(key)}&language=en`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.status === "OK" && data.results?.[0]) {
+      const components = data.results[0].address_components || [];
+      const findC = type => components.find(c => Array.isArray(c.types) && c.types.includes(type))?.long_name || "";
+      const area = _cleanLocality(findC("sublocality_level_1") || findC("sublocality") || findC("neighborhood") || findC("locality"));
+      if (!area) {
+        UI.toast("Could not find that area. Please select from search suggestions instead.", "error");
+        return false;
+      }
+      _setManualLocality(area, "geocoded");
+      return true;
+    }
+  } catch {}
+  UI.toast("Could not find that area. Please select from search suggestions instead.", "error");
+  return false;
 }
 
 async function _detectGPSLocality() {
