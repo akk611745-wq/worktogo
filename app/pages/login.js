@@ -457,30 +457,12 @@ window.LoginPage = (() => {
       }
       window.google.accounts.id.prompt((notification) => {
         if (notification?.isNotDisplayed?.() || notification?.isSkippedMoment?.()) {
-          // One Tap is in cooldown — try OAuth2 popup first, then rendered-button overlay
+          // One Tap suppressed — go directly to renderButton overlay.
+          // initTokenClient is skipped: Chrome 120+ does not return id_token
+          // via the implicit flow, causing a confusing double account-picker.
           _setLoading("btn-google-login", false);
           window._gsiInitDone = false;
-          if (window.google?.accounts?.oauth2) {
-            const tokenClient = google.accounts.oauth2.initTokenClient({
-              client_id: clientId,
-              scope: "email profile openid",
-              callback: (tokenResponse) => {
-                if (tokenResponse?.error) {
-                  UI.toast("Google sign-in was cancelled. Try again or use OTP.", "error");
-                  return;
-                }
-                if (tokenResponse?.id_token) {
-                  _completeGoogleLogin(tokenResponse.id_token);
-                } else {
-                  // Access-only token — rendered button is the reliable path for id_token
-                  _showGSIButtonFallback(clientId);
-                }
-              },
-            });
-            tokenClient.requestAccessToken({ prompt: "select_account" });
-          } else {
-            _showGSIButtonFallback(clientId);
-          }
+          _showGSIButtonFallback(clientId);
         }
       });
       return;

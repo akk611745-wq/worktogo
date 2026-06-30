@@ -2544,8 +2544,13 @@ function _servicePriceLabel(service) {
 }
 
 function _localityViewportHandler() {
+  if (document.body.dataset.modalOpen !== "locality") {
+    // Modal was closed or page navigated away — self-remove to prevent leak
+    window.visualViewport?.removeEventListener("resize", _localityViewportHandler);
+    return;
+  }
   const sheet = document.querySelector(".locality-modal .modal-sheet");
-  if (!sheet || !document.getElementById("locality-manual-input")) return;
+  if (!sheet) return;
   const vv = window.visualViewport;
   if (!vv) return;
   const offset = window.innerHeight - vv.height;
