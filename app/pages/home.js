@@ -2609,12 +2609,7 @@ function _localitySuggestionsHTML(query = "") {
   const search = _cleanLocality(query).toLowerCase();
   const rowStyle = "min-height:56px;padding:14px 12px;display:flex;align-items:center;gap:10px;width:100%;border:none;border-bottom:1px solid var(--clr-border);background:transparent;color:var(--clr-text-1);font-size:15px;text-align:left;cursor:pointer;box-sizing:border-box;";
   if (!search) {
-    // Show LOCAL_AREAS as quick-tap list before user starts typing
-    const active = _resolvedLocality();
-    return `
-      <p style="padding:10px 16px 4px;color:var(--clr-text-2);font-size:11px;margin:0;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">Nearby areas</p>
-      ${LOCAL_AREAS.map(area => `<button type="button" style="${rowStyle}${_slug(active.label) === _slug(area) ? "font-weight:700;color:var(--clr-accent);" : ""}" onclick="HomePage.chooseLocality('${_esc(area)}', 'selected')"><span>📍</span><strong>${_esc(area)}</strong></button>`).join("")}
-    `;
+    return `<p style="padding:14px 16px;color:var(--clr-text-2);font-size:14px;margin:0;">Type to search your area</p>`;
   }
   if (search.length < 2) {
     return `<p style="padding:14px 16px;color:var(--clr-text-2);font-size:14px;margin:0;">Keep typing to search…</p>`;
@@ -2638,10 +2633,7 @@ function _searchPlacesAsync(query = "") {
     const manualBtn = `<button type="button" style="${rowStyle}border-top:1px solid var(--clr-border);opacity:0.7;" onclick="HomePage.chooseLocality('${_esc(query)}', 'typed')"><span style="font-size:13px;">✎</span><span style="flex:1;min-width:0;"><strong style="display:block;">${_esc(query)}</strong><small style="font-size:12px;color:var(--clr-text-2);">Can't find your area? Use this</small></span></button>`;
 
     if (!window.google?.maps?.places) {
-      // Places API not loaded — fall back to LOCAL_AREAS filter + manual entry
-      const active = _resolvedLocality();
-      const filtered = LOCAL_AREAS.filter(a => a.toLowerCase().includes(search));
-      listEl.innerHTML = filtered.map(area => `<button type="button" style="${rowStyle}${_slug(active.label) === _slug(area) ? "font-weight:700;color:var(--clr-accent);" : ""}" onclick="HomePage.chooseLocality('${_esc(area)}', 'selected')"><span>📍</span><strong>${_esc(area)}</strong></button>`).join("") + manualBtn;
+      listEl.innerHTML = `<p style="padding:14px 16px;color:var(--clr-text-2);font-size:14px;margin:0;">Could not search right now — try again</p>${manualBtn}`;
       return;
     }
 
@@ -2864,7 +2856,7 @@ async function _detectGPSLocality() {
         // Try Google Geocoding first if a key is configured
         const key = CONFIG.GOOGLE_MAPS_KEY || "";
         if (key) {
-          const gUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${encodeURIComponent(key)}&language=hi&region=IN`;
+          const gUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${encodeURIComponent(key)}&language=en&region=IN`;
           const gRes = await fetch(gUrl);
           const gData = await gRes.json();
           if (gData.status === "OK" && gData.results?.[0]) {
@@ -2902,7 +2894,7 @@ async function _detectGPSLocality() {
       UI.toast(err.code === 1 ? "Location permission denied." : "Could not get location.", "error");
       _resetGPSBtn();
     },
-    { timeout: 8000, maximumAge: 60000 }
+    { timeout: 8000, maximumAge: 0 }
   );
 }
 

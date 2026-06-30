@@ -448,28 +448,15 @@ window.LoginPage = (() => {
 
   function _launchGSI(clientId, elapsed) {
     if (window.google?.accounts?.id) {
-      if (!window._gsiInitDone) {
-        window._gsiInitDone = true;
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: _handleGoogleCredential,
-        });
-      }
-      window.google.accounts.id.prompt((notification) => {
-        if (notification?.isNotDisplayed?.() || notification?.isSkippedMoment?.()) {
-          // One Tap suppressed — go directly to renderButton overlay.
-          // initTokenClient is skipped: Chrome 120+ does not return id_token
-          // via the implicit flow, causing a confusing double account-picker.
-          _setLoading("btn-google-login", false);
-          window._gsiInitDone = false;
-          _showGSIButtonFallback(clientId);
-        }
-      });
+      // Skip One Tap prompt() entirely — it suppresses after the first use per
+      // session, forcing a two-click flow. Go directly to renderButton overlay
+      // so every click is exactly one tap to account picker.
+      _setLoading("btn-google-login", false);
+      _showGSIButtonFallback(clientId);
       return;
     }
     if (elapsed >= 3000) {
       _setLoading("btn-google-login", false);
-      window._gsiInitDone = false;
       UI.toast("Google Sign-In is not configured", "error");
       return;
     }
