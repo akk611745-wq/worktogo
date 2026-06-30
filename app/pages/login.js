@@ -457,8 +457,30 @@ window.LoginPage = (() => {
       }
       window.google.accounts.id.prompt((notification) => {
         if (notification?.isNotDisplayed?.() || notification?.isSkippedMoment?.()) {
+          // One Tap is in cooldown — try OAuth2 popup first, then rendered-button overlay
           _setLoading("btn-google-login", false);
           window._gsiInitDone = false;
+          if (window.google?.accounts?.oauth2) {
+            const tokenClient = google.accounts.oauth2.initTokenClient({
+              client_id: clientId,
+              scope: "email profile openid",
+              callback: (tokenResponse) => {
+                if (tokenResponse?.error) {
+                  UI.toast("Google sign-in was cancelled. Try again or use OTP.", "error");
+                  return;
+                }
+                if (tokenResponse?.id_token) {
+                  _completeGoogleLogin(tokenResponse.id_token);
+                } else {
+                  // Access-only token — rendered button is the reliable path for id_token
+                  _showGSIButtonFallback(clientId);
+                }
+              },
+            });
+            tokenClient.requestAccessToken({ prompt: "select_account" });
+          } else {
+            _showGSIButtonFallback(clientId);
+          }
         }
       });
       return;
@@ -470,6 +492,40 @@ window.LoginPage = (() => {
       return;
     }
     setTimeout(() => _launchGSI(clientId, elapsed + 200), 200);
+  }
+
+  function _showGSIButtonFallback(clientId) {
+    if (!window.google?.accounts?.id) {
+      UI.toast("Google sign-in is unavailable. Please use OTP to log in.", "error");
+      return;
+    }
+    document.getElementById("gsi-fallback-overlay")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "gsi-fallback-overlay";
+    overlay.style.cssText = "position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.55);";
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:16px;padding:28px 24px 20px;text-align:center;max-width:288px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+        <p style="margin:0 0 18px;font-size:15px;font-weight:600;color:#1a1a2e;">Sign in with Google</p>
+        <div id="gsi-btn-target" style="display:flex;justify-content:center;min-height:44px;"></div>
+        <button onclick="document.getElementById('gsi-fallback-overlay')?.remove()" style="margin-top:14px;background:none;border:none;color:#9ca3af;font-size:13px;cursor:pointer;padding:4px 8px;">Cancel</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    // Re-initialize so the callback points to our handler and cleans up the overlay
+    window._gsiInitDone = true;
+    google.accounts.id.initialize({
+      client_id: clientId,
+      callback: (response) => {
+        document.getElementById("gsi-fallback-overlay")?.remove();
+        _handleGoogleCredential(response);
+      },
+    });
+    const target = document.getElementById("gsi-btn-target");
+    if (target) {
+      google.accounts.id.renderButton(target, { theme: "outline", size: "large", width: 240, text: "signin_with" });
+    } else {
+      overlay.remove();
+      UI.toast("Google sign-in is unavailable. Please use OTP to log in.", "error");
+    }
   }
 
   function _startResendTimer(seconds = 30) {

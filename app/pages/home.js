@@ -203,6 +203,7 @@ export async function render(container) {
     },
     filterLocalitySuggestions(query = "") {
       _renderLocalitySelector(query);
+      _searchPlacesAsync(query);
     },
     submitLocalitySearch() {
       const input = document.getElementById("locality-manual-input");
@@ -2542,6 +2543,16 @@ function _servicePriceLabel(service) {
   return (amount && Number(amount) > 0) ? UI.formatCurrency(amount) : "";
 }
 
+function _localityViewportHandler() {
+  const sheet = document.querySelector(".locality-modal .modal-sheet");
+  if (!sheet || !document.getElementById("locality-manual-input")) return;
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const offset = window.innerHeight - vv.height;
+  sheet.style.maxHeight = `calc(${vv.height}px - 40px)`;
+  sheet.style.marginBottom = offset > 0 ? `${offset}px` : "0";
+}
+
 function _openLocalitySelector() {
   _renderLocalitySelector("", { full: true });
   document.getElementById("locality-modal")?.classList.remove("hidden");
@@ -2559,6 +2570,9 @@ function _openLocalitySelector() {
       _renderLocalitySelector("", { full: true });
     }
   }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", _localityViewportHandler);
+  }
   setTimeout(() => document.getElementById("locality-manual-input")?.focus({ preventScroll: true }), 40);
 }
 
@@ -2568,6 +2582,12 @@ function _closeLocalitySelector() {
     document.body.classList.remove("modal-open");
     delete document.body.dataset.modalOpen;
   }
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener("resize", _localityViewportHandler);
+  }
+  // Reset any inline styles set by the viewport handler
+  const sheet = document.querySelector(".locality-modal .modal-sheet");
+  if (sheet) { sheet.style.maxHeight = ""; sheet.style.marginBottom = ""; }
 }
 
 function _localitySelectorHTML(query = "") {
@@ -2582,17 +2602,88 @@ function _localitySelectorHTML(query = "") {
 
 function _localitySuggestionsHTML(query = "") {
   const search = _cleanLocality(query).toLowerCase();
-  if (!search) {
-    return `<p style="padding:14px 16px;color:var(--clr-text-2);font-size:14px;margin:0;">Type to search your area</p>`;
-  }
-  const active = _resolvedLocality();
-  const filtered = LOCAL_AREAS.filter(a => a.toLowerCase().includes(search));
   const rowStyle = "min-height:56px;padding:14px 12px;display:flex;align-items:center;gap:10px;width:100%;border:none;border-bottom:1px solid var(--clr-border);background:transparent;color:var(--clr-text-1);font-size:15px;text-align:left;cursor:pointer;box-sizing:border-box;";
-  return `
-      ${filtered.map(area => `<button type="button" style="${rowStyle}${_slug(active.label) === _slug(area) ? "font-weight:700;color:var(--clr-accent);" : ""}" onclick="HomePage.chooseLocality('${_esc(area)}', 'selected')"><span>📍</span><strong>${_esc(area)}</strong></button>`).join("")}
-      ${!filtered.length ? `<button type="button" style="${rowStyle}" onclick="HomePage.chooseLocality('${_esc(query)}', 'typed')"><span>＋</span><strong>${_esc(query)}</strong><small style="margin-left:auto;font-size:12px;color:var(--clr-text-2);">Use this area</small></button>` : ""}
+  if (!search) {
+    // Show LOCAL_AREAS as quick-tap list before user starts typing
+    const active = _resolvedLocality();
+    return `
+      <p style="padding:10px 16px 4px;color:var(--clr-text-2);font-size:11px;margin:0;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">Nearby areas</p>
+      ${LOCAL_AREAS.map(area => `<button type="button" style="${rowStyle}${_slug(active.label) === _slug(area) ? "font-weight:700;color:var(--clr-accent);" : ""}" onclick="HomePage.chooseLocality('${_esc(area)}', 'selected')"><span>📍</span><strong>${_esc(area)}</strong></button>`).join("")}
     `;
+  }
+  if (search.length < 2) {
+    return `<p style="padding:14px 16px;color:var(--clr-text-2);font-size:14px;margin:0;">Keep typing to search…</p>`;
+  }
+  // >= 2 chars: show placeholder while _searchPlacesAsync() fetches and updates the div
+  return `<p style="padding:14px 16px;color:var(--clr-text-2);font-size:14px;margin:0;">Searching areas…</p>`;
 }
+
+let _placesDebounceTimer = null;
+
+function _searchPlacesAsync(query = "") {
+  clearTimeout(_placesDebounceTimer);
+  const search = _cleanLocality(query).toLowerCase();
+  if (search.length < 2) return;
+
+  _placesDebounceTimer = setTimeout(() => {
+    const listEl = document.getElementById("locality-suggestions");
+    if (!listEl) return;
+
+    const rowStyle = "min-height:56px;padding:14px 12px;display:flex;align-items:center;gap:10px;width:100%;border:none;border-bottom:1px solid var(--clr-border);background:transparent;color:var(--clr-text-1);font-size:15px;text-align:left;cursor:pointer;box-sizing:border-box;";
+    const manualBtn = `<button type="button" style="${rowStyle}border-top:1px solid var(--clr-border);opacity:0.7;" onclick="HomePage.chooseLocality('${_esc(query)}', 'typed')"><span style="font-size:13px;">✎</span><span style="flex:1;min-width:0;"><strong style="display:block;">${_esc(query)}</strong><small style="font-size:12px;color:var(--clr-text-2);">Can't find your area? Use this</small></span></button>`;
+
+    if (!window.google?.maps?.places) {
+      // Places API not loaded — fall back to LOCAL_AREAS filter + manual entry
+      const active = _resolvedLocality();
+      const filtered = LOCAL_AREAS.filter(a => a.toLowerCase().includes(search));
+      listEl.innerHTML = filtered.map(area => `<button type="button" style="${rowStyle}${_slug(active.label) === _slug(area) ? "font-weight:700;color:var(--clr-accent);" : ""}" onclick="HomePage.chooseLocality('${_esc(area)}', 'selected')"><span>📍</span><strong>${_esc(area)}</strong></button>`).join("") + manualBtn;
+      return;
+    }
+
+    if (!window._wtgPlacesService) {
+      window._wtgPlacesService = new google.maps.places.AutocompleteService();
+    }
+
+    window._wtgPlacesService.getPlacePredictions({
+      input: query,
+      componentRestrictions: { country: "in" },
+      types: ["(regions)"],
+    }, (predictions, status) => {
+      const el = document.getElementById("locality-suggestions");
+      if (!el) return;
+      if (status === "OK" && predictions && predictions.length) {
+        el.innerHTML = predictions.map(pred => {
+          const main = _esc(pred.structured_formatting?.main_text || pred.description);
+          const secondary = _esc(pred.structured_formatting?.secondary_text || "");
+          const rawMain = pred.structured_formatting?.main_text || pred.description;
+          const rawSecondary = pred.structured_formatting?.secondary_text || "";
+          return `<button type="button" style="${rowStyle}" onclick="window._wtgOnPlacePick('${_esc(rawMain)}','${_esc(rawSecondary)}')">
+            <span>📍</span>
+            <span style="flex:1;min-width:0;overflow:hidden;">
+              <strong style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${main}</strong>
+              ${secondary ? `<small style="font-size:12px;color:var(--clr-text-2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${secondary}</small>` : ""}
+            </span>
+          </button>`;
+        }).join("") + manualBtn;
+      } else {
+        el.innerHTML = `<p style="padding:14px 16px;color:var(--clr-text-2);font-size:14px;margin:0;">No areas found for "${_esc(query)}"</p>${manualBtn}`;
+      }
+    });
+  }, 300);
+}
+
+window._wtgOnPlacePick = function(label, secondaryText) {
+  const clean = _cleanLocality(label);
+  if (!clean) return;
+  const cityRaw = _cleanLocality((secondaryText || "").split(",")[0]);
+  _activeLocalityFilter = clean;
+  _localityContext = { label: clean, city: cityRaw || _inferCityForLocality(clean), source: "places_autocomplete", updated_at: Date.now() };
+  _persistLocalityContext();
+  _persistHomeState();
+  _refreshLocalitySurfaces();
+  _closeLocalitySelector();
+  UI.toast(`${clean} area set`, "success");
+};
 
 function _localityOptions(meta = {}) {
   const profile = _customerProfile();
