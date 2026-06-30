@@ -2581,13 +2581,16 @@ function _localitySelectorHTML(query = "") {
 }
 
 function _localitySuggestionsHTML(query = "") {
-  const active = _resolvedLocality();
   const search = _cleanLocality(query).toLowerCase();
-  const filtered = search ? LOCAL_AREAS.filter(a => a.toLowerCase().includes(search)) : LOCAL_AREAS;
+  if (!search) {
+    return `<p style="padding:14px 16px;color:var(--clr-text-2);font-size:14px;margin:0;">Type to search your area</p>`;
+  }
+  const active = _resolvedLocality();
+  const filtered = LOCAL_AREAS.filter(a => a.toLowerCase().includes(search));
   const rowStyle = "min-height:56px;padding:14px 12px;display:flex;align-items:center;gap:10px;width:100%;border:none;border-bottom:1px solid var(--clr-border);background:transparent;color:var(--clr-text-1);font-size:15px;text-align:left;cursor:pointer;box-sizing:border-box;";
   return `
       ${filtered.map(area => `<button type="button" style="${rowStyle}${_slug(active.label) === _slug(area) ? "font-weight:700;color:var(--clr-accent);" : ""}" onclick="HomePage.chooseLocality('${_esc(area)}', 'selected')"><span>📍</span><strong>${_esc(area)}</strong></button>`).join("")}
-      ${search && !filtered.length ? `<button type="button" style="${rowStyle}" onclick="HomePage.chooseLocality('${_esc(query)}', 'typed')"><span>＋</span><strong>${_esc(query)}</strong><small style="margin-left:auto;font-size:12px;color:var(--clr-text-2);">Use this area</small></button>` : ""}
+      ${!filtered.length ? `<button type="button" style="${rowStyle}" onclick="HomePage.chooseLocality('${_esc(query)}', 'typed')"><span>＋</span><strong>${_esc(query)}</strong><small style="margin-left:auto;font-size:12px;color:var(--clr-text-2);">Use this area</small></button>` : ""}
     `;
 }
 
@@ -2759,14 +2762,33 @@ async function _detectGPSLocality() {
     async pos => {
       const { latitude, longitude } = pos.coords;
       try {
+        let area = "";
+        let city = "";
+
+        // Try Google Geocoding first if a key is configured
         const key = CONFIG.GOOGLE_MAPS_KEY || "";
-        const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${encodeURIComponent(key)}&language=hi&region=IN`;
-        const res = await fetch(url);
-        const data = await res.json();
-        const components = data.results?.[0]?.address_components || [];
-        const findComponent = type => components.find(c => Array.isArray(c.types) && c.types.includes(type))?.long_name || "";
-        const area = _cleanLocality(findComponent("sublocality_level_1") || findComponent("sublocality"));
-        const city = _cleanLocality(findComponent("locality"));
+        if (key) {
+          const gUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${encodeURIComponent(key)}&language=hi&region=IN`;
+          const gRes = await fetch(gUrl);
+          const gData = await gRes.json();
+          if (gData.status === "OK" && gData.results?.[0]) {
+            const components = gData.results[0].address_components || [];
+            const findC = type => components.find(c => Array.isArray(c.types) && c.types.includes(type))?.long_name || "";
+            area = _cleanLocality(findC("sublocality_level_1") || findC("sublocality"));
+            city = _cleanLocality(findC("locality"));
+          }
+        }
+
+        // Fallback to OSM Nominatim when key absent or Google returned no result
+        if (!area && !city) {
+          const osmUrl = `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=en`;
+          const osmRes = await fetch(osmUrl, { headers: { "User-Agent": "WorkToGo/1.0" } });
+          const osmData = await osmRes.json();
+          const addr = osmData.address || {};
+          area = _cleanLocality(addr.suburb || addr.neighbourhood || addr.village || "");
+          city = _cleanLocality(addr.city || addr.town || addr.county || addr.state_district || "");
+        }
+
         const label = area && city ? `${area}, ${city}` : (area || city);
         if (!label) {
           UI.toast("Could not identify area. Select manually.", "error");
