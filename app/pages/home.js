@@ -2630,10 +2630,9 @@ function _searchPlacesAsync(query = "") {
     if (!listEl) return;
 
     const rowStyle = "min-height:56px;padding:14px 12px;display:flex;align-items:center;gap:10px;width:100%;border:none;border-bottom:1px solid var(--clr-border);background:transparent;color:var(--clr-text-1);font-size:15px;text-align:left;cursor:pointer;box-sizing:border-box;";
-    const manualBtn = `<button type="button" style="${rowStyle}border-top:1px solid var(--clr-border);opacity:0.7;" onclick="HomePage.chooseLocality('${_esc(query)}', 'typed')"><span style="font-size:13px;">✎</span><span style="flex:1;min-width:0;"><strong style="display:block;">${_esc(query)}</strong><small style="font-size:12px;color:var(--clr-text-2);">Can't find your area? Use this</small></span></button>`;
 
     if (!window.google?.maps?.places) {
-      listEl.innerHTML = `<p style="padding:14px 16px;color:var(--clr-text-2);font-size:14px;margin:0;">Could not search right now — try again</p>${manualBtn}`;
+      listEl.innerHTML = `<p style="padding:14px 16px;color:var(--clr-text-2);font-size:14px;margin:0;">Could not search right now — try again</p>`;
       return;
     }
 
@@ -2661,9 +2660,9 @@ function _searchPlacesAsync(query = "") {
               ${secondary ? `<small style="font-size:12px;color:var(--clr-text-2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${secondary}</small>` : ""}
             </span>
           </button>`;
-        }).join("") + manualBtn;
+        }).join("");
       } else {
-        el.innerHTML = `<p style="padding:14px 16px;color:var(--clr-text-2);font-size:14px;margin:0;">No areas found for "${_esc(query)}"</p>${manualBtn}`;
+        el.innerHTML = `<p style="padding:14px 16px;color:var(--clr-text-2);font-size:14px;margin:0;">No matching area found. Try a different spelling or nearby landmark.</p>`;
       }
     });
   }, 300);
@@ -2862,7 +2861,7 @@ async function _detectGPSLocality() {
           if (gData.status === "OK" && gData.results?.[0]) {
             const components = gData.results[0].address_components || [];
             const findC = type => components.find(c => Array.isArray(c.types) && c.types.includes(type))?.long_name || "";
-            area = _cleanLocality(findC("sublocality_level_1") || findC("sublocality"));
+            area = _cleanLocality(findC("sublocality_level_1") || findC("sublocality") || findC("neighborhood"));
             city = _cleanLocality(findC("locality"));
           }
         }

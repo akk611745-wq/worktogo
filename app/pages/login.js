@@ -26,10 +26,7 @@ export async function render(container) {
         <div id="step-phone" class="login-step active">
           <h2>Welcome back</h2>
           <p class="step-hint">Sign in to book and track local services</p>
-          <button id="btn-google-login" class="btn-google ${CONFIG.FEATURES?.GOOGLE_LOGIN ? "" : "feature-hidden"}" onclick="LoginPage.googleLogin()">
-            <span class="google-mark">G</span>
-            Continue with Google
-          </button>
+          <div id="btn-google-login-wrap" class="${CONFIG.FEATURES?.GOOGLE_LOGIN ? "" : "feature-hidden"}" style="width:100%;min-height:44px;"></div>
           <div class="auth-divider"><span>or</span></div>
           <div class="input-group">
             <span class="input-prefix">+91</span>
@@ -289,6 +286,7 @@ window.LoginPage = (() => {
       _startResendTimer(Math.max(1, Number(savedOtp.resendRemaining || 1)));
     }
 
+    _initGoogleButton();
     if (window.WTG_OTP_METHOD === "widget") {
       _loadMsg91Widget().catch(() => {});
     }
@@ -412,8 +410,6 @@ window.LoginPage = (() => {
   function _handleGoogleCredential(response) {
     const credential = response?.credential;
     if (!credential) {
-      _setLoading("btn-google-login", false);
-      window._gsiInitDone = false;
       UI.toast("Google login was cancelled", "error");
       return;
     }
@@ -421,80 +417,48 @@ window.LoginPage = (() => {
   }
 
   async function _completeGoogleLogin(credential) {
-    _setLoading("btn-google-login", true);
     const result = await AUTH.googleLogin(credential);
-    _setLoading("btn-google-login", false);
-
     if (result.ok) {
       UI.toast("Login successful!", "success");
       redirectAfterLogin(result.user);
     } else {
-      window._gsiInitDone = false;
       UI.toast(result.error || "Google login failed. Try again.", "error");
     }
   }
 
   function googleLogin() {
-    const googleClientId = window.WTG_GOOGLE_CLIENT_ID || CONFIG.GOOGLE_CLIENT_ID || "";
-
-    if (!googleClientId) {
-      UI.toast("Google Sign-In is not configured", "error");
-      return;
-    }
-
-    _setLoading("btn-google-login", true);
-    _launchGSI(googleClientId, 0);
+    UI.toast("Google Sign-In is loading. Please wait a moment and try again.", "info");
   }
 
-  function _launchGSI(clientId, elapsed) {
-    if (window.google?.accounts?.id) {
-      // Skip One Tap prompt() entirely — it suppresses after the first use per
-      // session, forcing a two-click flow. Go directly to renderButton overlay
-      // so every click is exactly one tap to account picker.
-      _setLoading("btn-google-login", false);
-      _showGSIButtonFallback(clientId);
-      return;
+  function _initGoogleButton() {
+    if (!CONFIG.FEATURES?.GOOGLE_LOGIN) return;
+    const clientId = window.WTG_GOOGLE_CLIENT_ID || CONFIG.GOOGLE_CLIENT_ID || "";
+    const wrap = document.getElementById("btn-google-login-wrap");
+    if (!wrap || !clientId) return;
+    let elapsed = 0;
+    function tryRender() {
+      const el = document.getElementById("btn-google-login-wrap");
+      if (!el) return;
+      if (window.google?.accounts?.id) {
+        google.accounts.id.initialize({ client_id: clientId, callback: _handleGoogleCredential });
+        el.innerHTML = "";
+        google.accounts.id.renderButton(el, {
+          theme: "outline",
+          size: "large",
+          width: Math.min(el.offsetWidth || 280, 400),
+          text: "continue_with",
+          shape: "rectangular",
+        });
+        return;
+      }
+      elapsed += 200;
+      if (elapsed >= 5000) {
+        el.innerHTML = `<button class="btn-google" style="width:100%;" onclick="UI.toast('Google Sign-In is not available. Please use OTP to log in.','error')"><span class="google-mark">G</span>Continue with Google</button>`;
+        return;
+      }
+      setTimeout(tryRender, 200);
     }
-    if (elapsed >= 3000) {
-      _setLoading("btn-google-login", false);
-      UI.toast("Google Sign-In is not configured", "error");
-      return;
-    }
-    setTimeout(() => _launchGSI(clientId, elapsed + 200), 200);
-  }
-
-  function _showGSIButtonFallback(clientId) {
-    if (!window.google?.accounts?.id) {
-      UI.toast("Google sign-in is unavailable. Please use OTP to log in.", "error");
-      return;
-    }
-    document.getElementById("gsi-fallback-overlay")?.remove();
-    const overlay = document.createElement("div");
-    overlay.id = "gsi-fallback-overlay";
-    overlay.style.cssText = "position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.55);";
-    overlay.innerHTML = `
-      <div style="background:#fff;border-radius:16px;padding:28px 24px 20px;text-align:center;max-width:288px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
-        <p style="margin:0 0 18px;font-size:15px;font-weight:600;color:#1a1a2e;">Sign in with Google</p>
-        <div id="gsi-btn-target" style="display:flex;justify-content:center;min-height:44px;"></div>
-        <button onclick="document.getElementById('gsi-fallback-overlay')?.remove()" style="margin-top:14px;background:none;border:none;color:#9ca3af;font-size:13px;cursor:pointer;padding:4px 8px;">Cancel</button>
-      </div>`;
-    document.body.appendChild(overlay);
-    // Re-initialize so the callback points to our handler and cleans up the overlay
-    window._gsiInitDone = true;
-    google.accounts.id.initialize({
-      client_id: clientId,
-      callback: (response) => {
-        document.getElementById("gsi-fallback-overlay")?.remove();
-        _handleGoogleCredential(response);
-      },
-    });
-    const target = document.getElementById("gsi-btn-target");
-    if (target) {
-      google.accounts.id.renderButton(target, { theme: "outline", size: "large", width: 240, text: "signin_with" });
-    } else {
-      overlay.remove();
-      UI.toast("Google sign-in is unavailable. Please use OTP to log in.", "error");
-    }
+    setTimeout(tryRender, 0);
   }
 
   function _startResendTimer(seconds = 30) {
