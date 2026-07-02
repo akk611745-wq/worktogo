@@ -954,7 +954,7 @@ if ($method === 'GET' && $uri === '/api/service/categories') {
     $iconSelect = serviceTableHasColumn($db, 'categories', 'icon') ? 'icon' : "NULL AS icon";
     $imageSelect = serviceTableHasColumn($db, 'categories', 'image_url') ? 'image_url' : "NULL AS image_url";
     $sortSelect = serviceTableHasColumn($db, 'categories', 'sort_order') ? 'sort_order' : "0 AS sort_order";
-    $stmt = $db->query("SELECT id, name, slug, status, {$iconSelect}, {$imageSelect}, {$sortSelect} FROM categories WHERE type IN ('service','services') OR type IS NULL ORDER BY sort_order ASC, name ASC");
+    $stmt = $db->query("SELECT id, name, slug, status, {$iconSelect}, {$imageSelect}, {$sortSelect} FROM categories WHERE (type IN ('service','services') OR type IS NULL) AND status = 'active' ORDER BY sort_order ASC, name ASC");
     Response::success(['categories' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
 }
 

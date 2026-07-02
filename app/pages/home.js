@@ -1837,7 +1837,7 @@ async function _loadServices() {
     ? (catRes.data?.data?.categories || catRes.data?.categories || [])
     : [];
   if (allCats.length) {
-    _serviceCategories = allCats.map(c => ({ slug: c.slug, label: c.name, icon: c.icon || '' }));
+    _serviceCategories = allCats.map(c => ({ slug: c.slug, label: c.name, icon: c.icon || '', status: c.status }));
     _renderCategoryChips();
   }
   _renderServices(res);
@@ -1911,7 +1911,7 @@ function _renderServices(res) {
   let list = Array.isArray(payload) ? payload : (payload?.services || payload?.data || []);
   if (payload?.pilot_config) _pilotConfig = { ..._pilotConfig, ...payload.pilot_config };
   if (!_serviceCategories.length && Array.isArray(payload?.categories) && payload.categories.length) {
-    _serviceCategories = payload.categories.map(c => ({ slug: c.slug, label: c.name, icon: c.icon || "" }));
+    _serviceCategories = payload.categories.map(c => ({ slug: c.slug, label: c.name, icon: c.icon || "", status: c.status }));
     _renderCategoryChips();
   }
   if (list.length) _allServices = list;
@@ -2104,6 +2104,7 @@ function _categoryChips() {
 function _mergeCategories(dynamic, base) {
   const map = new Map();
   [...dynamic, ...base].forEach(c => {
+    if (c.status === 'inactive') return;
     const slug = _slug(c.slug || c.label || c.name);
     if (!slug || map.has(slug)) return;
     const meta = CATEGORY_META[slug] || {};
