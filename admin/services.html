@@ -901,7 +901,7 @@ function renderServices(services) {
       <td>${Fmt.truncate(s.vendor_name||s.vendorName||s.vendor?.name,20)||'—'}</td>
       <td>${Array.isArray(s.vendor_services) && s.vendor_services.length
           ? s.vendor_services.map(n => `<span class="badge badge-purple">${escHtml(n)}</span>`).join(' ')
-          : `<span class="badge badge-purple" style="cursor:pointer" title="Click for category detail" onclick="openCategoryDetail(${parseInt(s.category_id)||0})">${escHtml(s.category_name||s.category_slug||s.category||'—')}</span>`
+          : `<span class="badge badge-purple" style="cursor:pointer" title="Click for category detail" onclick="openCategoryControlRoom(${parseInt(s.category_id)||0})">${escHtml(s.category_name||s.category_slug||s.category||'—')}</span>`
       }</td>
       <td><span class="svc-price" style="color:var(--accent);cursor:pointer;border-bottom:1px dashed var(--border-mid)" title="Click to edit price" onclick="editServicePrice('${escHtml(String(id))}',${parseFloat(s.base_price||s.basePrice||s.price||0)},this)">${Fmt.currency(s.base_price||s.basePrice||s.price)}</span></td>
       <td style="color:var(--text-muted)">${s.bookingCount??'—'}</td>
@@ -1180,159 +1180,193 @@ async function moveKanbanCard(bookingId, fromCol, toCol) {
   }
 }
 
-// ── Category Detail Modal (full-screen) ──────────────────────
-async function openCategoryDetail(categoryId) {
+// ── Category Control Room (unified overlay) ──────────────────
+async function openCategoryControlRoom(categoryId) {
   if (!categoryId) { Toast.warn('No category assigned to this service.'); return; }
 
-  document.body.insertAdjacentHTML('beforeend',
-    `<div id="cat-detail-overlay" style="position:fixed;inset:0;z-index:2000;background:var(--bg-raised);display:flex;flex-direction:column;overflow:hidden">
-      <div id="cat-modal-inner" style="display:flex;flex-direction:column;height:100%">
-        <div style="padding:18px 28px;border-bottom:1px solid var(--border-dim);display:flex;align-items:center;justify-content:space-between;background:var(--bg-surface);flex-shrink:0">
-          <span style="font-size:15px;font-weight:700;color:var(--text-primary)">Category Detail</span>
-          <button class="btn btn-sm btn-ghost" onclick="closeCategoryDetail()">✕ Close</button>
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="cat-room-overlay" style="position:fixed;inset:0;z-index:2000;background:var(--bg-raised);display:flex;flex-direction:column;overflow:hidden">
+      <div id="cat-room-inner" style="display:flex;flex-direction:column;height:100%">
+        <div style="padding:16px 24px;border-bottom:1px solid var(--border-dim);display:flex;align-items:center;justify-content:space-between;background:var(--bg-surface);flex-shrink:0">
+          <span style="font-size:15px;font-weight:700;color:var(--text-primary)">Category Control Room</span>
+          <button class="btn btn-sm btn-ghost" onclick="closeCategoryControlRoom()">✕ Close</button>
         </div>
-        <div style="flex:1;display:flex;align-items:center;justify-content:center">
-          <div class="spinner"></div>
-        </div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center"><div class="spinner"></div></div>
       </div>
-    </div>`
-  );
+    </div>`);
 
   try {
-    const data = await API.get('/categories/' + categoryId + '/detail');
-    const rsp           = data.data || data;
-    const cat           = rsp.category          || {};
-    const stats         = rsp.stats             || {};
-    const vendors       = rsp.vendors           || [];
-    const topVendorsCat = rsp.top_vendors_in_cat || [];
+    const data = await API.get('/categories/' + categoryId + '/stats');
+    const rsp   = data.data || data;
+    const cat   = rsp.category || {};
+    const stats = rsp.stats    || {};
+    const vendors = rsp.vendors || [];
+    const topLocs  = rsp.top_locations  || [];
+    const modes     = rsp.booking_modes || {};
 
-    const hasCommission   = cat.commission_rate  != null;
-    const hasInspectPrice = cat.inspection_price != null;
+    const catIdNum  = parseInt(cat.id || categoryId);
+    const isActive  = cat.status === 'active';
+    const inspPrice = cat.inspection_price ?? '';
+    const commRate  = cat.commission_rate ?? cat.commission_pct ?? '';
+
+    const statCards = [
+      { label: 'TOTAL BOOKINGS',  value: stats.total_bookings ?? 0,     color: 'var(--accent)' },
+      { label: '₹299 INSPECTION', value: modes.inspection ?? 0,         color: 'var(--orange)' },
+      { label: 'FREE',            value: modes.free_lead ?? 0,          color: 'var(--green)'  },
+      { label: 'DIRECT',          value: modes.direct_vendor ?? 0,      color: 'var(--blue)'   },
+      { label: 'PENDING',         value: stats.pending_bookings ?? 0,   color: (stats.pending_bookings ?? 0) > 0 ? 'var(--orange,#f59e0b)' : 'var(--text-muted)' },
+      { label: 'COMPLETED',       value: stats.completed_bookings ?? 0, color: 'var(--blue)'   },
+      { label: 'ACTIVE VENDORS',  value: stats.active_vendors ?? 0,     color: 'var(--green)'  },
+    ].map(c => `<div class="card"><div class="card-body" style="text-align:center;padding:16px">
+        <div style="font-size:24px;font-weight:700;color:${c.color}">${c.value}</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:4px;letter-spacing:0.06em">${c.label}</div>
+      </div></div>`).join('');
 
     const vendorRows = vendors.length
       ? vendors.map(v => `<tr>
-          <td style="font-size:13px">${escHtml(v.business_name || '—')}</td>
-          <td style="color:var(--green);font-size:13px">${escHtml(v.owner_phone || '—')}</td>
-          <td>${statusBadge(v.status || 'unknown')}</td>
-          <td style="text-align:center;font-size:16px">${v.is_online
-            ? '<span style="color:var(--green)">●</span>'
-            : '<span style="color:var(--text-muted)">○</span>'}</td>
+          <td style="font-weight:600">${escHtml(v.business_name || '—')}</td>
+          <td>${v.is_active ? '<span style="color:var(--green);font-size:11px;font-weight:600">ACTIVE</span>' : '<span style="color:var(--text-muted);font-size:11px">INACTIVE</span>'}</td>
+          <td style="text-align:center">${v.total_jobs ?? '—'}</td>
+          <td style="text-align:center">${v.completed_jobs ?? '—'}</td>
+          <td style="text-align:center">${v.rating ? Number(v.rating).toFixed(1) + ' ★' : '—'}</td>
         </tr>`).join('')
-      : `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px;font-size:13px">No vendors in this category</td></tr>`;
+      : `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">No vendors in this category yet</td></tr>`;
+
+    const top5 = topLocs.slice(0, 5);
+    const maxLoc = Math.max(1, ...top5.map(l => l.count || 0));
+    const areaRows = top5.length
+      ? top5.map(l => `<div style="display:grid;grid-template-columns:130px 1fr 40px;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="font-size:12px;color:var(--text-primary)">${escHtml(l.locality || '—')}</div>
+          <div style="background:var(--bg-raised);border-radius:4px;overflow:hidden;height:10px">
+            <div style="width:${Math.round((l.count / maxLoc) * 100)}%;height:100%;background:var(--accent)"></div>
+          </div>
+          <div style="font-size:12px;text-align:right;color:var(--text-muted)">${l.count}</div>
+        </div>`).join('')
+      : `<p style="font-size:12px;color:var(--text-muted);margin:0">No location data yet.</p>`;
 
     const content = `
-      <div style="padding:18px 28px;border-bottom:1px solid var(--border-dim);display:flex;align-items:flex-start;justify-content:space-between;background:var(--bg-surface);flex-shrink:0">
+      <!-- SECTION 1: HEADER -->
+      <div style="padding:16px 24px;border-bottom:1px solid var(--border-dim);display:flex;align-items:center;justify-content:space-between;background:var(--bg-surface);flex-shrink:0">
         <div>
-          <h2 style="margin:0 0 5px;font-size:20px;font-weight:700;color:var(--text-primary)">📁 ${escHtml(cat.name || 'Category')}</h2>
+          <h2 style="margin:0 0 4px;font-size:18px;font-weight:700;color:var(--text-primary)">${escHtml(cat.name || 'Category')}</h2>
           <div style="font-size:12px;color:var(--text-muted)">
-            Slug: <code style="background:var(--bg-raised);padding:1px 5px;border-radius:3px;font-size:11px">${escHtml(cat.slug || '—')}</code>
-            &nbsp;·&nbsp;${statusBadge(cat.status || 'unknown')}
+            <code style="background:var(--bg-raised);padding:1px 5px;border-radius:3px">${escHtml(cat.slug || '—')}</code>
           </div>
         </div>
-        <button class="btn btn-sm btn-ghost" onclick="closeCategoryDetail()">✕ Close</button>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="btn btn-sm ${isActive ? 'btn-warn' : 'btn-success'}" onclick="_toggleCategoryStatusInline(${catIdNum}, '${cat.status || 'active'}')">${isActive ? 'Deactivate' : 'Activate'}</button>
+          <button class="btn btn-sm btn-ghost" onclick="closeCategoryControlRoom()">✕ Close</button>
+        </div>
       </div>
-      <div style="flex:1;overflow-y:auto;padding:28px;display:grid;gap:20px;align-content:start">
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">
-          <div class="card"><div class="card-body" style="text-align:center;padding:18px">
-            <div style="font-size:30px;font-weight:700;color:var(--accent)">${stats.total_bookings ?? '—'}</div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:5px;letter-spacing:0.06em">TOTAL BOOKINGS</div>
-          </div></div>
-          <div class="card"><div class="card-body" style="text-align:center;padding:18px">
-            <div style="font-size:30px;font-weight:700;color:var(--green)">${stats.active_vendors ?? '—'}</div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:5px;letter-spacing:0.06em">ACTIVE VENDORS</div>
-          </div></div>
-          <div class="card"><div class="card-body" style="text-align:center;padding:18px">
-            <div style="font-size:30px;font-weight:700;color:var(--blue)">${stats.completed_jobs ?? '—'}</div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:5px;letter-spacing:0.06em">COMPLETED JOBS</div>
-          </div></div>
-          <div class="card"><div class="card-body" style="text-align:center;padding:18px">
-            <div style="font-size:24px;font-weight:700;color:var(--green)">${stats.revenue_total > 0 ? Fmt.currency(stats.revenue_total) : '₹0'}</div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:5px;letter-spacing:0.06em">REVENUE EARNED</div>
-          </div></div>
-          <div class="card"><div class="card-body" style="text-align:center;padding:18px">
-            <div style="font-size:30px;font-weight:700;color:${(stats.pending_bookings??0)>0?'var(--orange,#f59e0b)':'var(--text-muted)'}">${stats.pending_bookings ?? '0'}</div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:5px;letter-spacing:0.06em">PENDING (UNASSIGNED)</div>
-          </div></div>
+
+      <div style="flex:1;overflow-y:auto;padding:24px;display:grid;gap:20px;align-content:start">
+
+        <!-- SECTION 2: BANNER -->
+        <div class="card" style="overflow:hidden">
+          <div style="position:relative">
+            <img id="cat-banner-preview" src="${escHtml(cat.image_url || '')}" style="width:100%;height:200px;object-fit:cover;display:${cat.image_url ? 'block' : 'none'};background:var(--bg-raised)">
+            <div id="cat-banner-placeholder" style="display:${cat.image_url ? 'none' : 'flex'};height:200px;align-items:center;justify-content:center;color:var(--text-muted);background:var(--bg-raised);font-size:13px">No banner uploaded</div>
+            <button class="btn btn-sm btn-ghost" style="position:absolute;bottom:12px;right:12px" onclick="document.getElementById('cat-banner-file').click()">📷 Upload Banner</button>
+            <input type="file" id="cat-banner-file" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="uploadCategoryBanner(${catIdNum}, this)">
+          </div>
         </div>
 
-        <div class="card"><div class="card-body" style="padding:22px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-            <div style="font-size:14px;font-weight:700;color:var(--text-primary)">Top Vendors (by jobs)</div>
-            <button class="btn btn-sm btn-ghost" onclick="closeCategoryDetail();document.getElementById('ops-category').value='${escHtml(cat.slug||'')}';switchTab('ops');loadServiceBookings(1);">
-              &#128221; View all bookings
-            </button>
-          </div>
-          ${topVendorsCat.length === 0
-            ? `<p style="font-size:12px;color:var(--text-muted);margin:0">No job history in this category yet.</p>`
-            : `<table style="width:100%;border-collapse:collapse;font-size:13px">
-                <thead><tr style="border-bottom:1px solid var(--border-dim)">
-                  <th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--text-muted);letter-spacing:0.06em">VENDOR</th>
-                  <th style="padding:6px 10px;text-align:right;font-size:10px;color:var(--text-muted);letter-spacing:0.06em">JOBS</th>
-                  <th style="padding:6px 10px;text-align:right;font-size:10px;color:var(--text-muted);letter-spacing:0.06em">RATING</th>
-                </tr></thead>
-                <tbody>${topVendorsCat.map((tv, i) => `<tr style="border-bottom:1px solid var(--border-dim)">
-                  <td style="padding:8px 10px;font-weight:500">${['🥇','🥈','🥉'][i] || ''} ${escHtml(tv.business_name || '—')}</td>
-                  <td style="padding:8px 10px;text-align:right;color:var(--accent);font-weight:600">${tv.jobs}</td>
-                  <td style="padding:8px 10px;text-align:right">${parseFloat(tv.rating) > 0 ? '⭐ ' + parseFloat(tv.rating).toFixed(1) : '—'}</td>
-                </tr>`).join('')}</tbody>
-              </table>`}
-        </div></div>
+        <!-- SECTION 3: STATS BAR -->
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px">${statCards}</div>
 
+        <!-- SECTION 4: PRICING -->
         <div class="card"><div class="card-body" style="padding:22px">
-          <div style="font-size:14px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Price Controls</div>
+          <div style="font-size:14px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Pricing</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:560px">
             <div>
               <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;letter-spacing:0.06em">INSPECTION FEE (₹)</label>
-              <input type="number" id="cat-inspection-price" class="form-control" min="0" step="1"
-                value="${hasInspectPrice ? parseFloat(cat.inspection_price) : ''}"
-                placeholder="Set in Platform Settings"
-                disabled
-                style="font-size:14px;opacity:0.5;cursor:not-allowed">
-              <div style="font-size:10px;color:var(--text-muted);margin-top:4px">Global price — change in <a href="/admin/settings.html" style="color:var(--accent)">Platform Settings</a>. Per-category pricing: coming soon.</div>
+              <input type="number" id="cat-room-insp" class="form-control" min="0" step="1" value="${escHtml(String(inspPrice))}" style="font-size:14px">
             </div>
             <div>
               <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;letter-spacing:0.06em">COMMISSION (%)</label>
-              <input type="number" id="cat-commission-rate" class="form-control" min="0" max="100" step="0.1"
-                value="${hasCommission ? parseFloat(cat.commission_rate) : ''}"
-                placeholder="${hasCommission ? '0' : 'Column not in schema'}"
-                style="font-size:14px">
+              <input type="number" id="cat-room-comm" class="form-control" min="0" max="100" step="0.1" value="${escHtml(String(commRate))}" style="font-size:14px">
             </div>
           </div>
           <div style="margin-top:18px">
-            <button class="btn btn-primary" onclick="saveCategoryDetail(${parseInt(cat.id)||0})" style="font-size:13px;padding:8px 20px">Save Changes</button>
+            <button class="btn btn-primary" onclick="saveCategoryPricing(${catIdNum})" style="font-size:13px;padding:8px 20px">Save Settings</button>
           </div>
         </div></div>
 
+        <!-- SECTION 5: VENDORS -->
         <div class="card"><div class="card-body" style="padding:22px">
           <div style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--text-primary)">Vendors in this category</div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>VENDOR</th><th>PHONE</th><th>STATUS</th><th>ONLINE</th></tr></thead>
+              <thead><tr><th>VENDOR</th><th>STATUS</th><th style="text-align:center">JOBS</th><th style="text-align:center">COMPLETED</th><th style="text-align:center">RATING</th></tr></thead>
               <tbody>${vendorRows}</tbody>
             </table>
           </div>
         </div></div>
+
+        <!-- SECTION 6: AREA DEMAND -->
+        <div class="card"><div class="card-body" style="padding:22px">
+          <div style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--text-primary)">Top Areas by Demand</div>
+          ${areaRows}
+        </div></div>
+
       </div>`;
 
-    const inner = document.getElementById('cat-modal-inner');
+    const inner = document.getElementById('cat-room-inner');
     if (inner) inner.innerHTML = content;
   } catch(e) {
-    document.getElementById('cat-detail-overlay')?.remove();
-    Toast.error(e.message || 'Failed to load category detail');
+    document.getElementById('cat-room-overlay')?.remove();
+    Toast.error(e.message || 'Failed to load category control room');
   }
 }
 
-function closeCategoryDetail() {
-  document.getElementById('cat-detail-overlay')?.remove();
+function closeCategoryControlRoom() {
+  document.getElementById('cat-room-overlay')?.remove();
 }
 
-async function saveCategoryDetail(categoryId) {
-  if (!categoryId) return;
-  const inspEl = document.getElementById('cat-inspection-price');
-  const commEl = document.getElementById('cat-commission-rate');
+async function _toggleCategoryStatusInline(categoryId, currentStatus) {
+  const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+  const action = newStatus === 'active' ? 'activate' : 'deactivate';
+  if (!await confirmAction(`${Fmt.capitalize(action)} this category?`)) return;
+  try {
+    await API.patch(CONFIG.ENDPOINTS.CATEGORY_DETAIL(categoryId), { status: newStatus });
+    Toast.success(`Category ${action}d.`);
+    loadCategories();
+    openCategoryControlRoom(categoryId);
+  } catch(e) { Toast.error(e.message || 'Failed'); }
+}
+
+async function uploadCategoryBanner(categoryId, inputEl) {
+  const file = inputEl.files?.[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('banner', file);
+  try {
+    const token = localStorage.getItem(CONFIG.TOKEN_KEY);
+    const res = await fetch(`${CONFIG.API_BASE_URL}${CONFIG.ADMIN_PREFIX}/categories/${categoryId}/banner`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || 'Upload failed');
+    const url = data.data?.url || data.url;
+    const img = document.getElementById('cat-banner-preview');
+    const ph  = document.getElementById('cat-banner-placeholder');
+    if (url && img) { img.src = url; img.style.display = 'block'; if (ph) ph.style.display = 'none'; }
+    Toast.success('Banner updated.');
+  } catch(e) {
+    Toast.error(e.message || 'Failed to upload banner');
+  } finally {
+    inputEl.value = '';
+  }
+}
+
+async function saveCategoryPricing(categoryId) {
+  const inspEl = document.getElementById('cat-room-insp');
+  const commEl = document.getElementById('cat-room-comm');
   const payload = {};
 
-  if (inspEl && !inspEl.disabled && inspEl.value !== '') {
+  if (inspEl && inspEl.value !== '') {
     const v = parseFloat(inspEl.value);
     if (isNaN(v) || v < 0) { Toast.warn('Inspection fee must be a positive number.'); return; }
     payload.inspection_price = v;
@@ -1347,242 +1381,8 @@ async function saveCategoryDetail(categoryId) {
   try {
     await API.patch(CONFIG.ENDPOINTS.CATEGORY_DETAIL(categoryId), payload);
     Toast.success('Category updated.');
-    closeCategoryDetail();
+    loadCategories();
   } catch(e) { Toast.error(e.message || 'Failed to save category'); }
-}
-
-// ── Category Control Room (detail overlay) ───────────────────
-async function openCategoryStats(id) {
-  const nameCell = document.getElementById('cat-name-' + id);
-  const name = nameCell?.dataset.catname || 'Category';
-
-  document.body.insertAdjacentHTML('beforeend', `
-    <div id="cat-stats-overlay" style="position:fixed;inset:0;z-index:2000;background:var(--bg-raised);display:flex;flex-direction:column;overflow:hidden">
-      <div id="cat-stats-inner" style="display:flex;flex-direction:column;height:100%">
-        <div style="padding:16px 24px;border-bottom:1px solid var(--border-dim);display:flex;align-items:center;justify-content:space-between;background:var(--bg-surface);flex-shrink:0">
-          <span style="font-size:15px;font-weight:700;color:var(--text-primary)">Category Control Room — ${escHtml(name)}</span>
-          <button class="btn btn-sm btn-ghost" onclick="closeCategoryStats()">Close</button>
-        </div>
-        <div style="flex:1;display:flex;align-items:center;justify-content:center"><div class="spinner"></div></div>
-      </div>
-    </div>`);
-
-  try {
-    const data = await API.get('/categories/' + id + '/stats');
-    const rsp  = data.data || data;
-    const cat  = rsp.category      || {};
-    const stats = rsp.stats        || {};
-    const vendors   = rsp.vendors  || [];
-    const topLocs   = rsp.top_locations || [];
-    const modes      = rsp.booking_modes || {};
-
-    const inspPrice = cat.inspection_price ?? 299;
-    const commPct   = cat.commission_pct   ?? cat.commission_rate ?? 10;
-    const catIdNum  = parseInt(cat.id || id);
-
-    const modeRows = [
-      { key: 'inspection',    label: 'Rs. 299 Inspection', color: 'var(--orange)' },
-      { key: 'free_lead',     label: 'Free Booking',       color: 'var(--green)'  },
-      { key: 'direct_vendor', label: 'Direct Vendor',      color: 'var(--blue)'   },
-    ].map(m => `<div class="card"><div class="card-body" style="text-align:center;padding:16px">
-        <div style="font-size:26px;font-weight:700;color:${m.color}">${modes[m.key] ?? 0}</div>
-        <div style="font-size:10px;color:var(--text-muted);margin-top:4px;letter-spacing:0.06em">${m.label.toUpperCase()}</div>
-      </div></div>`).join('');
-
-    const vendorOptions = vendors.length
-      ? vendors.map(v => `<option value="${parseInt(v.id)}">${escHtml(v.business_name || ('Vendor #' + v.id))}</option>`).join('')
-      : '';
-
-    const vendorRows = vendors.length
-      ? vendors.map(v => `<tr>
-          <td style="font-weight:600">${escHtml(v.business_name || '—')}</td>
-          <td>${v.is_active ? '<span style="color:var(--green);font-size:11px;font-weight:600">ACTIVE</span>' : '<span style="color:var(--text-muted);font-size:11px">INACTIVE</span>'}</td>
-          <td style="text-align:center">${v.completed_jobs ?? '—'}</td>
-          <td style="text-align:center">${v.total_jobs ?? '—'}</td>
-          <td style="text-align:center;font-weight:600;color:${v.acceptance_rate >= 70 ? 'var(--green)' : v.acceptance_rate != null ? 'var(--orange)' : 'var(--text-muted)'}">${v.acceptance_rate != null ? v.acceptance_rate + '%' : '—'}</td>
-          <td style="text-align:center">${v.rating ? Number(v.rating).toFixed(1) + ' ★' : '—'}</td>
-        </tr>`).join('')
-      : `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">No vendors in this category yet</td></tr>`;
-
-    const locRows = topLocs.length
-      ? topLocs.map(l => `<tr>
-          <td>${escHtml(l.locality || '—')}</td>
-          <td style="text-align:center;font-weight:600;color:var(--accent)">${l.count}</td>
-        </tr>`).join('')
-      : `<tr><td colspan="2" style="text-align:center;color:var(--text-muted);padding:12px">No location data</td></tr>`;
-
-    const content = `
-      <div style="padding:16px 24px;border-bottom:1px solid var(--border-dim);display:flex;align-items:center;justify-content:space-between;background:var(--bg-surface);flex-shrink:0">
-        <div>
-          <h2 style="margin:0 0 4px;font-size:18px;font-weight:700;color:var(--text-primary)">${escHtml(cat.name || name)}</h2>
-          <div style="font-size:12px;color:var(--text-muted)">
-            <code style="background:var(--bg-raised);padding:1px 5px;border-radius:3px">${escHtml(cat.slug || '—')}</code>
-            &nbsp;&middot;&nbsp;${statusBadge(cat.status || 'unknown')}
-          </div>
-        </div>
-        <button class="btn btn-sm btn-ghost" onclick="closeCategoryStats()">Close</button>
-      </div>
-      <div style="flex:1;overflow-y:auto;padding:24px;display:grid;gap:20px;align-content:start">
-
-        <!-- STATS ROW -->
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
-          <div class="card"><div class="card-body" style="text-align:center;padding:16px">
-            <div style="font-size:26px;font-weight:700;color:var(--accent)">${stats.total_bookings ?? 0}</div>
-            <div style="font-size:10px;color:var(--text-muted);margin-top:4px;letter-spacing:0.06em">TOTAL BOOKINGS</div>
-          </div></div>
-          <div class="card"><div class="card-body" style="text-align:center;padding:16px">
-            <div style="font-size:26px;font-weight:700;color:var(--green)">${stats.active_vendors ?? 0}</div>
-            <div style="font-size:10px;color:var(--text-muted);margin-top:4px;letter-spacing:0.06em">ACTIVE VENDORS</div>
-          </div></div>
-          <div class="card"><div class="card-body" style="text-align:center;padding:16px">
-            <div style="font-size:26px;font-weight:700;color:var(--orange)">${stats.pending_bookings ?? 0}</div>
-            <div style="font-size:10px;color:var(--text-muted);margin-top:4px;letter-spacing:0.06em">PENDING</div>
-          </div></div>
-          <div class="card"><div class="card-body" style="text-align:center;padding:16px">
-            <div style="font-size:26px;font-weight:700;color:var(--blue)">${stats.completed_bookings ?? 0}</div>
-            <div style="font-size:10px;color:var(--text-muted);margin-top:4px;letter-spacing:0.06em">COMPLETED</div>
-          </div></div>
-        </div>
-
-        <!-- BOOKING TYPE BREAKDOWN -->
-        <div>
-          <h3 style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.06em;color:var(--text-muted)">BOOKING TYPE BREAKDOWN</h3>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">${modeRows}</div>
-        </div>
-
-        <!-- VENDOR LOOKUP -->
-        <div class="card">
-          <div class="card-body">
-            <h3 style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.06em;color:var(--text-muted)">VENDOR LOOKUP</h3>
-            <select class="form-control" id="cat-stats-vendor-select" style="max-width:280px" onchange="_onCatVendorSelect(${catIdNum})">
-              <option value="">— All vendors (category totals) —</option>
-              ${vendorOptions}
-            </select>
-            <div id="cat-stats-vendor-row" style="display:none;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:14px"></div>
-          </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 300px;gap:20px">
-
-          <!-- VENDORS TABLE -->
-          <div class="card">
-            <div class="card-body" style="padding-bottom:8px">
-              <h3 style="margin:0;font-size:12px;font-weight:700;letter-spacing:0.06em;color:var(--text-muted)">VENDORS IN THIS CATEGORY</h3>
-            </div>
-            <div class="table-wrap">
-              <table>
-                <thead><tr>
-                  <th>VENDOR</th><th>STATUS</th>
-                  <th style="text-align:center">COMPLETED</th>
-                  <th style="text-align:center">TOTAL JOBS</th>
-                  <th style="text-align:center">ACCEPTANCE</th>
-                  <th style="text-align:center">RATING</th>
-                </tr></thead>
-                <tbody>${vendorRows}</tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- RIGHT COLUMN -->
-          <div style="display:grid;gap:16px;align-content:start">
-
-            <!-- PRICING & COMMISSION -->
-            <div class="card">
-              <div class="card-body">
-                <h3 style="margin:0 0 14px;font-size:12px;font-weight:700;letter-spacing:0.06em;color:var(--text-muted)">PRICING &amp; COMMISSION</h3>
-                <div style="display:grid;gap:12px">
-                  <div>
-                    <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Inspection Price (Rs.)</label>
-                    <input class="form-control" id="cat-stats-insp" type="number" min="0" step="1" value="${escHtml(String(inspPrice))}" style="font-size:13px">
-                  </div>
-                  <div>
-                    <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Commission %</label>
-                    <input class="form-control" id="cat-stats-comm" type="number" min="0" max="100" step="0.5" value="${escHtml(String(commPct))}" style="font-size:13px">
-                  </div>
-                  <button class="btn btn-primary btn-sm" onclick="saveCategorySettings(${parseInt(cat.id || id)})">Save Settings</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- TOP LOCATIONS -->
-            <div class="card">
-              <div class="card-body" style="padding-bottom:8px">
-                <h3 style="margin:0;font-size:12px;font-weight:700;letter-spacing:0.06em;color:var(--text-muted)">TOP LOCATIONS</h3>
-              </div>
-              <div class="table-wrap">
-                <table>
-                  <thead><tr><th>LOCALITY</th><th style="text-align:center">BOOKINGS</th></tr></thead>
-                  <tbody>${locRows}</tbody>
-                </table>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </div>`;
-
-    const inner = document.getElementById('cat-stats-inner');
-    if (inner) inner.innerHTML = content;
-
-  } catch(e) {
-    document.getElementById('cat-stats-overlay')?.remove();
-    Toast.error(e.message || 'Failed to load category stats');
-  }
-}
-
-function closeCategoryStats() {
-  document.getElementById('cat-stats-overlay')?.remove();
-}
-
-async function _onCatVendorSelect(categoryId) {
-  const sel = document.getElementById('cat-stats-vendor-select');
-  const row = document.getElementById('cat-stats-vendor-row');
-  if (!sel || !row) return;
-  const vendorId = sel.value;
-  if (!vendorId) { row.style.display = 'none'; row.innerHTML = ''; return; }
-
-  row.style.display = 'grid';
-  row.innerHTML = '<div class="spinner" style="margin:10px auto;grid-column:1/-1"></div>';
-  try {
-    const data = await API.get('/categories/' + categoryId + '/vendor/' + vendorId + '/stats');
-    const rsp = data.data || data;
-    const s = rsp.stats || {};
-    const cards = [
-      { label: 'TOTAL',     value: s.total ?? 0,     color: 'var(--accent)' },
-      { label: 'ACCEPTED',  value: s.accepted ?? 0,  color: 'var(--green)'  },
-      { label: 'REJECTED',  value: s.rejected ?? 0,  color: 'var(--red)'    },
-      { label: 'COMPLETED', value: s.completed ?? 0, color: 'var(--blue)'   },
-      { label: 'PENDING',   value: s.pending ?? 0,   color: 'var(--orange)' },
-    ];
-    row.innerHTML = cards.map(c => `<div class="card"><div class="card-body" style="text-align:center;padding:14px">
-        <div style="font-size:22px;font-weight:700;color:${c.color}">${c.value}</div>
-        <div style="font-size:10px;color:var(--text-muted);margin-top:4px;letter-spacing:0.06em">${c.label}</div>
-      </div></div>`).join('');
-  } catch(e) {
-    row.innerHTML = `<div style="color:var(--text-muted);text-align:center;padding:14px;grid-column:1/-1">Failed to load vendor stats</div>`;
-    Toast.error(e.message || 'Failed to load vendor stats');
-  }
-}
-
-async function saveCategorySettings(id) {
-  const inspEl = document.getElementById('cat-stats-insp');
-  const commEl = document.getElementById('cat-stats-comm');
-  const payload = {};
-  if (inspEl) {
-    const v = parseFloat(inspEl.value);
-    if (isNaN(v) || v < 0) { Toast.warn('Inspection price must be a positive number.'); return; }
-    payload.inspection_price = v;
-  }
-  if (commEl) {
-    const v = parseFloat(commEl.value);
-    if (isNaN(v) || v < 0 || v > 100) { Toast.warn('Commission must be 0-100.'); return; }
-    payload.commission_pct = v;
-  }
-  if (!Object.keys(payload).length) return;
-  try {
-    await API.patch(CONFIG.ENDPOINTS.CATEGORY_DETAIL(id), payload);
-    Toast.success('Settings saved.');
-  } catch(e) { Toast.error(e.message || 'Failed to save settings'); }
 }
 
 // ── Category Inline Name Edit ────────────────────────────────
@@ -1642,7 +1442,7 @@ function renderCategoryMgmt(cats) {
       <td id="cat-name-${id}" data-catname="${escHtml(c.name)}"
           style="font-weight:600;cursor:pointer;color:var(--accent)"
           title="Click to open detail"
-          onclick="openCategoryStats(${id})">${escHtml(c.name)}</td>
+          onclick="openCategoryControlRoom(${id})">${escHtml(c.name)}</td>
       <td><code style="font-size:11px;background:var(--bg-raised);padding:2px 6px;border-radius:3px">${escHtml(c.slug)}</code></td>
       <td>${statusBadge(c.status)}</td>
       <td id="cat-comm-${id}" data-catcomm="${hasCommission ? parseFloat(c.commission_rate) : ''}"

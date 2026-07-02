@@ -705,9 +705,9 @@ try {
     if ($method === 'GET' && preg_match('#^/api/admin/categories/(\d+)/stats$#', $uri, $m)) {
         $categoryId = (int)$m[1];
 
-        // Category core fields + optional pricing columns
+        // Category core fields + optional pricing/media columns
         $cols = "id, name, slug, type, status";
-        foreach (['inspection_price','commission_pct','commission_rate'] as $col) {
+        foreach (['inspection_price','commission_pct','commission_rate','image_url','icon'] as $col) {
             $chk = $db->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categories' AND COLUMN_NAME = ?");
             $chk->execute([$col]);
             $cols .= ((int)$chk->fetchColumn() > 0) ? ", {$col}" : ", NULL AS {$col}";
@@ -854,6 +854,34 @@ try {
             'vendor_id'   => $vendorId,
             'stats'       => $vendorStats,
         ]);
+    }
+
+    // ── POST /api/admin/categories/{id}/banner ──────────────────
+    if ($method === 'POST' && preg_match('#^/api/admin/categories/(\d+)/banner$#', $uri, $m)) {
+        $categoryId = (int)$m[1];
+
+        if (empty($_FILES['banner']) || $_FILES['banner']['error'] === UPLOAD_ERR_NO_FILE) {
+            Response::error('No file uploaded. Send file as multipart field "banner".', 400);
+        }
+
+        require_once SYSTEM_ROOT . '/core/helpers/UploadHelper.php';
+
+        try {
+            $url = UploadHelper::save($_FILES['banner'], 'categories');
+        } catch (Exception $e) {
+            Response::error($e->getMessage(), 400);
+        }
+
+        $hasImageUrl = (int)$db->query(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categories' AND COLUMN_NAME = 'image_url'"
+        )->fetchColumn() > 0;
+        if ($hasImageUrl) {
+            $db->prepare("UPDATE categories SET image_url = ?, updated_at = NOW() WHERE id = ?")
+               ->execute([$url, $categoryId]);
+        }
+
+        Logger::info('Admin updated category banner', ['admin_id' => $auth['user_id'], 'category_id' => $categoryId]);
+        Response::success(['url' => $url], 200, 'Banner updated');
     }
 
     // ── PATCH /api/admin/categories/{id} ───────────────────────
