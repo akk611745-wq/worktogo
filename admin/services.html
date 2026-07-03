@@ -1440,7 +1440,8 @@ async function _getCategoryVendorPhone(vendorId) {
   if (_catRoom.vendorPhoneCache[vendorId] !== undefined) return _catRoom.vendorPhoneCache[vendorId];
   try {
     const data = await API.get(CONFIG.ENDPOINTS.VENDOR_DETAIL(vendorId));
-    const v = data.data || data;
+    const rsp = data.data || data;
+    const v = rsp.vendor || rsp; // GET /vendors/{id} nests the record under "vendor"
     _catRoom.vendorPhoneCache[vendorId] = v.owner_phone || v.phone || '';
   } catch (e) {
     _catRoom.vendorPhoneCache[vendorId] = '';
