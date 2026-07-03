@@ -2207,12 +2207,8 @@ function _heroHTML(slug = "") {
       <p>Verified local experts. Book in 60 seconds.</p>
       <div class="booking-distinction-grid" id="hero-distinction-grid">
         <button type="button" class="distinction-toggle" data-key="inspection" aria-expanded="false" onclick="HomePage.toggleHeroInfoCard('inspection')">
-          <span class="distinction-head"><strong>Inspection</strong><span class="distinction-arrow">⌄</span></span>
+          <span class="distinction-head"><strong>Company Visit</strong><span class="distinction-arrow">⌄</span></span>
           <span class="distinction-detail">Our agent visits you first and checks the actual problem. Then the right worker gets assigned for your job.</span>
-        </button>
-        <button type="button" class="distinction-toggle" data-key="free_lead" aria-expanded="false" onclick="HomePage.toggleHeroInfoCard('free_lead')">
-          <span class="distinction-head"><strong>Book for Free</strong><span class="distinction-arrow">⌄</span></span>
-          <span class="distinction-detail">We assign the best available worker in your area right away — no visit needed first.</span>
         </button>
       </div>
       <div class="hero-cta-row">

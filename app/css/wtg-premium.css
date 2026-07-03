@@ -552,3 +552,23 @@ a.see-all,
   font-weight: 800;
   color: #1f2937;
 }
+
+/* ── "Get Company Service" hero card: premium, single-accent background,
+   decluttered (drop the dotted texture layer) so it reads as a clean,
+   distinct card above the neutral Near Me Vendors zone ─────────────────── */
+.service-hero {
+  background: linear-gradient(160deg, #fff7f0 0%, #ffffff 55%, #fff3e9 100%) !important;
+  border: 1px solid var(--wtg-accent-border) !important;
+  box-shadow: 0 18px 36px rgba(232, 84, 10, 0.14) !important;
+}
+
+.service-hero::before {
+  display: none !important;
+}
+
+/* Only one distinction toggle remains ("Company Visit") now that the
+   "Book for Free" toggle — which duplicated the Get Company Service
+   button below it — has been removed; let it take the full row. */
+.booking-distinction-grid {
+  grid-template-columns: 1fr !important;
+}
