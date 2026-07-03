@@ -510,3 +510,45 @@ a.see-all,
   margin-bottom: 10px;
   text-align: center;
 }
+
+/* ── "Get Company Service" CTA: distinct premium treatment so the
+   company-managed path reads as the trusted/premium option ────────────── */
+.company-service-cta {
+  background: linear-gradient(135deg, #1a1a1a 0%, var(--wtg-accent) 65%, var(--wtg-accent-dark) 100%) !important;
+  box-shadow: 0 16px 32px rgba(232, 84, 10, 0.35) !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.01em !important;
+}
+
+.company-trust-line {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--wtg-accent-soft);
+  border: 1px solid var(--wtg-accent-border);
+  color: var(--wtg-accent-dark);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* ── "Near Me Vendors" zone: distinct neutral shade so the direct-vendor
+   list reads as visually separate from the warm Company Service hero
+   card above it (one screen, two zones) ─────────────────────────────── */
+.near-me-vendors-section {
+  padding: 14px;
+  background: #f4f6fb;
+  border: 1px solid #dde3ef;
+  border-radius: 20px;
+}
+
+.near-me-vendors-section .section-header {
+  margin-bottom: 10px;
+}
+
+.near-me-vendors-section #vendor-feed-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #1f2937;
+}

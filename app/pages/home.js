@@ -60,10 +60,10 @@ export async function render(container) {
           ${_operatingFeedHTML(_activeCategory)}
         </section>
 
-        <section class="home-section" id="services-section">
-          <div class="section-header" style="display:none">
+        <section class="home-section near-me-vendors-section" id="services-section">
+          <div class="section-header">
             <div>
-              <h3 id="vendor-feed-title">${_esc(_resolvedLocality().label)} worker routing</h3>
+              <h3 id="vendor-feed-title">Near Me Vendors</h3>
             </div>
             <button class="see-all" onclick="HomePage.setCategory('')">All</button>
           </div>
@@ -575,7 +575,7 @@ window.HomeModals = (() => {
     const vendorDisplayName = _currentService.vendor_name || _currentService.name || category.label;
     document.getElementById("booking-modal-title").textContent = isVendorDirect
       ? `Book ${vendorDisplayName}`
-      : defaultMode === "inspection" ? `${modalTitleCategory} Inspection` : defaultMode === "free_lead" ? `Book ${modalTitleCategory}` : `Book ${category.label}`;
+      : defaultMode === "inspection" ? `${modalTitleCategory} Expert Visit` : defaultMode === "free_lead" ? `Book ${modalTitleCategory}` : `Book ${category.label}`;
     document.getElementById("booking-modal-body").innerHTML = isVendorDirect
       ? _vendorDirectFormHTML({ service: _currentService, category, selectedService, restored, profile })
       : (defaultMode === "inspection" || defaultMode === "free_lead") ? _intakeRequestHTML({ mode: defaultMode, service: _currentService, category, selectedService, restored, sameRestoredContext, inspectionPrice }) : `
@@ -991,8 +991,9 @@ window.HomeModals = (() => {
     const isInspection = mode === "inspection";
     return `
       <div class="inspection-flow" data-flow="${_esc(isInspection ? "inspection-request" : "free-booking-request")}">
+        <p class="company-trust-line">✓ Company handles your job end-to-end</p>
         <div class="inspection-summary-row">
-          <strong>${_esc(isInspection ? `${UI.formatCurrency(inspectionPrice)} Inspection` : `${category.label || "Service"} request`)}</strong>
+          <strong>${_esc(isInspection ? `${UI.formatCurrency(inspectionPrice)} Expert Visit` : `${category.label || "Service"} request`)}</strong>
           <span>${_esc(locality.label)}</span>
         </div>
         <section class="inspection-step compact-customer-step">
@@ -1153,7 +1154,7 @@ window.HomeModals = (() => {
     if (!actions) return;
     const isInspection = mode === "inspection";
     actions.innerHTML = isInspection
-      ? `<button class="btn-primary inspection-pay-cta" id="btn-confirm-booking" onclick="HomeModals.confirmBooking()"><span class="btn-label">Proceed to ${UI.formatCurrency(inspectionPrice)} inspection</span></button>`
+      ? `<button class="btn-primary inspection-pay-cta" id="btn-confirm-booking" onclick="HomeModals.confirmBooking()"><span class="btn-label">Proceed to ${UI.formatCurrency(inspectionPrice)} expert visit</span></button>`
       : `<button class="btn-secondary" onclick="HomeModals.closeBooking()">Cancel</button><button class="btn-primary" id="btn-confirm-booking" onclick="HomeModals.confirmBooking()"><span class="btn-label">Confirm Booking</span></button>`;
   }
 
@@ -1194,15 +1195,15 @@ window.HomeModals = (() => {
     const modal = document.getElementById("booking-modal");
     modal?.classList.remove("hidden");
     _lockModalBody("booking");
-    UI.toast(mode === "inspection" ? "Inspection payment verified. Request saved." : "Request saved. Worker matching started.", "success");
+    UI.toast(mode === "inspection" ? "Expert visit payment verified. Request saved." : "Request saved. Worker matching started.", "success");
   }
 
   function _successStateForMode(mode = "free_lead", paymentRequired = false) {
     if (mode === "inspection" || paymentRequired) return {
-      title: "Inspection request saved",
-      message: "Payment is verified. WorkToGo will review the issue and assign inspection support.",
-      next: "Inspection coordinator will contact shortly",
-      steps: ["Payment received", "Inspection queued", "Coordinator reviewing", "Inspection assigned"],
+      title: "Expert visit request saved",
+      message: "Payment is verified. WorkToGo will review the issue and arrange your expert visit.",
+      next: "Visit coordinator will contact shortly",
+      steps: ["Payment received", "Visit queued", "Coordinator reviewing", "Visit assigned"],
     };
     return {
       title: "Request saved",
@@ -1622,7 +1623,7 @@ async function _handleInspectionCheckout(booking, bookingMode, payload = {}) {
     }
     saved = _saveInspectionPaymentReturn(booking, { payload, state: "pending", message: "Payment session is not available yet. Your request is safely saved." });
     _showInspectionVerificationState(saved, { forceOpen: true });
-    UI.toast("Inspection request is saved. Payment confirmation can be checked from here or My Requests.", "info", 6000);
+    UI.toast("Expert visit request is saved. Payment confirmation can be checked from here or My Requests.", "info", 6000);
     return "pending";
   } catch (err) {
     saved = _saveInspectionPaymentReturn(booking, { payload, state: "verifying", message: "Payment app was interrupted. Your request is safely saved." });
@@ -1666,8 +1667,8 @@ async function _restoreInspectionPaymentReturn() {
     }
     _clearInspectionPaymentReturn();
     const payload = {
-      category_label: saved.payload?.category_label || saved.booking.service || "Inspection",
-      subservice: saved.payload?.subservice || saved.payload?.issue_type || saved.booking.service || "Inspection",
+      category_label: saved.payload?.category_label || saved.booking.service || "Expert Visit",
+      subservice: saved.payload?.subservice || saved.payload?.issue_type || saved.booking.service || "Expert Visit",
       locality: saved.locality?.label || _resolvedLocality().label,
     };
     HomeModals.showInspectionConfirmation?.(saved.booking, payload);
@@ -1718,10 +1719,10 @@ function _showInspectionVerificationState(saved = {}, opts = {}) {
   const payload = saved.payload || {};
   const state = _normalizePaymentState(saved.status_state || saved.payment_status || "pending");
   const locality = saved.locality?.label || payload.locality || _resolvedLocality().label;
-  const service = payload.subservice || payload.issue_type || payload.category_label || booking.service || "Inspection";
+  const service = payload.subservice || payload.issue_type || payload.category_label || booking.service || "Expert Visit";
   const title = state === "paid" ? "Payment verified" : opts.checking || state === "pending" ? "Payment verification in progress" : state === "cancelled" ? "Payment not completed" : "Payment needs attention";
   const note = state === "paid"
-    ? "Your inspection payment is verified. WorkToGo will confirm the next operational step."
+    ? "Your expert visit payment is verified. WorkToGo will confirm the next operational step."
     : state === "failed" || state === "cancelled"
       ? "Your request is safely saved. Payment is not verified yet, so assignment will wait until payment is resolved."
       : "Your request is safely saved. We are checking payment confirmation from the gateway.";
@@ -1738,7 +1739,7 @@ function _showInspectionVerificationState(saved = {}, opts = {}) {
         <span><strong>Request ID</strong>${_esc(String(bookingId))}</span>
         <span><strong>Service</strong>${_esc(service)}</span>
         <span><strong>Area</strong>${_esc(locality)}</span>
-        <span><strong>Next step</strong>${state === "paid" ? "Inspection visit confirmation" : state === "failed" ? "Start a fresh booking below" : "Payment verification, then inspection assignment"}</span>
+        <span><strong>Next step</strong>${state === "paid" ? "Expert visit confirmation" : state === "failed" ? "Start a fresh booking below" : "Payment verification, then expert visit assignment"}</span>
       </div>
       <p class="inspection-payment-note">${state === "failed" ? "Payment did not go through. Your slot is still open — start a fresh booking." : "No duplicate request is needed. Use Check status to continue verification safely."}</p>
     </div>`;
@@ -1889,9 +1890,6 @@ async function _loadProducts() {
 function _renderServices(res) {
   const el = document.getElementById("services-grid");
   if (!el) return;
-  const title = document.getElementById("vendor-feed-title");
-  const localityContext = _resolvedLocality();
-  if (title) title.textContent = _activeCategory ? `${_categoryMeta(_activeCategory).label} routing in ${localityContext.label}` : `${localityContext.label} worker routing`;
 
   if (!res.ok) {
     el.classList.remove("fallback-services-grid");
@@ -2219,7 +2217,7 @@ function _heroHTML(slug = "") {
       </div>
       <div class="hero-cta-row">
         <button class="btn-primary marketplace-cta hero-primary" id="hero-category-cta" style="display:none" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'inspection')">${_esc(primaryText)}</button>
-        <button class="hero-secondary" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Book a Service</button>
+        <button class="hero-secondary company-service-cta" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Get Company Service</button>
       </div>
       <p class="action-hierarchy-note" id="hero-distinction-note" style="display:none"></p>
     </div>`;
