@@ -1211,8 +1211,6 @@ async function openCategoryControlRoom(categoryId) {
 
     const catIdNum  = parseInt(cat.id || categoryId);
     const isActive  = cat.status === 'active';
-    const inspPrice = cat.inspection_price ?? '';
-    const commRate  = cat.commission_rate ?? cat.commission_pct ?? '';
 
     _catRoom = {
       categoryId: catIdNum,
@@ -1281,24 +1279,6 @@ async function openCategoryControlRoom(categoryId) {
 
         <!-- SECTION 3: STATS BAR -->
         <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px">${statCards}</div>
-
-        <!-- SECTION 4: PRICING -->
-        <div class="card"><div class="card-body" style="padding:22px">
-          <div style="font-size:14px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Pricing</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:560px">
-            <div>
-              <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;letter-spacing:0.06em">INSPECTION FEE (₹)</label>
-              <input type="number" id="cat-room-insp" class="form-control" min="0" step="1" value="${escHtml(String(inspPrice))}" style="font-size:14px">
-            </div>
-            <div>
-              <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;letter-spacing:0.06em">COMMISSION (%)</label>
-              <input type="number" id="cat-room-comm" class="form-control" min="0" max="100" step="0.1" value="${escHtml(String(commRate))}" style="font-size:14px">
-            </div>
-          </div>
-          <div style="margin-top:18px">
-            <button class="btn btn-primary" onclick="saveCategoryPricing(${catIdNum})" style="font-size:13px;padding:8px 20px">Save Settings</button>
-          </div>
-        </div></div>
 
         <!-- SECTION 5: VENDORS -->
         <div class="card"><div class="card-body" style="padding:22px">
@@ -1642,30 +1622,6 @@ async function uploadCategoryBanner(categoryId, inputEl) {
   } finally {
     inputEl.value = '';
   }
-}
-
-async function saveCategoryPricing(categoryId) {
-  const inspEl = document.getElementById('cat-room-insp');
-  const commEl = document.getElementById('cat-room-comm');
-  const payload = {};
-
-  if (inspEl && inspEl.value !== '') {
-    const v = parseFloat(inspEl.value);
-    if (isNaN(v) || v < 0) { Toast.warn('Inspection fee must be a positive number.'); return; }
-    payload.inspection_price = v;
-  }
-  if (commEl && commEl.value !== '') {
-    const v = parseFloat(commEl.value);
-    if (isNaN(v) || v < 0 || v > 100) { Toast.warn('Commission must be between 0 and 100.'); return; }
-    payload.commission_rate = v;
-  }
-  if (!Object.keys(payload).length) { Toast.warn('No changes to save.'); return; }
-
-  try {
-    await API.patch(CONFIG.ENDPOINTS.CATEGORY_DETAIL(categoryId), payload);
-    Toast.success('Category updated.');
-    loadCategories();
-  } catch(e) { Toast.error(e.message || 'Failed to save category'); }
 }
 
 // ── Category Inline Name Edit ────────────────────────────────
