@@ -1181,6 +1181,11 @@ async function moveKanbanCard(bookingId, fromCol, toCol) {
 }
 
 // ── Category Control Room (unified overlay) ──────────────────
+// Category Control Room state — populated on open, cleared on close.
+// Holds the raw API payload plus lazily-fetched per-vendor stats/phone caches
+// so repeat renders (filter clicks, drawer opens) don't refetch what's already known.
+let _catRoom = null;
+
 async function openCategoryControlRoom(categoryId) {
   if (!categoryId) { Toast.warn('No category assigned to this service.'); return; }
 
@@ -1209,6 +1214,14 @@ async function openCategoryControlRoom(categoryId) {
     const inspPrice = cat.inspection_price ?? '';
     const commRate  = cat.commission_rate ?? cat.commission_pct ?? '';
 
+    _catRoom = {
+      categoryId: catIdNum,
+      cat, stats, vendors, topLocs, modes,
+      filter: null,               // 'active' | 'new' | 'completed' | 'rejected' | null (all)
+      vendorStatsCache: {},       // vendorId -> {total,accepted,rejected,completed,pending} | 'loading'
+      vendorPhoneCache: {},       // vendorId -> phone string ('' if none on file)
+    };
+
     const statCards = [
       { label: 'TOTAL BOOKINGS',  value: stats.total_bookings ?? 0,     color: 'var(--accent)' },
       { label: '₹299 INSPECTION', value: modes.inspection ?? 0,         color: 'var(--orange)' },
@@ -1222,25 +1235,18 @@ async function openCategoryControlRoom(categoryId) {
         <div style="font-size:10px;color:var(--text-muted);margin-top:4px;letter-spacing:0.06em">${c.label}</div>
       </div></div>`).join('');
 
-    const vendorRows = vendors.length
-      ? vendors.map(v => `<tr>
-          <td style="font-weight:600">${escHtml(v.business_name || '—')}</td>
-          <td>${v.is_active ? '<span style="color:var(--green);font-size:11px;font-weight:600">ACTIVE</span>' : '<span style="color:var(--text-muted);font-size:11px">INACTIVE</span>'}</td>
-          <td style="text-align:center">${v.total_jobs ?? '—'}</td>
-          <td style="text-align:center">${v.completed_jobs ?? '—'}</td>
-          <td style="text-align:center">${v.rating ? Number(v.rating).toFixed(1) + ' ★' : '—'}</td>
-        </tr>`).join('')
-      : `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">No vendors in this category yet</td></tr>`;
-
     const top5 = topLocs.slice(0, 5);
     const maxLoc = Math.max(1, ...top5.map(l => l.count || 0));
     const areaRows = top5.length
-      ? top5.map(l => `<div style="display:grid;grid-template-columns:130px 1fr 40px;align-items:center;gap:10px;margin-bottom:8px">
+      ? top5.map(l => `<div style="display:grid;grid-template-columns:130px 1fr 40px 110px;align-items:center;gap:10px;margin-bottom:8px">
           <div style="font-size:12px;color:var(--text-primary)">${escHtml(l.locality || '—')}</div>
           <div style="background:var(--bg-raised);border-radius:4px;overflow:hidden;height:10px">
             <div style="width:${Math.round((l.count / maxLoc) * 100)}%;height:100%;background:var(--accent)"></div>
           </div>
           <div style="font-size:12px;text-align:right;color:var(--text-muted)">${l.count}</div>
+          <!-- TODO: vendor coverage per locality needs vendor service-area data (e.g. vendors.service_localities),
+               which GET /categories/{id}/stats does not currently return. Showing placeholder until wired up. -->
+          <div style="font-size:12px;text-align:right;color:var(--text-muted)" title="Vendor coverage data not available from current API">—</div>
         </div>`).join('')
       : `<p style="font-size:12px;color:var(--text-muted);margin:0">No location data yet.</p>`;
 
@@ -1297,17 +1303,34 @@ async function openCategoryControlRoom(categoryId) {
         <!-- SECTION 5: VENDORS -->
         <div class="card"><div class="card-body" style="padding:22px">
           <div style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--text-primary)">Vendors in this category</div>
+          <div id="cat-vendor-filter-chips" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">${renderCategoryFilterChips()}</div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>VENDOR</th><th>STATUS</th><th style="text-align:center">JOBS</th><th style="text-align:center">COMPLETED</th><th style="text-align:center">RATING</th></tr></thead>
-              <tbody>${vendorRows}</tbody>
+              <thead><tr>
+                <th>VENDOR</th><th>AREA</th><th>STATUS</th>
+                <th style="text-align:center">JOBS</th><th style="text-align:center">DONE</th>
+                <th style="text-align:center">REJECTED</th><th style="text-align:center">ACCEPTANCE</th>
+                <th style="text-align:center">LAST SEEN</th><th style="text-align:center">ACTIONS</th>
+              </tr></thead>
+              <tbody id="cat-vendor-tbody"></tbody>
             </table>
           </div>
         </div></div>
 
+        <!-- SECTION 5b: PENDING APPROVALS -->
+        <div class="card"><div class="card-body" style="padding:22px">
+          <div id="cat-pending-title" style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--text-primary)">Pending Approval</div>
+          <div id="cat-pending-body"><div class="spinner"></div></div>
+        </div></div>
+
         <!-- SECTION 6: AREA DEMAND -->
         <div class="card"><div class="card-body" style="padding:22px">
-          <div style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--text-primary)">Top Areas by Demand</div>
+          <div style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--text-primary)">Top Areas by Demand</div>
+          <div style="display:grid;grid-template-columns:130px 1fr 40px 110px;gap:10px;margin-bottom:8px">
+            <div style="font-size:10px;color:var(--text-muted);letter-spacing:0.06em">AREA</div>
+            <div></div><div></div>
+            <div style="font-size:10px;color:var(--text-muted);text-align:right;letter-spacing:0.06em">COVERAGE</div>
+          </div>
           ${areaRows}
         </div></div>
 
@@ -1315,6 +1338,9 @@ async function openCategoryControlRoom(categoryId) {
 
     const inner = document.getElementById('cat-room-inner');
     if (inner) inner.innerHTML = content;
+
+    renderCategoryVendorTable();
+    loadCategoryPendingApprovals(catIdNum);
   } catch(e) {
     document.getElementById('cat-room-overlay')?.remove();
     Toast.error(e.message || 'Failed to load category control room');
@@ -1323,6 +1349,261 @@ async function openCategoryControlRoom(categoryId) {
 
 function closeCategoryControlRoom() {
   document.getElementById('cat-room-overlay')?.remove();
+  document.getElementById('vendor-detail-drawer')?.remove();
+  _catRoom = null;
+}
+
+// ── Vendor Filter Chips (Active / New / Jobs Given / Completed / Rejected) ──
+function renderCategoryFilterChips() {
+  const chips = [
+    { key: 'active',    label: 'Active' },
+    { key: 'new',       label: 'New' },
+    { key: 'all',       label: 'Jobs Given' },
+    { key: 'completed', label: 'Completed' },
+    { key: 'rejected',  label: 'Rejected' },
+  ];
+  const current = _catRoom?.filter;
+  return chips.map(c => {
+    const on = current === c.key;
+    return `<button class="btn btn-sm" style="background:${on ? 'rgba(232,104,26,0.12)' : 'var(--bg-raised)'};border:1px solid ${on ? '#e8681a' : 'var(--border-mid)'};color:var(--text-primary)" onclick="setCategoryVendorFilter('${c.key}')">${c.label}</button>`;
+  }).join('');
+}
+
+async function setCategoryVendorFilter(key) {
+  if (!_catRoom) return;
+  _catRoom.filter = (_catRoom.filter === key) ? null : key;
+
+  const chipsEl = document.getElementById('cat-vendor-filter-chips');
+  if (chipsEl) chipsEl.innerHTML = renderCategoryFilterChips();
+
+  if (_catRoom.filter === 'rejected') {
+    await Promise.all(_catRoom.vendors.map(v => fetchVendorRejectedStats(v.id)));
+  }
+  renderCategoryVendorTable();
+}
+
+// ── Vendor Table ──────────────────────────────────────────────
+function renderCategoryVendorTable() {
+  if (!_catRoom) return;
+  const tbody = document.getElementById('cat-vendor-tbody');
+  if (!tbody) return;
+
+  let list = _catRoom.vendors.slice();
+  const f = _catRoom.filter;
+  if (f === 'active') {
+    list = list.filter(v => v.is_active);
+  } else if (f === 'new') {
+    list = list.filter(v => (v.total_jobs || 0) === 0);
+  } else if (f === 'completed') {
+    list.sort((a, b) => (b.completed_jobs || 0) - (a.completed_jobs || 0));
+  } else if (f === 'rejected') {
+    list.sort((a, b) => _rejectedCountOf(b.id) - _rejectedCountOf(a.id));
+  }
+
+  tbody.innerHTML = list.length
+    ? list.map(buildCategoryVendorRow).join('')
+    : `<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:20px">No vendors match this filter.</td></tr>`;
+}
+
+function _rejectedCountOf(vendorId) {
+  const cache = _catRoom?.vendorStatsCache?.[vendorId];
+  return (cache && cache !== 'loading') ? (cache.rejected || 0) : 0;
+}
+
+function buildCategoryVendorRow(v) {
+  const cache = _catRoom.vendorStatsCache[v.id];
+  let rejectedCell;
+  if (cache && cache !== 'loading') {
+    rejectedCell = cache.rejected ?? 0;
+  } else {
+    rejectedCell = '<span style="color:var(--text-muted)">…</span>';
+    fetchVendorRejectedStats(v.id); // cached synchronously as 'loading' below — won't double-fetch
+  }
+  const acceptance = v.acceptance_rate != null ? v.acceptance_rate + '%' : '—';
+
+  return `<tr style="cursor:pointer" onclick="openVendorDetailDrawer(${v.id})">
+      <td style="font-weight:600">${escHtml(v.business_name || '—')}</td>
+      <td style="color:var(--text-muted)">—</td>
+      <td>${v.is_active ? '<span style="color:var(--green);font-size:11px;font-weight:600">ACTIVE</span>' : '<span style="color:var(--text-muted);font-size:11px">INACTIVE</span>'}</td>
+      <td style="text-align:center">${v.total_jobs ?? '—'}</td>
+      <td style="text-align:center">${v.completed_jobs ?? '—'}</td>
+      <td style="text-align:center">${rejectedCell}</td>
+      <td style="text-align:center">${acceptance}</td>
+      <td style="text-align:center;color:var(--text-muted)">—</td>
+      <td style="text-align:center;white-space:nowrap" onclick="event.stopPropagation()">
+        <button class="btn btn-sm btn-ghost" title="Call" onclick="callCategoryVendor(${v.id})">📞</button>
+        <button class="btn btn-sm btn-ghost" title="WhatsApp" onclick="whatsappCategoryVendor(${v.id})">💬</button>
+        <button class="btn btn-sm btn-warn" title="Suspend" onclick="suspendCategoryVendor(${v.id})">⛔</button>
+      </td>
+    </tr>`;
+}
+
+// Per-vendor rejection stats, fetched lazily and cached for the life of this control-room session.
+async function fetchVendorRejectedStats(vendorId) {
+  if (!_catRoom) return null;
+  if (_catRoom.vendorStatsCache[vendorId]) return _catRoom.vendorStatsCache[vendorId];
+  _catRoom.vendorStatsCache[vendorId] = 'loading';
+  try {
+    const data = await API.get(`/categories/${_catRoom.categoryId}/vendor/${vendorId}/stats`);
+    const stats = (data.data || data).stats || {};
+    _catRoom.vendorStatsCache[vendorId] = stats;
+  } catch (e) {
+    _catRoom.vendorStatsCache[vendorId] = { total: 0, accepted: 0, rejected: 0, completed: 0, pending: 0 };
+  }
+  renderCategoryVendorTable();
+  return _catRoom.vendorStatsCache[vendorId];
+}
+
+// Vendor phone isn't part of /categories/{id}/stats — fetched on demand for Call/WhatsApp and cached.
+async function _getCategoryVendorPhone(vendorId) {
+  if (!_catRoom) return '';
+  if (_catRoom.vendorPhoneCache[vendorId] !== undefined) return _catRoom.vendorPhoneCache[vendorId];
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.VENDOR_DETAIL(vendorId));
+    const v = data.data || data;
+    _catRoom.vendorPhoneCache[vendorId] = v.owner_phone || v.phone || '';
+  } catch (e) {
+    _catRoom.vendorPhoneCache[vendorId] = '';
+  }
+  return _catRoom.vendorPhoneCache[vendorId];
+}
+
+async function callCategoryVendor(vendorId) {
+  const raw = await _getCategoryVendorPhone(vendorId);
+  const ph = raw.replace(/\D/g, '').replace(/^91/, '');
+  if (!ph) { Toast.warn('No phone number on file for this vendor.'); return; }
+  window.open(`tel:+91${ph}`, '_self');
+}
+
+async function whatsappCategoryVendor(vendorId) {
+  const raw = await _getCategoryVendorPhone(vendorId);
+  const ph = raw.replace(/\D/g, '').replace(/^91/, '');
+  if (!ph) { Toast.warn('No phone number on file for this vendor.'); return; }
+  window.open(`https://wa.me/91${ph}`, '_blank');
+}
+
+async function suspendCategoryVendor(vendorId) {
+  if (!await confirmAction('Suspend this vendor? They will be set to inactive.')) return;
+  try {
+    await API.patch(CONFIG.ENDPOINTS.VENDOR_STATUS(vendorId), { status: 'inactive' });
+    Toast.success('Vendor suspended.');
+    const v = _catRoom?.vendors.find(v => v.id === vendorId);
+    if (v) v.is_active = false;
+    renderCategoryVendorTable();
+    closeVendorDetailDrawer();
+  } catch (e) {
+    Toast.error(e.message || 'Failed to suspend vendor');
+  }
+}
+
+// ── Vendor Detail Drawer ──────────────────────────────────────
+async function openVendorDetailDrawer(vendorId) {
+  if (!_catRoom) return;
+  const vendor = _catRoom.vendors.find(v => v.id === vendorId);
+  if (!vendor) return;
+
+  if (!document.getElementById('vendor-detail-drawer')) {
+    document.body.insertAdjacentHTML('beforeend', `
+      <div id="vendor-detail-drawer" style="position:fixed;inset:0;z-index:2100">
+        <div id="vdd-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,0.5)" onclick="closeVendorDetailDrawer()"></div>
+        <div id="vdd-panel" style="position:absolute;top:0;right:0;bottom:0;width:400px;max-width:92vw;background:var(--bg-surface);box-shadow:-4px 0 16px rgba(0,0,0,0.35);display:flex;flex-direction:column">
+          <div id="vdd-body" style="flex:1;overflow-y:auto;padding:22px"></div>
+        </div>
+      </div>`);
+  }
+  document.getElementById('vendor-detail-drawer').style.display = 'block';
+
+  const body = document.getElementById('vdd-body');
+  body.innerHTML = `<div style="text-align:center;padding:40px"><div class="spinner"></div></div>`;
+
+  const stats = await fetchVendorRejectedStats(vendorId) || {};
+
+  body.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <h3 style="margin:0;font-size:16px;color:var(--text-primary)">${escHtml(vendor.business_name || '—')}</h3>
+      <button class="btn btn-sm btn-ghost" onclick="closeVendorDetailDrawer()">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">CATEGORY</div>
+    <div style="font-size:13px;color:var(--text-primary);margin-bottom:14px">${escHtml(_catRoom.cat.name || '—')}</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">STATUS</div>
+    <div style="margin-bottom:18px">${vendor.is_active ? '<span style="color:var(--green);font-size:12px;font-weight:600">ACTIVE</span>' : '<span style="color:var(--text-muted);font-size:12px">INACTIVE</span>'}</div>
+
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px">
+      ${[['TOTAL', stats.total], ['DONE', stats.completed], ['REJECTED', stats.rejected], ['PENDING', stats.pending]]
+        .map(([label, val]) => `<div class="card"><div class="card-body" style="text-align:center;padding:12px">
+            <div style="font-size:18px;font-weight:700;color:var(--text-primary)">${val ?? 0}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${label}</div>
+          </div></div>`).join('')}
+    </div>
+
+    <!-- TODO: /categories/{id}/vendor/{id}/stats returns aggregate counts only — no itemized job list.
+         Show a per-job list here once a job-detail endpoint exists. -->
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:18px">Job-level detail isn't available from the current API — showing aggregate counts only.</div>
+
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-sm" onclick="callCategoryVendor(${vendor.id})">📞 Call</button>
+      <button class="btn btn-sm" onclick="whatsappCategoryVendor(${vendor.id})">💬 WhatsApp</button>
+      <button class="btn btn-sm btn-warn" onclick="suspendCategoryVendor(${vendor.id})">⛔ Suspend</button>
+    </div>`;
+}
+
+function closeVendorDetailDrawer() {
+  const d = document.getElementById('vendor-detail-drawer');
+  if (d) d.style.display = 'none';
+}
+
+// ── Pending Vendor Approvals ──────────────────────────────────
+async function loadCategoryPendingApprovals(categoryId) {
+  const titleEl = document.getElementById('cat-pending-title');
+  const bodyEl  = document.getElementById('cat-pending-body');
+  if (!bodyEl) return;
+  try {
+    const data = await API.get(CONFIG.ENDPOINTS.VENDORS, { status: 'pending' });
+    const rsp = data.data || data;
+    const pending = (rsp.vendors || []).filter(v => parseInt(v.category_id) === categoryId);
+
+    if (titleEl) titleEl.textContent = `Pending Approval (${pending.length})`;
+
+    bodyEl.innerHTML = pending.length
+      ? `<div class="table-wrap"><table>
+            <thead><tr><th>NAME</th><th>PHONE</th><th>APPLIED</th><th style="text-align:center">ACTIONS</th></tr></thead>
+            <tbody>${pending.map(v => `<tr>
+                <td style="font-weight:600">${escHtml(v.business_name || v.owner_name || '—')}</td>
+                <td>${escHtml(v.owner_phone || '—')}</td>
+                <td>${Fmt.date(v.created_at)}</td>
+                <td style="text-align:center;white-space:nowrap">
+                  <button class="btn btn-sm btn-success" onclick="approveCategoryPendingVendor(${v.id}, ${categoryId})">✅ Approve</button>
+                  <button class="btn btn-sm btn-danger" onclick="rejectCategoryPendingVendor(${v.id}, ${categoryId})">❌ Reject</button>
+                </td>
+              </tr>`).join('')}</tbody>
+          </table></div>`
+      : `<p style="font-size:12px;color:var(--text-muted);margin:0">No pending applications</p>`;
+  } catch (e) {
+    if (titleEl) titleEl.textContent = 'Pending Approval';
+    bodyEl.innerHTML = `<p style="font-size:12px;color:var(--text-muted);margin:0">Failed to load pending applications.</p>`;
+  }
+}
+
+async function approveCategoryPendingVendor(vendorId, categoryId) {
+  if (!await confirmAction('Approve this vendor?')) return;
+  try {
+    await API.post(CONFIG.ENDPOINTS.VENDOR_APPROVE(vendorId));
+    Toast.success('Vendor approved.');
+    loadCategoryPendingApprovals(categoryId);
+  } catch (e) {
+    Toast.error(e.message || 'Failed to approve vendor');
+  }
+}
+
+async function rejectCategoryPendingVendor(vendorId, categoryId) {
+  if (!await confirmAction('Reject this vendor application?')) return;
+  try {
+    await API.post(CONFIG.ENDPOINTS.VENDOR_REJECT(vendorId));
+    Toast.success('Vendor rejected.');
+    loadCategoryPendingApprovals(categoryId);
+  } catch (e) {
+    Toast.error(e.message || 'Failed to reject vendor');
+  }
 }
 
 async function _toggleCategoryStatusInline(categoryId, currentStatus) {
