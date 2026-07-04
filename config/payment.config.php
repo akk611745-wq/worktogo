@@ -12,8 +12,15 @@
 
 if (!function_exists('getenv_safe')) {
     function getenv_safe(string $key, string $default = ''): string {
+        // Read across all sources a host might use — getenv(), then the $_ENV and
+        // $_SERVER superglobals — since PHP's variables_order determines which are
+        // populated. Reading only one source left prod values (notably APP_URL)
+        // empty even when the variable was set (Blocker B1). Only adds fallbacks.
         $val = getenv($key);
-        return ($val !== false && $val !== '') ? $val : $default;
+        if ($val === false || $val === '') {
+            $val = $_ENV[$key] ?? $_SERVER[$key] ?? false;
+        }
+        return ($val !== false && $val !== '') ? (string)$val : $default;
     }
 }
 
@@ -40,15 +47,19 @@ define('CASHFREE_SECRET_KEY', getenv_safe('CASHFREE_SECRET_KEY'));
 define('CASHFREE_ENV',        getenv_safe('CASHFREE_ENV', 'TEST')); // TEST | PRODUCTION
 
 // Derived: Cashfree API base URL
+// Read via getenv_safe (not $_ENV) so these resolve on hosts that populate real
+// environment variables / putenv but not the $_ENV superglobal — the same source
+// the credentials above use. Mismatched sources here left APP_URL empty in prod,
+// which produced relative return/notify URLs that Cashfree rejects (Blocker B1).
 define('CASHFREE_API_BASE', strtoupper(CASHFREE_ENV) === 'PRODUCTION'
-    ? ($_ENV['CASHFREE_API_URL'] ?? 'https://api.cashfree.com/pg')
-    : ($_ENV['CASHFREE_SANDBOX_URL'] ?? 'https://sandbox.cashfree.com/pg')
+    ? getenv_safe('CASHFREE_API_URL', 'https://api.cashfree.com/pg')
+    : getenv_safe('CASHFREE_SANDBOX_URL', 'https://sandbox.cashfree.com/pg')
 );
 
 define('CASHFREE_API_VERSION', '2023-08-01');
 
 // ─── App Base URL (used for return/notify URLs) ───────────────────────────────
-define('APP_URL', rtrim($_ENV['APP_URL'] ?? '', '/'));
+define('APP_URL', rtrim(getenv_safe('APP_URL'), '/'));
 
 // Payment return URL after Cashfree hosted page
 define('PAYMENT_RETURN_URL', APP_URL . '/api/payment/return');

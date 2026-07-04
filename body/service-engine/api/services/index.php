@@ -1390,20 +1390,45 @@ if ($method === 'POST' && $uri === '/api/service/request') {
             } else {
                 try {
                     $cfOrderId = 'WTG_B' . $bookingId . '_' . time();
+
+                    // B1: Cashfree requires absolute, publicly-reachable HTTPS return/
+                    // notify URLs. APP_URL can be empty in prod if the host doesn't expose
+                    // it; fall back to the live request host so we never send a relative
+                    // URL (the failure that marked every inspection payment 'failed').
+                    $appBaseUrl = defined('APP_URL') ? (string)APP_URL : '';
+                    if ($appBaseUrl === '') {
+                        $reqScheme  = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') ? 'https' : 'http';
+                        $reqHost    = (string)($_SERVER['HTTP_HOST'] ?? '');
+                        $appBaseUrl = $reqHost !== '' ? $reqScheme . '://' . $reqHost : '';
+                    }
+                    $appBaseUrl = rtrim($appBaseUrl, '/');
+                    $returnUrl  = $appBaseUrl . '/app/#home?payment_return=inspection&booking_id=' . $bookingId;
+                    $notifyUrl  = $appBaseUrl . '/api/payment/webhook';
+
+                    // Cashfree expects a plain 10-digit Indian mobile; strip country code
+                    // / symbols and fall back to a valid placeholder if unusable.
+                    $cfPhone = preg_replace('/\D/', '', (string)($input['customer_mobile'] ?? ''));
+                    if (strlen($cfPhone) > 10) {
+                        $cfPhone = substr($cfPhone, -10);
+                    }
+                    if (strlen($cfPhone) !== 10) {
+                        $cfPhone = '9999999999';
+                    }
+
                     $cfClient  = new CashfreeClient();
                     $cfResult  = $cfClient->post('/orders', [
                         'order_id'       => $cfOrderId,
-                        'order_amount'   => $bookingTotal,
+                        'order_amount'   => round((float)$bookingTotal, 2),
                         'order_currency' => 'INR',
                         'customer_details' => [
                             'customer_id'    => (string)(int)$auth['user_id'],
                             'customer_name'  => htmlspecialchars(strip_tags(trim((string)($input['customer_name'] ?? 'WorkToGo Customer'))), ENT_QUOTES, 'UTF-8') ?: 'WorkToGo Customer',
                             'customer_email' => 'support@worktogo.com',
-                            'customer_phone' => preg_replace('/\D/', '', (string)($input['customer_mobile'] ?? '9999999999')) ?: '9999999999',
+                            'customer_phone' => $cfPhone,
                         ],
                         'order_meta' => [
-                            'return_url' => (defined('APP_URL') ? APP_URL : '') . '/app/#home?payment_return=inspection&booking_id=' . $bookingId,
-                            'notify_url' => (defined('APP_URL') ? APP_URL : '') . '/api/payment/webhook',
+                            'return_url' => $returnUrl,
+                            'notify_url' => $notifyUrl,
                         ],
                         'order_tags' => [
                             'internal_booking_id' => (string)$bookingId,
@@ -1412,16 +1437,22 @@ if ($method === 'POST' && $uri === '/api/service/request') {
                         ],
                     ]);
 
-                    // TEMP DEBUG — CASHFREE-PROD-FAILURE investigation. Remove once root cause confirmed.
+                    // DEBUG — CASHFREE-PROD-FAILURE (B1). Captures exactly what was sent
+                    // plus Cashfree's exact reply so a staging failure is self-diagnosing.
+                    // Remove once the prod root cause is confirmed on staging.
                     Logger::error('CASHFREE_ORDER_DEBUG', [
-                        'booking_id' => $bookingId,
+                        'booking_id'  => $bookingId,
                         'cf_order_id' => $cfOrderId,
-                        'env' => CASHFREE_ENV,
-                        'api_base' => CASHFREE_API_BASE,
-                        'http_code' => $cfResult['http_code'] ?? null,
-                        'success' => $cfResult['success'] ?? null,
-                        'error' => $cfResult['error'] ?? null,
-                        'data' => $cfResult['data'] ?? null,
+                        'env'         => CASHFREE_ENV,
+                        'api_base'    => CASHFREE_API_BASE,
+                        'app_url'     => defined('APP_URL') ? APP_URL : '(undef)',
+                        'return_url'  => $returnUrl,
+                        'notify_url'  => $notifyUrl,
+                        'app_id_tail' => substr((string)CASHFREE_APP_ID, -4),
+                        'http_code'   => $cfResult['http_code'] ?? null,
+                        'success'     => $cfResult['success'] ?? null,
+                        'error'       => $cfResult['error'] ?? null,
+                        'data'        => $cfResult['data'] ?? null,
                     ]);
 
                     if (!$cfResult['success']) {
