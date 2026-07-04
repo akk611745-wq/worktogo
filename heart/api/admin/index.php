@@ -15,6 +15,17 @@ require_once SYSTEM_ROOT . '/core/helpers/ServiceVendorEligibility.php';
 
 $auth = AuthMiddleware::requireRole(ROLE_ADMIN);
 
+// Blocker B2 fix — keep jobs.vendor_id in sync with bookings.vendor_id on admin (un)assign.
+// Admin assign historically wrote only bookings.vendor_id, leaving jobs.vendor_id NULL, so the
+// vendor's PATCH /api/jobs/{id}/status ownership check (jobs.vendor_id === vendor) returned 403
+// for Free/Inspection bookings. This mirrors exactly how Direct Vendor creates its job
+// (vendor_id set, status='open') so the vendor can accept/start/complete. Every booking has one
+// linked job (jobs.booking_id = bookings.id); pass null on unassign to release the job too.
+$syncBookingJobVendor = function (int $bookingId, ?int $vendorId) use ($db): void {
+    $db->prepare("UPDATE jobs SET vendor_id = :vid, status = 'open', updated_at = NOW() WHERE booking_id = :bid")
+       ->execute([':vid' => $vendorId, ':bid' => $bookingId]);
+};
+
 try {
 
     // ── GET /api/admin/notifications ──────────────────────────
@@ -1336,6 +1347,7 @@ try {
         }
         $db->prepare("UPDATE bookings SET vendor_id = ? WHERE id = ?")
            ->execute([$vendorId, $bookingId]);
+        $syncBookingJobVendor($bookingId, $vendorId);
         Logger::info('Admin assigned vendor to booking', ['admin_id' => $auth['user_id'], 'booking_id' => $bookingId, 'vendor_id' => $vendorId]);
 
         $vendorOwnerStmt = $db->prepare("SELECT user_id FROM vendors WHERE id = ? LIMIT 1");
@@ -1791,6 +1803,7 @@ try {
         if (isset($bc['lifecycle_state']))  { $sets[] = 'lifecycle_state = :ls';  $bind[':ls'] = 'worker_assigned'; }
 
         $db->prepare('UPDATE bookings SET ' . implode(', ', $sets) . ' WHERE id = :id')->execute($bind);
+        $syncBookingJobVendor($bookingId, $vendorId);
         Logger::info('Admin assigned vendor to booking', ['admin_id' => $auth['user_id'], 'booking_id' => $bookingId, 'vendor_id' => $vendorId]);
 
         $vendorOwnerStmt = $db->prepare("SELECT user_id FROM vendors WHERE id = ? LIMIT 1");
@@ -1821,6 +1834,8 @@ try {
 
         $sets = ['updated_at = NOW()'];
         $bind = [':id' => $bookingId];
+        $doJobVendorSync = false;   // B2: sync jobs.vendor_id only for vendor-changing actions
+        $jobVendorTarget = null;
 
         switch ($action) {
             case 'mark_worker_contacted':
@@ -1837,11 +1852,13 @@ try {
                 $sets[] = 'vendor_id = :vid'; $bind[':vid'] = $vid;
                 if (isset($bc['assignment_state'])) { $sets[] = 'assignment_state = :as'; $bind[':as'] = 'worker_assigned'; }
                 if (isset($bc['lifecycle_state']))  { $sets[] = 'lifecycle_state = :ls';  $bind[':ls'] = 'worker_assigned'; }
+                $doJobVendorSync = true; $jobVendorTarget = $vid;
                 break;
             case 'unassign_vendor':
                 $sets[] = 'vendor_id = NULL';
                 if (isset($bc['assignment_state'])) { $sets[] = 'assignment_state = :as'; $bind[':as'] = 'unassigned_searching'; }
                 if (isset($bc['lifecycle_state']))  { $sets[] = 'lifecycle_state = :ls';  $bind[':ls'] = 'searching_worker'; }
+                $doJobVendorSync = true; $jobVendorTarget = null;
                 break;
             case 'inspection_queued':
                 if (isset($bc['lifecycle_state'])) { $sets[] = 'lifecycle_state = :ls'; $bind[':ls'] = 'inspection_queued'; }
@@ -1866,6 +1883,9 @@ try {
         }
 
         $db->prepare('UPDATE bookings SET ' . implode(', ', $sets) . ' WHERE id = :id')->execute($bind);
+        if ($doJobVendorSync) {
+            $syncBookingJobVendor($bookingId, $jobVendorTarget);
+        }
         Logger::info('Admin ops action on booking', ['admin_id' => $auth['user_id'], 'booking_id' => $bookingId, 'action' => $action]);
         Response::success(['id' => $bookingId, 'action' => $action], 200, 'Action applied');
     }
