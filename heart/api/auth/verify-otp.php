@@ -70,16 +70,42 @@ try {
         // Auto-create account on first OTP verify
         $name = $data['name'] ?: ('User_' . substr(str_replace('+', '', $data['phone']), -4));
 
-        $db->prepare(
-            "INSERT INTO users (uuid, name, phone, role, status, phone_verified_at, created_at, updated_at)
-             VALUES (UUID(), :name, :phone, :role, 'active', NOW(), NOW(), NOW())"
-        )->execute([':name' => $name, ':phone' => $data['phone'], ':role' => ROLE_CUSTOMER]);
+        try {
+            $db->prepare(
+                "INSERT INTO users (uuid, name, phone, role, status, phone_verified_at, created_at, updated_at)
+                 VALUES (UUID(), :name, :phone, :role, 'active', NOW(), NOW(), NOW())"
+            )->execute([':name' => $name, ':phone' => $data['phone'], ':role' => ROLE_CUSTOMER]);
 
-        $userId = (int) $db->lastInsertId();
-        $role   = ROLE_CUSTOMER;
-        $isNew  = true;
+            $userId = (int) $db->lastInsertId();
+            $role   = ROLE_CUSTOMER;
+            $isNew  = true;
 
-        Logger::info('User created via OTP', ['user_id' => $userId, 'phone' => $data['phone']]);
+            Logger::info('User created via OTP', ['user_id' => $userId, 'phone' => $data['phone']]);
+        } catch (PDOException $dupEx) {
+            // Blocker B3: the phone is already in users.phone's UNIQUE index but was
+            // not returned by the find above — the owning account is soft-deleted
+            // (excluded by "deleted_at IS NULL") or a concurrent first-login raced us
+            // to the INSERT. Recover as a login instead of 500ing at the pre-booking
+            // auth gate. Re-throw anything that is not a constraint violation.
+            if ($dupEx->getCode() !== '23000') {
+                throw $dupEx;
+            }
+            $dupStmt = $db->prepare(
+                "SELECT id, name, phone, email, role, status, deleted_at FROM users WHERE phone = ? LIMIT 1"
+            );
+            $dupStmt->execute([$data['phone']]);
+            $existing = $dupStmt->fetch();
+            if (!$existing || $existing['deleted_at'] !== null) {
+                Response::error('This mobile number is not available. Please contact support.', 409, 'PHONE_UNAVAILABLE');
+            }
+            if ($existing['status'] !== 'active') {
+                Response::error('Account suspended. Contact support.', 403, 'ACCOUNT_SUSPENDED');
+            }
+            $userId = (int) $existing['id'];
+            $role   = $existing['role'];
+            $db->prepare("UPDATE users SET phone_verified_at = NOW(), last_login_at = NOW() WHERE id = ?")
+               ->execute([$userId]);
+        }
     } else {
         if ($user['status'] !== 'active') {
             Response::error('Account suspended. Contact support.', 403, 'ACCOUNT_SUSPENDED');
