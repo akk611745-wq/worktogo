@@ -12,6 +12,7 @@
 require_once SYSTEM_ROOT . '/core/lib/PushSubscription.php';
 require_once SYSTEM_ROOT . '/core/lib/FcmNotifier.php';
 require_once SYSTEM_ROOT . '/core/helpers/ServiceVendorEligibility.php';
+require_once SYSTEM_ROOT . '/core/helpers/CityResolver.php';
 
 $auth = AuthMiddleware::requireRole(ROLE_ADMIN);
 
@@ -1104,8 +1105,14 @@ try {
                 $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $businessName), '-')) . '-' . $userId;
                 $typeColumn = ServiceVendorEligibility::vendorTypeColumn($db);
 
-                $db->prepare("INSERT INTO vendors (user_id, business_name, slug, {$typeColumn}, status) VALUES (?, ?, ?, ?, 'pending')")
-                   ->execute([$userId, $businessName, $slug, $type]);
+                // V2 city dimension: vendor inherits the owning user's city, default Haldwani.
+                $vendorCityId = CityResolver::resolveFromUser($db, (int)$userId);
+                $vCityCol = ''; $vCityVal = ''; $vCityArg = [];
+                if ($vendorCityId > 0 && CityResolver::hasCityColumn($db, 'vendors')) {
+                    $vCityCol = ', city_id'; $vCityVal = ', ?'; $vCityArg = [$vendorCityId];
+                }
+                $db->prepare("INSERT INTO vendors (user_id, business_name, slug, {$typeColumn}, status{$vCityCol}) VALUES (?, ?, ?, ?, 'pending'{$vCityVal})")
+                   ->execute(array_merge([$userId, $businessName, $slug, $type], $vCityArg));
             }
         }
 

@@ -76,11 +76,19 @@ class AuthController {
         } else {
             $hash = password_hash($password, PASSWORD_BCRYPT);
 
+            // V2 city dimension: from any city hint in the payload, default Haldwani.
+            require_once SYSTEM_ROOT . '/core/helpers/CityResolver.php';
+            $cityId = CityResolver::resolveId($this->db, $input['city'] ?? ($input['selected_city'] ?? null));
+            $cityCol = ''; $cityVal = ''; $cityArg = [];
+            if ($cityId > 0 && CityResolver::hasCityColumn($this->db, 'users')) {
+                $cityCol = ', city_id'; $cityVal = ', ?'; $cityArg = [$cityId];
+            }
+
             $stmt = $this->db->prepare("
-                INSERT INTO users (uuid, name, email, password, phone, auth_type, role, status, created_at, updated_at)
-                VALUES (UUID(), ?, ?, ?, ?, 'email', 'customer', 'active', NOW(), NOW())
+                INSERT INTO users (uuid, name, email, password, phone, auth_type, role, status, created_at, updated_at{$cityCol})
+                VALUES (UUID(), ?, ?, ?, ?, 'email', 'customer', 'active', NOW(), NOW(){$cityVal})
             ");
-            $stmt->execute([$name, $email, $hash, $phone]);
+            $stmt->execute(array_merge([$name, $email, $hash, $phone], $cityArg));
             $userId = $this->db->lastInsertId();
             $role = 'customer';
         }
@@ -279,11 +287,20 @@ class AuthController {
             // NULLs (unlike '', which would collide on the second Google-only
             // signup). Requires users.phone to allow NULL — see migration.
             $role = 'customer';
+
+            // V2 city dimension: Google signup carries no city field, default Haldwani.
+            require_once SYSTEM_ROOT . '/core/helpers/CityResolver.php';
+            $cityId = CityResolver::resolveId($this->db, null);
+            $cityCol = ''; $cityVal = ''; $cityArg = [];
+            if ($cityId > 0 && CityResolver::hasCityColumn($this->db, 'users')) {
+                $cityCol = ', city_id'; $cityVal = ', ?'; $cityArg = [$cityId];
+            }
+
             $stmt = $this->db->prepare("
-                INSERT INTO users (uuid, name, email, phone, google_id, auth_type, role, created_at)
-                VALUES (UUID(), ?, ?, NULL, ?, 'google', ?, NOW())
+                INSERT INTO users (uuid, name, email, phone, google_id, auth_type, role, created_at{$cityCol})
+                VALUES (UUID(), ?, ?, NULL, ?, 'google', ?, NOW(){$cityVal})
             ");
-            $stmt->execute([$name, $email, $googleId, $role]);
+            $stmt->execute(array_merge([$name, $email, $googleId, $role], $cityArg));
             $userId = $this->db->lastInsertId();
 
             $userResponse = [
@@ -325,12 +342,20 @@ class AuthController {
 
         $guestNumber = rand(100000, 999999);
         $name = 'Guest_' . $guestNumber;
-        
+
+        // V2 city dimension: guest has no city context, default Haldwani.
+        require_once SYSTEM_ROOT . '/core/helpers/CityResolver.php';
+        $cityId = CityResolver::resolveId($this->db, null);
+        $cityCol = ''; $cityVal = ''; $cityArg = [];
+        if ($cityId > 0 && CityResolver::hasCityColumn($this->db, 'users')) {
+            $cityCol = ', city_id'; $cityVal = ', ?'; $cityArg = [$cityId];
+        }
+
         $stmt = $this->db->prepare("
-            INSERT INTO users (uuid, name, phone, email, auth_type, role, is_guest, guest_expires_at, created_at)
-            VALUES (UUID(), ?, NULL, NULL, 'guest', 'customer', 1, DATE_ADD(NOW(), INTERVAL 24 HOUR), NOW())
+            INSERT INTO users (uuid, name, phone, email, auth_type, role, is_guest, guest_expires_at, created_at{$cityCol})
+            VALUES (UUID(), ?, NULL, NULL, 'guest', 'customer', 1, DATE_ADD(NOW(), INTERVAL 24 HOUR), NOW(){$cityVal})
         ");
-        $stmt->execute([$name]);
+        $stmt->execute(array_merge([$name], $cityArg));
         $userId = $this->db->lastInsertId();
 
         $expiresAt = time() + (86400); // 24 hours

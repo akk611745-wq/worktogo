@@ -4,6 +4,8 @@
 //  Creates a new customer account.
 // ============================================================
 
+require_once SYSTEM_ROOT . '/core/helpers/CityResolver.php';
+
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
 
 if (!RateLimiter::check('register', 3, 300)) {
@@ -110,18 +112,30 @@ try {
         // Brand new identity on both phone and email — create fresh.
         $hash = password_hash($data['password'], PASSWORD_BCRYPT);
 
+        // V2 city dimension: from any city hint in the payload, default Haldwani.
+        $userCityId = CityResolver::resolveId($db, $input['city'] ?? ($input['selected_city'] ?? null));
+        $uCityCol = ''; $uCityVal = '';
+        if ($userCityId > 0 && CityResolver::hasCityColumn($db, 'users')) {
+            $uCityCol = ', city_id';
+            $uCityVal = ', :city_id';
+        }
+
         $stmt = $db->prepare(
-            "INSERT INTO users (uuid, name, phone, email, password, role, status, created_at, updated_at)
-             VALUES (UUID(), :name, :phone, :email, :password, :role, 'active', NOW(), NOW())"
+            "INSERT INTO users (uuid, name, phone, email, password, role, status, created_at, updated_at{$uCityCol})
+             VALUES (UUID(), :name, :phone, :email, :password, :role, 'active', NOW(), NOW(){$uCityVal})"
         );
 
-        $stmt->execute([
+        $userBind = [
             ':name'     => $data['name'],
             ':phone'    => $data['phone'],
             ':email'    => $data['email'],
             ':password' => $hash,
             ':role'     => $role,
-        ]);
+        ];
+        if ($uCityVal !== '') {
+            $userBind[':city_id'] = $userCityId;
+        }
+        $stmt->execute($userBind);
 
         $userId = (int) $db->lastInsertId();
     }
@@ -137,8 +151,16 @@ try {
             $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $data['business_name']), '-'));
             $typeColumn = ServiceVendorEligibility::vendorTypeColumn($db);
 
-            $db->prepare("INSERT INTO vendors (user_id, business_name, slug, {$typeColumn}, status) VALUES (?, ?, ?, ?, 'pending')")
-               ->execute([$userId, $data['business_name'], $slug . '-' . $userId, $type]);
+            // V2 city dimension: vendor inherits the owning user's city, default Haldwani.
+            $vendorCityId = CityResolver::resolveFromUser($db, (int)$userId);
+            $vCityCol = ''; $vCityVal = ''; $vCityArg = [];
+            if ($vendorCityId > 0 && CityResolver::hasCityColumn($db, 'vendors')) {
+                $vCityCol = ', city_id';
+                $vCityVal = ', ?';
+                $vCityArg = [$vendorCityId];
+            }
+            $db->prepare("INSERT INTO vendors (user_id, business_name, slug, {$typeColumn}, status{$vCityCol}) VALUES (?, ?, ?, ?, 'pending'{$vCityVal})")
+               ->execute(array_merge([$userId, $data['business_name'], $slug . '-' . $userId, $type], $vCityArg));
         }
     }
 

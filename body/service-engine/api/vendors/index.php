@@ -15,6 +15,7 @@ require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Databa
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Response.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/JWT.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/ServiceVendorEligibility.php';
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/CityResolver.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/heart/middleware/AuthMiddleware.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/lib/PushSubscription.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/lib/FcmNotifier.php';
@@ -91,11 +92,19 @@ if ($method === 'POST' && $uri === '/api/vendors') {
     $db->beginTransaction();
     try {
         $typeCol = ServiceVendorEligibility::vendorTypeColumn($db);
+        // V2 city dimension: vendor inherits the owning user's city, default Haldwani.
+        $vendorCityId = CityResolver::resolveFromUser($db, (int)$userId);
+        $vCityCol = ''; $vCityVal = ''; $vCityArg = [];
+        if ($vendorCityId > 0 && CityResolver::hasCityColumn($db, 'vendors')) {
+            $vCityCol = ', city_id';
+            $vCityVal = ', ?';
+            $vCityArg = [$vendorCityId];
+        }
         $stmt = $db->prepare(
-            "INSERT INTO vendors (user_id, business_name, slug, {$typeCol}, status)
-             VALUES (?, ?, ?, ?, 'pending')"
+            "INSERT INTO vendors (user_id, business_name, slug, {$typeCol}, status{$vCityCol})
+             VALUES (?, ?, ?, ?, 'pending'{$vCityVal})"
         );
-        $stmt->execute([$userId, $businessName, $slug, $type]);
+        $stmt->execute(array_merge([$userId, $businessName, $slug, $type], $vCityArg));
         $vendorId = $db->lastInsertId();
 
         if ($phone !== '' && $phone !== null) {

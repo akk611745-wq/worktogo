@@ -18,6 +18,7 @@ require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Databa
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Response.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/JWT.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/ServiceVendorEligibility.php';
+require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/CityResolver.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/heart/middleware/AuthMiddleware.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/lib/PushSubscription.php';
 require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/lib/FcmNotifier.php';
@@ -977,19 +978,31 @@ if ($method === 'POST' && $uri === '/api/services') {
         Response::validation('name, base_price, category_id, and duration_minutes are required');
     }
 
+    // V2 city dimension: a service inherits its owning vendor's city.
+    $serviceCityId = CityResolver::resolveFromVendor($db, (int)$vendorId);
+    $svcCityCol = ''; $svcCityVal = '';
+    if ($serviceCityId > 0 && CityResolver::hasCityColumn($db, 'services')) {
+        $svcCityCol = ', city_id';
+        $svcCityVal = ', :city_id';
+    }
+
     $stmt = $db->prepare(
-        "INSERT INTO services (vendor_id, category_id, name, description, base_price, duration_minutes, status, created_at, updated_at)
-         VALUES (:vid, :cid, :name, :desc, :price, :duration, 'active', NOW(), NOW())"
+        "INSERT INTO services (vendor_id, category_id, name, description, base_price, duration_minutes, status, created_at, updated_at{$svcCityCol})
+         VALUES (:vid, :cid, :name, :desc, :price, :duration, 'active', NOW(), NOW(){$svcCityVal})"
     );
-    
-    $stmt->execute([
+
+    $svcBind = [
         ':vid'      => $vendorId,
         ':cid'      => $categoryId,
         ':name'     => $name,
         ':desc'     => $description ?: null,
         ':price'    => $basePrice,
         ':duration' => $durationMinutes
-    ]);
+    ];
+    if ($svcCityVal !== '') {
+        $svcBind[':city_id'] = $serviceCityId;
+    }
+    $stmt->execute($svcBind);
 
     $serviceId = (int)$db->lastInsertId();
 
@@ -1343,6 +1356,9 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         if (serviceColumnOrNull($db, 'bookings', 'assignment_state', ':assignment_state', $operationalRequest['assignment_state'], $bookingColumns, $bookingBind)) $bookingValues[] = ':assignment_state';
         if (serviceColumnOrNull($db, 'bookings', 'vendor_response_status', ':vendor_response_status', 'not_requested', $bookingColumns, $bookingBind)) $bookingValues[] = ':vendor_response_status';
         if (serviceColumnOrNull($db, 'bookings', 'operational_timeline', ':operational_timeline', json_encode($operationalRequest['timeline'], JSON_UNESCAPED_SLASHES), $bookingColumns, $bookingBind)) $bookingValues[] = ':operational_timeline';
+        // V2 city dimension: resolve from the booking's selected_city, default Haldwani.
+        $bookingCityId = CityResolver::resolveId($db, $operationalRequest['city'] ?? null);
+        if ($bookingCityId > 0 && serviceColumnOrNull($db, 'bookings', 'city_id', ':city_id', $bookingCityId, $bookingColumns, $bookingBind)) $bookingValues[] = ':city_id';
         $bStmt = $db->prepare("INSERT INTO bookings (" . implode(', ', $bookingColumns) . ") VALUES (" . implode(', ', $bookingValues) . ")");
         $bStmt->execute($bookingBind);
 

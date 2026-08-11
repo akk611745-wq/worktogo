@@ -6,6 +6,8 @@
 //  the user and issues a JWT — same outcome as verify-otp.php.
 // ============================================================
 
+require_once SYSTEM_ROOT . '/core/helpers/CityResolver.php';
+
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
 
 $v = Validator::make($input, [
@@ -67,11 +69,22 @@ try {
 
     if (!$user) {
         $name = 'User_' . substr(preg_replace('/\D/', '', $phone), -4);
+        // V2 city dimension: widget OTP signup carries no city field, default Haldwani.
+        $userCityId = CityResolver::resolveId($db, null);
+        $uCityCol = ''; $uCityVal = '';
+        if ($userCityId > 0 && CityResolver::hasCityColumn($db, 'users')) {
+            $uCityCol = ', city_id';
+            $uCityVal = ', :city_id';
+        }
         try {
+            $insUserBind = [':name' => $name, ':phone' => $phone, ':role' => ROLE_CUSTOMER];
+            if ($uCityVal !== '') {
+                $insUserBind[':city_id'] = $userCityId;
+            }
             $db->prepare(
-                "INSERT INTO users (uuid, name, phone, role, status, phone_verified_at, created_at, updated_at)
-                 VALUES (UUID(), :name, :phone, :role, 'active', NOW(), NOW(), NOW())"
-            )->execute([':name' => $name, ':phone' => $phone, ':role' => ROLE_CUSTOMER]);
+                "INSERT INTO users (uuid, name, phone, role, status, phone_verified_at, created_at, updated_at{$uCityCol})
+                 VALUES (UUID(), :name, :phone, :role, 'active', NOW(), NOW(), NOW(){$uCityVal})"
+            )->execute($insUserBind);
             $userId = (int) $db->lastInsertId();
             $role   = ROLE_CUSTOMER;
             $isNew  = true;

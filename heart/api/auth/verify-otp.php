@@ -4,6 +4,8 @@
 //  Verifies OTP and returns JWT. Creates account if new user.
 // ============================================================
 
+require_once SYSTEM_ROOT . '/core/helpers/CityResolver.php';
+
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
 
 $v = Validator::make($input, [
@@ -70,11 +72,23 @@ try {
         // Auto-create account on first OTP verify
         $name = $data['name'] ?: ('User_' . substr(str_replace('+', '', $data['phone']), -4));
 
+        // V2 city dimension: OTP signup carries no city field, default Haldwani.
+        $userCityId = CityResolver::resolveId($db, null);
+        $uCityCol = ''; $uCityVal = '';
+        if ($userCityId > 0 && CityResolver::hasCityColumn($db, 'users')) {
+            $uCityCol = ', city_id';
+            $uCityVal = ', :city_id';
+        }
+
         try {
+            $insUserBind = [':name' => $name, ':phone' => $data['phone'], ':role' => ROLE_CUSTOMER];
+            if ($uCityVal !== '') {
+                $insUserBind[':city_id'] = $userCityId;
+            }
             $db->prepare(
-                "INSERT INTO users (uuid, name, phone, role, status, phone_verified_at, created_at, updated_at)
-                 VALUES (UUID(), :name, :phone, :role, 'active', NOW(), NOW(), NOW())"
-            )->execute([':name' => $name, ':phone' => $data['phone'], ':role' => ROLE_CUSTOMER]);
+                "INSERT INTO users (uuid, name, phone, role, status, phone_verified_at, created_at, updated_at{$uCityCol})
+                 VALUES (UUID(), :name, :phone, :role, 'active', NOW(), NOW(), NOW(){$uCityVal})"
+            )->execute($insUserBind);
 
             $userId = (int) $db->lastInsertId();
             $role   = ROLE_CUSTOMER;
