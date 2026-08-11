@@ -145,6 +145,13 @@ export async function render(container) {
         </div>
       </div>
     </div>
+
+    <!-- Company View (full-page "you entered a company" experience) -->
+    <div id="company-view-overlay" class="company-view-overlay hidden" role="dialog" aria-modal="true" aria-label="Company service">
+      <div class="company-view-panel">
+        <div id="company-view-body"></div>
+      </div>
+    </div>
   `;
 
   window.HomePage = {
@@ -406,6 +413,62 @@ export async function render(container) {
       }
       _activeChipFilter = String(serviceName || "").trim().toLowerCase();
       HomeModals.openBooking({ id: `quick-${meta.slug || "all"}-${_slug(serviceName)}`, name: serviceName || meta.examples?.[0] || meta.label, booking_mode: "free_lead", request_source: "service_chip", category_slug: meta.slug || "", category: meta.slug || "", icon: meta.icon || "🔧", quick_service: serviceName, selected_issues: [serviceName].filter(Boolean) });
+    },
+
+    // ── Company View (full-page company experience — shell) ──────────────
+    openCompanyView(slug = "") {
+      const s = slug || _activeCategory || "";
+      _companyViewSlug = s;
+      const body = document.getElementById("company-view-body");
+      if (body) body.innerHTML = _companyViewHTML(s);
+      const ov = document.getElementById("company-view-overlay");
+      if (!ov) return;
+      ov.classList.remove("hidden");
+      const panel = ov.querySelector(".company-view-panel");
+      if (panel) panel.scrollTop = 0;
+      // next frame so the show transition runs
+      requestAnimationFrame(() => ov.classList.add("open"));
+      document.body.classList.add("company-view-lock");
+    },
+    closeCompanyView() {
+      const ov = document.getElementById("company-view-overlay");
+      if (!ov) return;
+      ov.classList.remove("open");
+      document.body.classList.remove("company-view-lock");
+      setTimeout(() => ov.classList.add("hidden"), 280);
+    },
+    switchCompanyCategory(slug = "") {
+      _companyViewSlug = slug || "";
+      // keep the rest of home in sync with the chosen category
+      try { _activeCategory = _companyViewSlug; } catch (e) {}
+      const body = document.getElementById("company-view-body");
+      if (body) body.innerHTML = _companyViewHTML(_companyViewSlug);
+      const panel = document.querySelector("#company-view-overlay .company-view-panel");
+      if (panel) panel.scrollTo ? panel.scrollTo({ top: 0, behavior: "smooth" }) : (panel.scrollTop = 0);
+    },
+    companyExpertVisit(slug = "") {
+      // HOOK for the Expert-Visit pay-flow task. For now bridge to the existing
+      // inspection ("company visit") flow so the path is real, not a dead end.
+      const s = slug || _companyViewSlug || "";
+      HomePage.closeCompanyView();
+      setTimeout(() => HomePage.bookCategoryCta(s, "inspection"), 260);
+    },
+    companyChoosePackage(/* slug */) {
+      // HOOK for the Packages + live-estimate task (next). Shell placeholder.
+      UI.toast("Packages & live estimate are arriving soon. Tap Expert Visit or send a request — the company will help.", "info", 4200);
+    },
+    submitCompanyRequest(slug = "") {
+      // HOOK for the in-view minimal submit. For now capture the minimal fields
+      // and route through the existing, tested booking flow (general request).
+      const s = slug || _companyViewSlug || "";
+      const name = (document.getElementById("cv-name")?.value || "").trim();
+      const phone = (document.getElementById("cv-phone")?.value || "").trim();
+      const address = (document.getElementById("cv-address")?.value || "").trim();
+      try { if (name) localStorage.setItem("wtg_user_name", name); } catch (e) {}
+      try { if (phone) localStorage.setItem("wtg_user_phone", phone); } catch (e) {}
+      try { if (address) localStorage.setItem("wtg_user_address", address); } catch (e) {}
+      HomePage.closeCompanyView();
+      setTimeout(() => HomePage.bookCategoryCta(s, "free_lead"), 260);
     }
   };
 
@@ -2196,6 +2259,87 @@ function _operatingFeedHTML(slug = "") {
     </div>`;
 }
 
+// ── Company View (full-page "you entered a contractor company" experience) ──
+// SHELL ONLY: banner + category switcher + the two path cards (Expert Visit /
+// Choose a Package) + minimal request capture. Package selection, live estimate
+// and the expert-visit pay-flow are SEPARATE next tasks — the path cards and the
+// request button are clean hooks that currently bridge to the existing, tested
+// booking flow so nothing is a dead end.
+function _companyViewHTML(slug = "") {
+  const meta = _categoryMeta(slug);
+  const isAll = !slug;
+  const locality = _resolvedLocality();
+  const chips = _categoryChips();
+  const user = (AUTH.getUser && AUTH.getUser()) || {};
+  const loggedIn = AUTH.isLoggedIn();
+  const lsGet = (k) => { try { return localStorage.getItem(k) || ""; } catch { return ""; } };
+  const savedName  = (loggedIn && user.name)    || lsGet("wtg_user_name")    || "";
+  const savedPhone = (loggedIn && user.phone)   || lsGet("wtg_user_phone")   || "";
+  const savedAddr  = (loggedIn && user.address) || lsGet("wtg_user_address") || "";
+  const companyName = isAll ? "WorkToGo Company Services" : `WorkToGo ${meta.label}`;
+  const bannerImg = meta.image_url || meta.image || "";
+  const trust = meta.trust || "We handle your job end-to-end";
+
+  return `
+    <header class="company-topbar">
+      <button class="company-back" type="button" onclick="HomePage.closeCompanyView()" aria-label="Back to home">←</button>
+      <span class="company-topbar-title">${_esc(companyName)}</span>
+      <span class="company-topbar-badge">Company</span>
+    </header>
+
+    <section class="company-banner"${bannerImg ? ` style="background-image:linear-gradient(135deg, rgba(20,32,58,.82), rgba(196,71,10,.72)), url('${_esc(bannerImg)}')"` : ""}>
+      <div class="company-banner-icon">${meta.icon || "🏢"}</div>
+      <h1 class="company-banner-title">${_esc(companyName)}</h1>
+      <p class="company-banner-sub">${_esc(`Serving ${locality.label} · verified, managed team`)}</p>
+      <p class="company-trust-line company-trust-line--banner">✓ ${_esc(trust)}</p>
+    </section>
+
+    <nav class="company-cat-switcher" aria-label="Switch category">
+      <button type="button" class="company-cat-pill ${isAll ? "active" : ""}" onclick="HomePage.switchCompanyCategory('')"><span>🧰</span>All</button>
+      ${chips.slice(0, 8).map(c => `<button type="button" class="company-cat-pill ${slug === c.slug ? "active" : ""}" onclick="HomePage.switchCompanyCategory('${_esc(c.slug || "")}')"><span>${c.icon}</span>${_esc(c.label)}</button>`).join("")}
+    </nav>
+
+    <section class="company-paths">
+      <button type="button" class="company-path-card company-path-card--expert" onclick="HomePage.companyExpertVisit('${_esc(slug)}')">
+        <div class="company-path-emoji">🧑‍🔧</div>
+        <div class="company-path-copy">
+          <h3>Expert Visit</h3>
+          <p>Not sure what's needed? Our expert visits, checks the actual problem, and gives you a clear budget &amp; material estimate.</p>
+          <span class="company-path-cta">Book an expert visit →</span>
+        </div>
+      </button>
+
+      <button type="button" class="company-path-card company-path-card--package" onclick="HomePage.companyChoosePackage('${_esc(slug)}')">
+        <div class="company-path-emoji">📦</div>
+        <div class="company-path-copy">
+          <h3>Choose a Package</h3>
+          <p>Already know what you want? Pick a Standard / Premium / Luxury package and see a live estimate for your area.</p>
+          <span class="company-path-cta company-path-cta--soon">Packages arriving soon →</span>
+        </div>
+      </button>
+    </section>
+
+    <section class="company-minimal-request">
+      <h3>Or just tell us — the company handles the rest</h3>
+      <div class="company-field">
+        <label for="cv-name">Your name</label>
+        <input id="cv-name" type="text" value="${_esc(savedName)}" placeholder="Name" autocomplete="name"/>
+      </div>
+      ${loggedIn ? "" : `
+      <div class="company-field">
+        <label for="cv-phone">Phone</label>
+        <input id="cv-phone" type="tel" value="${_esc(savedPhone)}" placeholder="Mobile number" autocomplete="tel"/>
+      </div>`}
+      <div class="company-field">
+        <label for="cv-address">Address / area</label>
+        <input id="cv-address" type="text" value="${_esc(savedAddr)}" placeholder="Where should we come?" autocomplete="street-address"/>
+      </div>
+      <button type="button" class="btn-primary company-request-btn" onclick="HomePage.submitCompanyRequest('${_esc(slug)}')">Request Company Service</button>
+      <p class="company-minimal-note">${loggedIn ? "No payment now — the company will contact you to confirm." : "We only ask for OTP when you request. Quick and secure."}</p>
+    </section>
+  `;
+}
+
 function _heroHTML(slug = "") {
   const meta = _categoryMeta(slug);
   const localityContext = _resolvedLocality();
@@ -2213,7 +2357,7 @@ function _heroHTML(slug = "") {
       </div>
       <div class="hero-cta-row">
         <button class="btn-primary marketplace-cta hero-primary" id="hero-category-cta" style="display:none" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'inspection')">${_esc(primaryText)}</button>
-        <button class="hero-secondary company-service-cta" onclick="HomePage.bookCategoryCta('${_esc(meta.slug || "")}', 'free_lead')">Get Company Service</button>
+        <button class="hero-secondary company-service-cta" onclick="HomePage.openCompanyView('${_esc(meta.slug || "")}')">Get Company Service</button>
       </div>
       <p class="action-hierarchy-note" id="hero-distinction-note" style="display:none"></p>
     </div>`;
@@ -3605,6 +3749,7 @@ function _jsonAttr(obj) {
 
 let _pilotLoaded = false;
 let _activeCategory = "";
+let _companyViewSlug = "";
 let _searchQuery = "";
 let _activeChipFilter = "";
 let _activeLocalityFilter = "";

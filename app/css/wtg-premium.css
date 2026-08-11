@@ -572,3 +572,277 @@ a.see-all,
 .booking-distinction-grid {
   grid-template-columns: 1fr !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   COMPANY VIEW — full-page "you entered a contractor company" experience
+   Opened from the "Get Company Service" CTA. Not a modal/form — a page.
+   Shell layout: banner → category switcher → two path cards → minimal request.
+   ═══════════════════════════════════════════════════════════════════════ */
+.company-view-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  background: #f4f6fb;
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity .28s ease, transform .28s ease;
+  pointer-events: none;
+  overflow: hidden;
+}
+.company-view-overlay.open {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.company-view-overlay.hidden { display: none; }
+
+body.company-view-lock { overflow: hidden; }
+
+.company-view-panel {
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: #f4f6fb;
+  max-width: 640px;
+  margin: 0 auto;
+  padding-bottom: 40px;
+}
+
+/* Top bar */
+.company-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: saturate(1.4) blur(8px);
+  border-bottom: 1px solid #e6e9f2;
+}
+.company-back {
+  border: none;
+  background: #f0f2f8;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: #1a1a1a;
+  cursor: pointer;
+}
+.company-topbar-title {
+  flex: 1;
+  font-weight: 800;
+  font-size: 0.98rem;
+  color: #14203a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.company-topbar-badge {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--wtg-accent-dark);
+  background: var(--wtg-accent-soft);
+  border: 1px solid var(--wtg-accent-border);
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+/* Banner */
+.company-banner {
+  position: relative;
+  padding: 30px 22px 26px;
+  color: #fff;
+  text-align: center;
+  background: linear-gradient(135deg, #14203a 0%, var(--wtg-accent) 78%, var(--wtg-accent-dark) 100%);
+  background-size: cover;
+  background-position: center;
+}
+.company-banner-icon {
+  font-size: 2.6rem;
+  line-height: 1;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.25));
+}
+.company-banner-title {
+  margin: 0 0 4px;
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.company-banner-sub {
+  margin: 0 0 14px;
+  font-size: 0.85rem;
+  opacity: 0.92;
+}
+.company-trust-line--banner {
+  display: inline-block;
+  margin: 0 auto;
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+
+/* Category switcher inside the view */
+.company-cat-switcher {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px;
+  scrollbar-width: none;
+}
+.company-cat-switcher::-webkit-scrollbar { display: none; }
+.company-cat-pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid #dde3ef;
+  background: #fff;
+  color: #33405c;
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.company-cat-pill.active {
+  background: var(--wtg-accent);
+  border-color: var(--wtg-accent);
+  color: #fff;
+}
+
+/* Two path cards */
+.company-paths {
+  display: grid;
+  gap: 12px;
+  padding: 4px 14px 8px;
+}
+.company-path-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  text-align: left;
+  width: 100%;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid #e6e9f2;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(20, 32, 58, 0.06);
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.company-path-card:active { transform: scale(0.99); }
+.company-path-card:hover {
+  box-shadow: 0 12px 26px rgba(20, 32, 58, 0.12);
+  border-color: var(--wtg-accent-border);
+}
+.company-path-card--expert {
+  border-left: 4px solid var(--wtg-accent);
+}
+.company-path-emoji {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  font-size: 1.5rem;
+  border-radius: 14px;
+  background: var(--wtg-accent-soft);
+}
+.company-path-copy h3 {
+  margin: 0 0 4px;
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: #14203a;
+}
+.company-path-copy p {
+  margin: 0 0 8px;
+  font-size: 0.83rem;
+  line-height: 1.45;
+  color: #56617a;
+}
+.company-path-cta {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--wtg-accent-dark);
+}
+.company-path-cta--soon {
+  color: #8a93a8;
+}
+
+/* Minimal request — kept short on purpose to preserve the company feel */
+.company-minimal-request {
+  margin: 8px 14px 0;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid #e6e9f2;
+  background: #fff;
+}
+.company-minimal-request > h3 {
+  margin: 0 0 14px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #14203a;
+}
+.company-field { margin-bottom: 12px; }
+.company-field label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #6b7590;
+  margin-bottom: 5px;
+}
+.company-field input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #d7dce8;
+  font-size: 0.92rem;
+  background: #fbfcfe;
+  box-sizing: border-box;
+}
+.company-field input:focus {
+  outline: none;
+  border-color: var(--wtg-accent) !important;
+  background: #fff;
+}
+.company-request-btn {
+  width: 100%;
+  margin-top: 4px;
+  padding: 14px;
+  font-size: 0.98rem;
+  font-weight: 800;
+  border-radius: 14px;
+}
+.company-minimal-note {
+  margin: 10px 0 0;
+  font-size: 0.74rem;
+  text-align: center;
+  color: #8a93a8;
+}
+
+@media (min-width: 720px) {
+  .company-view-panel {
+    margin-top: 24px;
+    margin-bottom: 24px;
+    height: calc(100% - 48px);
+    border-radius: 24px;
+    box-shadow: 0 30px 80px rgba(20, 32, 58, 0.28);
+    overflow: hidden;
+  }
+  .company-view-panel > #company-view-body {
+    height: 100%;
+    overflow-y: auto;
+  }
+  .company-banner { padding-top: 38px; padding-bottom: 34px; }
+  .company-banner-title { font-size: 1.6rem; }
+}
