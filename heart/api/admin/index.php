@@ -686,12 +686,11 @@ try {
                         u.phone AS owner_phone, u.name AS owner_name
                  FROM vendors v
                  LEFT JOIN users u ON u.id = v.user_id
-                 WHERE v.category_id = ?
-                    OR v.id IN (SELECT DISTINCT vendor_id FROM services WHERE category_id = ? AND vendor_id IS NOT NULL)
+                 WHERE v.id IN (SELECT vendor_id FROM vendor_categories WHERE category_id = ?)
                  ORDER BY v.status = 'active' DESC, v.business_name ASC
                  LIMIT 50"
             );
-            $stmt->execute([$categoryId, $categoryId]);
+            $stmt->execute([$categoryId]);
             $vendorList = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
             // vendors unavailable
@@ -759,13 +758,12 @@ try {
                  FROM vendors v
                  LEFT JOIN bookings b ON b.vendor_id = v.id
                      AND b.service_id IN (SELECT id FROM services WHERE category_id = ?)
-                 WHERE v.category_id = ?
-                    OR v.id IN (SELECT DISTINCT vendor_id FROM services WHERE category_id = ? AND vendor_id IS NOT NULL)
+                 WHERE v.id IN (SELECT vendor_id FROM vendor_categories WHERE category_id = ?)
                  GROUP BY v.id, v.business_name, v.status, {$ratingCol}
                  ORDER BY v.status = 'active' DESC, completed_jobs DESC
                  LIMIT 50"
             );
-            $stmt->execute([$categoryId, $categoryId, $categoryId]);
+            $stmt->execute([$categoryId, $categoryId]);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             $stats['active_vendors'] = count(array_filter($rows, fn($r) => $r['status'] === 'active'));
@@ -1190,8 +1188,20 @@ try {
         $vendorId   = (int) $m[1];
         $input      = json_decode(file_get_contents('php://input'), true) ?? [];
         $categoryId = isset($input['category_id']) ? (int) $input['category_id'] : null;
+        // Keep vendors.category_id updated as a backward-compat "primary category"
+        // hint (now dormant — no longer the source of truth), then write the
+        // canonical vendor_categories junction so the resolver / customer app scope
+        // this vendor to exactly this category. Replace semantics (DELETE + INSERT)
+        // mirror the vendor-profile path; see OPEN QUESTIONS re: a multi-select UI.
         $db->prepare("UPDATE vendors SET category_id = ?, updated_at = NOW() WHERE id = ?")
            ->execute([$categoryId, $vendorId]);
+        if (ServiceVendorEligibility::tableHasColumn($db, 'vendor_categories', 'vendor_id')) {
+            $db->prepare("DELETE FROM vendor_categories WHERE vendor_id = ?")->execute([$vendorId]);
+            if ($categoryId !== null && $categoryId > 0) {
+                $db->prepare("INSERT IGNORE INTO vendor_categories (vendor_id, category_id) VALUES (?, ?)")
+                   ->execute([$vendorId, $categoryId]);
+            }
+        }
         Logger::info('Admin updated vendor category', ['admin_id' => $auth['user_id'], 'vendor_id' => $vendorId, 'category_id' => $categoryId]);
         Response::success(null, 200, 'Vendor category updated');
     }
@@ -1718,7 +1728,20 @@ try {
             $vendorRows = $vrStmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (PDOException $ignored) {}
 
-        $bookings = array_map(function (array $b) use ($vendorRows): array {
+        // Canonical vendor->categories from the vendor_categories junction, so
+        // assignment eligibility agrees with the customer resolver. Falls back to
+        // the single vendors.category_id only for legacy vendors with no rows.
+        $vendorCatMap = [];
+        try {
+            if (ServiceVendorEligibility::tableHasColumn($db, 'vendor_categories', 'vendor_id')) {
+                $vcStmt = $db->query("SELECT vendor_id, category_id FROM vendor_categories");
+                foreach ($vcStmt->fetchAll(PDO::FETCH_ASSOC) as $vc) {
+                    $vendorCatMap[(int)$vc['vendor_id']][(int)$vc['category_id']] = true;
+                }
+            }
+        } catch (PDOException $ignored) {}
+
+        $bookings = array_map(function (array $b) use ($vendorRows, $vendorCatMap): array {
             $reqId    = $b['request_id'] ?? ('REQ-' . str_pad((string) $b['id'], 6, '0', STR_PAD_LEFT));
             $catLabel = $b['category_name'] ?? $b['category_slug'] ?? $b['service_name'] ?? 'Service';
             $assigned = $b['assignment_state'] ?? ($b['vendor_id'] ? 'worker_assigned' : 'unassigned_searching');
@@ -1755,7 +1778,10 @@ try {
                 $vid            = (int)$vr['id'];
                 $vendorCatId    = (int)($vr['category_id'] ?? 0);
                 $vendorLocRaw   = $vr['service_localities'] ?? '';
-                $categoryMatch  = $bookingCategoryId > 0 && $vendorCatId === $bookingCategoryId;
+                // Canonical: match against the vendor's junction category set; fall
+                // back to the single category_id for legacy vendors with no rows.
+                $vendorCats     = $vendorCatMap[$vid] ?? ($vendorCatId > 0 ? [$vendorCatId => true] : []);
+                $categoryMatch  = $bookingCategoryId > 0 && isset($vendorCats[$bookingCategoryId]);
                 $areaMatch      = false;
                 if ($bookingLocality !== '' && $vendorLocRaw !== '') {
                     $areaMatch = stripos($vendorLocRaw, $bookingLocality) !== false

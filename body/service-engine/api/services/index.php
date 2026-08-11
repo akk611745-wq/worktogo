@@ -857,8 +857,18 @@ if ($method === 'GET' && $uri === '/api/services') {
     // created before this column existed), we don't restrict, so those
     // vendors keep showing in every category their services rows cover,
     // exactly as before — no regression for vendors who haven't opted in.
-    $vendorCategoryScope = serviceTableHasColumn($db, 'vendors', 'category_id')
-        ? "AND (v.category_id IS NULL OR v.category_id = s.category_id)"
+    // V2 canonical vendor<->category source is the vendor_categories junction (M:N).
+    // A vendor's catalog lane shows in a category ONLY if a junction row says so,
+    // which supports multi-category cleanly and ignores stale/seeded services rows.
+    // Legacy vendors with NO junction rows are left unrestricted (show per their
+    // services rows, as before) so pre-junction vendors don't vanish; assigning
+    // them a category via admin/profile — which now writes the junction — scopes
+    // them instantly. This replaces the old single-int vendors.category_id scope
+    // that couldn't express multi-category and drifted (the "vendor in every
+    // category" bug).
+    $vendorCategoryScope = serviceTableHasColumn($db, 'vendor_categories', 'vendor_id')
+        ? "AND (NOT EXISTS (SELECT 1 FROM vendor_categories vc0 WHERE vc0.vendor_id = v.id)
+                OR EXISTS (SELECT 1 FROM vendor_categories vc WHERE vc.vendor_id = v.id AND vc.category_id = s.category_id))"
         : "";
     $vendorIsVerifiedSelect = serviceTableHasColumn($db, 'vendors', 'is_verified')
         ? ', v.is_verified AS vendor_is_verified' : ', NULL AS vendor_is_verified';
