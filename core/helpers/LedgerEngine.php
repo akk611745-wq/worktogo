@@ -31,6 +31,67 @@ class LedgerEngine {
         }
     }
 
+    // ── H3 money-safety: reference_type/reference_id disambiguation ───────────
+    // wallet_transactions.order_id historically held BOTH service booking_ids and
+    // shopping order_ids in one id-space, so booking #N and order #N could collide
+    // once both engines are live. These helpers tag every row with reference_type
+    // + reference_id (mirroring transactions.reference_*), so lookups can never
+    // cross engines. They stay safe if the reference columns don't exist yet
+    // (migration not applied): writes keep populating order_id, reads fall back to
+    // the legacy order_id match.
+
+    /** @var bool|null cached: do the reference columns exist yet */
+    private static $walletRefCols = null;
+
+    private static function walletHasRefCols(PDO $pdo): bool {
+        if (self::$walletRefCols !== null) return self::$walletRefCols;
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wallet_transactions'
+                    AND COLUMN_NAME = 'reference_type'"
+            );
+            $stmt->execute();
+            return self::$walletRefCols = ((int)$stmt->fetchColumn() > 0);
+        } catch (\Throwable $e) {
+            return self::$walletRefCols = false;
+        }
+    }
+
+    /**
+     * Insert one wallet_transactions row. Always populates order_id (backward
+     * compat) and, when present, reference_type + reference_id (the canonical,
+     * collision-proof source key). Amounts / entities are unchanged — this is
+     * disambiguation only. $entityId is null for platform rows.
+     */
+    private static function insertWalletTx(PDO $pdo, string $entityType, ?int $entityId, string $refType, int $refId, string $type, float $amount, string $description, string $status): void {
+        if (self::walletHasRefCols($pdo)) {
+            $pdo->prepare(
+                "INSERT INTO wallet_transactions
+                    (entity_type, entity_id, order_id, reference_type, reference_id, type, amount, description, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            )->execute([$entityType, $entityId, $refId, $refType, $refId, $type, $amount, $description, $status]);
+        } else {
+            $pdo->prepare(
+                "INSERT INTO wallet_transactions
+                    (entity_type, entity_id, order_id, type, amount, description, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)"
+            )->execute([$entityType, $entityId, $refId, $type, $amount, $description, $status]);
+        }
+    }
+
+    /**
+     * Reference-scoping fragment for reads: prefers (reference_type, reference_id)
+     * post-migration, falls back to the legacy order_id match pre-migration.
+     * @return array{0:string,1:array} [whereSql, binds]
+     */
+    private static function walletRefMatch(PDO $pdo, string $refType, int $refId): array {
+        if (self::walletHasRefCols($pdo)) {
+            return ["reference_type = ? AND reference_id = ?", [$refType, $refId]];
+        }
+        return ["order_id = ?", [$refId]];
+    }
+
     /**
      * TASK 3: Order Completion Logic
      * Triggers when an order is completed.
@@ -64,9 +125,10 @@ class LedgerEngine {
                 return true; // Already processed, fail-safe.
             }
 
-            // Check if already processed
-            $checkStmt = $pdo->prepare("SELECT id FROM wallet_transactions WHERE order_id = ? AND status != 'refunded' FOR UPDATE");
-            $checkStmt->execute([$order_id]);
+            // Check if already processed (scoped to this ORDER's ledger rows)
+            [$refWhere, $refBind] = self::walletRefMatch($pdo, 'order', (int)$order_id);
+            $checkStmt = $pdo->prepare("SELECT id FROM wallet_transactions WHERE {$refWhere} AND status != 'refunded' FOR UPDATE");
+            $checkStmt->execute($refBind);
             if ($checkStmt->fetch()) {
                 // Should not happen with ledger_status check, but keeping for double safety
                 $pdo->rollBack();
@@ -99,8 +161,7 @@ class LedgerEngine {
                 $updateVendor->execute([$vendor_share, $order['vendor_id']]);
                 
                 // 4. Insert Wallet Transactions
-                $insertTx = $pdo->prepare("INSERT INTO wallet_transactions (entity_type, entity_id, order_id, type, amount, description, status) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                $insertTx->execute(['vendor', $order['vendor_id'], $order_id, 'credit', $vendor_share, 'Order earnings', 'pending']);
+                self::insertWalletTx($pdo, 'vendor', (int)$order['vendor_id'], 'order', (int)$order_id, 'credit', $vendor_share, 'Order earnings', 'pending');
             }
 
             // Driver Wallet
@@ -110,9 +171,8 @@ class LedgerEngine {
                 $updateDriver = $pdo->prepare("UPDATE driver_wallets SET earnings = earnings + ? WHERE driver_id = ?");
                 $updateDriver->execute([$rider_share, $order['driver_id']]);
                 
-                $insertTx = $pdo->prepare("INSERT INTO wallet_transactions (entity_type, entity_id, order_id, type, amount, description, status) VALUES (?, ?, ?, ?, ?, ?, ?)");
                 // Driver earnings usually settled faster or immediately added to earnings
-                $insertTx->execute(['driver', $order['driver_id'], $order_id, 'credit', $rider_share, 'Delivery earnings', 'settled']);
+                self::insertWalletTx($pdo, 'driver', (int)$order['driver_id'], 'order', (int)$order_id, 'credit', $rider_share, 'Delivery earnings', 'settled');
                 
                 // TASK 6: Driver COD Handling
                 if ($order['payment_method'] === 'cod') {
@@ -122,8 +182,7 @@ class LedgerEngine {
             }
 
             // Platform
-            $insertTx = $pdo->prepare("INSERT INTO wallet_transactions (entity_type, entity_id, order_id, type, amount, description, status) VALUES (?, NULL, ?, ?, ?, ?, ?)");
-            $insertTx->execute(['platform', $order_id, 'credit', $platform_earnings, 'Platform commission', 'settled']);
+            self::insertWalletTx($pdo, 'platform', null, 'order', (int)$order_id, 'credit', $platform_earnings, 'Platform commission', 'settled');
 
             // Update order ledger status
             $pdo->prepare("UPDATE orders SET ledger_status = 'processed' WHERE id = ?")->execute([$order_id]);
@@ -170,8 +229,10 @@ class LedgerEngine {
             }
 
             // Idempotency: skip if a vendor credit already exists for this booking
-            $checkStmt = $pdo->prepare("SELECT id FROM wallet_transactions WHERE order_id = ? AND entity_type = 'vendor' AND status != 'refunded' FOR UPDATE");
-            $checkStmt->execute([$booking_id]);
+            // (scoped to this BOOKING's ledger rows so an order #N cannot fool it)
+            [$refWhere, $refBind] = self::walletRefMatch($pdo, 'booking', (int)$booking_id);
+            $checkStmt = $pdo->prepare("SELECT id FROM wallet_transactions WHERE {$refWhere} AND entity_type = 'vendor' AND status != 'refunded' FOR UPDATE");
+            $checkStmt->execute($refBind);
             if ($checkStmt->fetch()) {
                 $pdo->rollBack();
                 return true; // Already processed, fail-safe.
@@ -198,12 +259,10 @@ class LedgerEngine {
             $updateVendor = $pdo->prepare("UPDATE vendor_wallets SET pending_balance = pending_balance + ? WHERE vendor_id = ?");
             $updateVendor->execute([$vendor_earning, $booking['vendor_id']]);
 
-            $insertTx = $pdo->prepare("INSERT INTO wallet_transactions (entity_type, entity_id, order_id, type, amount, description, status) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $insertTx->execute(['vendor', $booking['vendor_id'], $booking_id, 'credit', $vendor_earning, 'Booking earnings', 'pending']);
+            self::insertWalletTx($pdo, 'vendor', (int)$booking['vendor_id'], 'booking', (int)$booking_id, 'credit', $vendor_earning, 'Booking earnings', 'pending');
 
             // 4. Platform commission
-            $insertTx = $pdo->prepare("INSERT INTO wallet_transactions (entity_type, entity_id, order_id, type, amount, description, status) VALUES (?, NULL, ?, ?, ?, ?, ?)");
-            $insertTx->execute(['platform', $booking_id, 'credit', $platform_commission, 'Platform commission (booking)', 'settled']);
+            self::insertWalletTx($pdo, 'platform', null, 'booking', (int)$booking_id, 'credit', $platform_commission, 'Platform commission (booking)', 'settled');
 
             $pdo->commit();
             return true;
@@ -263,9 +322,11 @@ class LedgerEngine {
         try {
             $pdo->beginTransaction();
 
-            // Find existing transactions for this order
-            $stmt = $pdo->prepare("SELECT id, entity_type, entity_id, amount, status FROM wallet_transactions WHERE order_id = ? AND status != 'refunded'");
-            $stmt->execute([$order_id]);
+            // Find existing transactions for this order (scoped to ORDER rows so a
+            // same-numbered service booking's ledger can never be reversed here)
+            [$refWhere, $refBind] = self::walletRefMatch($pdo, 'order', (int)$order_id);
+            $stmt = $pdo->prepare("SELECT id, entity_type, entity_id, amount, status FROM wallet_transactions WHERE {$refWhere} AND status != 'refunded'");
+            $stmt->execute($refBind);
             $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             if (empty($transactions)) {
@@ -307,8 +368,7 @@ class LedgerEngine {
                     ->execute([$tx['id']]);
                 
                 // Add debit transaction for record
-                $pdo->prepare("INSERT INTO wallet_transactions (entity_type, entity_id, order_id, type, amount, description, status) VALUES (?, ?, ?, ?, ?, ?, ?)")
-                    ->execute([$tx['entity_type'], $tx['entity_id'], $order_id, 'debit', $tx['amount'], 'Order Refund Reversal', 'settled']);
+                self::insertWalletTx($pdo, (string)$tx['entity_type'], $tx['entity_id'] !== null ? (int)$tx['entity_id'] : null, 'order', (int)$order_id, 'debit', (float)$tx['amount'], 'Order Refund Reversal', 'settled');
             }
 
             // TASK 3: Trigger external payment gateway refund if paid online
