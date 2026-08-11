@@ -14,6 +14,54 @@ require_once SYSTEM_ROOT . '/core/lib/FcmNotifier.php';
 require_once SYSTEM_ROOT . '/core/helpers/ServiceVendorEligibility.php';
 require_once SYSTEM_ROOT . '/core/helpers/CityResolver.php';
 
+/**
+ * Build the optional (name/category_id-excluded) column/value/bind arrays for a
+ * packages INSERT/UPDATE from admin input. Shared by create + edit so the
+ * package schema is fully data-driven (no hardcoded names/prices). Features are
+ * normalised to a JSON array (accepts an array or newline text). Empty numerics
+ * become NULL so a package can be flat-price OR per-sqft.
+ * @return array{0:array,1:array,2:array} [cols, valuePlaceholders, binds]
+ */
+function adminBuildPackageFields(array $input, bool $isCreate): array {
+    $cols = []; $vals = []; $bind = [];
+    $add = function (string $col, $value) use (&$cols, &$vals, &$bind) {
+        $cols[] = $col; $vals[] = ':' . $col; $bind[':' . $col] = $value;
+    };
+    if (array_key_exists('description', $input)) {
+        $add('description', trim((string)$input['description']) !== '' ? trim((string)$input['description']) : null);
+    }
+    if (array_key_exists('features', $input)) {
+        $feat = $input['features'];
+        if (is_string($feat)) { $feat = preg_split('/\r\n|\r|\n/', $feat) ?: []; }
+        if (!is_array($feat)) { $feat = []; }
+        $feat = array_values(array_filter(array_map(fn($f) => trim((string)$f), $feat), fn($f) => $f !== ''));
+        $add('features', $feat ? json_encode($feat, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null);
+    }
+    foreach (['rate_per_sqft', 'base_price', 'inspection_fee'] as $numCol) {
+        if (array_key_exists($numCol, $input)) {
+            $v = $input[$numCol];
+            $add($numCol, ($v === '' || $v === null) ? null : (float)$v);
+        }
+    }
+    if (array_key_exists('min_sqft', $input)) {
+        $v = $input['min_sqft'];
+        $add('min_sqft', ($v === '' || $v === null) ? null : (int)$v);
+    }
+    if (array_key_exists('city_id', $input)) {
+        $v = $input['city_id'];
+        $add('city_id', ($v === '' || $v === null || (int)$v <= 0) ? null : (int)$v);
+    }
+    if (array_key_exists('is_active', $input)) {
+        $add('is_active', $input['is_active'] ? 1 : 0);
+    } elseif ($isCreate) {
+        $add('is_active', 1);
+    }
+    if (array_key_exists('sort_order', $input)) {
+        $add('sort_order', (int)$input['sort_order']);
+    }
+    return [$cols, $vals, $bind];
+}
+
 $auth = AuthMiddleware::requireRole(ROLE_ADMIN);
 
 // Blocker B2 fix — keep jobs.vendor_id in sync with bookings.vendor_id on admin (un)assign.
@@ -917,6 +965,143 @@ try {
         $db->prepare("UPDATE categories SET " . implode(', ', $updates) . ", updated_at = NOW() WHERE id = :id")->execute($bind);
         Logger::info('Admin updated category', ['admin_id' => $auth['user_id'], 'category_id' => $categoryId]);
         Response::success(['id' => $categoryId], 200, 'Category updated');
+    }
+
+    // ══ Packages — admin-controlled, per category (data-driven, zero hardcoding) ══
+
+    // ── GET /api/admin/categories/{id}/packages ──────────────
+    if ($method === 'GET' && preg_match('#^/api/admin/categories/(\d+)/packages$#', $uri, $m)) {
+        $categoryId = (int)$m[1];
+        try {
+            $stmt = $db->prepare(
+                "SELECT p.*, m.public_url AS cover_url
+                 FROM packages p
+                 LEFT JOIN media m ON m.id = p.cover_media_id AND m.deleted_at IS NULL
+                 WHERE p.category_id = ?
+                 ORDER BY p.sort_order ASC, p.id ASC"
+            );
+            $stmt->execute([$categoryId]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rows as &$r) {
+                $r['features']  = $r['features'] ? (json_decode($r['features'], true) ?: []) : [];
+                $r['is_active'] = (int)$r['is_active'];
+            }
+            unset($r);
+            Response::success(['packages' => $rows]);
+        } catch (PDOException $e) {
+            // packages table not present yet (migration not applied) — degrade gracefully
+            Response::success(['packages' => [], 'note' => 'packages table not available']);
+        }
+    }
+
+    // ── POST /api/admin/categories/{id}/packages ─────────────
+    if ($method === 'POST' && preg_match('#^/api/admin/categories/(\d+)/packages$#', $uri, $m)) {
+        $categoryId = (int)$m[1];
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        $name  = trim((string)($input['name'] ?? ''));
+        if ($name === '') Response::validation('Package name is required');
+        [$cols, $vals, $bind] = adminBuildPackageFields($input, true);
+        array_unshift($cols, 'category_id', 'name');
+        array_unshift($vals, ':category_id', ':name');
+        $bind[':category_id'] = $categoryId;
+        $bind[':name']        = $name;
+        try {
+            $sql = "INSERT INTO packages (" . implode(', ', $cols) . ", created_at, updated_at) VALUES ("
+                 . implode(', ', $vals) . ", NOW(), NOW())";
+            $db->prepare($sql)->execute($bind);
+            $pkgId = (int)$db->lastInsertId();
+            Logger::info('Admin created package', ['admin_id' => $auth['user_id'], 'category_id' => $categoryId, 'package_id' => $pkgId]);
+            Response::success(['id' => $pkgId], 201, 'Package created');
+        } catch (PDOException $e) {
+            Logger::error('Package create failed', ['error' => $e->getMessage()]);
+            Response::error('Could not create package. Ensure the packages migration is applied.', 500);
+        }
+    }
+
+    // ── PATCH /api/admin/packages/{id} ───────────────────────
+    if ($method === 'PATCH' && preg_match('#^/api/admin/packages/(\d+)$#', $uri, $m)) {
+        $pkgId = (int)$m[1];
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        [$cols, $vals, $bind] = adminBuildPackageFields($input, false);
+        if (array_key_exists('name', $input)) {
+            $nm = trim((string)$input['name']);
+            if ($nm === '') Response::validation('Package name cannot be empty');
+            $cols[] = 'name'; $vals[] = ':name'; $bind[':name'] = $nm;
+        }
+        if (!$cols) Response::validation('No package fields to update');
+        $set = [];
+        foreach ($cols as $i => $c) { $set[] = "{$c} = {$vals[$i]}"; }
+        $bind[':id'] = $pkgId;
+        try {
+            $db->prepare("UPDATE packages SET " . implode(', ', $set) . ", updated_at = NOW() WHERE id = :id")->execute($bind);
+            Logger::info('Admin updated package', ['admin_id' => $auth['user_id'], 'package_id' => $pkgId]);
+            Response::success(['id' => $pkgId], 200, 'Package updated');
+        } catch (PDOException $e) {
+            Logger::error('Package update failed', ['error' => $e->getMessage()]);
+            Response::error('Could not update package.', 500);
+        }
+    }
+
+    // ── POST /api/admin/packages/{id}/cover ──────────────────
+    if ($method === 'POST' && preg_match('#^/api/admin/packages/(\d+)/cover$#', $uri, $m)) {
+        $pkgId = (int)$m[1];
+        if (empty($_FILES['cover']) || $_FILES['cover']['error'] === UPLOAD_ERR_NO_FILE) {
+            Response::error('No file uploaded. Send file as multipart field "cover".', 400);
+        }
+        require_once SYSTEM_ROOT . '/core/helpers/UploadHelper.php';
+        require_once SYSTEM_ROOT . '/core/helpers/Media.php';
+
+        $pkgStmt = $db->prepare("SELECT category_id, city_id, cover_media_id FROM packages WHERE id = ? LIMIT 1");
+        $pkgStmt->execute([$pkgId]);
+        $pkg = $pkgStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$pkg) Response::notFound('Package');
+
+        try {
+            $url = UploadHelper::save($_FILES['cover'], 'packages');
+        } catch (Exception $e) {
+            Response::error($e->getMessage(), 400);
+        }
+
+        // Record in the unified media table (admin upload -> approved), then point
+        // the package at it via cover_media_id for a clean customer-side read.
+        $mediaId = Media::add($db, [
+            'owner_type'          => 'package',
+            'owner_id'            => $pkgId,
+            'media_type'          => 'image',
+            'purpose'             => 'cover_photo',
+            'storage_provider'    => 'local',
+            'storage_key'         => $url,
+            'public_url'          => $url,
+            'city_id'             => !empty($pkg['city_id']) ? (int)$pkg['city_id'] : null,
+            'status'              => Media::STATUS_APPROVED,
+            'uploaded_by_user_id' => (int)$auth['user_id'],
+        ]);
+        if ($mediaId > 0) {
+            if (!empty($pkg['cover_media_id'])) { Media::softDelete($db, (int)$pkg['cover_media_id']); }
+            $db->prepare("UPDATE packages SET cover_media_id = ?, updated_at = NOW() WHERE id = ?")->execute([$mediaId, $pkgId]);
+        }
+        Logger::info('Admin uploaded package cover', ['admin_id' => $auth['user_id'], 'package_id' => $pkgId, 'media_id' => $mediaId]);
+        Response::success(['url' => $url, 'media_id' => $mediaId], 200, 'Cover updated');
+    }
+
+    // ── DELETE /api/admin/packages/{id} ──────────────────────
+    if ($method === 'DELETE' && preg_match('#^/api/admin/packages/(\d+)$#', $uri, $m)) {
+        $pkgId = (int)$m[1];
+        try {
+            $c = $db->prepare("SELECT cover_media_id FROM packages WHERE id = ? LIMIT 1");
+            $c->execute([$pkgId]);
+            $coverId = (int)($c->fetchColumn() ?: 0);
+            if ($coverId > 0) {
+                require_once SYSTEM_ROOT . '/core/helpers/Media.php';
+                Media::softDelete($db, $coverId);
+            }
+            $db->prepare("DELETE FROM packages WHERE id = ?")->execute([$pkgId]);
+            Logger::info('Admin deleted package', ['admin_id' => $auth['user_id'], 'package_id' => $pkgId]);
+            Response::success(['id' => $pkgId], 200, 'Package deleted');
+        } catch (PDOException $e) {
+            Logger::error('Package delete failed', ['error' => $e->getMessage()]);
+            Response::error('Could not delete package.', 500);
+        }
     }
 
     // ── GET /api/admin/orders ─────────────────────────────────
