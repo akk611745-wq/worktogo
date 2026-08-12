@@ -86,8 +86,10 @@ window.BookingsPage = (() => {
     el.innerHTML = list.map(b => {
       const state = _trackingState(b);
       const paymentBadge = _paymentBadge(b);
+      const track = _bookingTrackType(b);
+      const typeBadge = _trackTypeBadge(b);
       return `
-      <div class="list-item booking-item collapsed" onclick="this.classList.toggle('collapsed')">
+      <div class="list-item booking-item collapsed ${track}-track" onclick="this.classList.toggle('collapsed')">
         <div class="item-icon booking-icon">${_esc(b.service_icon || "🛠️")}</div>
         <div class="item-body">
 
@@ -101,6 +103,7 @@ window.BookingsPage = (() => {
             <span class="request-mini-pill state-${_esc(state.key)}">${_esc(_hindiStatusLabel(state.key, state.short))}</span>
             <span class="request-mini-pill ${_esc(paymentBadge.tone)}">${_esc(paymentBadge.label)}</span>
           </div>
+          <div class="track-badge-row">${typeBadge}</div>
           <div class="item-row muted small">
             <span>${b.scheduled_at ? `📅 ${UI.formatDate(b.scheduled_at)}` : UI.formatDate(b.created_at)}</span>
             ${b.booking_mode === "free_lead" ? "" : (b.amount ? `<span class="item-amount">${UI.formatCurrency(b.amount)}</span>` : "")}
@@ -108,7 +111,7 @@ window.BookingsPage = (() => {
 
           <!-- Collapsible detail — customer-facing fields only: Status, Category, Date, Vendor, Area -->
           <div class="booking-detail">
-            <div class="item-row muted small"><span>Status: ${_esc(state.label)}</span></div>
+            ${_trackHTML(b)}
             <div class="item-row muted small"><span>Category: ${_esc(b.category_label || b.category_name || b.service_name || "Service")}</span></div>
             <div class="item-row muted small"><span>Date: ${_esc(b.scheduled_at ? UI.formatDate(b.scheduled_at) : UI.formatDate(b.created_at))}</span></div>
             ${b.vendor_name ? `
@@ -372,6 +375,89 @@ window.BookingsPage = (() => {
       .filter(Boolean)
       .slice(0, 4)
       .join(" + ");
+  }
+
+  // ── V2 tracking split: Company track vs Direct Vendor track ───────────────
+  // Detection is purely presentational, from existing structured fields:
+  //   booking_mode === 'direct_vendor'  -> simple Direct Vendor track
+  //   everything else (free_lead / inspection / expert_visit / package) -> Company track
+  function _bookingTrackType(b) {
+    return String(b.booking_mode || "free_lead").toLowerCase() === "direct_vendor" ? "direct" : "company";
+  }
+
+  function _trackTypeBadge(b) {
+    if (_bookingTrackType(b) === "direct") {
+      return `<span class="track-type-badge track-direct">👤 ${_esc(b.vendor_name ? `Direct — ${b.vendor_name}` : "Direct booking")}</span>`;
+    }
+    if (String(b.visit_type || "").toLowerCase() === "expert_visit") {
+      return `<span class="track-type-badge track-company track-expert">🧑‍🔧 Expert Visit</span>`;
+    }
+    if (b.package_name) {
+      return `<span class="track-type-badge track-company track-package">📦 ${_esc(b.package_name)}</span>`;
+    }
+    return `<span class="track-type-badge track-company">🏢 Company Service</span>`;
+  }
+
+  function _trackHTML(b) {
+    if (String(b.status || "").toLowerCase() === "cancelled") {
+      return `<div class="track-cancelled">This request is not active. Book again or contact support if needed.</div>`;
+    }
+    return _bookingTrackType(b) === "direct" ? _directTrackHTML(b) : _companyTrackHTML(b);
+  }
+
+  function _companyTrackHTML(b) {
+    const status = String(b.status || "pending").toLowerCase();
+    // Company steps map 1:1 from the normalized status — no internal state names.
+    const idx = ({ pending: 0, confirmed: 1, assigned: 2, in_progress: 3, done: 4 })[status] ?? 0;
+    const paidVisit = String(b.booking_mode || "").toLowerCase() === "inspection";
+    const paid = _normalizePaymentState(b.payment_status || "") === "paid";
+    const step2 = paidVisit ? (paid ? "Payment confirmed" : "Awaiting payment") : "Request confirmed";
+    const steps = ["Requested", step2, "Expert assigned", "In progress", "Completed"];
+    const rows = steps.map((label, i) => {
+      const cls = i < idx ? "done" : i === idx ? "active" : "pending";
+      return `<div class="company-track-step ${cls}"><span class="company-track-dot"></span><span class="company-track-label">${_esc(label)}</span></div>`;
+    }).join("");
+
+    const ctx = [];
+    if (b.package_name) {
+      const bits = [];
+      if (b.area_sqft) bits.push(`${_esc(String(b.area_sqft))} sq ft`);
+      if (b.estimate_amount != null && b.estimate_amount !== "") bits.push(`est ${UI.formatCurrency(Number(b.estimate_amount))}`);
+      ctx.push(`<div class="company-track-ctx">📦 ${_esc(b.package_name)}${bits.length ? ` · ${bits.join(" · ")}` : ""}</div>`);
+    }
+    if (String(b.visit_type || "").toLowerCase() === "expert_visit") {
+      const free = Number(b.expert_visit_free) === 1;
+      const feeTxt = free ? "Free" : (b.expert_visit_fee != null && b.expert_visit_fee !== "" ? UI.formatCurrency(Number(b.expert_visit_fee)) : "paid");
+      ctx.push(`<div class="company-track-ctx">🧑‍🔧 Expert visit · ${_esc(feeTxt)}</div>`);
+    }
+    if (b.final_quote_amount != null && b.final_quote_amount !== "") {
+      ctx.push(`<div class="company-track-ctx">💰 Quote after visit: ${UI.formatCurrency(Number(b.final_quote_amount))}</div>`);
+    }
+
+    return `
+      <div class="company-track">
+        <div class="company-track-trust">WorkToGo is handling this for you</div>
+        <div class="company-track-steps">${rows}</div>
+        ${ctx.join("")}
+      </div>`;
+  }
+
+  function _directTrackHTML(b) {
+    const status = String(b.status || "pending").toLowerCase();
+    // -1 = requested (awaiting accept); 0 accepted; 1 started; 2 completed
+    const idx = ({ pending: -1, confirmed: 0, assigned: 0, in_progress: 1, done: 2 })[status] ?? -1;
+    const labels = ["Accepted", "Started", "Completed"];
+    const badges = labels.map((label, i) => {
+      const cls = i < idx ? "done" : i === idx ? "active" : "pending";
+      return `<span class="direct-track-badge ${cls}">${_esc(label)}</span>`;
+    }).join("");
+    const vendor = b.vendor_name ? _esc(b.vendor_name) : "your chosen worker";
+    const head = idx < 0 ? `Waiting for <b>${vendor}</b> to accept` : `<b>${vendor}</b>`;
+    return `
+      <div class="direct-track">
+        <div class="direct-track-vendor"><span class="direct-track-avatar">👤</span> ${head}</div>
+        <div class="direct-track-badges">${badges}</div>
+      </div>`;
   }
 
   return { _load, setFilter, openSupport };

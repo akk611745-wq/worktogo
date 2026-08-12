@@ -1058,3 +1058,137 @@ body.company-view-lock { overflow: hidden; }
   text-align: center;
   color: #8a93a8;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TRACKING SPLIT — Company track (premium, managed) vs Direct Vendor track
+   The customer reads which kind of booking this is in seconds; the two
+   tracks are visually distinct. Human labels only — no internal states.
+   ═══════════════════════════════════════════════════════════════════════ */
+.booking-item.company-track { border-left: 3px solid var(--wtg-accent); }
+.booking-item.direct-track  { border-left: 3px solid #9aa4bd; }
+
+.track-badge-row { margin: 8px 0 2px; }
+.track-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+.track-type-badge.track-company {
+  background: var(--wtg-accent-soft);
+  color: var(--wtg-accent-dark);
+  border: 1px solid var(--wtg-accent-border);
+}
+.track-type-badge.track-direct {
+  background: #eef1f7;
+  color: #445068;
+  border: 1px solid #dde3ef;
+}
+
+/* ── Company track: premium vertical stepper ─────────────────────────── */
+.company-track { margin: 6px 0 6px; }
+.company-track-trust {
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: var(--wtg-accent-dark);
+  margin-bottom: 8px;
+}
+.company-track-steps {
+  position: relative;
+  padding-left: 4px;
+}
+.company-track-steps::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  background: #e6e9f2;
+}
+.company-track-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+}
+.company-track-dot {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #cdd4e2;
+  z-index: 1;
+}
+.company-track-step.done .company-track-dot { background: var(--wtg-accent); }
+.company-track-step.active .company-track-dot {
+  background: var(--wtg-accent);
+  box-shadow: 0 0 0 4px var(--wtg-accent-soft);
+}
+.company-track-label { font-size: 0.86rem; color: #8a93a8; }
+.company-track-step.done .company-track-label { color: #14203a; }
+.company-track-step.active .company-track-label {
+  color: var(--wtg-accent-dark);
+  font-weight: 800;
+}
+.company-track-ctx {
+  font-size: 0.78rem;
+  color: #445068;
+  margin-top: 8px;
+  padding: 7px 10px;
+  background: #f4f6fb;
+  border-radius: 8px;
+}
+
+/* ── Direct Vendor track: simple badge-style ─────────────────────────── */
+.direct-track { margin: 6px 0 4px; }
+.direct-track-vendor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: #14203a;
+  margin-bottom: 10px;
+}
+.direct-track-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #eef1f7;
+  display: grid;
+  place-items: center;
+  font-size: 0.9rem;
+}
+.direct-track-badges { display: flex; gap: 8px; }
+.direct-track-badge {
+  flex: 1;
+  text-align: center;
+  padding: 8px 6px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: #f0f2f8;
+  color: #8a93a8;
+  border: 1px solid #e6e9f2;
+}
+.direct-track-badge.done {
+  background: #e9f7ee;
+  color: #2ea043;
+  border-color: #bfe6cc;
+}
+.direct-track-badge.active {
+  background: var(--wtg-accent-soft);
+  color: var(--wtg-accent-dark);
+  border-color: var(--wtg-accent-border);
+}
+
+.track-cancelled {
+  font-size: 0.82rem;
+  color: #8a93a8;
+  padding: 8px 0;
+}
