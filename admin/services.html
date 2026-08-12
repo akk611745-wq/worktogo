@@ -1301,6 +1301,13 @@ async function openCategoryControlRoom(categoryId) {
           <div id="cat-packages-body"><div class="spinner"></div></div>
         </div></div>
 
+        <!-- SECTION 2c: EXPERT VISIT PRICING (global default + per-category/per-city overrides) -->
+        <div class="card"><div class="card-body" style="padding:22px">
+          <div style="font-size:14px;font-weight:700;color:var(--text-primary)">Expert Visit pricing</div>
+          <div style="font-size:11px;color:var(--text-muted);margin:2px 0 14px">One global default applies everywhere. Override per-category and/or per-city, or mark FREE. Precedence: category+city → category → city → global.</div>
+          <div id="cat-evp-body"><div class="spinner"></div></div>
+        </div></div>
+
         <!-- SECTION 3: STATS BAR -->
         <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px">${statCards}</div>
 
@@ -1346,6 +1353,7 @@ async function openCategoryControlRoom(categoryId) {
     renderCategoryVendorTable();
     loadCategoryPendingApprovals(catIdNum);
     loadCategoryPackages(catIdNum);
+    loadExpertVisitPricing(catIdNum);
   } catch(e) {
     document.getElementById('cat-room-overlay')?.remove();
     Toast.error(e.message || 'Failed to load category control room');
@@ -1825,6 +1833,120 @@ async function uploadPackageCover(pkgId, inputEl) {
   } finally {
     inputEl.value = '';
   }
+}
+
+// ══ Expert Visit pricing (global default + per-category/per-city overrides) ══
+async function loadExpertVisitPricing(catId) {
+  const box = document.getElementById('cat-evp-body');
+  if (!box) return;
+  try {
+    const data = await API.get('/expert-visit-pricing');
+    const d = data.data || data;
+    if (_catRoom) _catRoom.evp = {
+      global: d.global || { amount: 0, is_free: false },
+      overrides: d.overrides || [],
+      cities: d.cities || [],
+    };
+    renderExpertVisitPricing(catId);
+  } catch (e) {
+    box.innerHTML = `<p style="font-size:12px;color:#e05252;margin:0">Could not load expert-visit pricing.</p>`;
+  }
+}
+
+function renderExpertVisitPricing(catId) {
+  const box = document.getElementById('cat-evp-body');
+  if (!box || !_catRoom || !_catRoom.evp) return;
+  const g = _catRoom.evp.global || { amount: 0, is_free: false };
+  const overrides = _catRoom.evp.overrides || [];
+  const cities = _catRoom.evp.cities || [];
+  const cats = (masterCategories && masterCategories.length)
+    ? masterCategories
+    : (_catRoom.cat ? [{ id: _catRoom.cat.id, name: _catRoom.cat.name }] : []);
+  const catOpts = ['<option value="">All categories</option>'].concat(
+    cats.map(c => `<option value="${escHtml(String(c.id))}" ${Number(c.id) === Number(catId) ? 'selected' : ''}>${escHtml(c.name)}</option>`)).join('');
+  const cityOpts = ['<option value="">All cities</option>'].concat(
+    cities.map(c => `<option value="${escHtml(String(c.id))}">${escHtml(c.name)}</option>`)).join('');
+
+  const rows = overrides.length
+    ? overrides.map(o => `<tr style="${o.is_active ? '' : 'opacity:.55'}">
+        <td>${o.category_id ? escHtml(o.category_name || ('#' + o.category_id)) : '<span style="color:var(--text-muted)">All categories</span>'}</td>
+        <td>${o.city_id ? escHtml(o.city_name || ('#' + o.city_id)) : '<span style="color:var(--text-muted)">All cities</span>'}</td>
+        <td style="font-weight:700">${o.is_free ? '<span style="color:var(--green,#2ea043)">FREE</span>' : '₹' + escHtml(String(o.amount ?? '—'))}</td>
+        <td><button class="btn btn-sm btn-ghost" onclick="toggleEvpActive(${o.id}, ${o.is_active}, ${catId})">${o.is_active ? 'Disable' : 'Enable'}</button>
+            <button class="btn btn-sm btn-ghost" style="color:#e05252" onclick="deleteEvpOverride(${o.id}, ${catId})">Remove</button></td>
+      </tr>`).join('')
+    : `<tr><td colspan="4" style="color:var(--text-muted);font-size:12px">No overrides — the global default applies everywhere.</td></tr>`;
+
+  box.innerHTML = `
+    <div style="display:grid;gap:16px">
+      <div class="card" style="background:var(--bg-raised)"><div class="card-body" style="padding:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <b style="font-size:12px">Global default</b>
+        <span style="font-size:12px">₹<input id="evp-global-amount" type="number" step="0.01" class="form-control" style="width:110px;display:inline-block" value="${g.is_free ? '' : escHtml(String(g.amount ?? ''))}" ${g.is_free ? 'disabled' : ''}></span>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input id="evp-global-free" type="checkbox" ${g.is_free ? 'checked' : ''} onchange="document.getElementById('evp-global-amount').disabled=this.checked"> Free everywhere</label>
+        <button class="btn btn-sm" style="background:#e8681a;color:#fff;border:none" onclick="saveExpertVisitGlobal(${catId})">Save default</button>
+        <span style="font-size:11px;color:var(--text-muted)">Now: <b>${g.is_free ? 'FREE' : '₹' + escHtml(String(g.amount))}</b></span>
+      </div></div>
+
+      <div>
+        <div style="font-size:12px;font-weight:700;margin-bottom:8px">Overrides</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>CATEGORY</th><th>CITY</th><th>FEE</th><th>ACTIONS</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
+      </div>
+
+      <div class="card" style="background:var(--bg-raised)"><div class="card-body" style="padding:14px">
+        <div style="font-size:12px;font-weight:700;margin-bottom:10px">Add / update override</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto auto auto;gap:10px;align-items:end">
+          <div><label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:4px">CATEGORY</label><select id="evp-add-cat" class="form-control">${catOpts}</select></div>
+          <div><label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:4px">CITY</label><select id="evp-add-city" class="form-control">${cityOpts}</select></div>
+          <div><label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:4px">₹ AMOUNT</label><input id="evp-add-amount" type="number" step="0.01" class="form-control" style="width:100px" placeholder="e.g. 299"></div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding-bottom:8px"><input id="evp-add-free" type="checkbox" onchange="document.getElementById('evp-add-amount').disabled=this.checked"> Free</label>
+          <button class="btn btn-sm" style="background:#e8681a;color:#fff;border:none" onclick="saveExpertVisitOverride(${catId})">Save</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:8px">Leave category/city as “All” to scope broadly. Same scope re-saved updates the existing override.</div>
+      </div>
+    </div>`;
+}
+
+async function saveExpertVisitGlobal(catId) {
+  const free = !!document.getElementById('evp-global-free')?.checked;
+  const amount = document.getElementById('evp-global-amount')?.value;
+  try {
+    await API.patch('/expert-visit-pricing/global', { is_free: free, amount: free ? null : amount });
+    Toast.success('Global default saved.');
+    await loadExpertVisitPricing(catId);
+  } catch (e) { Toast.error(e.message || 'Could not save default.'); }
+}
+
+async function saveExpertVisitOverride(catId) {
+  const category_id = document.getElementById('evp-add-cat')?.value || '';
+  const city_id = document.getElementById('evp-add-city')?.value || '';
+  const is_free = !!document.getElementById('evp-add-free')?.checked;
+  const amount = document.getElementById('evp-add-amount')?.value || '';
+  if (!category_id && !city_id) { Toast.warn('Choose a category and/or a city to scope the override.'); return; }
+  if (!is_free && !amount) { Toast.warn('Enter an amount or mark it Free.'); return; }
+  try {
+    await API.post('/expert-visit-pricing', { category_id: category_id || null, city_id: city_id || null, is_free, amount: is_free ? null : amount });
+    Toast.success('Override saved.');
+    await loadExpertVisitPricing(catId);
+  } catch (e) { Toast.error(e.message || 'Could not save override.'); }
+}
+
+async function toggleEvpActive(id, isActive, catId) {
+  try {
+    await API.patch('/expert-visit-pricing/' + id, { is_active: isActive ? 0 : 1 });
+    await loadExpertVisitPricing(catId);
+  } catch (e) { Toast.error(e.message || 'Could not update override.'); }
+}
+
+async function deleteEvpOverride(id, catId) {
+  if (!confirm('Remove this expert-visit override?')) return;
+  try {
+    await API.delete('/expert-visit-pricing/' + id);
+    Toast.success('Override removed.');
+    await loadExpertVisitPricing(catId);
+  } catch (e) { Toast.error(e.message || 'Could not remove override.'); }
 }
 
 // ── Category Inline Name Edit ────────────────────────────────

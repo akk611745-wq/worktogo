@@ -1104,6 +1104,134 @@ try {
         }
     }
 
+    // ══ Expert Visit pricing — global default + per-category/per-city overrides ══
+    // Precedence (resolver): category+city > category > city > global default.
+
+    // ── GET /api/admin/expert-visit-pricing ──────────────────
+    if ($method === 'GET' && $uri === '/api/admin/expert-visit-pricing') {
+        require_once SYSTEM_ROOT . '/core/helpers/ExpertVisitPricing.php';
+        $global    = ExpertVisitPricing::globalDefault($db);
+        $overrides = [];
+        $cities    = [];
+        try {
+            $stmt = $db->query(
+                "SELECT e.id, e.category_id, e.city_id, e.amount, e.is_free, e.is_active,
+                        c.name AS category_name, ci.name AS city_name
+                 FROM expert_visit_pricing e
+                 LEFT JOIN categories c  ON c.id  = e.category_id
+                 LEFT JOIN cities     ci ON ci.id = e.city_id
+                 ORDER BY (e.category_id IS NOT NULL) DESC, (e.city_id IS NOT NULL) DESC, e.id DESC"
+            );
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $overrides[] = [
+                    'id'            => (int)$r['id'],
+                    'category_id'   => $r['category_id'] !== null ? (int)$r['category_id'] : null,
+                    'category_name' => $r['category_name'],
+                    'city_id'       => $r['city_id'] !== null ? (int)$r['city_id'] : null,
+                    'city_name'     => $r['city_name'],
+                    'amount'        => $r['amount'] !== null ? (float)$r['amount'] : null,
+                    'is_free'       => (int)$r['is_free'],
+                    'is_active'     => (int)$r['is_active'],
+                ];
+            }
+        } catch (PDOException $e) { /* table not migrated yet */ }
+        try {
+            $cs = $db->query("SELECT id, name FROM cities WHERE is_active = 1 ORDER BY sort_order ASC, name ASC");
+            $cities = $cs->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) { /* cities not present */ }
+        Response::success(['global' => $global, 'overrides' => $overrides, 'cities' => $cities]);
+    }
+
+    // ── PATCH /api/admin/expert-visit-pricing/global ─────────
+    if ($method === 'PATCH' && $uri === '/api/admin/expert-visit-pricing/global') {
+        $input  = json_decode(file_get_contents('php://input'), true) ?? [];
+        $isFree = array_key_exists('is_free', $input) ? ($input['is_free'] ? '1' : '0') : null;
+        $amount = array_key_exists('amount', $input) && $input['amount'] !== '' && $input['amount'] !== null
+            ? (string)max(0, (float)$input['amount']) : null;
+        $upsert = $db->prepare(
+            "INSERT INTO app_settings (setting_key, setting_value, value_type, is_public, updated_at)
+             VALUES (:k, :v, :t, 1, NOW())
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()"
+        );
+        if ($amount !== null) $upsert->execute([':k' => 'expert_visit_fee',  ':v' => $amount, ':t' => 'number']);
+        if ($isFree !== null) $upsert->execute([':k' => 'expert_visit_free', ':v' => $isFree, ':t' => 'boolean']);
+        Logger::info('Admin updated expert-visit global default', ['admin_id' => $auth['user_id'], 'amount' => $amount, 'is_free' => $isFree]);
+        require_once SYSTEM_ROOT . '/core/helpers/ExpertVisitPricing.php';
+        Response::success(['global' => ExpertVisitPricing::globalDefault($db)], 200, 'Global default updated');
+    }
+
+    // ── POST /api/admin/expert-visit-pricing ─────────────────
+    if ($method === 'POST' && $uri === '/api/admin/expert-visit-pricing') {
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        $catId  = (isset($input['category_id']) && (int)$input['category_id'] > 0) ? (int)$input['category_id'] : null;
+        $cityId = (isset($input['city_id']) && (int)$input['city_id'] > 0) ? (int)$input['city_id'] : null;
+        $isFree = !empty($input['is_free']) ? 1 : 0;
+        $amount = (!$isFree && isset($input['amount']) && $input['amount'] !== '' && $input['amount'] !== null)
+            ? max(0, (float)$input['amount']) : null;
+        if ($catId === null && $cityId === null) {
+            Response::validation('An override must scope by category and/or city (the global default is set separately).');
+        }
+        if (!$isFree && $amount === null) {
+            Response::validation('Set an amount, or mark this override as Free.');
+        }
+        try {
+            // Dedup: one override per (category_id, city_id) scope — update if it exists.
+            $find = $db->prepare(
+                "SELECT id FROM expert_visit_pricing
+                  WHERE (category_id <=> :cat) AND (city_id <=> :city) LIMIT 1"
+            );
+            $find->execute([':cat' => $catId, ':city' => $cityId]);
+            $existingId = (int)($find->fetchColumn() ?: 0);
+            if ($existingId > 0) {
+                $db->prepare("UPDATE expert_visit_pricing SET amount = :a, is_free = :f, is_active = 1, updated_at = NOW() WHERE id = :id")
+                   ->execute([':a' => $amount, ':f' => $isFree, ':id' => $existingId]);
+                $newId = $existingId;
+            } else {
+                $db->prepare("INSERT INTO expert_visit_pricing (category_id, city_id, amount, is_free, is_active, created_at, updated_at) VALUES (:cat, :city, :a, :f, 1, NOW(), NOW())")
+                   ->execute([':cat' => $catId, ':city' => $cityId, ':a' => $amount, ':f' => $isFree]);
+                $newId = (int)$db->lastInsertId();
+            }
+            Logger::info('Admin saved expert-visit override', ['admin_id' => $auth['user_id'], 'id' => $newId, 'category_id' => $catId, 'city_id' => $cityId, 'is_free' => $isFree]);
+            Response::success(['id' => $newId], 201, 'Override saved');
+        } catch (PDOException $e) {
+            Logger::error('Expert-visit override save failed', ['error' => $e->getMessage()]);
+            Response::error('Could not save override. Ensure the expert_visit_pricing migration is applied.', 500);
+        }
+    }
+
+    // ── PATCH /api/admin/expert-visit-pricing/{id} ───────────
+    if ($method === 'PATCH' && preg_match('#^/api/admin/expert-visit-pricing/(\d+)$#', $uri, $m)) {
+        $id    = (int)$m[1];
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        $sets = []; $bind = [':id' => $id];
+        if (array_key_exists('is_free', $input))   { $sets[] = 'is_free = :f';   $bind[':f'] = $input['is_free'] ? 1 : 0; }
+        if (array_key_exists('is_active', $input)) { $sets[] = 'is_active = :ac'; $bind[':ac'] = $input['is_active'] ? 1 : 0; }
+        if (array_key_exists('amount', $input)) {
+            $sets[] = 'amount = :a';
+            $bind[':a'] = ($input['amount'] === '' || $input['amount'] === null) ? null : max(0, (float)$input['amount']);
+        }
+        if (!$sets) Response::validation('No expert-visit override fields to update');
+        try {
+            $db->prepare("UPDATE expert_visit_pricing SET " . implode(', ', $sets) . ", updated_at = NOW() WHERE id = :id")->execute($bind);
+            Logger::info('Admin updated expert-visit override', ['admin_id' => $auth['user_id'], 'id' => $id]);
+            Response::success(['id' => $id], 200, 'Override updated');
+        } catch (PDOException $e) {
+            Response::error('Could not update override.', 500);
+        }
+    }
+
+    // ── DELETE /api/admin/expert-visit-pricing/{id} ──────────
+    if ($method === 'DELETE' && preg_match('#^/api/admin/expert-visit-pricing/(\d+)$#', $uri, $m)) {
+        $id = (int)$m[1];
+        try {
+            $db->prepare("DELETE FROM expert_visit_pricing WHERE id = ?")->execute([$id]);
+            Logger::info('Admin deleted expert-visit override', ['admin_id' => $auth['user_id'], 'id' => $id]);
+            Response::success(['id' => $id], 200, 'Override removed');
+        } catch (PDOException $e) {
+            Response::error('Could not remove override.', 500);
+        }
+    }
+
     // ── GET /api/admin/orders ─────────────────────────────────
     if ($method === 'GET' && $uri === '/api/admin/orders') {
         $page   = max(1, (int) ($_GET['page']  ?? 1));
