@@ -1853,6 +1853,11 @@ try {
         // "Vendor" box always fell back to its hardcoded 'not_requested' default
         // regardless of true state. See VENDOR-ASSIGN-VISIBILITY task.
         $optSel .= isset($bc['vendor_response_status']) ? ', b.vendor_response_status' : ", 'not_requested' AS vendor_response_status";
+        // V2 structured package selection (nullable — only set for company package requests)
+        $optSel .= isset($bc['package_id'])      ? ', b.package_id'      : ', NULL AS package_id';
+        $optSel .= isset($bc['package_name'])    ? ', b.package_name'    : ', NULL AS package_name';
+        $optSel .= isset($bc['area_sqft'])       ? ', b.area_sqft'       : ', NULL AS area_sqft';
+        $optSel .= isset($bc['estimate_amount']) ? ', b.estimate_amount' : ', NULL AS estimate_amount';
 
         $svcJoin = isset($bc['service_id'])
             ? 'LEFT JOIN services s ON s.id = b.service_id'
@@ -1940,6 +1945,12 @@ try {
                 'lifecycle_state'  => $b['lifecycle_state'] ?? $b['status'] ?? 'pending',
                 'assignment_state' => $assigned,
                 'booking_mode'     => $b['booking_mode']    ?? 'free_lead',
+                'package'          => (!empty($b['package_id']) || !empty($b['package_name'])) ? [
+                    'id'              => !empty($b['package_id']) ? (int)$b['package_id'] : null,
+                    'name'            => $b['package_name'] ?? null,
+                    'area_sqft'       => isset($b['area_sqft']) && $b['area_sqft'] !== null ? (float)$b['area_sqft'] : null,
+                    'estimate_amount' => isset($b['estimate_amount']) && $b['estimate_amount'] !== null ? (float)$b['estimate_amount'] : null,
+                ] : null,
                 'filter_keys'      => [
                     'city'             => $b['city']          ?? '',
                     'category'         => $b['category_slug'] ?? '',

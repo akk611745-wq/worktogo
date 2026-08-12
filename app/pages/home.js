@@ -983,6 +983,14 @@ window.HomeModals = (() => {
         customer_address: address,
         vendor_id: selectedWorker?.vendor_id || null,
         notes: _adminRequestNotes(operationalPayload),
+        // V2 structured package selection (Company View). Sent when a package was
+        // ticked; the server re-resolves the package + recomputes the estimate.
+        ...(_currentService?.company_package ? {
+          package_id:      _currentService.company_package.id || null,
+          package_name:    _currentService.company_package.name || null,
+          area_sqft:       _currentService.company_package.area_sqft ?? null,
+          estimate_amount: _currentService.company_package.estimate ?? null,
+        } : {}),
         ...(_forceNewBooking ? { force_new_booking: true } : {}),
       }).catch(err => ({ ok: false, error: err?.message || "Network issue while sending booking." }));
     _forceNewBooking = false; // always reset after submission attempt

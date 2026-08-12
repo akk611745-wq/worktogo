@@ -1436,6 +1436,38 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         // V2 city dimension: resolve from the booking's selected_city, default Haldwani.
         $bookingCityId = CityResolver::resolveId($db, $operationalRequest['city'] ?? null);
         if ($bookingCityId > 0 && serviceColumnOrNull($db, 'bookings', 'city_id', ':city_id', $bookingCityId, $bookingColumns, $bookingBind)) $bookingValues[] = ':city_id';
+
+        // V2 structured package selection — resolve the package server-side, snapshot
+        // its name, and RECOMPUTE the estimate (never trust the client number). All
+        // nullable: no package ticked => a general company request. Schema-defensive.
+        $pkgId = null; $pkgName = null; $pkgAreaSqft = null; $pkgEstimate = null;
+        $reqPkgId = isset($input['package_id']) ? (int)$input['package_id'] : 0;
+        if (isset($input['area_sqft']) && $input['area_sqft'] !== '' && $input['area_sqft'] !== null) {
+            $pkgAreaSqft = max(0.0, (float)$input['area_sqft']);
+        }
+        if ($reqPkgId > 0 && serviceTableHasColumn($db, 'bookings', 'package_id') && serviceTableHasColumn($db, 'packages', 'id')) {
+            try {
+                $pstmt = $db->prepare("SELECT id, name, rate_per_sqft, base_price, min_sqft FROM packages WHERE id = ? AND is_active = 1 LIMIT 1");
+                $pstmt->execute([$reqPkgId]);
+                $prow = $pstmt->fetch(PDO::FETCH_ASSOC);
+                if ($prow) {
+                    $pkgId   = (int)$prow['id'];
+                    $pkgName = $prow['name'];
+                    $rate = $prow['rate_per_sqft'] !== null ? (float)$prow['rate_per_sqft'] : 0.0;
+                    $base = $prow['base_price']    !== null ? (float)$prow['base_price']    : 0.0;
+                    $min  = $prow['min_sqft']      !== null ? (float)$prow['min_sqft']      : 0.0;
+                    if ($rate > 0 || $base > 0) {
+                        $billSqft    = max($pkgAreaSqft ?? 0.0, $min);
+                        $pkgEstimate = round($base + $rate * $billSqft, 2);
+                    }
+                }
+            } catch (PDOException $e) { /* packages table absent — skip package fields */ }
+        }
+        if ($pkgId !== null       && serviceColumnOrNull($db, 'bookings', 'package_id', ':package_id', $pkgId, $bookingColumns, $bookingBind))                 $bookingValues[] = ':package_id';
+        if ($pkgName !== null     && serviceColumnOrNull($db, 'bookings', 'package_name', ':package_name', $pkgName, $bookingColumns, $bookingBind))           $bookingValues[] = ':package_name';
+        if ($pkgAreaSqft !== null  && serviceColumnOrNull($db, 'bookings', 'area_sqft', ':area_sqft', $pkgAreaSqft, $bookingColumns, $bookingBind))            $bookingValues[] = ':area_sqft';
+        if ($pkgEstimate !== null && serviceColumnOrNull($db, 'bookings', 'estimate_amount', ':estimate_amount', $pkgEstimate, $bookingColumns, $bookingBind)) $bookingValues[] = ':estimate_amount';
+
         $bStmt = $db->prepare("INSERT INTO bookings (" . implode(', ', $bookingColumns) . ") VALUES (" . implode(', ', $bookingValues) . ")");
         $bStmt->execute($bookingBind);
 
