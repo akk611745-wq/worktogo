@@ -421,6 +421,7 @@ export async function render(container) {
       _companyViewSlug = s;
       const body = document.getElementById("company-view-body");
       if (body) body.innerHTML = _companyViewHTML(s);
+      HomePage._refreshExpertVisitFee(s);
       const ov = document.getElementById("company-view-overlay");
       if (!ov) return;
       ov.classList.remove("hidden");
@@ -443,15 +444,55 @@ export async function render(container) {
       try { _activeCategory = _companyViewSlug; } catch (e) {}
       const body = document.getElementById("company-view-body");
       if (body) body.innerHTML = _companyViewHTML(_companyViewSlug);
+      HomePage._refreshExpertVisitFee(_companyViewSlug);
       const panel = document.querySelector("#company-view-overlay .company-view-panel");
       if (panel) panel.scrollTo ? panel.scrollTo({ top: 0, behavior: "smooth" }) : (panel.scrollTop = 0);
     },
-    companyExpertVisit(slug = "") {
-      // HOOK for the Expert-Visit pay-flow task. For now bridge to the existing
-      // inspection ("company visit") flow so the path is real, not a dead end.
+    async _refreshExpertVisitFee(slug = "") {
       const s = slug || _companyViewSlug || "";
+      _companyExpertFee = null;
+      let fee = null;
+      try {
+        const cityHint = (typeof _resolvedLocality === "function" ? (_resolvedLocality().city || "") : "")
+          || (CONFIG?.SERVICE_ONLY?.CITY || "");
+        const res = await API.getExpertVisitFee(s, cityHint);
+        const body = res?.data || {};
+        fee = { is_free: !!(body.data?.is_free ?? body.is_free), amount: Number(body.data?.amount ?? body.amount ?? 0) };
+      } catch (e) { fee = null; }
+      // ignore a stale response if the customer switched category meanwhile
+      if (_companyViewSlug !== s) return;
+      _companyExpertFee = fee;
+      const el = document.getElementById("cv-expert-fee");
+      if (el) {
+        el.textContent = !fee ? ""
+          : fee.is_free ? "Free expert visit"
+          : `Expert visit — ${UI.formatCurrency(fee.amount)}`;
+        el.classList.toggle("is-free", !!fee && fee.is_free);
+      }
+    },
+    companyExpertVisit(slug = "") {
+      // Real Expert Visit pay-flow. Fee resolved by admin config (free or paid).
+      // FREE -> free request (no payment). PAID -> reuse the inspection Cashfree
+      // pay-to-confirm path (booking_mode='inspection'), never confirming before
+      // payment. The backend re-resolves the fee authoritatively either way.
+      const s = slug || _companyViewSlug || "";
+      const meta = _categoryMeta(s);
+      const fee = _companyExpertFee;
+      const isFree = !fee || fee.is_free || !(Number(fee.amount) > 0);
       HomePage.closeCompanyView();
-      setTimeout(() => HomePage.bookCategoryCta(s, "inspection"), 260);
+      setTimeout(() => HomeModals.openBooking({
+        id: `expert-${s || "all"}`,
+        name: `${meta.label} — Expert Visit`,
+        booking_mode: isFree ? "free_lead" : "inspection",
+        request_source: "company_expert_visit",
+        visit_type: "expert_visit",
+        category_slug: s,
+        category: s,
+        icon: meta.icon || "🧑‍🔧",
+        // drive the inspection modal's displayed amount for the paid case; the
+        // backend recomputes the real charge from ExpertVisitPricing regardless.
+        ...(isFree ? {} : { inspection_price: Number(fee.amount) }),
+      }), 260);
     },
     async companyChoosePackage(slug = "") {
       const s = slug || _companyViewSlug || "";
@@ -475,6 +516,7 @@ export async function render(container) {
       _companySelectedPackageId = null;
       const body = document.getElementById("company-view-body");
       if (body) body.innerHTML = _companyViewHTML(s);
+      HomePage._refreshExpertVisitFee(s);
       const panel = document.querySelector("#company-view-overlay .company-view-panel");
       if (panel) panel.scrollTop = 0;
     },
@@ -991,6 +1033,8 @@ window.HomeModals = (() => {
           area_sqft:       _currentService.company_package.area_sqft ?? null,
           estimate_amount: _currentService.company_package.estimate ?? null,
         } : {}),
+        // V2 Expert Visit marker — backend resolves the fee (free/paid) authoritatively.
+        ...(_currentService?.visit_type ? { visit_type: _currentService.visit_type } : {}),
         ...(_forceNewBooking ? { force_new_booking: true } : {}),
       }).catch(err => ({ ok: false, error: err?.message || "Network issue while sending booking." }));
     _forceNewBooking = false; // always reset after submission attempt
@@ -2381,6 +2425,7 @@ function _companyViewHTML(slug = "") {
         <div class="company-path-copy">
           <h3>Expert Visit</h3>
           <p>Not sure what's needed? Our expert visits, checks the actual problem, and gives you a clear budget &amp; material estimate.</p>
+          <span class="company-path-fee" id="cv-expert-fee">Checking availability…</span>
           <span class="company-path-cta">Book an expert visit →</span>
         </div>
       </button>
@@ -3902,6 +3947,7 @@ let _activeCategory = "";
 let _companyViewSlug = "";
 let _companyPackages = [];
 let _companySelectedPackageId = null;
+let _companyExpertFee = null; // { is_free, amount } for the current company-view category
 let _searchQuery = "";
 let _activeChipFilter = "";
 let _activeLocalityFilter = "";

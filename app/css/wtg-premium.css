@@ -778,6 +778,16 @@ body.company-view-lock { overflow: hidden; }
 .company-path-cta--soon {
   color: #8a93a8;
 }
+.company-path-fee {
+  display: block;
+  margin: 2px 0 8px;
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: var(--wtg-accent-dark);
+}
+.company-path-fee.is-free {
+  color: #2ea043;
+}
 
 /* Minimal request — kept short on purpose to preserve the company feel */
 .company-minimal-request {

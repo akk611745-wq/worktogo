@@ -1986,6 +1986,11 @@ try {
         $optSel .= isset($bc['package_name'])    ? ', b.package_name'    : ', NULL AS package_name';
         $optSel .= isset($bc['area_sqft'])       ? ', b.area_sqft'       : ', NULL AS area_sqft';
         $optSel .= isset($bc['estimate_amount']) ? ', b.estimate_amount' : ', NULL AS estimate_amount';
+        // V2 Expert Visit (nullable — only set for expert-visit bookings)
+        $optSel .= isset($bc['visit_type'])         ? ', b.visit_type'         : ', NULL AS visit_type';
+        $optSel .= isset($bc['expert_visit_fee'])   ? ', b.expert_visit_fee'   : ', NULL AS expert_visit_fee';
+        $optSel .= isset($bc['expert_visit_free'])  ? ', b.expert_visit_free'  : ', NULL AS expert_visit_free';
+        $optSel .= isset($bc['final_quote_amount']) ? ', b.final_quote_amount' : ', NULL AS final_quote_amount';
 
         $svcJoin = isset($bc['service_id'])
             ? 'LEFT JOIN services s ON s.id = b.service_id'
@@ -2078,6 +2083,12 @@ try {
                     'name'            => $b['package_name'] ?? null,
                     'area_sqft'       => isset($b['area_sqft']) && $b['area_sqft'] !== null ? (float)$b['area_sqft'] : null,
                     'estimate_amount' => isset($b['estimate_amount']) && $b['estimate_amount'] !== null ? (float)$b['estimate_amount'] : null,
+                ] : null,
+                'expert_visit'     => (($b['visit_type'] ?? '') === 'expert_visit') ? [
+                    'is_free'            => !empty($b['expert_visit_free']),
+                    'fee'                => isset($b['expert_visit_fee']) && $b['expert_visit_fee'] !== null ? (float)$b['expert_visit_fee'] : 0.0,
+                    'payment_status'     => $b['payment_status'] ?? 'unpaid',
+                    'final_quote_amount' => isset($b['final_quote_amount']) && $b['final_quote_amount'] !== null ? (float)$b['final_quote_amount'] : null,
                 ] : null,
                 'filter_keys'      => [
                     'city'             => $b['city']          ?? '',

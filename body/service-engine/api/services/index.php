@@ -1036,6 +1036,34 @@ if ($method === 'GET' && $uri === '/api/service/packages') {
     }
 }
 
+// ── GET /api/service/expert-visit-fee?category=<slug|id>&city=<slug|name> ────
+// Customer-facing, read-only. Returns the resolved expert-visit fee for the
+// category + customer's city (admin-configured; free or paid; precedence
+// category+city > category > city > global). Invisible city resolution.
+if ($method === 'GET' && $uri === '/api/service/expert-visit-fee') {
+    header('Cache-Control: no-store, max-age=0');
+    require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/ExpertVisitPricing.php';
+
+    $catParam   = trim((string)($_GET['category'] ?? $_GET['category_id'] ?? ''));
+    $categoryId = 0;
+    if ($catParam !== '') {
+        if (ctype_digit($catParam)) {
+            $categoryId = (int)$catParam;
+        } else {
+            $cstmt = $db->prepare("SELECT id FROM categories WHERE slug = ? LIMIT 1");
+            $cstmt->execute([$catParam]);
+            $categoryId = (int)($cstmt->fetchColumn() ?: 0);
+        }
+    }
+    $cityId = 0;
+    if (class_exists('CityResolver')) {
+        $cityHint = trim((string)($_GET['city'] ?? ''));
+        $cityId   = (int)CityResolver::resolveId($db, $cityHint !== '' ? $cityHint : null);
+    }
+    $res = ExpertVisitPricing::resolve($db, $categoryId ?: null, $cityId ?: null);
+    Response::success(['is_free' => (bool)$res['is_free'], 'amount' => (float)$res['amount']]);
+}
+
 // â”€â”€ POST /api/services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method === 'POST' && $uri === '/api/services') {
     $auth  = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE);
@@ -1340,6 +1368,33 @@ if ($method === 'POST' && $uri === '/api/service/request') {
     $bookingTotal = $bookingMode === 'inspection'
         ? (float)(servicePublicSetting($db, 'inspection_price', 299))
         : 0.0;
+
+    // V2 Expert Visit — replaces the customer inspection concept. When the request
+    // is an expert visit, the fee is resolved SERVER-SIDE via ExpertVisitPricing
+    // (admin config, free-or-paid, category+city precedence) — never the flat
+    // inspection_price, never the client's number. Free => no payment; paid =>
+    // reuse the existing (robust) inspection Cashfree pay-to-confirm path.
+    $isExpertVisit  = ($input['visit_type'] ?? '') === 'expert_visit';
+    $expertVisitFee = null; $expertVisitFree = null;
+    if ($isExpertVisit) {
+        require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/ExpertVisitPricing.php';
+        $evCatId  = (int)($service['category_id'] ?? 0);
+        $evCityId = (int)CityResolver::resolveId($db, $operationalRequest['city'] ?? null);
+        $evFee    = ExpertVisitPricing::resolve($db, $evCatId ?: null, $evCityId ?: null);
+        $expertVisitFree = ($evFee['is_free'] || (float)$evFee['amount'] <= 0);
+        $expertVisitFee  = $expertVisitFree ? 0.0 : round((float)$evFee['amount'], 2);
+        if ($expertVisitFree) {
+            $paymentMethod = 'cod';
+            $bookingTotal  = 0.0;
+            $paymentStatus = 'unpaid';               // free visit — nothing owed
+        } else {
+            $bookingMode   = 'inspection';           // paid visit -> inspection Cashfree path
+            $paymentMethod = 'online';
+            $bookingTotal  = $expertVisitFee;
+            $paymentStatus = servicePaymentStatusForMode('inspection', 'online');
+        }
+    }
+
     $jobPriority = serviceJobPriorityForMode($bookingMode, $input);
     $existingBooking = null;
     if (serviceTableHasColumn($db, 'bookings', 'client_request_id')) {
@@ -1467,6 +1522,14 @@ if ($method === 'POST' && $uri === '/api/service/request') {
         if ($pkgName !== null     && serviceColumnOrNull($db, 'bookings', 'package_name', ':package_name', $pkgName, $bookingColumns, $bookingBind))           $bookingValues[] = ':package_name';
         if ($pkgAreaSqft !== null  && serviceColumnOrNull($db, 'bookings', 'area_sqft', ':area_sqft', $pkgAreaSqft, $bookingColumns, $bookingBind))            $bookingValues[] = ':area_sqft';
         if ($pkgEstimate !== null && serviceColumnOrNull($db, 'bookings', 'estimate_amount', ':estimate_amount', $pkgEstimate, $bookingColumns, $bookingBind)) $bookingValues[] = ':estimate_amount';
+
+        // V2 Expert Visit structured fields (final_quote_amount stays NULL until the
+        // expert enters the real quote after visiting — estimate-vs-actual).
+        if ($isExpertVisit) {
+            if (serviceColumnOrNull($db, 'bookings', 'visit_type', ':visit_type', 'expert_visit', $bookingColumns, $bookingBind)) $bookingValues[] = ':visit_type';
+            if ($expertVisitFee !== null  && serviceColumnOrNull($db, 'bookings', 'expert_visit_fee', ':ev_fee', $expertVisitFee, $bookingColumns, $bookingBind))          $bookingValues[] = ':ev_fee';
+            if ($expertVisitFree !== null && serviceColumnOrNull($db, 'bookings', 'expert_visit_free', ':ev_free', $expertVisitFree ? 1 : 0, $bookingColumns, $bookingBind)) $bookingValues[] = ':ev_free';
+        }
 
         $bStmt = $db->prepare("INSERT INTO bookings (" . implode(', ', $bookingColumns) . ") VALUES (" . implode(', ', $bookingValues) . ")");
         $bStmt->execute($bookingBind);

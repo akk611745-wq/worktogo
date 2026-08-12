@@ -167,6 +167,13 @@ const API = (() => {
       return _request("GET", `/api/service/packages?${qs.toString()}`);
     },
 
+    async getExpertVisitFee(category = "", city = "") {
+      const qs = new URLSearchParams({ category: category || "" });
+      if (city) qs.set("city", city);
+      qs.set("_t", Date.now());
+      return _request("GET", `/api/service/expert-visit-fee?${qs.toString()}`);
+    },
+
     async getPublicSettings() {
       return _request("GET", "/api/settings");
     },

@@ -787,6 +787,18 @@ function openOpsDetail(bookingId) {
             <div style="font-weight:700;color:var(--text-primary);margin-top:2px">${escHtml(pkg.name || ('Package #' + pkg.id))}</div>
             ${bits.length ? `<div style="color:var(--text-muted)">${bits.join(' · ')}</div>` : ''}</div></div>`;
         })()}
+        ${(function(){
+          const ev = view.expert_visit || ((booking.visit_type === 'expert_visit')
+            ? { is_free: !!Number(booking.expert_visit_free), fee: booking.expert_visit_fee, payment_status: booking.payment_status, final_quote_amount: booking.final_quote_amount } : null);
+          if (!ev) return '';
+          const feeLabel = ev.is_free ? 'FREE' : ('₹' + escHtml(String(ev.fee ?? '—')));
+          const payLabel = ev.is_free ? 'no payment' : escHtml(String(ev.payment_status || 'unpaid'));
+          const quote = (ev.final_quote_amount != null && ev.final_quote_amount !== '')
+            ? `<div style="color:var(--text-muted)">Final quote: ₹${escHtml(Number(ev.final_quote_amount).toLocaleString('en-IN'))}</div>` : '';
+          return `<div class="card"><div class="card-body"><b>🧑‍🔧 Expert Visit</b>
+            <div style="font-weight:700;color:var(--text-primary);margin-top:2px">${feeLabel} <span style="font-size:11px;color:var(--text-muted);font-weight:400">(${payLabel})</span></div>
+            ${quote}</div></div>`;
+        })()}
         <div class="card"><div class="card-body"><b>Actions</b><div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:8px">${vendorActionHtml}<label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-secondary);cursor:pointer;margin-left:4px"><input type="checkbox" id="override-payment-${escHtml(String(bookingId))}" style="accent-color:var(--red)"> Confirm payment verified</label><span style="font-size:9px;color:var(--red)">⚠ Inspection override only</span><button class="btn btn-sm btn-warn" onclick="simulateOpsAction('${escHtml(String(bookingId))}','unassign_vendor')">Unassign</button>${inspectionActionsHtml}<button class="btn btn-sm btn-warn" onclick="simulateOpsAction('${escHtml(String(bookingId))}','mark_escalated')">Escalate</button></div></div></div>
         <div class="card"><div class="card-body" style="border-top:2px solid var(--red-dim)"><b style="color:var(--red)">⚠ Force Status Override</b><div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:8px"><select class="form-control" id="ops-force-status-${escHtml(String(bookingId))}" style="max-width:180px"><option value="">Select status…</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="escalated">Escalated</option></select><button class="btn btn-sm btn-danger" onclick="var s=document.getElementById('ops-force-status-${escHtml(String(bookingId))}').value;if(!s){Toast.warn('Select a status first.');return;}adminSetJobStatus('${escHtml(String(bookingId))}',s)">Override Status</button></div></div></div>
         <div class="card"><div class="card-body"><b>Timeline</b>${timeline.map(t => `<div style="border-left:2px solid var(--border);padding:6px 0 6px 10px"><b>${escHtml(t.event || 'update')}</b> <span style="color:var(--text-muted)">${escHtml(t.actor || 'system')} · ${escHtml(t.state || '')} · ${escHtml(t.at || '')}</span><div style="font-size:11px;color:var(--text-muted)">${escHtml(t.notes || '')}</div></div>`).join('') || '<div style="color:var(--text-muted)">No timeline entries.</div>'}</div></div>
