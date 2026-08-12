@@ -453,9 +453,77 @@ export async function render(container) {
       HomePage.closeCompanyView();
       setTimeout(() => HomePage.bookCategoryCta(s, "inspection"), 260);
     },
-    companyChoosePackage(/* slug */) {
-      // HOOK for the Packages + live-estimate task (next). Shell placeholder.
-      UI.toast("Packages & live estimate are arriving soon. Tap Expert Visit or send a request — the company will help.", "info", 4200);
+    async companyChoosePackage(slug = "") {
+      const s = slug || _companyViewSlug || "";
+      _companySelectedPackageId = null;
+      const body = document.getElementById("company-view-body");
+      if (body) body.innerHTML = `<div class="company-pkg-loading"><span class="company-pkg-spinner"></span>Loading packages…</div>`;
+      let packages = [];
+      try {
+        const cityHint = (typeof _resolvedLocality === "function" ? (_resolvedLocality().city || "") : "")
+          || (CONFIG?.SERVICE_ONLY?.CITY || "");
+        const res = await API.getPackages(s, cityHint);
+        packages = res?.data?.data?.packages || res?.data?.packages || [];
+      } catch (e) { packages = []; }
+      _companyPackages = Array.isArray(packages) ? packages : [];
+      if (body) body.innerHTML = _companyPackagesHTML(s, _companyPackages);
+      const panel = document.querySelector("#company-view-overlay .company-view-panel");
+      if (panel) panel.scrollTop = 0;
+    },
+    backToCompanyView(slug = "") {
+      const s = slug || _companyViewSlug || "";
+      _companySelectedPackageId = null;
+      const body = document.getElementById("company-view-body");
+      if (body) body.innerHTML = _companyViewHTML(s);
+      const panel = document.querySelector("#company-view-overlay .company-view-panel");
+      if (panel) panel.scrollTop = 0;
+    },
+    updatePackageEstimates() {
+      const sqft = Math.max(0, parseFloat(document.getElementById("cv-sqft")?.value || "0") || 0);
+      (_companyPackages || []).forEach(p => {
+        const el = document.getElementById("cv-est-" + p.id);
+        if (!el) return;
+        const est = _packageEstimate(p, sqft);
+        el.textContent = (sqft > 0 && est != null) ? `≈ ${UI.formatCurrency(est)}` : "";
+      });
+    },
+    selectCompanyPackage(id) {
+      const pid = Number(id);
+      _companySelectedPackageId = (_companySelectedPackageId === pid) ? null : pid;
+      document.querySelectorAll(".company-pkg-card").forEach(el => {
+        el.classList.toggle("selected", Number(el.dataset.pkg) === _companySelectedPackageId);
+      });
+      const note = document.getElementById("cv-pkg-note");
+      if (note) note.textContent = _companySelectedPackageId
+        ? "Selected — we'll note what you like. Still no charge; you confirm with the company after."
+        : "Ticking a package is optional — it just tells us what you like. You can also send a general request.";
+    },
+    submitPackageRequest(slug = "") {
+      const s = slug || _companyViewSlug || "";
+      const meta = _categoryMeta(s);
+      const sqft = Math.max(0, parseFloat(document.getElementById("cv-sqft")?.value || "0") || 0);
+      const pkg = (_companyPackages || []).find(p => Number(p.id) === Number(_companySelectedPackageId)) || null;
+      const estimate = pkg ? _packageEstimate(pkg, sqft) : null;
+      // Carry the package context into the existing booking flow via recognised
+      // fields (name / quick_service / selected_issues), so the request "carries"
+      // the chosen package + area + estimate. Persisting package_id as a booking
+      // column is a backend follow-up.
+      const label = pkg
+        ? `${meta.label} — ${pkg.name}${sqft > 0 ? ` (${sqft} sqft` + (estimate != null ? `, est ${UI.formatCurrency(estimate)}` : "") + ")" : ""}`
+        : `${meta.label} — Company request`;
+      HomePage.closeCompanyView();
+      setTimeout(() => HomeModals.openBooking({
+        id: `pkg-${s || "all"}-${pkg ? pkg.id : "none"}`,
+        name: label,
+        booking_mode: "free_lead",
+        request_source: "company_package",
+        category_slug: s,
+        category: s,
+        icon: meta.icon || "📦",
+        quick_service: pkg ? pkg.name : undefined,
+        selected_issues: pkg ? [pkg.name] : [],
+        company_package: pkg ? { id: pkg.id, name: pkg.name, area_sqft: sqft || null, estimate: estimate } : null,
+      }), 260);
     },
     submitCompanyRequest(slug = "") {
       // HOOK for the in-view minimal submit. For now capture the minimal fields
@@ -2340,6 +2408,80 @@ function _companyViewHTML(slug = "") {
   `;
 }
 
+// ── Company View — Packages (photo-first cards + live sqft estimate) ────────
+function _packageEstimate(p, sqft) {
+  const rate = Number(p.rate_per_sqft) || 0;
+  const base = Number(p.base_price) || 0;
+  const min  = Number(p.min_sqft) || 0;
+  if (rate <= 0 && base <= 0) return null;              // no priceable data
+  const billSqft = Math.max(Number(sqft) || 0, min);
+  return base + rate * billSqft;                        // base + rate × max(sqft, min)
+}
+
+function _pkgNum(v) {
+  const n = Number(v) || 0;
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function _packagePriceLine(p) {
+  const rate = Number(p.rate_per_sqft) || 0;
+  const base = Number(p.base_price) || 0;
+  if (rate > 0) return `₹${_pkgNum(rate)} / sq ft${base > 0 ? ` + ₹${_pkgNum(base)} base` : ""}`;
+  if (base > 0) return `₹${_pkgNum(base)} flat`;
+  return "Estimate on request";
+}
+
+function _packageCardHTML(p) {
+  const cover = p.cover_url
+    ? `<div class="company-pkg-cover" style="background-image:url('${_esc(p.cover_url)}')"></div>`
+    : `<div class="company-pkg-cover company-pkg-cover--ph">📦</div>`;
+  const feats = Array.isArray(p.features) ? p.features.slice(0, 4) : [];
+  return `
+    <button type="button" class="company-pkg-card" data-pkg="${p.id}" onclick="HomePage.selectCompanyPackage(${p.id})">
+      ${cover}
+      <div class="company-pkg-body">
+        <div class="company-pkg-head">
+          <h3>${_esc(p.name || "")}</h3>
+          <span class="company-pkg-tick" aria-hidden="true">✓</span>
+        </div>
+        ${p.description ? `<p class="company-pkg-desc">${_esc(p.description)}</p>` : ""}
+        ${feats.length ? `<ul class="company-pkg-feats">${feats.map(f => `<li>${_esc(f)}</li>`).join("")}</ul>` : ""}
+        <div class="company-pkg-price">
+          <span class="company-pkg-rate">${_esc(_packagePriceLine(p))}</span>
+          <span class="company-pkg-estimate" id="cv-est-${p.id}"></span>
+        </div>
+      </div>
+    </button>`;
+}
+
+function _companyPackagesHTML(slug, packages) {
+  const meta = _categoryMeta(slug);
+  return `
+    <header class="company-topbar">
+      <button class="company-back" type="button" onclick="HomePage.backToCompanyView('${_esc(slug)}')" aria-label="Back">←</button>
+      <span class="company-topbar-title">${_esc(meta.label)} packages</span>
+      <span class="company-topbar-badge">Company</span>
+    </header>
+
+    <div class="company-pkg-estimate-bar">
+      <label for="cv-sqft">Your area (sq ft)</label>
+      <input id="cv-sqft" type="number" inputmode="numeric" min="0" placeholder="e.g. 500" oninput="HomePage.updatePackageEstimates()"/>
+      <p class="company-pkg-estimate-hint">Enter your area to see an instant estimate — just an idea of cost, no charge.</p>
+    </div>
+
+    <section class="company-pkg-list">
+      ${packages.length
+        ? packages.map(p => _packageCardHTML(p)).join("")
+        : `<p class="company-pkg-empty">No packages here yet — tap “Send request” and the company will help you directly.</p>`}
+    </section>
+
+    <section class="company-pkg-submit">
+      <p class="company-pkg-note" id="cv-pkg-note">Ticking a package is optional — it just tells us what you like. You can also send a general request.</p>
+      <button type="button" class="btn-primary company-request-btn" onclick="HomePage.submitPackageRequest('${_esc(slug)}')">Send request</button>
+    </section>
+  `;
+}
+
 function _heroHTML(slug = "") {
   const meta = _categoryMeta(slug);
   const localityContext = _resolvedLocality();
@@ -3750,6 +3892,8 @@ function _jsonAttr(obj) {
 let _pilotLoaded = false;
 let _activeCategory = "";
 let _companyViewSlug = "";
+let _companyPackages = [];
+let _companySelectedPackageId = null;
 let _searchQuery = "";
 let _activeChipFilter = "";
 let _activeLocalityFilter = "";

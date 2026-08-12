@@ -969,6 +969,73 @@ if ($method === 'GET' && $uri === '/api/service/categories') {
     Response::success(['categories' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
 }
 
+// ── GET /api/service/packages?category=<slug|id>&city=<slug|name> ───────────
+// Customer-facing, read-only, customer-safe (no admin fields). Returns ACTIVE
+// packages for a category, resolved for the customer's city: city-specific
+// packages OVERRIDE the global set for that city; otherwise the global
+// (city_id IS NULL) set. City resolution is invisible to the customer — it
+// defaults to the platform city when no hint is given.
+if ($method === 'GET' && $uri === '/api/service/packages') {
+    header('Cache-Control: no-store, max-age=0');
+
+    // Resolve category — accept a slug or a numeric id.
+    $catParam   = trim((string)($_GET['category'] ?? $_GET['category_id'] ?? ''));
+    $categoryId = 0;
+    if ($catParam !== '') {
+        if (ctype_digit($catParam)) {
+            $categoryId = (int)$catParam;
+        } else {
+            $cstmt = $db->prepare("SELECT id FROM categories WHERE slug = ? LIMIT 1");
+            $cstmt->execute([$catParam]);
+            $categoryId = (int)($cstmt->fetchColumn() ?: 0);
+        }
+    }
+    if ($categoryId <= 0) { Response::success(['packages' => []]); }
+
+    // Resolve city invisibly — hint (slug/name) -> cities.id, else default city.
+    $cityId = 0;
+    if (serviceTableHasColumn($db, 'packages', 'city_id') && class_exists('CityResolver')) {
+        $cityHint = trim((string)($_GET['city'] ?? ''));
+        $cityId   = CityResolver::resolveId($db, $cityHint !== '' ? $cityHint : null);
+    }
+
+    $select = "p.id, p.name, p.description, p.features, p.rate_per_sqft, p.base_price, p.min_sqft, p.inspection_fee, p.sort_order, m.public_url AS cover_url";
+    try {
+        $fetch = function (string $cityWhere, array $bind) use ($db, $select) {
+            $sql = "SELECT {$select}
+                    FROM packages p
+                    LEFT JOIN media m ON m.id = p.cover_media_id AND m.deleted_at IS NULL
+                    WHERE p.category_id = :cat AND p.is_active = 1 {$cityWhere}
+                    ORDER BY p.sort_order ASC, p.id ASC";
+            $stmt = $db->prepare($sql);
+            $stmt->execute($bind);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        };
+
+        // City-specific overrides global: try the city set first, fall back to global.
+        $rows = [];
+        if ($cityId > 0) {
+            $rows = $fetch('AND p.city_id = :city', [':cat' => $categoryId, ':city' => $cityId]);
+        }
+        if (!$rows) {
+            $rows = $fetch('AND p.city_id IS NULL', [':cat' => $categoryId]);
+        }
+
+        foreach ($rows as &$r) {
+            $r['features']       = $r['features'] ? (json_decode($r['features'], true) ?: []) : [];
+            $r['rate_per_sqft']  = $r['rate_per_sqft']  !== null ? (float)$r['rate_per_sqft']  : null;
+            $r['base_price']     = $r['base_price']     !== null ? (float)$r['base_price']     : null;
+            $r['min_sqft']       = $r['min_sqft']       !== null ? (int)$r['min_sqft']         : null;
+            $r['inspection_fee'] = $r['inspection_fee'] !== null ? (float)$r['inspection_fee'] : null;
+        }
+        unset($r);
+        Response::success(['packages' => $rows]);
+    } catch (PDOException $e) {
+        // packages table not present yet (migration not applied) — degrade gracefully
+        Response::success(['packages' => []]);
+    }
+}
+
 // â”€â”€ POST /api/services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method === 'POST' && $uri === '/api/services') {
     $auth  = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE);

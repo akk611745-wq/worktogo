@@ -846,3 +846,205 @@ body.company-view-lock { overflow: hidden; }
   .company-banner { padding-top: 38px; padding-bottom: 34px; }
   .company-banner-title { font-size: 1.6rem; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   COMPANY VIEW — PACKAGES (photo-first cards + instant live sqft estimate)
+   Choose-by-seeing: cover photos are the hero; the estimate appears as they
+   type; ticking is optional (no obligation). Mobile-first.
+   ═══════════════════════════════════════════════════════════════════════ */
+.company-pkg-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 220px;
+  color: #56617a;
+  font-size: 0.9rem;
+}
+.company-pkg-spinner {
+  width: 20px; height: 20px;
+  border: 2px solid #d7dce8;
+  border-top-color: var(--wtg-accent);
+  border-radius: 50%;
+  animation: company-pkg-spin 0.7s linear infinite;
+}
+@keyframes company-pkg-spin { to { transform: rotate(360deg); } }
+
+/* Sqft input — sticky so the estimate context stays as they scroll cards */
+.company-pkg-estimate-bar {
+  position: sticky;
+  top: 60px;
+  z-index: 2;
+  padding: 14px;
+  background: #fff;
+  border-bottom: 1px solid #e6e9f2;
+}
+.company-pkg-estimate-bar label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #6b7590;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.company-pkg-estimate-bar input {
+  width: 100%;
+  padding: 13px 14px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  border-radius: 12px;
+  border: 1.5px solid #d7dce8;
+  background: #fbfcfe;
+  box-sizing: border-box;
+}
+.company-pkg-estimate-bar input:focus {
+  outline: none;
+  border-color: var(--wtg-accent) !important;
+  background: #fff;
+}
+.company-pkg-estimate-hint {
+  margin: 8px 0 0;
+  font-size: 0.72rem;
+  color: #8a93a8;
+}
+
+.company-pkg-list {
+  display: grid;
+  gap: 14px;
+  padding: 16px 14px;
+}
+.company-pkg-empty {
+  font-size: 0.86rem;
+  color: #56617a;
+  text-align: center;
+  padding: 20px 8px;
+  margin: 0;
+}
+
+/* Photo-first package card */
+.company-pkg-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 2px solid #e6e9f2;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(20, 32, 58, 0.07);
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .1s ease;
+}
+.company-pkg-card:active { transform: scale(0.995); }
+.company-pkg-card:hover { box-shadow: 0 12px 26px rgba(20, 32, 58, 0.13); }
+.company-pkg-card.selected {
+  border-color: var(--wtg-accent);
+  box-shadow: 0 12px 28px rgba(232, 84, 10, 0.22);
+}
+
+.company-pkg-cover {
+  width: 100%;
+  height: 168px;
+  background-color: #eef1f7;
+  background-size: cover;
+  background-position: center;
+}
+.company-pkg-cover--ph {
+  display: grid;
+  place-items: center;
+  font-size: 2.4rem;
+  background: linear-gradient(135deg, #eef1f7, #dfe4ee);
+}
+
+.company-pkg-body { padding: 14px 16px 16px; }
+.company-pkg-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.company-pkg-head h3 {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 800;
+  color: #14203a;
+}
+.company-pkg-tick {
+  flex: 0 0 auto;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 2px solid #d7dce8;
+  color: transparent;
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  font-weight: 900;
+  transition: all .15s ease;
+}
+.company-pkg-card.selected .company-pkg-tick {
+  background: var(--wtg-accent);
+  border-color: var(--wtg-accent);
+  color: #fff;
+}
+.company-pkg-desc {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #56617a;
+}
+.company-pkg-feats {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.company-pkg-feats li {
+  position: relative;
+  padding-left: 18px;
+  font-size: 0.8rem;
+  color: #445068;
+}
+.company-pkg-feats li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: var(--wtg-accent);
+  font-weight: 800;
+}
+.company-pkg-price {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #eef1f7;
+}
+.company-pkg-rate {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #6b7590;
+}
+.company-pkg-estimate {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--wtg-accent-dark);
+  white-space: nowrap;
+}
+
+.company-pkg-submit {
+  position: sticky;
+  bottom: 0;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: saturate(1.4) blur(8px);
+  border-top: 1px solid #e6e9f2;
+}
+.company-pkg-note {
+  margin: 0 0 10px;
+  font-size: 0.74rem;
+  text-align: center;
+  color: #8a93a8;
+}

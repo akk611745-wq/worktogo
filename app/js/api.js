@@ -160,6 +160,13 @@ const API = (() => {
       return _request("GET", `/api/service/categories?_t=${Date.now()}`);
     },
 
+    async getPackages(category = "", city = "") {
+      const qs = new URLSearchParams({ category: category || "" });
+      if (city) qs.set("city", city);
+      qs.set("_t", Date.now());
+      return _request("GET", `/api/service/packages?${qs.toString()}`);
+    },
+
     async getPublicSettings() {
       return _request("GET", "/api/settings");
     },
