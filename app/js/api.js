@@ -174,6 +174,10 @@ const API = (() => {
       return _request("GET", `/api/service/expert-visit-fee?${qs.toString()}`);
     },
 
+    async getVendorWorkPhotos(vendorId) {
+      return _request("GET", `/api/service/vendor/${encodeURIComponent(vendorId)}/work-photos?_t=${Date.now()}`);
+    },
+
     async getPublicSettings() {
       return _request("GET", "/api/settings");
     },

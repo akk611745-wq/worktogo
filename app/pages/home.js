@@ -825,6 +825,29 @@ window.HomeModals = (() => {
     _bindSwipeToClose(modal?.querySelector(".modal-sheet"));
     _persistPendingBookingForm();
     _attachAddressAutocomplete();
+    // Lazy-load the vendor's approved work photos (trust gallery) for direct bookings.
+    if (isVendorDirect && _currentService?.vendor_id) _loadVendorGallery(_currentService.vendor_id);
+  }
+
+  // Lazy trust gallery — approved work photos for the vendor being booked.
+  async function _loadVendorGallery(vendorId) {
+    const box = document.getElementById("vendor-work-gallery");
+    if (!box || !vendorId) return;
+    try {
+      const res = await API.getVendorWorkPhotos(vendorId);
+      const photos = res?.data?.data?.photos || res?.data?.photos || [];
+      if (!photos.length) { box.style.display = "none"; return; }
+      box.innerHTML = `
+        <div class="vwg-head">📷 Real work by this professional</div>
+        <div class="vwg-strip">
+          ${photos.slice(0, 12).map(p => `
+            <figure class="vwg-item">
+              <img src="${_esc(p.url)}" alt="${_esc(p.caption || "Work photo")}" loading="lazy"/>
+              ${p.location_label ? `<figcaption class="vwg-loc">📍 ${_esc(p.location_label)}</figcaption>` : ""}
+            </figure>`).join("")}
+        </div>`;
+      box.style.display = "block";
+    } catch (e) { box.style.display = "none"; }
   }
 
   async function confirmBooking() {
@@ -1255,6 +1278,7 @@ window.HomeModals = (() => {
     const activeIssues = defaultIssue ? [defaultIssue] : [];
     return `
       <div class="vendor-direct-form">
+        <div class="vendor-work-gallery" id="vendor-work-gallery" data-vendor="${_esc(String(service.vendor_id || ""))}"></div>
         <div class="modal-field">
           <label for="booking-mobile">Mobile</label>
           <input type="tel" id="booking-mobile" class="modal-input" placeholder="Mobile" autocomplete="tel" value="${_esc(phoneValue)}" oninput="HomePage.persistPendingBookingForm?.()" />

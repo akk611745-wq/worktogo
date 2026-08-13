@@ -1232,6 +1232,77 @@ try {
         }
     }
 
+    // ══ Media approvals — vendor work-photo moderation + auto-approve toggle ══
+
+    // ── GET /api/admin/media/pending ─────────────────────────
+    if ($method === 'GET' && $uri === '/api/admin/media/pending') {
+        require_once SYSTEM_ROOT . '/core/helpers/Media.php';
+        // auto-approve mode (app_settings; default off = manual review)
+        $auto = false;
+        try {
+            $s = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'media_auto_approve' LIMIT 1");
+            $s->execute();
+            $auto = in_array(strtolower(trim((string)($s->fetchColumn() ?: '0'))), ['1', 'true', 'yes', 'on'], true);
+        } catch (PDOException $e) { /* setting absent -> off */ }
+
+        $items = [];
+        $rows  = Media::pendingQueue($db, 'vendor', 200);
+        if ($rows) {
+            // attach the owning vendor's name for context
+            $vids = array_values(array_unique(array_map(fn($r) => (int)$r['owner_id'], $rows)));
+            $names = [];
+            if ($vids) {
+                $ph = implode(',', array_fill(0, count($vids), '?'));
+                try {
+                    $vs = $db->prepare("SELECT id, business_name FROM vendors WHERE id IN ($ph)");
+                    $vs->execute($vids);
+                    foreach ($vs->fetchAll(PDO::FETCH_ASSOC) as $v) { $names[(int)$v['id']] = $v['business_name']; }
+                } catch (PDOException $e) { /* ignore */ }
+            }
+            foreach ($rows as $r) {
+                $items[] = [
+                    'id'             => (int)$r['id'],
+                    'vendor_id'      => (int)$r['owner_id'],
+                    'vendor_name'    => $names[(int)$r['owner_id']] ?? ('Vendor #' . (int)$r['owner_id']),
+                    'url'            => $r['public_url'] ?? $r['storage_key'],
+                    'caption'        => $r['caption'] ?? null,
+                    'location_label' => $r['location_label'] ?? null,
+                    'created_at'     => $r['created_at'] ?? null,
+                ];
+            }
+        }
+        Response::success(['auto_approve' => $auto, 'items' => $items]);
+    }
+
+    // ── PATCH /api/admin/media/auto-approve  {enabled:bool} ──
+    if ($method === 'PATCH' && $uri === '/api/admin/media/auto-approve') {
+        $input   = json_decode(file_get_contents('php://input'), true) ?? [];
+        $enabled = !empty($input['enabled']) ? '1' : '0';
+        $db->prepare(
+            "INSERT INTO app_settings (setting_key, setting_value, value_type, label, is_public, updated_at)
+             VALUES ('media_auto_approve', :v, 'boolean', 'Auto-approve vendor media (1=auto, 0=manual)', 0, NOW())
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()"
+        )->execute([':v' => $enabled]);
+        Logger::info('Admin set media auto-approve', ['admin_id' => $auth['user_id'], 'enabled' => $enabled]);
+        Response::success(['auto_approve' => $enabled === '1'], 200, 'Approval mode updated');
+    }
+
+    // ── PATCH /api/admin/media/{id}/status  {status:'approved'|'rejected'} ──
+    if ($method === 'PATCH' && preg_match('#^/api/admin/media/(\d+)/status$#', $uri, $m)) {
+        require_once SYSTEM_ROOT . '/core/helpers/Media.php';
+        $mediaId = (int)$m[1];
+        $input   = json_decode(file_get_contents('php://input'), true) ?? [];
+        $status  = strtolower(trim((string)($input['status'] ?? '')));
+        $notes   = isset($input['notes']) ? trim((string)$input['notes']) : null;
+        if (!in_array($status, [Media::STATUS_APPROVED, Media::STATUS_REJECTED], true)) {
+            Response::validation("status must be 'approved' or 'rejected'");
+        }
+        $ok = Media::setStatus($db, $mediaId, $status, (int)$auth['user_id'], $notes);
+        if (!$ok) Response::error('Could not update media status (not found or already handled).', 400);
+        Logger::info('Admin moderated media', ['admin_id' => $auth['user_id'], 'media_id' => $mediaId, 'status' => $status]);
+        Response::success(['id' => $mediaId, 'status' => $status], 200, 'Media ' . $status);
+    }
+
     // ── GET /api/admin/orders ─────────────────────────────────
     if ($method === 'GET' && $uri === '/api/admin/orders') {
         $page   = max(1, (int) ($_GET['page']  ?? 1));

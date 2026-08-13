@@ -152,6 +152,27 @@ function renderPage(user) {
       </div>
     </div>
 
+    <!-- Work photos gallery (Instagram-style; stored via the unified media table) -->
+    <div class="card" style="max-width:640px;margin-top:0;margin-left:auto;margin-right:auto;">
+      <div class="card-header"><span class="card-title">Work Photos</span></div>
+      <div class="card-body">
+        <p class="text-sm text-muted" style="margin-bottom:0.75rem;">Upload real photos of your work to build customer trust. New photos are reviewed before they show publicly.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+          <input type="file" id="workPhotoFile" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="uploadWorkPhoto(this)">
+          <div class="field" style="flex:1;min-width:150px;">
+            <label for="workPhotoCaption" style="font-size:0.72rem;">Caption (optional)</label>
+            <input type="text" id="workPhotoCaption" placeholder="e.g. Bathroom waterproofing" maxlength="120"/>
+          </div>
+          <div class="field" style="flex:1;min-width:130px;">
+            <label for="workPhotoLocation" style="font-size:0.72rem;">Location (optional)</label>
+            <input type="text" id="workPhotoLocation" placeholder="e.g. Mukhani" maxlength="120"/>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('workPhotoFile').click()">＋ Add photo</button>
+        </div>
+        <div id="workPhotosGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px;"></div>
+      </div>
+    </div>
+
     <!-- Security info card -->
     <div class="card" style="max-width:640px;margin-top:0;margin-left:auto;margin-right:auto;">
       <div class="card-header">
@@ -340,6 +361,7 @@ function populateProfile(p) {
     document.getElementById("viewMode").style.display = 'none';
     document.getElementById("editMode").style.display = 'block';
   }
+  loadWorkPhotos();
 }
 
 function isProfileComplete(p) {
@@ -525,6 +547,68 @@ async function saveProfile() {
   Auth.setSession(Auth.getToken(), profileData);
   populateProfile(profileData);
   cancelEdit();
+}
+
+/* ── Work photos gallery (media table; upload / list / delete) ───────────── */
+async function loadWorkPhotos() {
+  const grid = document.getElementById('workPhotosGrid');
+  if (!grid) return;
+  try {
+    const token = localStorage.getItem('wtg_vendor_token') || '';
+    const res = await fetch(CONFIG.BASE_URL + '/api/vendor/work-photos', { headers: { 'Authorization': 'Bearer ' + token } });
+    const data = await res.json();
+    const photos = data?.data?.photos || data?.photos || [];
+    if (!photos.length) {
+      grid.innerHTML = '<div class="text-muted" style="font-size:0.78rem;grid-column:1/-1;">No work photos yet — add your first to build customer trust.</div>';
+      return;
+    }
+    grid.innerHTML = photos.map(p => {
+      const tone = p.status === 'approved' ? 'background:#dcfce7;color:#15803d;'
+        : p.status === 'rejected' ? 'background:#fee2e2;color:#b91c1c;'
+        : 'background:#fef3c7;color:#b45309;';
+      const label = p.status === 'approved' ? 'Live' : p.status === 'rejected' ? 'Rejected' : 'Pending';
+      return `<figure style="position:relative;margin:0;border-radius:10px;overflow:hidden;aspect-ratio:1/1;background:#f1f5f9;">
+        <img src="${escHtml(p.url)}" alt="${escHtml(p.caption || 'Work photo')}" loading="lazy" style="width:100%;height:100%;object-fit:cover;">
+        <span style="position:absolute;top:4px;left:4px;font-size:0.58rem;font-weight:700;padding:2px 6px;border-radius:6px;${tone}">${label}</span>
+        <button onclick="deleteWorkPhoto(${p.id})" title="Remove" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border:none;border-radius:50%;background:rgba(0,0,0,0.55);color:#fff;cursor:pointer;font-size:0.72rem;line-height:1;">&times;</button>
+      </figure>`;
+    }).join('');
+  } catch (e) {
+    grid.innerHTML = '<div class="text-muted" style="font-size:0.78rem;grid-column:1/-1;">Could not load photos.</div>';
+  }
+}
+
+async function uploadWorkPhoto(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('photo', file);
+  const cap = (document.getElementById('workPhotoCaption')?.value || '').trim();
+  const loc = (document.getElementById('workPhotoLocation')?.value || '').trim();
+  if (cap) fd.append('caption', cap);
+  if (loc) fd.append('location_label', loc);
+  try {
+    const token = localStorage.getItem('wtg_vendor_token') || '';
+    const res = await fetch(CONFIG.BASE_URL + '/api/vendor/work-photo', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token }, body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { showToast(data?.message || 'Upload failed.', 'error'); return; }
+    showToast(data?.data?.status === 'approved' ? 'Photo published!' : 'Photo uploaded — pending review.', 'success');
+    const capEl = document.getElementById('workPhotoCaption'); if (capEl) capEl.value = '';
+    const locEl = document.getElementById('workPhotoLocation'); if (locEl) locEl.value = '';
+    loadWorkPhotos();
+  } catch (e) { showToast('Network error.', 'error'); }
+  finally { input.value = ''; }
+}
+
+async function deleteWorkPhoto(id) {
+  if (!confirmAction('Remove this photo?')) return;
+  try {
+    const token = localStorage.getItem('wtg_vendor_token') || '';
+    const res = await fetch(CONFIG.BASE_URL + '/api/vendor/work-photo/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); showToast(d?.message || 'Could not remove.', 'error'); return; }
+    showToast('Photo removed.', 'success');
+    loadWorkPhotos();
+  } catch (e) { showToast('Network error.', 'error'); }
 }
 
 function confirmLogout() {

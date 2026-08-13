@@ -527,4 +527,109 @@ if ($method === 'POST' && $uri === '/api/vendor/profile/photo') {
     Response::success(['url' => $url], 200, 'Photo updated');
 }
 
+// ══ Vendor work-photo gallery (Instagram-style, via the unified media table) ══
+// Reuses core/helpers/Media.php + UploadHelper. Photos default to PENDING unless
+// the admin 'media_auto_approve' setting is on. Provider-agnostic: stored as
+// provider='local' + storage_key + public_url — a later CDN switch is data-only.
+// Video reuses the same table later (media_type='video'); not built here.
+$__mediaAutoApprove = function (PDO $db): bool {
+    try {
+        $s = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'media_auto_approve' LIMIT 1");
+        $s->execute();
+        return in_array(strtolower(trim((string)($s->fetchColumn() ?: '0'))), ['1', 'true', 'yes', 'on'], true);
+    } catch (\Throwable $e) { return false; }
+};
+
+// ── POST /api/vendor/work-photo  (multipart: photo [, caption, location_label]) ──
+if ($method === 'POST' && $uri === '/api/vendor/work-photo') {
+    $auth     = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_VENDOR_SHOPPING);
+    $userId   = (int)$auth['user_id'];
+    $vendorId = resolveVendorId($db, $userId);
+    if (empty($_FILES['photo']) || $_FILES['photo']['error'] === UPLOAD_ERR_NO_FILE) {
+        Response::error('No file uploaded. Send file as multipart field "photo".', 400);
+    }
+    require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/UploadHelper.php';
+    require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Media.php';
+    if (!Media::hasTable($db)) Response::error('Photo gallery is not available yet. Please try again later.', 503);
+
+    try { $url = UploadHelper::save($_FILES['photo'], 'vendor_work'); }
+    catch (Exception $e) { Response::error($e->getMessage(), 400); }
+
+    // Media is tied to the vendor — the vendor's city is already known (no hardcoded city).
+    $vCityId = null;
+    if (ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'city_id')) {
+        $vc = $db->prepare("SELECT city_id FROM vendors WHERE id = ? LIMIT 1");
+        $vc->execute([$vendorId]);
+        $vCityId = (int)($vc->fetchColumn() ?: 0) ?: null;
+    }
+    $caption  = trim((string)($_POST['caption'] ?? ''));
+    $location = trim((string)($_POST['location_label'] ?? ''));
+    $status   = $__mediaAutoApprove($db) ? Media::STATUS_APPROVED : Media::STATUS_PENDING;
+
+    $mediaId = Media::add($db, [
+        'owner_type'          => 'vendor',
+        'owner_id'            => $vendorId,
+        'media_type'          => 'image',
+        'purpose'             => 'work_photo',
+        'storage_provider'    => 'local',
+        'storage_key'         => $url,
+        'public_url'          => $url,
+        'caption'             => $caption  !== '' ? mb_substr($caption, 0, 500)  : null,
+        'location_label'      => $location !== '' ? mb_substr($location, 0, 150) : null,
+        'city_id'             => $vCityId,
+        'status'              => $status,
+        'uploaded_by_user_id' => $userId,
+    ]);
+    if ($mediaId <= 0) Response::error('Could not save the photo. Please try again.', 500);
+    Response::success(
+        ['id' => $mediaId, 'url' => $url, 'status' => $status],
+        201,
+        $status === Media::STATUS_APPROVED ? 'Photo published' : 'Photo uploaded — pending review'
+    );
+}
+
+// ── GET /api/vendor/work-photos  (vendor's own, all statuses) ───────────────
+if ($method === 'GET' && $uri === '/api/vendor/work-photos') {
+    $auth     = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_VENDOR_SHOPPING);
+    $vendorId = resolveVendorId($db, (int)$auth['user_id']);
+    require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Media.php';
+    $rows  = Media::listForOwner($db, 'vendor', $vendorId);
+    $items = array_map(fn($r) => [
+        'id'             => (int)$r['id'],
+        'url'            => $r['public_url'] ?? $r['storage_key'],
+        'caption'        => $r['caption'] ?? null,
+        'location_label' => $r['location_label'] ?? null,
+        'status'         => $r['status'] ?? 'pending',
+        'media_type'     => $r['media_type'] ?? 'image',
+    ], $rows);
+    Response::success(['photos' => $items]);
+}
+
+// ── DELETE /api/vendor/work-photo/{id}  (own only, soft-delete) ─────────────
+if ($method === 'DELETE' && preg_match('#^/api/vendor/work-photo/(\d+)$#', $uri, $m)) {
+    $auth     = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_VENDOR_SHOPPING);
+    $vendorId = resolveVendorId($db, (int)$auth['user_id']);
+    $mediaId  = (int)$m[1];
+    require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Media.php';
+    $row = Media::get($db, $mediaId);
+    if (!$row || ($row['owner_type'] ?? '') !== 'vendor' || (int)($row['owner_id'] ?? 0) !== $vendorId) {
+        Response::forbidden('You can only remove your own photos');
+    }
+    Media::softDelete($db, $mediaId);
+    Response::success(['id' => $mediaId], 200, 'Photo removed');
+}
+
+// ── GET /api/service/vendor/{id}/work-photos  (PUBLIC — approved only) ──────
+if ($method === 'GET' && preg_match('#^/api/service/vendor/(\d+)/work-photos$#', $uri, $m)) {
+    header('Cache-Control: no-store, max-age=0');
+    require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/Media.php';
+    $rows  = Media::listApprovedForOwner($db, 'vendor', (int)$m[1], 'image');
+    $items = array_map(fn($r) => [
+        'url'            => $r['public_url'] ?? $r['storage_key'],
+        'caption'        => $r['caption'] ?? null,
+        'location_label' => $r['location_label'] ?? null,
+    ], $rows);
+    Response::success(['photos' => $items]);
+}
+
 Response::error('Endpoint not found', 404);
