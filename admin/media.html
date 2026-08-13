@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Media Approvals</title>
+  <link rel="icon" href="/app/assets/favicon.png"/>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+/* ── Media Approvals ─────────────────────────────────────────── */
+.ma-mode {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+.ma-mode-info { min-width: 220px; }
+.ma-mode-name { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.ma-mode-desc { font-size: 11px; color: var(--text-muted); margin-top: 3px; max-width: 520px; line-height: 1.5; }
+.ma-mode-pill {
+  font-size: 10px; font-weight: 700; font-family: var(--mono);
+  padding: 2px 9px; border-radius: 100px; margin-left: 8px; vertical-align: middle;
+}
+.ma-mode-pill.manual { background: var(--accent-dim); color: var(--accent); }
+.ma-mode-pill.auto   { background: var(--green-dim);  color: var(--green);  }
+
+.ma-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.ma-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  transition: opacity 0.3s ease, transform 0.3s ease, box-shadow var(--transition);
+}
+.ma-card:hover { box-shadow: var(--shadow-card); border-color: var(--border-mid); }
+.ma-card.leaving { opacity: 0; transform: scale(0.96); }
+.ma-thumb {
+  display: block; position: relative;
+  aspect-ratio: 4 / 3; background: var(--bg-deep);
+  overflow: hidden;
+}
+.ma-thumb img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.ma-thumb.img-missing::after {
+  content: 'Image unavailable';
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: var(--text-muted); font-family: var(--mono);
+}
+.ma-meta { padding: 11px 13px 4px; flex: 1; }
+.ma-vendor {
+  font-size: 13px; font-weight: 700; color: var(--text-primary);
+  display: flex; align-items: center; gap: 6px;
+}
+.ma-vendor svg { width: 13px; height: 13px; flex-shrink: 0; color: var(--text-muted); }
+.ma-caption { font-size: 12px; color: var(--text-secondary); margin-top: 6px; line-height: 1.45; }
+.ma-sub {
+  font-size: 11px; color: var(--text-muted); margin-top: 8px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.ma-sub .dot { opacity: 0.5; }
+.ma-loc { display: inline-flex; align-items: center; gap: 3px; }
+.ma-loc svg { width: 11px; height: 11px; }
+.ma-actions { display: flex; gap: 8px; padding: 11px 13px 13px; }
+.ma-actions .btn { flex: 1; justify-content: center; }
+.ma-empty {
+  text-align: center; padding: 56px 20px; color: var(--text-muted);
+}
+.ma-empty-icon { font-size: 34px; margin-bottom: 10px; }
+.ma-empty-title { font-size: 14px; font-weight: 700; color: var(--text-secondary); }
+.ma-empty-sub { font-size: 12px; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Media Approvals</h1>
+          <p class="page-subtitle" id="ma-count">Loading…</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="ma-refresh">↻ Refresh</button>
+      </div>
+
+      <!-- Approval mode -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-body ma-mode">
+          <div class="ma-mode-info">
+            <div class="ma-mode-name">
+              Approval mode
+              <span class="ma-mode-pill manual" id="ma-mode-pill">MANUAL</span>
+            </div>
+            <div class="ma-mode-desc" id="ma-mode-desc">Loading current mode…</div>
+          </div>
+          <label class="toggle" title="Toggle auto-approve">
+            <input type="checkbox" id="ma-auto-toggle" onchange="setAutoApprove(this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Pending queue -->
+      <div id="ma-queue" class="ma-grid">
+        <div class="ma-empty" style="grid-column:1/-1"><div class="spinner" style="margin:auto"></div></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/push.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Media Approvals', active: 'media.html' });
+
+// Endpoints (route through /heart/api/admin → backend /api/admin/*)
+const MEDIA_PENDING = '/media/pending';
+const MEDIA_AUTO    = '/media/auto-approve';
+const mediaStatusEp = (id) => `/media/${id}/status`;
+
+const pinIcon   = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`;
+const storeIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`;
+
+let pendingItems = [];
+
+async function loadPending() {
+  const queue = document.getElementById('ma-queue');
+  queue.innerHTML = '<div class="ma-empty" style="grid-column:1/-1"><div class="spinner" style="margin:auto"></div></div>';
+  try {
+    const res = await API.get(MEDIA_PENDING);
+    const d = res?.data || {};
+    pendingItems = Array.isArray(d.items) ? d.items : [];
+    renderMode(!!d.auto_approve);
+    renderQueue();
+  } catch (e) {
+    queue.innerHTML = `<div class="ma-empty" style="grid-column:1/-1"><div class="ma-empty-title" style="color:var(--red)">Failed to load</div><div class="ma-empty-sub">${escHtml(e.message || 'Please retry.')}</div></div>`;
+    Toast.error('Failed to load pending media');
+  }
+}
+
+function renderMode(auto) {
+  const toggle = document.getElementById('ma-auto-toggle');
+  const pill   = document.getElementById('ma-mode-pill');
+  const desc   = document.getElementById('ma-mode-desc');
+  toggle.checked = auto;
+  pill.textContent = auto ? 'AUTO' : 'MANUAL';
+  pill.className = 'ma-mode-pill ' + (auto ? 'auto' : 'manual');
+  desc.textContent = auto
+    ? 'Auto-approve is ON — new vendor photos go live immediately without review. Best for high-traffic periods. Photos already in the queue below still need a decision.'
+    : 'Manual review is ON — every new vendor photo waits here until you approve it. Flip to auto when traffic is high and you can’t keep up.';
+}
+
+function updateCount() {
+  const n = pendingItems.length;
+  document.getElementById('ma-count').textContent =
+    n === 0 ? 'Queue is clear' : `${n} photo${n === 1 ? '' : 's'} awaiting approval`;
+}
+
+function renderQueue() {
+  const queue = document.getElementById('ma-queue');
+  updateCount();
+  if (!pendingItems.length) {
+    queue.innerHTML = `
+      <div class="ma-empty" style="grid-column:1/-1">
+        <div class="ma-empty-icon">✓</div>
+        <div class="ma-empty-title">Queue is clear</div>
+        <div class="ma-empty-sub">No vendor photos are waiting for approval.</div>
+      </div>`;
+    return;
+  }
+  queue.innerHTML = pendingItems.map(cardHtml).join('');
+}
+
+function cardHtml(it) {
+  const url = it.url || '';
+  const loc = it.location_label
+    ? `<span class="ma-loc">${pinIcon}${escHtml(Fmt.truncate(it.location_label, 40))}</span><span class="dot">·</span>`
+    : '';
+  const caption = it.caption
+    ? `<div class="ma-caption">${escHtml(it.caption)}</div>` : '';
+  return `
+    <div class="ma-card" data-id="${it.id}">
+      <a class="ma-thumb" href="${escHtml(url)}" target="_blank" rel="noopener" title="Open full image">
+        <img src="${escHtml(url)}" loading="lazy" alt="Work photo from ${escHtml(it.vendor_name || 'vendor')}"
+             onerror="this.parentElement.classList.add('img-missing'); this.remove();">
+      </a>
+      <div class="ma-meta">
+        <div class="ma-vendor">${storeIcon}${escHtml(Fmt.truncate(it.vendor_name || ('Vendor #' + it.vendor_id), 28))}</div>
+        ${caption}
+        <div class="ma-sub">${loc}<span>${Fmt.date(it.created_at)}</span></div>
+      </div>
+      <div class="ma-actions">
+        <button class="btn btn-success btn-sm" onclick="moderate(${it.id}, 'approved', this)">✓ Approve</button>
+        <button class="btn btn-danger btn-sm"  onclick="moderate(${it.id}, 'rejected', this)">✕ Reject</button>
+      </div>
+    </div>`;
+}
+
+async function moderate(id, status, btn) {
+  const card = document.querySelector(`.ma-card[data-id="${id}"]`);
+  // Lock both buttons to prevent double-submit
+  if (card) card.querySelectorAll('button').forEach(b => b.disabled = true);
+  try {
+    await API.patch(mediaStatusEp(id), { status });
+    // Remove from list + animate out
+    pendingItems = pendingItems.filter(it => String(it.id) !== String(id));
+    if (card) {
+      card.classList.add('leaving');
+      setTimeout(() => { renderQueue(); }, 280);
+    } else {
+      renderQueue();
+    }
+    updateCount();
+    Toast.success(status === 'approved' ? 'Photo approved — now live to customers.' : 'Photo rejected.');
+  } catch (e) {
+    if (card) card.querySelectorAll('button').forEach(b => b.disabled = false);
+    Toast.error(e.message || 'Action failed');
+  }
+}
+
+async function setAutoApprove(enabled) {
+  const toggle = document.getElementById('ma-auto-toggle');
+  toggle.disabled = true;
+  try {
+    const res = await API.patch(MEDIA_AUTO, { enabled });
+    const now = !!(res?.data?.auto_approve);
+    renderMode(now);
+    Toast.success(now ? 'Auto-approve is now ON.' : 'Manual review is now ON.');
+  } catch (e) {
+    renderMode(!enabled); // revert visual state
+    Toast.error(e.message || 'Could not change approval mode');
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+document.getElementById('ma-refresh').addEventListener('click', loadPending);
+
+loadPending();
+</script>
+</body>
+</html>
