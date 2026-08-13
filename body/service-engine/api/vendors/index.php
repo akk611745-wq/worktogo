@@ -340,6 +340,30 @@ if ($method === 'GET' && $uri === '/api/vendor/profile') {
     $vendor = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$vendor) Response::forbidden('No vendor profile found for your account');
 
+    // V2 structured profile fields (schema-defensive — degrade gracefully pre-migration)
+    $vendor['languages']     = [];
+    $vendor['service_areas'] = [];
+    $vendor['categories']    = [];
+    try {
+        $vid = (int)$vendor['id'];
+        if (ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'languages')) {
+            $lstmt = $db->prepare("SELECT languages FROM vendors WHERE id = ? LIMIT 1");
+            $lstmt->execute([$vid]);
+            $langRaw = $lstmt->fetchColumn();
+            if ($langRaw) { $decoded = json_decode((string)$langRaw, true); if (is_array($decoded)) $vendor['languages'] = $decoded; }
+        }
+        if (ServiceVendorEligibility::tableHasColumn($db, 'vendor_service_areas', 'vendor_id')) {
+            $astmt = $db->prepare("SELECT id, area_name, city_id FROM vendor_service_areas WHERE vendor_id = ? AND is_active = 1 ORDER BY area_name ASC");
+            $astmt->execute([$vid]);
+            $vendor['service_areas'] = $astmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+        if (ServiceVendorEligibility::tableHasColumn($db, 'vendor_categories', 'vendor_id')) {
+            $cstmt = $db->prepare("SELECT vc.category_id, c.name AS category_name FROM vendor_categories vc LEFT JOIN categories c ON c.id = vc.category_id WHERE vc.vendor_id = ? ORDER BY c.name ASC");
+            $cstmt->execute([$vid]);
+            $vendor['categories'] = $cstmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (PDOException $e) { /* tables not migrated yet — return base profile */ }
+
     Response::success($vendor);
 }
 
@@ -363,6 +387,25 @@ if ($method === 'PATCH' && $uri === '/api/vendor/profile') {
         $raw        = $input['service_localities'];
         $localities = is_array($raw) ? json_encode($raw, JSON_UNESCAPED_UNICODE) : trim((string)$raw);
     }
+
+    // V2: languages (JSON array of codes) + multi-category (array of ids).
+    $languages = null;
+    if (array_key_exists('languages', $input)) {
+        $raw = $input['languages'];
+        if (is_string($raw)) { $decoded = json_decode($raw, true); $raw = is_array($decoded) ? $decoded : explode(',', $raw); }
+        if (!is_array($raw)) $raw = [];
+        $raw = array_values(array_filter(array_map(fn($x) => trim((string)$x), $raw), fn($x) => $x !== ''));
+        $languages = json_encode($raw, JSON_UNESCAPED_UNICODE);
+    }
+    $categoryIds = null;
+    if (array_key_exists('categories', $input) && is_array($input['categories'])) {
+        $categoryIds = array_values(array_unique(array_filter(array_map(fn($x) => (int)$x, $input['categories']), fn($x) => $x > 0)));
+    } elseif ($categoryId !== null && $categoryId > 0) {
+        $categoryIds = [$categoryId];
+    }
+    // Primary category (kept on vendors.category_id for backward compat).
+    $primaryCategoryId = ($categoryIds && count($categoryIds)) ? $categoryIds[0]
+        : (($categoryId !== null && $categoryId > 0) ? $categoryId : null);
 
     if ($name === '') Response::validation('Name is required');
 
@@ -400,9 +443,9 @@ if ($method === 'PATCH' && $uri === '/api/vendor/profile') {
         $vendorSets[]   = 'description = ?';
         $vendorParams[] = $description;
     }
-    if ($categoryId !== null && $categoryId > 0 && ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'category_id')) {
+    if ($primaryCategoryId !== null && ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'category_id')) {
         $vendorSets[]   = 'category_id = ?';
-        $vendorParams[] = $categoryId;
+        $vendorParams[] = $primaryCategoryId;
     }
     if ($logoUrl !== null && ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'logo_url')) {
         $vendorSets[]   = 'logo_url = ?';
@@ -416,20 +459,44 @@ if ($method === 'PATCH' && $uri === '/api/vendor/profile') {
         $vendorSets[]   = 'service_localities = ?';
         $vendorParams[] = $localities ?: null;
     }
+    if ($languages !== null && ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'languages')) {
+        $vendorSets[]   = 'languages = ?';
+        $vendorParams[] = $languages;
+    }
     $vendorParams[] = $userId;
 
     $db->prepare("UPDATE vendors SET " . implode(', ', $vendorSets) . " WHERE user_id = ?")
        ->execute($vendorParams);
 
-    // Keep vendor_categories in sync with the vendor's selected category.
-    // DELETE + INSERT IGNORE replaces the single-category selection atomically.
-    if ($categoryId !== null && $categoryId > 0
-        && ServiceVendorEligibility::tableHasColumn($db, 'vendor_categories', 'vendor_id')
-    ) {
-        $vendorId = resolveVendorId($db, $userId);
+    $vendorId = resolveVendorId($db, $userId);
+
+    // Multi-category: write ALL selected categories to the canonical junction.
+    if ($categoryIds !== null && ServiceVendorEligibility::tableHasColumn($db, 'vendor_categories', 'vendor_id')) {
         $db->prepare("DELETE FROM vendor_categories WHERE vendor_id = ?")->execute([$vendorId]);
-        $db->prepare("INSERT IGNORE INTO vendor_categories (vendor_id, category_id) VALUES (?, ?)")
-           ->execute([$vendorId, $categoryId]);
+        if ($categoryIds) {
+            $insCat = $db->prepare("INSERT IGNORE INTO vendor_categories (vendor_id, category_id) VALUES (?, ?)");
+            foreach ($categoryIds as $cid) { $insCat->execute([$vendorId, $cid]); }
+        }
+    }
+
+    // Structured service areas: mirror the submitted area list into the canonical
+    // vendor_service_areas table (city-scoped), keeping service_localities as the
+    // backward-compat text mirror that existing matching + customer cards read.
+    if ($localities !== null && ServiceVendorEligibility::tableHasColumn($db, 'vendor_service_areas', 'vendor_id')) {
+        $decodedAreas = json_decode(is_string($localities) ? $localities : json_encode($localities), true);
+        $areaList = is_array($decodedAreas) ? $decodedAreas : [];
+        $areaList = array_values(array_filter(array_map(fn($a) => trim((string)$a), $areaList), fn($a) => $a !== ''));
+        $vCityId = null;
+        if (ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'city_id')) {
+            $vcStmt = $db->prepare("SELECT city_id FROM vendors WHERE id = ? LIMIT 1");
+            $vcStmt->execute([$vendorId]);
+            $vCityId = (int)($vcStmt->fetchColumn() ?: 0) ?: null;
+        }
+        $db->prepare("DELETE FROM vendor_service_areas WHERE vendor_id = ?")->execute([$vendorId]);
+        if ($areaList) {
+            $insArea = $db->prepare("INSERT INTO vendor_service_areas (vendor_id, city_id, area_name, is_active, created_at, updated_at) VALUES (?, ?, ?, 1, NOW(), NOW())");
+            foreach ($areaList as $areaName) { $insArea->execute([$vendorId, $vCityId, mb_substr($areaName, 0, 120)]); }
+        }
     }
 
     Response::success(['updated' => true], 200, 'Profile updated');

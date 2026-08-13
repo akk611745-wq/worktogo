@@ -76,6 +76,7 @@ function renderPage(user) {
             <div class="field"><label>Member Since</label>        <div id="vSince"  class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
             <div class="field"><label>Category</label>            <div id="vCategory" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
             <div class="field"><label>Experience</label>          <div id="vExperience" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
+            <div class="field"><label>Languages</label>           <div id="vLanguages" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
             <div class="field"><label>Photo</label>               <div id="vPhoto"  class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);">&mdash;</div></div>
             <div class="field" style="grid-column:1/-1"><label>Bio / Description</label>
               <div id="vBio" class="text-sm" style="padding:0.4rem 0;border-bottom:1px solid var(--border);white-space:pre-wrap;">&mdash;</div>
@@ -107,6 +108,11 @@ function renderPage(user) {
               <label>Aap kahan kaam karte hain? (service areas)</label>
               <div id="area-chips-container" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;min-height:36px;"></div>
               <input type="hidden" id="eServiceLocalities" value="[]">
+            </div>
+            <div class="field" style="grid-column:1/-1">
+              <label id="lblLanguages">Languages you speak</label>
+              <div id="lang-chips-container" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;min-height:36px;"></div>
+              <input type="hidden" id="eLanguages" value="[]">
             </div>
             <div class="field" style="grid-column:1/-1">
               <label>Photo</label>
@@ -274,8 +280,16 @@ function populateProfile(p) {
   document.getElementById("vSince").textContent  = fmtDate(p.created_at || p.createdAt) || '—';
 
   // View fields — new 3
+  const catNames = (Array.isArray(p.categories) && p.categories.length)
+    ? p.categories.map(c => c.category_name).filter(Boolean)
+    : [];
   const catObj = categoriesCache.find(c => String(c.id) === String(p.category_id));
-  document.getElementById("vCategory").textContent = catObj ? catObj.name : (p.category_id ? `Category #${p.category_id}` : '—');
+  document.getElementById("vCategory").textContent = catNames.length
+    ? catNames.join(', ')
+    : (catObj ? catObj.name : (p.category_id ? `Category #${p.category_id}` : '—'));
+  const langNames = Array.isArray(p.languages) ? p.languages.map(_langLabel) : [];
+  const vLangEl = document.getElementById("vLanguages");
+  if (vLangEl) vLangEl.textContent = langNames.length ? langNames.join(', ') : '—';
   document.getElementById("vExperience").textContent = p.experience_years ? `${p.experience_years} years of experience` : '—';
   document.getElementById("vBio").textContent      = p.description || '—';
 
@@ -317,6 +331,7 @@ function populateProfile(p) {
   populateCategorySelect();
   const _initAreas = (() => { try { return JSON.parse(p.service_localities || '[]'); } catch (_) { return []; } })();
   renderAreaChips(_initAreas);
+  renderLangChips(Array.isArray(p.languages) ? p.languages : []);
 
   // Incomplete profile (no category and/or no service areas) — force edit mode + banner
   const banner = document.getElementById("profileIncompleteBanner");
@@ -339,6 +354,22 @@ const WTG_AREAS = [
   "Lalkuan","Haldwani City","Bazpur Road",
   "Transport Nagar","Bhotia Parao"
 ];
+
+// Language options as STRUCTURED {code,label} pairs so a locale layer can be
+// added later without touching call sites (multi-language-ready, not translated
+// now). Stored on the vendor as an array of codes (e.g. ["hi","en"]).
+const WTG_LANGS = [
+  { code: "hi", label: "Hindi" },
+  { code: "en", label: "English" },
+  { code: "ku", label: "Kumaoni" },
+  { code: "pa", label: "Punjabi" },
+  { code: "ur", label: "Urdu" },
+  { code: "bn", label: "Bengali" },
+];
+function _langLabel(code) {
+  const m = WTG_LANGS.find(l => l.code === code);
+  return m ? m.label : String(code || "");
+}
 
 function _applyChipStyle(chip, selected) {
   chip.dataset.selected = selected ? 'true' : 'false';
@@ -383,10 +414,42 @@ function renderAreaChips(selectedAreas) {
   _syncAreaHidden();
 }
 
+function _syncLangHidden() {
+  const container = document.getElementById("lang-chips-container");
+  const hidden    = document.getElementById("eLanguages");
+  if (!container || !hidden) return;
+  hidden.value = JSON.stringify(
+    Array.from(container.querySelectorAll('[data-selected="true"]')).map(c => c.dataset.code)
+  );
+}
+
+function renderLangChips(selectedCodes) {
+  const container = document.getElementById("lang-chips-container");
+  if (!container) return;
+  const sel = Array.isArray(selectedCodes) ? selectedCodes.map(String) : [];
+  container.innerHTML = '';
+  WTG_LANGS.forEach(lang => {
+    const chip = document.createElement('span');
+    chip.dataset.code = lang.code;
+    chip.textContent = lang.label;
+    _applyChipStyle(chip, sel.includes(lang.code));
+    chip.addEventListener('click', () => {
+      _applyChipStyle(chip, chip.dataset.selected !== 'true');
+      _syncLangHidden();
+    });
+    container.appendChild(chip);
+  });
+  _syncLangHidden();
+}
+
 function populateCategorySelect() {
   const container = document.getElementById("cat-chips-container");
   if (!container || !categoriesCache.length) return;
-  const currentIds = profileData?.category_id ? [String(profileData.category_id)] : [];
+  // Multi-category: prefill from the canonical vendor_categories list (p.categories),
+  // falling back to the legacy single category_id.
+  const currentIds = (Array.isArray(profileData?.categories) && profileData.categories.length)
+    ? profileData.categories.map(c => String(c.category_id))
+    : (profileData?.category_id ? [String(profileData.category_id)] : []);
   container.innerHTML = '';
   categoriesCache
     .filter(c => c.status === 'active' || c.status == null)
@@ -396,14 +459,8 @@ function populateCategorySelect() {
       chip.textContent = escHtml(c.name);
       _applyChipStyle(chip, currentIds.includes(String(c.id)));
       chip.addEventListener('click', () => {
-        const nowSelected = chip.dataset.selected !== 'true';
-        if (nowSelected) {
-          // Single-select: deselect every other chip before selecting this one
-          container.querySelectorAll('[data-selected="true"]').forEach(other => {
-            if (other !== chip) _applyChipStyle(other, false);
-          });
-        }
-        _applyChipStyle(chip, nowSelected);
+        // Multi-select: a vendor can serve several categories — just toggle this one.
+        _applyChipStyle(chip, chip.dataset.selected !== 'true');
         _syncCategoryHidden();
       });
       container.appendChild(chip);
@@ -423,6 +480,7 @@ async function enableEdit() {
   populateCategorySelect();
   const _editAreas = (() => { try { return JSON.parse(profileData?.service_localities || '[]'); } catch (_) { return []; } })();
   renderAreaChips(_editAreas);
+  renderLangChips(Array.isArray(profileData?.languages) ? profileData.languages : []);
 }
 
 function cancelEdit() {
@@ -438,8 +496,10 @@ async function saveProfile() {
   const description = document.getElementById("eDescription").value.trim();
   const logo_url    = document.getElementById("eLogoUrl").value.trim();
   const _catIds     = (() => { try { return JSON.parse(document.getElementById("eCategoryIds").value || '[]'); } catch (_) { return []; } })();
-  const category_id = _catIds.length ? (parseInt(_catIds[0]) || null) : null;
+  const categories  = _catIds.map(x => parseInt(x, 10)).filter(Boolean);
+  const category_id = categories.length ? categories[0] : null;
   const service_localities = document.getElementById("eServiceLocalities").value || '[]';
+  const languages   = (() => { try { return JSON.parse(document.getElementById("eLanguages").value || '[]'); } catch (_) { return []; } })();
   const expRaw = document.getElementById("eExperienceYears").value.trim();
   const experience_years = expRaw ? Math.max(1, Math.min(50, parseInt(expRaw, 10) || 1)) : null;
 
@@ -449,7 +509,7 @@ async function saveProfile() {
   btn.disabled    = true;
   btn.textContent = "Saving…";
 
-  const payload = { name, phone, description, logo_url, category_id, service_localities, experience_years };
+  const payload = { name, phone, description, logo_url, category_id, categories, service_localities, experience_years, languages };
   const res = await API.Profile.update(payload);
 
   btn.disabled    = false;
