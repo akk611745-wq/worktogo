@@ -46,6 +46,39 @@ class AuthMiddleware
         return $payload;
     }
 
+    // ── Require JWT + a specific PERMISSION (data-driven RBAC) ─────────────────
+    // ADDITIVE gate, sibling to requireRole(). Delegates to Permission::userHas,
+    // where legacy users.role='admin' AND the 'super_admin' role pass EVERYTHING —
+    // so adding this to an endpoint never breaks today's admin. Non-admins are
+    // checked against their granted permissions (fail-closed). Optional scope
+    // (e.g. 'category', 5) enforces Category Head / city-ops windows later.
+    // Usage: AuthMiddleware::requirePermission('media.approve');
+    public static function requirePermission(string $permKey, ?string $scopeType = null, ?int $scopeId = null): array
+    {
+        $payload = self::require();
+
+        $root = defined('SYSTEM_ROOT') ? SYSTEM_ROOT : dirname(__DIR__, 2);
+        require_once $root . '/core/helpers/Permission.php';
+
+        $db = getDB();
+        if (Permission::userHas(
+                $db,
+                (int) ($payload['user_id'] ?? 0),
+                isset($payload['role']) ? (string) $payload['role'] : null,
+                $permKey,
+                $scopeType,
+                $scopeId
+        )) {
+            return $payload;
+        }
+
+        Logger::warning('Forbidden: insufficient permission', [
+            'user_id'    => $payload['user_id'] ?? null,
+            'permission' => $permKey,
+        ]);
+        Response::forbidden('You do not have permission to access this resource');
+    }
+
     // ── Optional auth (returns payload or null) ───────────────
     // Use for endpoints that work with or without authentication
     public static function optional(): ?array

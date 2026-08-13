@@ -1303,6 +1303,274 @@ try {
         Response::success(['id' => $mediaId, 'status' => $status], 200, 'Media ' . $status);
     }
 
+    // ══ Roles & permissions (data-driven RBAC) ═══════════════════════════════
+    //  Foundation for future role-scoped "windows" (Category Head, Ops Manager,
+    //  Expert, Finance, Moderator…). The founder composes ROLES from the fixed
+    //  permission catalog here — no code change to add a role. Every write is an
+    //  ADDITIVE gate: Permission::enforce('roles.manage') — for today's admin this
+    //  passes trivially (legacy admin bypass), so current access is unchanged; it
+    //  becomes the real gate once non-admin panel roles exist. See
+    //  core/helpers/Permission.php + migrations/2026_08_13_001_rbac_foundation.sql.
+    require_once SYSTEM_ROOT . '/core/helpers/Permission.php';
+
+    // ── GET /api/admin/roles — list roles (+ permission / user counts) ────────
+    if ($method === 'GET' && $uri === '/api/admin/roles') {
+        Permission::enforce($db, $auth, 'roles.view');
+        $rows = $db->query(
+            "SELECT r.id, r.name, r.slug, r.description, r.is_system, r.is_active, r.created_at,
+                    (SELECT COUNT(*) FROM role_permissions rp WHERE rp.role_id = r.id) AS permission_count,
+                    (SELECT COUNT(DISTINCT ur.user_id) FROM user_roles ur WHERE ur.role_id = r.id) AS user_count
+               FROM roles r
+              ORDER BY r.is_system DESC, r.name ASC"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$r) {
+            $r['id'] = (int)$r['id']; $r['is_system'] = (int)$r['is_system'];
+            $r['is_active'] = (int)$r['is_active'];
+            $r['permission_count'] = (int)$r['permission_count'];
+            $r['user_count'] = (int)$r['user_count'];
+        }
+        Response::success(['roles' => $rows]);
+    }
+
+    // ── GET /api/admin/permissions — the capability catalog (grouped) ─────────
+    if ($method === 'GET' && $uri === '/api/admin/permissions') {
+        Permission::enforce($db, $auth, 'roles.view');
+        $rows = $db->query(
+            "SELECT id, perm_key, label, engine, group_label, is_active
+               FROM permissions WHERE is_active = 1
+              ORDER BY engine, group_label, perm_key"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $grouped = [];
+        foreach ($rows as $p) {
+            $key = $p['engine'] . ' · ' . $p['group_label'];
+            $grouped[$key][] = ['id' => (int)$p['id'], 'perm_key' => $p['perm_key'], 'label' => $p['label'], 'engine' => $p['engine']];
+        }
+        Response::success(['permissions' => $rows, 'grouped' => $grouped]);
+    }
+
+    // ── GET /api/admin/roles/{id} — role detail + its permission keys ─────────
+    if ($method === 'GET' && preg_match('#^/api/admin/roles/(\d+)$#', $uri, $m)) {
+        Permission::enforce($db, $auth, 'roles.view');
+        $roleId = (int)$m[1];
+        $rs = $db->prepare("SELECT id, name, slug, description, is_system, is_active, created_at FROM roles WHERE id = ? LIMIT 1");
+        $rs->execute([$roleId]);
+        $role = $rs->fetch(PDO::FETCH_ASSOC);
+        if (!$role) Response::notFound('Role');
+        $ps = $db->prepare(
+            "SELECT p.perm_key FROM role_permissions rp
+               JOIN permissions p ON p.id = rp.permission_id
+              WHERE rp.role_id = ? ORDER BY p.perm_key"
+        );
+        $ps->execute([$roleId]);
+        $role['id'] = (int)$role['id']; $role['is_system'] = (int)$role['is_system']; $role['is_active'] = (int)$role['is_active'];
+        $role['permissions'] = $ps->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        Response::success(['role' => $role]);
+    }
+
+    // ── POST /api/admin/roles — create a role (data-driven, no code change) ───
+    if ($method === 'POST' && $uri === '/api/admin/roles') {
+        Permission::enforce($db, $auth, 'roles.manage');
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        $v = Validator::make($input, [
+            'name'        => 'required|string|max:100',
+            'slug'        => 'string|max:64',
+            'description' => 'string|max:255',
+        ]);
+        if ($v->fails()) Response::validation($v->firstError(), $v->errors());
+
+        $name = trim((string)$input['name']);
+        $slug = trim((string)($input['slug'] ?? ''));
+        if ($slug === '') $slug = $name;
+        // normalise: lowercase, non-alphanumeric -> underscore, collapse + trim
+        $slug = trim(preg_replace('/_+/', '_', preg_replace('/[^a-z0-9]+/', '_', strtolower($slug))), '_');
+        if ($slug === '') Response::validation('Could not derive a valid slug from the name');
+
+        $exists = $db->prepare("SELECT id FROM roles WHERE slug = ? LIMIT 1");
+        $exists->execute([$slug]);
+        if ($exists->fetchColumn()) Response::error('A role with that slug already exists.', 409);
+
+        $db->prepare("INSERT INTO roles (name, slug, description, is_system, is_active) VALUES (?, ?, ?, 0, 1)")
+           ->execute([$name, $slug, trim((string)($input['description'] ?? '')) ?: null]);
+        $newId = (int)$db->lastInsertId();
+        Logger::info('Admin created role', ['admin_id' => $auth['user_id'], 'role_id' => $newId, 'slug' => $slug]);
+        Response::success(['id' => $newId, 'name' => $name, 'slug' => $slug], 201, 'Role created');
+    }
+
+    // ── PATCH /api/admin/roles/{id} — edit name/description/active ────────────
+    if ($method === 'PATCH' && preg_match('#^/api/admin/roles/(\d+)$#', $uri, $m)) {
+        Permission::enforce($db, $auth, 'roles.manage');
+        $roleId = (int)$m[1];
+        $input  = json_decode(file_get_contents('php://input'), true) ?? [];
+        $rs = $db->prepare("SELECT id, is_system FROM roles WHERE id = ? LIMIT 1");
+        $rs->execute([$roleId]);
+        $role = $rs->fetch(PDO::FETCH_ASSOC);
+        if (!$role) Response::notFound('Role');
+
+        $set = []; $bind = [];
+        if (array_key_exists('name', $input) && trim((string)$input['name']) !== '') {
+            $set[] = 'name = ?'; $bind[] = trim((string)$input['name']);
+        }
+        if (array_key_exists('description', $input)) {
+            $set[] = 'description = ?'; $bind[] = trim((string)$input['description']) ?: null;
+        }
+        if (array_key_exists('is_active', $input)) {
+            // A system role (super_admin) can never be deactivated — that would lock out admin.
+            if ((int)$role['is_system'] === 1 && !$input['is_active']) {
+                Response::error('A system role cannot be deactivated.', 400);
+            }
+            $set[] = 'is_active = ?'; $bind[] = $input['is_active'] ? 1 : 0;
+        }
+        if (!$set) Response::validation('Nothing to update');
+        $set[] = 'updated_at = NOW()';
+        $bind[] = $roleId;
+        $db->prepare("UPDATE roles SET " . implode(', ', $set) . " WHERE id = ?")->execute($bind);
+        Logger::info('Admin updated role', ['admin_id' => $auth['user_id'], 'role_id' => $roleId]);
+        Response::success(['id' => $roleId], 200, 'Role updated');
+    }
+
+    // ── PUT /api/admin/roles/{id}/permissions — set the role's permission set ─
+    //     Body: { permissions: ["media.approve","bookings.assign", ...] }  (keys or ids)
+    if ($method === 'PUT' && preg_match('#^/api/admin/roles/(\d+)/permissions$#', $uri, $m)) {
+        Permission::enforce($db, $auth, 'roles.manage');
+        $roleId = (int)$m[1];
+        $input  = json_decode(file_get_contents('php://input'), true) ?? [];
+        $rs = $db->prepare("SELECT id, is_system FROM roles WHERE id = ? LIMIT 1");
+        $rs->execute([$roleId]);
+        $role = $rs->fetch(PDO::FETCH_ASSOC);
+        if (!$role) Response::notFound('Role');
+        // super_admin keeps ALL permissions — its set is locked (belt-and-braces).
+        if ((int)$role['is_system'] === 1) Response::error('A system role\'s permissions are locked.', 400);
+
+        $wanted = $input['permissions'] ?? null;
+        if (!is_array($wanted)) Response::validation('permissions must be an array of permission keys or ids');
+
+        // Resolve keys/ids -> existing permission ids.
+        $ids = [];
+        if ($wanted) {
+            $keys = []; $numIds = [];
+            foreach ($wanted as $w) {
+                if (is_int($w) || (is_string($w) && ctype_digit($w))) { $numIds[] = (int)$w; }
+                else { $keys[] = (string)$w; }
+            }
+            if ($keys) {
+                $ph = implode(',', array_fill(0, count($keys), '?'));
+                $q = $db->prepare("SELECT id FROM permissions WHERE perm_key IN ($ph)");
+                $q->execute($keys);
+                $ids = array_merge($ids, $q->fetchAll(PDO::FETCH_COLUMN));
+            }
+            if ($numIds) {
+                $ph = implode(',', array_fill(0, count($numIds), '?'));
+                $q = $db->prepare("SELECT id FROM permissions WHERE id IN ($ph)");
+                $q->execute($numIds);
+                $ids = array_merge($ids, $q->fetchAll(PDO::FETCH_COLUMN));
+            }
+            $ids = array_values(array_unique(array_map('intval', $ids)));
+        }
+
+        // Replace-all in a transaction (idempotent, atomic).
+        $db->beginTransaction();
+        try {
+            $db->prepare("DELETE FROM role_permissions WHERE role_id = ?")->execute([$roleId]);
+            if ($ids) {
+                $ins = $db->prepare("INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)");
+                foreach ($ids as $pid) { $ins->execute([$roleId, $pid]); }
+            }
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            throw $e;
+        }
+        Logger::info('Admin set role permissions', ['admin_id' => $auth['user_id'], 'role_id' => $roleId, 'count' => count($ids)]);
+        Response::success(['id' => $roleId, 'permission_count' => count($ids)], 200, 'Permissions updated');
+    }
+
+    // ── GET /api/admin/users/{id}/roles — a user's roles + effective perms ────
+    if ($method === 'GET' && preg_match('#^/api/admin/users/(\d+)/roles$#', $uri, $m)) {
+        Permission::enforce($db, $auth, 'roles.view');
+        $userId = (int)$m[1];
+        $us = $db->prepare("SELECT id, name, role FROM users WHERE id = ? LIMIT 1");
+        $us->execute([$userId]);
+        $user = $us->fetch(PDO::FETCH_ASSOC);
+        if (!$user) Response::notFound('User');
+        $rs = $db->prepare(
+            "SELECT ur.role_id, r.slug, r.name, ur.scope_type, ur.scope_id, ur.created_at
+               FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+              WHERE ur.user_id = ? ORDER BY r.name"
+        );
+        $rs->execute([$userId]);
+        $held = $rs->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($held as &$h) { $h['role_id'] = (int)$h['role_id']; $h['scope_id'] = (int)$h['scope_id']; }
+        Response::success([
+            'user_id'     => $userId,
+            'legacy_role' => $user['role'],
+            'roles'       => $held,
+            'permissions' => Permission::listForUser($db, $userId, $user['role']),
+        ]);
+    }
+
+    // ── POST /api/admin/users/{id}/roles — assign a role to a user ────────────
+    //     Body: { role_id | role_slug, scope_type?='global', scope_id?=0 }
+    if ($method === 'POST' && preg_match('#^/api/admin/users/(\d+)/roles$#', $uri, $m)) {
+        Permission::enforce($db, $auth, 'roles.manage');
+        $userId = (int)$m[1];
+        $input  = json_decode(file_get_contents('php://input'), true) ?? [];
+
+        $us = $db->prepare("SELECT id FROM users WHERE id = ? LIMIT 1");
+        $us->execute([$userId]);
+        if (!$us->fetchColumn()) Response::notFound('User');
+
+        // Resolve role by id or slug.
+        $role = null;
+        if (!empty($input['role_id'])) {
+            $q = $db->prepare("SELECT id, slug FROM roles WHERE id = ? LIMIT 1");
+            $q->execute([(int)$input['role_id']]);
+            $role = $q->fetch(PDO::FETCH_ASSOC);
+        } elseif (!empty($input['role_slug'])) {
+            $q = $db->prepare("SELECT id, slug FROM roles WHERE slug = ? LIMIT 1");
+            $q->execute([trim((string)$input['role_slug'])]);
+            $role = $q->fetch(PDO::FETCH_ASSOC);
+        }
+        if (!$role) Response::validation('A valid role_id or role_slug is required');
+
+        $scopeType = strtolower(trim((string)($input['scope_type'] ?? 'global')));
+        if (!in_array($scopeType, ['global', 'category', 'city'], true)) {
+            Response::validation("scope_type must be 'global', 'category' or 'city'");
+        }
+        $scopeId = ($scopeType === 'global') ? 0 : (int)($input['scope_id'] ?? 0);
+        if ($scopeType !== 'global' && $scopeId <= 0) {
+            Response::validation('scope_id is required when scope_type is category or city');
+        }
+
+        $db->prepare(
+            "INSERT INTO user_roles (user_id, role_id, scope_type, scope_id, assigned_by_user_id)
+             VALUES (:uid, :rid, :st, :sid, :by)
+             ON DUPLICATE KEY UPDATE assigned_by_user_id = VALUES(assigned_by_user_id)"
+        )->execute([
+            ':uid' => $userId, ':rid' => (int)$role['id'], ':st' => $scopeType,
+            ':sid' => $scopeId, ':by' => (int)$auth['user_id'],
+        ]);
+        Logger::info('Admin assigned role', ['admin_id' => $auth['user_id'], 'user_id' => $userId, 'role' => $role['slug'], 'scope_type' => $scopeType, 'scope_id' => $scopeId]);
+        Response::success(['user_id' => $userId, 'role_id' => (int)$role['id'], 'scope_type' => $scopeType, 'scope_id' => $scopeId], 200, 'Role assigned');
+    }
+
+    // ── DELETE /api/admin/users/{id}/roles/{roleId} — unassign a role ─────────
+    //     Optional ?scope_type=&scope_id= to remove one scoped grant; omit to remove all.
+    if ($method === 'DELETE' && preg_match('#^/api/admin/users/(\d+)/roles/(\d+)$#', $uri, $m)) {
+        Permission::enforce($db, $auth, 'roles.manage');
+        $userId = (int)$m[1]; $roleId = (int)$m[2];
+        $sql  = "DELETE FROM user_roles WHERE user_id = ? AND role_id = ?";
+        $bind = [$userId, $roleId];
+        if (isset($_GET['scope_type'])) {
+            $sql .= " AND scope_type = ? AND scope_id = ?";
+            $bind[] = strtolower(trim((string)$_GET['scope_type']));
+            $bind[] = (int)($_GET['scope_id'] ?? 0);
+        }
+        $stmt = $db->prepare($sql);
+        $stmt->execute($bind);
+        Logger::info('Admin unassigned role', ['admin_id' => $auth['user_id'], 'user_id' => $userId, 'role_id' => $roleId, 'removed' => $stmt->rowCount()]);
+        Response::success(['user_id' => $userId, 'role_id' => $roleId, 'removed' => $stmt->rowCount()], 200, 'Role unassigned');
+    }
+
     // ── GET /api/admin/orders ─────────────────────────────────
     if ($method === 'GET' && $uri === '/api/admin/orders') {
         $page   = max(1, (int) ($_GET['page']  ?? 1));
