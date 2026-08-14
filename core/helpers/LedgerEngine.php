@@ -58,6 +58,42 @@ class LedgerEngine {
         }
     }
 
+    // ── Expert-visit / inspection fee detection (schema-defensive) ────────────
+    // The Expert Visit / inspection fee is the COMPANY's diagnostic charge, not
+    // job revenue — the vendor gets 0% of it (founder rule). A booking carries
+    // that fee when booking_mode='inspection' (legacy inspection + paid expert
+    // visit, which sets mode='inspection'), or visit_type='expert_visit', or
+    // expert_visit_fee>0. These V2 columns are optional-checked so completion
+    // still works on a partially-migrated DB (missing columns => normal split).
+
+    /** @var array<string,bool> cached: does a given bookings column exist */
+    private static $bookingCols = [];
+
+    private static function bookingsHasColumn(PDO $pdo, string $col): bool {
+        if (array_key_exists($col, self::$bookingCols)) return self::$bookingCols[$col];
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = ?"
+            );
+            $stmt->execute([$col]);
+            return self::$bookingCols[$col] = ((int)$stmt->fetchColumn() > 0);
+        } catch (\Throwable $e) {
+            return self::$bookingCols[$col] = false;
+        }
+    }
+
+    /**
+     * Is the money on this completed booking an expert-visit / inspection fee
+     * (100% company) rather than normal splittable job revenue? Reads whichever
+     * of booking_mode / visit_type / expert_visit_fee the schema actually has.
+     */
+    private static function isExpertVisitFee(array $booking): bool {
+        return (($booking['booking_mode'] ?? null) === 'inspection')
+            || (($booking['visit_type']   ?? null) === 'expert_visit')
+            || ((float)($booking['expert_visit_fee'] ?? 0) > 0);
+    }
+
     /**
      * Insert one wallet_transactions row. Always populates order_id (backward
      * compat) and, when present, reference_type + reference_id (the canonical,
@@ -209,9 +245,17 @@ class LedgerEngine {
 
             // 1. Read booking total, vendor commission rate, and the
             // category's commission rate (via the booking's service), FOR
-            // UPDATE to prevent race conditions
+            // UPDATE to prevent race conditions. Also pull the expert-visit /
+            // inspection markers (only those the schema has) so we can route the
+            // fee to 100% company below without a second query.
+            $evCols = [];
+            foreach (['booking_mode', 'visit_type', 'expert_visit_fee'] as $c) {
+                $evCols[] = self::bookingsHasColumn($pdo, $c) ? "b.{$c}" : "NULL AS {$c}";
+            }
+            $evColsSql = implode(', ', $evCols);
             $stmt = $pdo->prepare("
                 SELECT b.total, b.vendor_id, b.payment_status,
+                       {$evColsSql},
                        v.commission_rate AS vendor_commission_rate,
                        c.commission_rate AS category_commission_rate
                 FROM bookings b
@@ -228,21 +272,37 @@ class LedgerEngine {
                 throw new Exception("Booking not found.");
             }
 
-            // Idempotency: skip if a vendor credit already exists for this booking
-            // (scoped to this BOOKING's ledger rows so an order #N cannot fool it)
+            // Idempotency: skip if ANY non-refunded ledger row already exists for
+            // this booking (scoped to this BOOKING's rows so an order #N cannot
+            // fool it). Checks any entity_type — the expert-visit-fee path writes
+            // only a platform row (no vendor row), so a vendor-only check would
+            // miss it and let a re-run double-insert.
             [$refWhere, $refBind] = self::walletRefMatch($pdo, 'booking', (int)$booking_id);
-            $checkStmt = $pdo->prepare("SELECT id FROM wallet_transactions WHERE {$refWhere} AND entity_type = 'vendor' AND status != 'refunded' FOR UPDATE");
+            $checkStmt = $pdo->prepare("SELECT id FROM wallet_transactions WHERE {$refWhere} AND status != 'refunded' FOR UPDATE");
             $checkStmt->execute($refBind);
             if ($checkStmt->fetch()) {
                 $pdo->rollBack();
                 return true; // Already processed, fail-safe.
             }
 
-            // 2. Calculate Shares
+            $total = (float)$booking['total'];
+
+            // 2a. Expert-visit / inspection fee → 100% COMPANY, 0% vendor.
+            // Founder rule: the diagnostic fee (e.g. ₹299) is the company's, not
+            // job revenue — the vendor has NO share. Record ONLY a platform
+            // revenue row: no vendor wallet credit, no pending payout. This is the
+            // fix for the 90/10-to-vendor leak (Audit 05 §3). Normal job/service
+            // revenue is untouched and still splits below.
+            if (self::isExpertVisitFee($booking)) {
+                self::insertWalletTx($pdo, 'platform', null, 'booking', (int)$booking_id, 'credit', $total, 'Expert visit / inspection fee (company)', 'settled');
+                $pdo->commit();
+                return true;
+            }
+
+            // 2b. Normal job/service revenue — standard split (UNCHANGED).
             // Commission rate priority: category override > vendor override > 10% default.
             // Explicit null checks (not truthy checks) so a deliberately-set
             // 0% rate isn't mistaken for "not set" and overridden by the fallback.
-            $total = (float)$booking['total'];
             if ($booking['category_commission_rate'] !== null) {
                 $commission_rate = (float)$booking['category_commission_rate'];
             } elseif ($booking['vendor_commission_rate'] !== null) {
