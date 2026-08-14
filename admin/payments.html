@@ -2,9 +2,56 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WorkToGo Admin — Payments</title>
+<title>WorkToGo Admin — Payment Room</title>
   <link rel="icon" href="/app/assets/favicon.png"/>
 <link rel="stylesheet" href="assets/style.css">
+<style>
+/* ── Payment Room ───────────────────────────────────────────── */
+/* Let the flex/grid content column shrink so wide tables scroll inside their
+   .table-wrap instead of pushing the whole page wide on mobile. */
+.main-wrap, .page-content, .card, .table-wrap { min-width: 0; }
+.pr-controls { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.pr-controls select { width:auto; min-width:120px; }
+.pr-section { margin-bottom:20px; }
+.pr-grid { display:grid; gap:16px; }
+.pr-grid.cols3 { grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); }
+.pr-grid.cols2 { grid-template-columns:repeat(auto-fit, minmax(300px,1fr)); }
+
+.pr-card-title { font-size:12px; font-weight:700; letter-spacing:0.04em; color:var(--text-secondary); text-transform:uppercase; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.pr-note { font-size:10px; color:var(--text-muted); font-weight:500; letter-spacing:0; text-transform:none; }
+
+/* split bar (online vs cash) */
+.pr-split { display:flex; height:14px; border-radius:7px; overflow:hidden; background:var(--bg-deep); margin:6px 0 12px; }
+.pr-split > span { display:block; height:100%; }
+.pr-legend { display:flex; gap:16px; flex-wrap:wrap; font-size:12px; }
+.pr-legend .dot { width:9px; height:9px; border-radius:2px; display:inline-block; margin-right:5px; vertical-align:middle; }
+.pr-legend b { font-family:var(--mono); }
+
+/* mini metric rows */
+.pr-metric { display:flex; align-items:baseline; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--border-dim); }
+.pr-metric:last-child { border-bottom:none; }
+.pr-metric .lbl { font-size:12px; color:var(--text-secondary); }
+.pr-metric .val { font-size:14px; font-weight:700; font-family:var(--mono); color:var(--text-primary); }
+.pr-metric .val.green { color:var(--green); } .pr-metric .val.amber { color:var(--accent); }
+.pr-metric .val.red { color:var(--red); } .pr-metric .val.muted { color:var(--text-muted); }
+
+/* horizontal bar rows (category / city) */
+.pr-bars { display:flex; flex-direction:column; gap:2px; }
+.pr-row { display:grid; grid-template-columns:130px 1fr 96px; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--border-dim); }
+.pr-row:last-child { border-bottom:none; }
+.pr-row .nm { font-size:12px; color:var(--text-primary); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pr-row .nm small { display:block; font-size:10px; color:var(--text-muted); font-weight:400; }
+.pr-track { height:8px; background:var(--bg-deep); border-radius:4px; overflow:hidden; }
+.pr-fill { height:100%; border-radius:4px; background:var(--accent); }
+.pr-fill.top { background:var(--green); }
+.pr-fill.weak { background:var(--red); opacity:0.6; }
+.pr-row .amt { font-size:12px; font-weight:700; font-family:var(--mono); color:var(--text-primary); text-align:right; }
+.pr-row .amt small { display:block; font-size:10px; color:var(--text-muted); font-weight:400; }
+
+.pr-empty { text-align:center; padding:28px; color:var(--text-muted); font-size:12px; }
+.pr-vendor-row { cursor:pointer; }
+.pr-vendor-row:hover { background:var(--bg-hover); }
+</style>
 </head>
 <body>
 <div class="admin-shell">
@@ -14,74 +61,116 @@
     <main class="page-content">
       <div class="page-header">
         <div>
-          <h1 class="page-title">Payment Monitor</h1>
-          <p class="page-subtitle">Display-only — no gateway integration</p>
+          <h1 class="page-title">Payment Room</h1>
+          <p class="page-subtitle" id="pr-sub">Read-only revenue control room · loading…</p>
         </div>
-        <button class="btn btn-ghost btn-sm" id="export-btn">⬇ Export CSV</button>
-      </div>
-
-      <!-- Summary Cards -->
-      <div class="stats-grid" style="margin-bottom:20px" id="pay-stats">
-        <div class="stat-card green">
-          <div class="stat-label">Total Paid</div>
-          <div class="stat-value" id="pay-paid">—</div>
-        </div>
-        <div class="stat-card amber">
-          <div class="stat-label">Pending</div>
-          <div class="stat-value" id="pay-pending">—</div>
-        </div>
-        <div class="stat-card red">
-          <div class="stat-label">Failed</div>
-          <div class="stat-value" id="pay-failed">—</div>
-        </div>
-        <div class="stat-card blue">
-          <div class="stat-label">Total Volume</div>
-          <div class="stat-value" id="pay-volume">—</div>
+        <div class="pr-controls">
+          <select id="pr-period" class="form-control">
+            <option value="today">Today</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d" selected>Last 30 days</option>
+            <option value="90d">Last 90 days</option>
+            <option value="month">This month</option>
+            <option value="year">This year</option>
+            <option value="all">All time</option>
+          </select>
+          <select id="pr-city" class="form-control"><option value="">All Cities</option></select>
+          <button class="btn btn-ghost btn-sm" id="pr-refresh">↻</button>
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-body" style="padding-bottom:12px">
-          <div class="filter-bar">
-            <div class="search-box">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" id="search-input" class="form-control" placeholder="Search by transaction ID, order…">
-            </div>
-            <select id="status-filter" class="form-control" style="width:140px">
-              <option value="">All Status</option>
-              <option value="paid">Paid</option>
-              <option value="pending">Pending</option>
-              <option value="failed">Failed</option>
-              <option value="refunded">Refunded</option>
-            </select>
-            <select id="method-filter" class="form-control" style="width:140px">
-              <option value="">All Methods</option>
-              <option value="upi">UPI</option>
-              <option value="card">Card</option>
-              <option value="netbanking">Net Banking</option>
-              <option value="cod">COD</option>
-              <option value="wallet">Wallet</option>
-            </select>
-            <button class="btn btn-ghost btn-sm" id="apply-filter">Filter</button>
+      <!-- 30-second glance -->
+      <div class="stats-grid pr-section" id="pr-kpis">
+        <div class="stat-card blue"><div class="stat-label">Money Flowing (GMV)</div><div class="stat-value" id="k-gmv">—</div></div>
+        <div class="stat-card green"><div class="stat-label">Collected (captured)</div><div class="stat-value" id="k-collected">—</div></div>
+        <div class="stat-card purple"><div class="stat-label">Company Commission</div><div class="stat-value" id="k-commission">—</div></div>
+        <div class="stat-card amber"><div class="stat-label">Vendor Payouts</div><div class="stat-value" id="k-payouts">—</div></div>
+        <div class="stat-card"><div class="stat-label">Bookings</div><div class="stat-value" id="k-bookings">—</div></div>
+      </div>
+
+      <!-- splits row -->
+      <div class="pr-grid cols3 pr-section">
+        <div class="card"><div class="card-body">
+          <div class="pr-card-title">Online vs Cash</div>
+          <div class="pr-split" id="oc-split"></div>
+          <div class="pr-legend">
+            <span><span class="dot" style="background:var(--blue)"></span>Online <b id="oc-online">—</b></span>
+            <span><span class="dot" style="background:var(--accent)"></span>Cash/COD <b id="oc-cash">—</b></span>
+          </div>
+        </div></div>
+        <div class="card"><div class="card-body">
+          <div class="pr-card-title">Collected vs Pending</div>
+          <div class="pr-metric"><span class="lbl">Collected online</span><span class="val green" id="pc-collected">—</span></div>
+          <div class="pr-metric"><span class="lbl">Awaiting payment</span><span class="val amber" id="pc-pending">—</span></div>
+          <div class="pr-metric"><span class="lbl">Failed / Refunded</span><span class="val muted" id="pc-failref">—</span></div>
+          <div class="pr-metric"><span class="lbl">Collection rate</span><span class="val" id="pc-rate">—</span></div>
+        </div></div>
+        <div class="card" id="ev-card"><div class="card-body">
+          <div class="pr-card-title">Expert Visits</div>
+          <div class="pr-metric"><span class="lbl">Paid visits</span><span class="val green" id="ev-paid">—</span></div>
+          <div class="pr-metric"><span class="lbl">Free visits</span><span class="val" id="ev-free">—</span></div>
+          <div class="pr-metric"><span class="lbl">Fees collected</span><span class="val amber" id="ev-fees">—</span></div>
+        </div></div>
+      </div>
+
+      <!-- commission vs payout -->
+      <div class="card pr-section"><div class="card-body">
+        <div class="pr-card-title">Company Commission vs Vendor Payouts <span class="pr-note" id="cp-note"></span></div>
+        <div class="pr-grid cols3">
+          <div>
+            <div class="pr-metric"><span class="lbl">Commission earned</span><span class="val purple" id="cp-earned">—</span></div>
+            <div class="pr-metric"><span class="lbl">Commission reversed</span><span class="val muted" id="cp-reversed">—</span></div>
+            <div class="pr-metric"><span class="lbl">Company net</span><span class="val green" id="cp-net">—</span></div>
+          </div>
+          <div>
+            <div class="pr-metric"><span class="lbl">Vendor credited</span><span class="val amber" id="cp-credited">—</span></div>
+            <div class="pr-metric"><span class="lbl">Vendor pending</span><span class="val" id="cp-pending">—</span></div>
+            <div class="pr-metric"><span class="lbl">Vendor settled</span><span class="val" id="cp-settled">—</span></div>
+          </div>
+          <div>
+            <div class="pr-metric"><span class="lbl">Wallets pending (live)</span><span class="val amber" id="cp-wpending">—</span></div>
+            <div class="pr-metric"><span class="lbl">Wallets available (live)</span><span class="val green" id="cp-wavail">—</span></div>
           </div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr><th>TXN ID</th><th>ORDER</th><th>USER</th><th>METHOD</th><th>AMOUNT</th><th>DATE</th><th>STATUS</th></tr>
-            </thead>
-            <tbody id="payments-tbody">
-              <tr class="loading-row"><td colspan="7"><div class="spinner" style="margin:auto"></div></td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="card-body" style="padding-top:8px">
-          <div class="pagination" id="payments-pagination"></div>
-        </div>
+      </div></div>
+
+      <!-- category + city breakdowns -->
+      <div class="pr-grid cols2 pr-section">
+        <div class="card"><div class="card-body">
+          <div class="pr-card-title">Per-Category P&amp;L <span class="pr-note">by job value</span></div>
+          <div class="pr-bars" id="by-category"><div class="pr-empty">—</div></div>
+        </div></div>
+        <div class="card"><div class="card-body">
+          <div class="pr-card-title">Per-City <span class="pr-note">multi-city ready</span></div>
+          <div class="pr-bars" id="by-city"><div class="pr-empty">—</div></div>
+        </div></div>
       </div>
+
+      <!-- top vendors -->
+      <div class="card pr-section"><div class="card-body" style="padding-bottom:8px">
+        <div class="pr-card-title">Top Vendors <span class="pr-note">the system gave X · vendor earned Y — click a row</span></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>VENDOR</th><th>JOBS GIVEN</th><th>COMPLETED</th><th>JOB VALUE</th><th>EARNED</th><th>PENDING</th></tr></thead>
+          <tbody id="top-vendors"><tr class="loading-row"><td colspan="6"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
+        </table>
+      </div></div>
     </main>
   </div>
 </div>
+
+<!-- Vendor revenue detail modal -->
+<div class="modal-overlay" id="vendor-modal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <span class="modal-title" id="vm-title">Vendor Revenue</span>
+      <button class="modal-close" onclick="Modal.close('vendor-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" id="vm-body">Loading…</div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 <script src="config.js"></script>
 <script src="shared/api.js"></script>
@@ -90,70 +179,173 @@
 <script src="shared/shell.js"></script>
 <script src="assets/app.js"></script>
 <script>
-Shell.init({ title: 'Payment Monitor', active: 'payments.html' });
+Shell.init({ title: 'Payment Room', active: 'payments.html' });
 
-let currentPage = 1, totalPages = 1, allPayments = [];
+const money = (v) => Fmt.currency(v == null ? 0 : v);
+const numf  = (v) => (v == null ? 0 : Number(v)).toLocaleString('en-IN');
+let cityOptionsBuilt = false;
 
-async function loadPayments(page = 1) {
-  currentPage = page;
-  tableLoading('payments-tbody', 7);
-  const params = { page, limit: CONFIG.DEFAULT_PAGE_SIZE, sort: 'createdAt:desc' };
-  const search = document.getElementById('search-input').value.trim();
-  const status = document.getElementById('status-filter').value;
-  const method = document.getElementById('method-filter').value;
-  if (search) params.search = search;
-  if (status) params.status = status;
-  if (method) params.method = method;
-
+async function loadRoom() {
+  const period = document.getElementById('pr-period').value;
+  const cityId = document.getElementById('pr-city').value;
+  document.getElementById('pr-sub').textContent = 'Read-only revenue control room · loading…';
   try {
-    const data = await API.get(CONFIG.ENDPOINTS.PAYMENTS, params);
-    allPayments = data.payments || data.data || [];
-    const total = data.total || allPayments.length;
-    const summary = data.summary || {};
-    totalPages = Math.ceil(total / CONFIG.DEFAULT_PAGE_SIZE);
-
-    // Summary stats
-    document.getElementById('pay-paid').textContent    = Fmt.currency(summary.paidAmount);
-    document.getElementById('pay-pending').textContent = Fmt.currency(summary.pendingAmount);
-    document.getElementById('pay-failed').textContent  = (summary.failedCount || 0).toString();
-    document.getElementById('pay-volume').textContent  = Fmt.currency(summary.totalVolume);
-
-    renderPayments(allPayments);
-    buildPagination('payments-pagination', currentPage, totalPages, loadPayments);
-  } catch(e) {
-    tableEmpty('payments-tbody', 7, 'Failed: ' + (e.message||''));
-    Toast.error('Failed to load payments');
+    const res = await API.get('/payments/room', cityId ? { period, city_id: cityId } : { period });
+    render(res?.data || {});
+  } catch (e) {
+    document.getElementById('pr-sub').textContent = 'Failed to load';
+    Toast.error(e.message || 'Failed to load Payment Room');
   }
 }
 
-function renderPayments(payments) {
-  const tbody = document.getElementById('payments-tbody');
-  if (!payments.length) { tableEmpty('payments-tbody', 7); return; }
-  tbody.innerHTML = payments.map(p => {
-    const methodIcon = { upi:'💳', card:'💳', netbanking:'🏦', cod:'💵', wallet:'👝' };
-    const method = (p.method||p.paymentMethod||'').toLowerCase();
-    return `<tr>
-      <td><code style="font-size:11px;color:var(--purple)">${Fmt.truncate(p.transactionId||p.txnId||p.id,18)}</code></td>
-      <td><a style="color:var(--accent);font-size:11px" href="orders.html">#${p.orderId||p.order?.id||'—'}</a></td>
-      <td style="font-size:11px">${Fmt.truncate(p.userName||p.user?.name,18)||'—'}</td>
-      <td>
-        <span style="font-size:12px">${methodIcon[method]||'💰'}</span>
-        <span style="font-size:11px;color:var(--text-secondary);margin-left:4px">${Fmt.capitalize(method||'—')}</span>
-      </td>
-      <td style="color:var(--accent);font-weight:500">${Fmt.currency(p.amount)}</td>
-      <td style="color:var(--text-muted);font-size:11px">${Fmt.date(p.createdAt||p.paidAt)}</td>
-      <td>${statusBadge(p.status||p.paymentStatus)}</td>
-    </tr>`;
+function render(d) {
+  const p = d.period || {};
+  document.getElementById('pr-sub').textContent =
+    `Read-only · ${p.label || ''}${p.city_id ? ' · 1 city' : ''} · money is reported, never moved`;
+
+  // KPIs
+  const k = d.kpis || {};
+  document.getElementById('k-gmv').textContent        = money(k.gmv);
+  document.getElementById('k-collected').textContent  = money(k.collected);
+  document.getElementById('k-commission').textContent = money(k.commission_earned);
+  document.getElementById('k-payouts').textContent    = money(k.vendor_payouts);
+  document.getElementById('k-bookings').textContent   = numf(k.bookings_count);
+
+  // Online vs cash
+  const oc = d.online_vs_cash || {};
+  document.getElementById('oc-split').innerHTML =
+    `<span style="width:${oc.online_pct || 0}%;background:var(--blue)"></span>` +
+    `<span style="width:${oc.cod_pct || 0}%;background:var(--accent)"></span>`;
+  document.getElementById('oc-online').textContent = `${money(oc.online_paid)} · ${oc.online_pct || 0}%`;
+  document.getElementById('oc-cash').textContent   = `${money(oc.cod_value)} · ${oc.cod_pct || 0}%`;
+
+  // Collected vs pending
+  const pc = d.pending_vs_collected || {};
+  document.getElementById('pc-collected').textContent = money(pc.collected);
+  document.getElementById('pc-pending').textContent   = money(pc.pending);
+  document.getElementById('pc-failref').textContent   = `${money(pc.failed)} / ${money(pc.refunded)}`;
+  document.getElementById('pc-rate').textContent      = pc.collection_rate == null ? '—' : pc.collection_rate + '%';
+
+  // Expert visits
+  const ev = d.expert_visits;
+  if (ev) {
+    document.getElementById('ev-card').style.display = '';
+    document.getElementById('ev-paid').textContent = numf(ev.paid_count);
+    document.getElementById('ev-free').textContent = numf(ev.free_count);
+    document.getElementById('ev-fees').textContent = money(ev.fees_collected);
+  } else {
+    document.getElementById('ev-card').style.display = 'none';
+  }
+
+  // Commission vs payout
+  const cp = d.commission_vs_payout || {};
+  document.getElementById('cp-earned').textContent   = money(cp.commission_earned);
+  document.getElementById('cp-reversed').textContent = money(cp.commission_reversed);
+  document.getElementById('cp-net').textContent      = money(cp.company_net);
+  document.getElementById('cp-credited').textContent = money(cp.vendor_credited);
+  document.getElementById('cp-pending').textContent  = money(cp.vendor_pending);
+  document.getElementById('cp-settled').textContent  = money(cp.vendor_settled);
+  document.getElementById('cp-wpending').textContent = money(cp.wallet_pending_balance);
+  document.getElementById('cp-wavail').textContent   = money(cp.wallet_available_balance);
+  document.getElementById('cp-note').textContent =
+    (d.meta && d.meta.ledger_scoped === 'booking') ? 'from ledger · booking-scoped' : 'from ledger';
+
+  renderBars('by-category', d.by_category || [], true);
+  renderBars('by-city', d.by_city || [], false);
+  renderVendors(d.top_vendors || []);
+
+  // Build the city filter once, from the unfiltered view.
+  if (!cityOptionsBuilt && !p.city_id && (d.by_city || []).length) {
+    const sel = document.getElementById('pr-city');
+    (d.by_city || []).forEach(c => {
+      if (c.id == null) return;
+      const o = document.createElement('option');
+      o.value = c.id; o.textContent = c.name;
+      sel.appendChild(o);
+    });
+    cityOptionsBuilt = true;
+  }
+}
+
+function renderBars(elId, rows, showCommission) {
+  const el = document.getElementById(elId);
+  if (!rows.length) { el.innerHTML = '<div class="pr-empty">No data in this period.</div>'; return; }
+  const max = Math.max(1, ...rows.map(r => Number(r.gmv) || 0));
+  el.innerHTML = rows.map((r, i) => {
+    const gmv = Number(r.gmv) || 0;
+    const w = Math.round((gmv / max) * 100);
+    const cls = gmv === 0 ? 'weak' : (i === 0 ? 'top' : '');
+    const sub = showCommission && r.commission != null
+      ? `comm ${money(r.commission)}` : `${numf(r.bookings)} bookings`;
+    return `<div class="pr-row">
+      <div class="nm">${escHtml(r.name || '—')}<small>${numf(r.bookings)} bookings · ${r.share_pct || 0}%</small></div>
+      <div class="pr-track"><div class="pr-fill ${cls}" style="width:${w}%"></div></div>
+      <div class="amt">${money(gmv)}<small>${sub}</small></div>
+    </div>`;
   }).join('');
 }
 
-document.getElementById('apply-filter').addEventListener('click', () => loadPayments(1));
-document.getElementById('search-input').addEventListener('keydown', e => { if(e.key==='Enter') loadPayments(1); });
-document.getElementById('export-btn').addEventListener('click', () => {
-  exportCSV(allPayments, ['transactionId','orderId','amount','method','status','createdAt'], 'payments.csv');
-});
+function renderVendors(rows) {
+  const tb = document.getElementById('top-vendors');
+  if (!rows.length) { tb.innerHTML = '<tr class="empty-row"><td colspan="6">No vendor activity in this period.</td></tr>'; return; }
+  tb.innerHTML = rows.map(v => `
+    <tr class="pr-vendor-row" onclick="openVendor(${v.vendor_id})">
+      <td style="font-size:12px;color:var(--text-primary);font-weight:600">${escHtml(Fmt.truncate(v.vendor_name, 26))}</td>
+      <td style="color:var(--text-secondary)">${numf(v.jobs_given)}</td>
+      <td style="color:var(--text-secondary)">${numf(v.jobs_completed)}</td>
+      <td style="color:var(--text-primary);font-weight:600">${money(v.job_value)}</td>
+      <td style="color:var(--green)">${v.earned == null ? '—' : money(v.earned)}</td>
+      <td style="color:var(--accent)">${v.pending == null ? '—' : money(v.pending)}</td>
+    </tr>`).join('');
+}
 
-loadPayments(1);
+async function openVendor(id) {
+  Modal.open('vendor-modal');
+  document.getElementById('vm-title').textContent = 'Vendor Revenue';
+  document.getElementById('vm-body').innerHTML = '<div style="text-align:center;padding:20px"><div class="spinner" style="margin:auto"></div></div>';
+  const period = document.getElementById('pr-period').value;
+  try {
+    const res = await API.get(`/payments/vendor/${id}`, { period });
+    const v = res?.data || {};
+    document.getElementById('vm-title').textContent = v.vendor_name || ('Vendor #' + id);
+    const row = (l, val, cls) => `<div class="pr-metric"><span class="lbl">${l}</span><span class="val ${cls||''}">${val}</span></div>`;
+    const recent = (v.recent || []).map(r => `
+      <tr>
+        <td style="font-size:11px">${escHtml(r.ref || r.id)}</td>
+        <td>${statusBadge(r.status)}</td>
+        <td style="font-size:11px;color:var(--text-muted)">${escHtml(r.payment_method || '—')} · ${escHtml(r.payment_status || '—')}</td>
+        <td style="text-align:right;font-family:var(--mono);font-size:11px">${money(r.value)}</td>
+      </tr>`).join('');
+    document.getElementById('vm-body').innerHTML = `
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${v.period?.label || ''} — what the system gave this vendor, and what they earned.</p>
+      <div class="pr-grid cols2" style="gap:0 20px">
+        <div>
+          ${row('Jobs given', numf(v.jobs_given))}
+          ${row('Jobs completed', numf(v.jobs_completed), 'green')}
+          ${row('Job value (GMV)', money(v.job_value))}
+        </div>
+        <div>
+          ${row('Earned', money(v.earned), 'green')}
+          ${row('Pending', money(v.pending), 'amber')}
+          ${row('Settled', money(v.settled))}
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border-dim);margin-top:8px;padding-top:10px">
+        ${row('Wallet available (live)', money(v.wallet?.available_balance), 'green')}
+        ${row('Wallet pending (live)', money(v.wallet?.pending_balance), 'amber')}
+      </div>
+      ${recent ? `<div style="font-size:10px;color:var(--text-muted);letter-spacing:0.06em;margin:14px 0 6px">RECENT JOBS</div>
+      <div class="table-wrap"><table><tbody>${recent}</tbody></table></div>` : ''}`;
+  } catch (e) {
+    document.getElementById('vm-body').innerHTML = '<p style="color:var(--red)">Failed to load vendor revenue.</p>';
+  }
+}
+
+document.getElementById('pr-period').addEventListener('change', loadRoom);
+document.getElementById('pr-city').addEventListener('change', loadRoom);
+document.getElementById('pr-refresh').addEventListener('click', loadRoom);
+
+loadRoom();
 </script>
 </body>
 </html>

@@ -2191,6 +2191,28 @@ try {
         ]);
     }
 
+    // ══ Payment Room — READ-ONLY revenue control room (computed, moves no money) ══
+    //  Everything here only SELECTs via core/helpers/PaymentReport.php (no
+    //  LedgerEngine, no webhook, no writes). Gated by RBAC 'payments.view' —
+    //  today's admin bypasses (legacy admin all-access), Finance role sees it later.
+
+    // ── GET /api/admin/payments/room?period=&city_id= ─────────────────────────
+    if ($method === 'GET' && $uri === '/api/admin/payments/room') {
+        Permission::enforce($db, $auth, 'payments.view');
+        require_once SYSTEM_ROOT . '/core/helpers/PaymentReport.php';
+        $period = (string)($_GET['period'] ?? '30d');
+        $cityId = isset($_GET['city_id']) && $_GET['city_id'] !== '' ? (int)$_GET['city_id'] : null;
+        Response::success(PaymentReport::room($db, $period, $cityId));
+    }
+
+    // ── GET /api/admin/payments/vendor/{id}?period= — vendor revenue history ───
+    if ($method === 'GET' && preg_match('#^/api/admin/payments/vendor/(\d+)$#', $uri, $m)) {
+        Permission::enforce($db, $auth, 'payments.view');
+        require_once SYSTEM_ROOT . '/core/helpers/PaymentReport.php';
+        $period = (string)($_GET['period'] ?? 'all');
+        Response::success(PaymentReport::vendorRevenue($db, (int)$m[1], $period));
+    }
+
     // ══════════════════════════════════════════════════════════
     // GET /api/admin/riders — All riders with availability
     // ══════════════════════════════════════════════════════════
