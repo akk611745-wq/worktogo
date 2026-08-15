@@ -334,40 +334,77 @@ class LedgerEngine {
     }
 
     /**
-     * TASK 4: Settlement Flow
-     * Moves pending_balance to available_balance and marks transactions as 'settled'
+     * TASK 4: Settlement Flow — advance vendor earnings from pending -> available.
+     *
+     * Moves each eligible pending vendor wallet_transaction's amount from
+     * vendor_wallets.pending_balance to available_balance and marks the row
+     * 'settled'. This is an INTERNAL ledger state change meaning "ready to pay
+     * out" — it does NOT transfer money to any bank (a payout-gateway step is
+     * separate). Admin-triggered; never runs on its own.
+     *
+     * SAFE: runs in one transaction and SELECT ... FOR UPDATE locks the eligible
+     * pending rows so a concurrent settle can't move the same earnings twice.
+     * IDEMPOTENT: only status='pending' rows are eligible, so a re-run settles
+     * nothing already settled. Does NOT change how earnings are credited.
+     *
+     * @param int|null $vendorId  settle only this vendor; null = all vendors
+     * @param PDO|null $db        reuse the caller's connection (default: shared)
+     * @return array{status:string, settled_count:int, total_amount:float,
+     *               vendors:array<array{vendor_id:int,amount:float,tx_count:int}>}
      */
-    public static function runSettlement() {
-        $pdo = Database::getConnection();
-        
+    public static function runSettlement($vendorId = null, $db = null) {
+        $pdo = $db ?: Database::getConnection();
+
         try {
             $pdo->beginTransaction();
 
-            // Find all pending vendor transactions
-            $stmt = $pdo->prepare("SELECT id, entity_id, amount FROM wallet_transactions WHERE entity_type = 'vendor' AND status = 'pending'");
-            $stmt->execute();
+            // Eligible = pending vendor credits (optionally one vendor), locked.
+            $sql  = "SELECT id, entity_id, amount FROM wallet_transactions
+                      WHERE entity_type = 'vendor' AND status = 'pending'";
+            $bind = [];
+            if ($vendorId !== null) { $sql .= " AND entity_id = ?"; $bind[] = (int)$vendorId; }
+            $sql .= " FOR UPDATE";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($bind);
             $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            foreach ($transactions as $tx) {
-                // Update vendor wallet safely
-                $updateWallet = $pdo->prepare("
-                    UPDATE vendor_wallets 
-                    SET pending_balance = GREATEST(0, pending_balance - ?), 
-                        available_balance = available_balance + ? 
-                    WHERE vendor_id = ?
-                ");
-                $updateWallet->execute([$tx['amount'], $tx['amount'], $tx['entity_id']]);
+            // Prepare once, reuse per row (same move logic as before).
+            $updateWallet = $pdo->prepare("
+                UPDATE vendor_wallets
+                   SET pending_balance   = GREATEST(0, pending_balance - ?),
+                       available_balance = available_balance + ?
+                 WHERE vendor_id = ?
+            ");
+            $markSettled = $pdo->prepare("UPDATE wallet_transactions SET status = 'settled' WHERE id = ?");
 
-                // Mark transaction as settled
-                $updateTx = $pdo->prepare("UPDATE wallet_transactions SET status = 'settled' WHERE id = ?");
-                $updateTx->execute([$tx['id']]);
+            $byVendor = []; $total = 0.0;
+            foreach ($transactions as $tx) {
+                $amount = (float)$tx['amount'];
+                $vid    = (int)$tx['entity_id'];
+
+                $updateWallet->execute([$amount, $amount, $vid]);
+                $markSettled->execute([$tx['id']]);
+
+                $total += $amount;
+                if (!isset($byVendor[$vid])) {
+                    $byVendor[$vid] = ['vendor_id' => $vid, 'amount' => 0.0, 'tx_count' => 0];
+                }
+                $byVendor[$vid]['amount']   += $amount;
+                $byVendor[$vid]['tx_count'] += 1;
             }
 
             $pdo->commit();
-            return ['status' => 'success', 'settled_count' => count($transactions)];
+
+            foreach ($byVendor as &$v) { $v['amount'] = round($v['amount'], 2); }
+            return [
+                'status'        => 'success',
+                'settled_count' => count($transactions),
+                'total_amount'  => round($total, 2),
+                'vendors'       => array_values($byVendor),
+            ];
         } catch (Exception $e) {
-            $pdo->rollBack();
-            Logger::error("LedgerEngine: Failed to run settlement", ['error' => $e->getMessage()]);
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            Logger::error("LedgerEngine: Failed to run settlement", ['error' => $e->getMessage(), 'vendor_id' => $vendorId]);
             return ['status' => 'error', 'message' => $e->getMessage()];
         }
     }

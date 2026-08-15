@@ -2213,6 +2213,80 @@ try {
         Response::success(PaymentReport::vendorRevenue($db, (int)$m[1], $period));
     }
 
+    // ── POST /api/admin/payments/settle  { vendor_id? } ───────────────────────
+    //  REAL-MONEY WRITE — advances vendor earnings pending_balance -> available_
+    //  balance ("ready to pay out"). It does NOT transfer money to any bank; that
+    //  payout-gateway step is separate. Admin-triggered only, gated by RBAC
+    //  'payments.manage' (today's admin bypasses). Safe/idempotent/transactional
+    //  via LedgerEngine::runSettlement (SELECT ... FOR UPDATE, pending-only). Omit
+    //  vendor_id to settle all vendors; pass one to settle a single vendor.
+    if ($method === 'POST' && $uri === '/api/admin/payments/settle') {
+        Permission::enforce($db, $auth, 'payments.manage');
+        require_once SYSTEM_ROOT . '/core/helpers/PaymentReport.php';
+        require_once CORE_PATH . '/helpers/LedgerEngine.php';
+
+        if (!PaymentReport::hasTable($db, 'wallet_transactions') || !PaymentReport::hasTable($db, 'vendor_wallets')) {
+            Response::error('Wallet tables are not available on this environment.', 503);
+        }
+
+        $input    = json_decode(file_get_contents('php://input'), true) ?? [];
+        $vendorId = (isset($input['vendor_id']) && $input['vendor_id'] !== '' && $input['vendor_id'] !== null)
+            ? (int)$input['vendor_id'] : null;
+        if ($vendorId !== null && $vendorId <= 0) Response::validation('vendor_id must be a positive integer');
+        if ($vendorId !== null) {
+            $vchk = $db->prepare("SELECT id FROM vendors WHERE id = ? LIMIT 1");
+            $vchk->execute([$vendorId]);
+            if (!$vchk->fetchColumn()) Response::notFound('Vendor');
+        }
+
+        // Before/after wallet snapshot (scoped to the vendor when given) so the
+        // admin sees exactly how much moved.
+        $sumsSql = "SELECT COALESCE(SUM(pending_balance),0) AS pending, COALESCE(SUM(available_balance),0) AS available
+                    FROM vendor_wallets" . ($vendorId !== null ? " WHERE vendor_id = ?" : "");
+        $snapArgs = $vendorId !== null ? [$vendorId] : [];
+        $bStmt = $db->prepare($sumsSql); $bStmt->execute($snapArgs);
+        $before = $bStmt->fetch(PDO::FETCH_ASSOC) ?: ['pending' => 0, 'available' => 0];
+
+        $result = \Core\Helpers\LedgerEngine::runSettlement($vendorId, $db);
+        if (($result['status'] ?? '') !== 'success') {
+            Response::error('Settlement failed: ' . ($result['message'] ?? 'unknown error'), 500);
+        }
+
+        $aStmt = $db->prepare($sumsSql); $aStmt->execute($snapArgs);
+        $after = $aStmt->fetch(PDO::FETCH_ASSOC) ?: ['pending' => 0, 'available' => 0];
+
+        // Attach vendor names to the per-vendor breakdown.
+        $vendors = $result['vendors'] ?? [];
+        if ($vendors) {
+            $ids = array_map(fn($v) => (int)$v['vendor_id'], $vendors);
+            $ph  = implode(',', array_fill(0, count($ids), '?'));
+            $names = [];
+            try {
+                $ns = $db->prepare("SELECT id, business_name FROM vendors WHERE id IN ($ph)");
+                $ns->execute($ids);
+                foreach ($ns->fetchAll(PDO::FETCH_ASSOC) as $r) { $names[(int)$r['id']] = $r['business_name']; }
+            } catch (PDOException $e) { /* names are optional context */ }
+            foreach ($vendors as &$v) { $v['vendor_name'] = $names[(int)$v['vendor_id']] ?? ('Vendor #' . (int)$v['vendor_id']); }
+            unset($v);
+        }
+
+        Logger::info('Admin ran vendor settlement', [
+            'admin_id'      => $auth['user_id'],
+            'scope'         => $vendorId !== null ? ('vendor:' . $vendorId) : 'all',
+            'settled_count' => $result['settled_count'] ?? 0,
+            'total_amount'  => $result['total_amount'] ?? 0,
+        ]);
+
+        Response::success([
+            'scope'         => $vendorId !== null ? $vendorId : 'all',
+            'settled_count' => (int)($result['settled_count'] ?? 0),
+            'total_amount'  => (float)($result['total_amount'] ?? 0),
+            'vendors'       => $vendors,
+            'before'        => ['pending' => (float)$before['pending'], 'available' => (float)$before['available']],
+            'after'         => ['pending' => (float)$after['pending'], 'available' => (float)$after['available']],
+        ], 200, 'Settlement complete');
+    }
+
     // ══════════════════════════════════════════════════════════
     // GET /api/admin/riders — All riders with availability
     // ══════════════════════════════════════════════════════════

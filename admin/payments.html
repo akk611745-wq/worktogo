@@ -115,7 +115,10 @@
 
       <!-- commission vs payout -->
       <div class="card pr-section"><div class="card-body">
-        <div class="pr-card-title">Company Commission vs Vendor Payouts <span class="pr-note" id="cp-note"></span></div>
+        <div class="pr-card-title">
+          <span>Company Commission vs Vendor Payouts <span class="pr-note" id="cp-note"></span></span>
+          <button class="btn btn-primary btn-sm" id="settle-all-btn" onclick="settleAll()">Settle payouts →</button>
+        </div>
         <div class="pr-grid cols3">
           <div>
             <div class="pr-metric"><span class="lbl">Commission earned</span><span class="val purple" id="cp-earned">—</span></div>
@@ -132,6 +135,7 @@
             <div class="pr-metric"><span class="lbl">Wallets available (live)</span><span class="val green" id="cp-wavail">—</span></div>
           </div>
         </div>
+        <p class="pr-note" style="margin-top:10px">Settling moves vendor earnings from <b>pending</b> to <b>available for payout</b> (ready to pay). It does <b>not</b> transfer money to any bank — that's a separate payout step.</p>
       </div></div>
 
       <!-- category + city breakdowns -->
@@ -334,10 +338,53 @@ async function openVendor(id) {
         ${row('Wallet available (live)', money(v.wallet?.available_balance), 'green')}
         ${row('Wallet pending (live)', money(v.wallet?.pending_balance), 'amber')}
       </div>
+      ${Number(v.wallet?.pending_balance || 0) > 0 ? `
+      <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" onclick="settleVendor(${id})">Settle this vendor →</button>
+        <span class="pr-note">Marks ${money(v.wallet?.pending_balance)} pending as available for payout (not a bank transfer).</span>
+      </div>` : ''}
       ${recent ? `<div style="font-size:10px;color:var(--text-muted);letter-spacing:0.06em;margin:14px 0 6px">RECENT JOBS</div>
       <div class="table-wrap"><table><tbody>${recent}</tbody></table></div>` : ''}`;
   } catch (e) {
     document.getElementById('vm-body').innerHTML = '<p style="color:var(--red)">Failed to load vendor revenue.</p>';
+  }
+}
+
+// ── Settlement (real-money WRITE: pending -> available "ready to pay out") ──────
+async function settleAll() {
+  if (!await confirmAction(
+    'Move ALL vendors\' pending earnings to "available for payout"?\n\n' +
+    'This marks internal balances as ready to pay — it does NOT send money to any bank.'
+  )) return;
+  await runSettle(null, false);
+}
+
+async function settleVendor(id) {
+  if (!await confirmAction(
+    'Move this vendor\'s pending earnings to "available for payout"?\n\n' +
+    'This marks it ready to pay — it does NOT send money to a bank.'
+  )) return;
+  await runSettle(id, true);
+}
+
+async function runSettle(vendorId, isVendor) {
+  const btn = document.getElementById('settle-all-btn');
+  if (btn && !isVendor) btn.disabled = true;
+  try {
+    const res = await API.post('/payments/settle', vendorId ? { vendor_id: vendorId } : {});
+    const d = res?.data || {};
+    if ((d.settled_count || 0) > 0) {
+      const nV = (d.vendors || []).length;
+      Toast.success(`Settled ${money(d.total_amount)} across ${nV} vendor${nV === 1 ? '' : 's'} — now available for payout.`);
+    } else {
+      Toast.warn('Nothing to settle — no pending earnings.');
+    }
+    await loadRoom();
+    if (isVendor && vendorId) openVendor(vendorId); // refresh the open modal
+  } catch (e) {
+    Toast.error(e.message || 'Settlement failed');
+  } finally {
+    if (btn && !isVendor) btn.disabled = false;
   }
 }
 
