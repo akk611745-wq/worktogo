@@ -451,6 +451,9 @@ export async function render(container) {
     async _refreshExpertVisitFee(slug = "") {
       const s = slug || _companyViewSlug || "";
       _companyExpertFee = null;
+      // Show a gentle loading hint instead of a blank price line.
+      const feeLoadingEl = document.getElementById("cv-expert-fee");
+      if (feeLoadingEl) { feeLoadingEl.textContent = "Checking price…"; feeLoadingEl.classList.remove("is-free"); feeLoadingEl.classList.add("is-loading"); }
       let fee = null;
       try {
         const cityHint = (typeof _resolvedLocality === "function" ? (_resolvedLocality().city || "") : "")
@@ -464,9 +467,11 @@ export async function render(container) {
       _companyExpertFee = fee;
       const el = document.getElementById("cv-expert-fee");
       if (el) {
-        el.textContent = !fee ? ""
+        // On error/unknown, never leave it blank — the Expert Visit button still works.
+        el.textContent = !fee ? "Expert visit available on request"
           : fee.is_free ? "Free expert visit"
           : `Expert visit — ${UI.formatCurrency(fee.amount)}`;
+        el.classList.remove("is-loading");
         el.classList.toggle("is-free", !!fee && fee.is_free);
       }
     },
@@ -500,14 +505,15 @@ export async function render(container) {
       const body = document.getElementById("company-view-body");
       if (body) body.innerHTML = `<div class="company-pkg-loading"><span class="company-pkg-spinner"></span>Loading packages…</div>`;
       let packages = [];
+      let loadError = false;
       try {
         const cityHint = (typeof _resolvedLocality === "function" ? (_resolvedLocality().city || "") : "")
           || (CONFIG?.SERVICE_ONLY?.CITY || "");
         const res = await API.getPackages(s, cityHint);
         packages = res?.data?.data?.packages || res?.data?.packages || [];
-      } catch (e) { packages = []; }
+      } catch (e) { loadError = true; packages = []; }
       _companyPackages = Array.isArray(packages) ? packages : [];
-      if (body) body.innerHTML = _companyPackagesHTML(s, _companyPackages);
+      if (body) body.innerHTML = _companyPackagesHTML(s, _companyPackages, loadError);
       const panel = document.querySelector("#company-view-overlay .company-view-panel");
       if (panel) panel.scrollTop = 0;
     },
@@ -2105,6 +2111,7 @@ function _renderServices(res) {
         <h3>Area-based worker confirmation active</h3>
         <p>${_esc(_friendlyServiceError(res.error))} Requests are still routed through WorkToGo confirmation.</p>
         <div class="recovery-actions">
+          <button class="btn-ghost-inline recovery-retry" onclick="HomeSections.reloadServices()">Try again</button>
           <button class="btn-ghost-inline" onclick="HomePage.bookCategoryCta('', 'free_lead')">Open worker matching</button>
           <button class="btn-ghost-inline" onclick="UI.openSupport('selector', { category: HomePage.activeCategoryLabel?.() })">Operations support</button>
         </div>
@@ -2531,8 +2538,16 @@ function _packageCardHTML(p) {
     </button>`;
 }
 
-function _companyPackagesHTML(slug, packages) {
+function _companyPackagesHTML(slug, packages, loadError = false) {
   const meta = _categoryMeta(slug);
+  const listInner = loadError
+    ? `<div class="company-pkg-error">
+         <p>We couldn’t load packages just now — but you can still get help.</p>
+         <button type="button" class="btn-retry" onclick="HomePage.companyChoosePackage('${_esc(slug)}')">Try again</button>
+       </div>`
+    : packages.length
+      ? packages.map(p => _packageCardHTML(p)).join("")
+      : `<p class="company-pkg-empty">No packages here yet — tap “Send request” and the company will help you directly.</p>`;
   return `
     <header class="company-topbar">
       <button class="company-back" type="button" onclick="HomePage.backToCompanyView('${_esc(slug)}')" aria-label="Back">←</button>
@@ -2547,9 +2562,7 @@ function _companyPackagesHTML(slug, packages) {
     </div>
 
     <section class="company-pkg-list">
-      ${packages.length
-        ? packages.map(p => _packageCardHTML(p)).join("")
-        : `<p class="company-pkg-empty">No packages here yet — tap “Send request” and the company will help you directly.</p>`}
+      ${listInner}
     </section>
 
     <section class="company-pkg-submit">
@@ -2836,12 +2849,19 @@ function _renderInstantSearch() {
     list = _searchRemoteServices.length ? _searchRemoteServices : list.filter(s => _searchText(s).includes(_searchQuery));
   }
   panel.classList.remove("hidden");
+  const emptyHTML = hasQuery
+    ? UI.emptyState("🔍", `No vendors match “${_esc(_searchQuery)}”`,
+        "You can still get it done — WorkToGo’s company team will handle it for you.",
+        [{ label: "Get Company Service", onclick: "HomePage.openCompanyView('')", primary: true },
+         { label: "Clear search", onclick: "HomePage.clearSearch()" }])
+    : UI.emptyState("📍", "No vendors listed near you yet",
+        "WorkToGo can still run the job for you — or try a different area.",
+        [{ label: "Get Company Service", onclick: "HomePage.openCompanyView('')", primary: true },
+         { label: "Change area", onclick: "HomePage.openLocalitySelector()" }]);
   panel.innerHTML = `
     <div class="instant-search-head"><strong>${hasQuery ? `Results for "${_esc(_searchQuery)}"` : "Available Vendors"}</strong></div>
     <div style="padding:4px 0">
-      ${list.length
-        ? list.map(s => _vendorCardHTML(s)).join("")
-        : `<p style="color:#888;text-align:center;padding:20px">${hasQuery ? "No vendors match that search." : "No vendors available in your area."}</p>`}
+      ${list.length ? list.map(s => _vendorCardHTML(s)).join("") : emptyHTML}
     </div>`;
   if (window.WtgSheet) WtgSheet.setVendors(list);
 }

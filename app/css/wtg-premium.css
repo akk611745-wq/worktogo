@@ -1234,3 +1234,60 @@ body.company-view-lock { overflow: hidden; }
   color: #fff;
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Empty / loading / error polish — "never a dead screen": every empty or
+   failed state offers a clear next step or a retry. (Base .empty-state /
+   .error-state / .btn-retry / .skel live in main.css; these extend them.)
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Action row under an empty state (Get Company Service / Change area / Retry) */
+.empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 6px;
+}
+.empty-state-actions .btn-retry { margin-top: 0; }
+
+/* Primary action inside an empty state — tied to the company-service accent */
+.btn-empty-primary {
+  margin-top: 0;
+  padding: 10px 22px;
+  min-height: 44px;                 /* touch target */
+  border-radius: var(--r-full, 9999px);
+  border: 1px solid var(--wtg-accent);
+  background: var(--wtg-accent);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--dur, 200ms) ease, transform var(--dur, 200ms) ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-empty-primary:active { transform: scale(0.97); background: var(--wtg-accent-dark); }
+
+/* Company packages: couldn't-load recovery (the "Send request" CTA still shows
+   below it, so the customer always has a path forward). */
+.company-pkg-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 26px 16px;
+  text-align: center;
+  color: var(--clr-text-2, #667085);
+  font-size: 0.9rem;
+}
+.company-pkg-error p { margin: 0; }
+
+/* Expert-visit fee: gentle loading hint instead of a blank price line */
+#cv-expert-fee.is-loading { opacity: 0.55; font-style: italic; }
+
+/* Feed recovery card: make "Try again" the clear primary action */
+.recovery-retry {
+  border-color: var(--wtg-accent) !important;
+  color: var(--wtg-accent) !important;
+  font-weight: 700;
+}

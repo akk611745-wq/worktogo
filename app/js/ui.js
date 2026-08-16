@@ -79,11 +79,21 @@ const UI = (() => {
 
   // ── Empty / Error States ───────────────────────────────────────────────
 
-  function emptyState(icon, title, subtitle = "") {
+  // actions: an array (or single) of { label, onclick, primary } so an empty
+  // screen ALWAYS offers a next step — never a dead end. onclick is a JS string,
+  // same pattern as errorState's retryFn (static, no user input).
+  function emptyState(icon, title, subtitle = "", actions = []) {
+    const acts = Array.isArray(actions) ? actions : (actions ? [actions] : []);
+    const actionsHTML = acts.length
+      ? `<div class="empty-state-actions">${acts.map(a =>
+          `<button class="${a.primary ? "btn-empty-primary" : "btn-retry"}" onclick="${a.onclick}">${a.label}</button>`
+        ).join("")}</div>`
+      : "";
     return `<div class="empty-state">
       <div class="empty-icon">${icon}</div>
       <h3>${title}</h3>
       ${subtitle ? `<p>${subtitle}</p>` : ""}
+      ${actionsHTML}
     </div>`;
   }
 
