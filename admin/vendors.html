@@ -20,6 +20,12 @@
         <button class="btn btn-ghost btn-sm" id="export-btn">⬇ Export CSV</button>
       </div>
 
+      <!-- Accountability / bypass flag banner (system flags; admin acts) -->
+      <div id="flag-banner" style="display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.4);border-radius:var(--radius-md);padding:14px 18px;margin-bottom:20px;align-items:center;justify-content:space-between;gap:12px">
+        <span style="font-size:13px;color:var(--red);font-weight:600">🚩 <span id="flag-count">0</span> vendor(s) flagged for review — repeated non-completion / bypass pattern</span>
+        <button class="btn btn-danger btn-sm" onclick="openFlagged()">Review flagged →</button>
+      </div>
+
       <!-- Pending Approvals Banner -->
       <div id="pending-banner" style="background:var(--accent-dim);border:1px solid rgba(245,158,11,0.3);border-radius:var(--radius-md);padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:12px">
         <span style="font-size:13px;color:var(--accent)">⚠ <span id="pending-count">0</span> vendors awaiting approval</span>
@@ -107,6 +113,25 @@
   </div>
 </div>
 
+<!-- Flagged Vendors Modal (accountability) -->
+<div class="modal-overlay" id="flagged-modal">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-header">
+      <span class="modal-title">🚩 Flagged Vendors</span>
+      <button class="modal-close" onclick="Modal.close('flagged-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px">The system flags repeated non-completion / bypass patterns from job outcomes. <b>You decide the action</b> — nothing is auto-blocked. Thresholds are tunable below.</p>
+      <div id="flagged-list"><div style="text-align:center;padding:20px"><div class="spinner" style="margin:auto"></div></div></div>
+      <details style="margin-top:14px;border-top:1px solid var(--border-dim);padding-top:10px">
+        <summary style="font-size:11px;color:var(--text-muted);cursor:pointer;letter-spacing:0.05em">TUNE THRESHOLDS (admin)</summary>
+        <div id="flag-config" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:10px"></div>
+        <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="saveThresholds()">Save thresholds</button>
+      </details>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 <script src="config.js"></script>
 <script src="shared/api.js"></script>
@@ -118,6 +143,83 @@
 Shell.init({ title: 'Vendor Control', active: 'vendors.html' });
 
 let currentPage = 1, totalPages = 1, allVendors = [], rejectTargetId = null;
+let flaggedData = [], flaggedIds = new Set(), flagThresholds = {};
+
+// ── Accountability: load flagged vendors (system flags; admin acts) ───────────
+async function loadFlagged() {
+  try {
+    const res = await API.get('/vendors/flagged');
+    const d = res?.data || {};
+    flaggedData = d.vendors || [];
+    flagThresholds = d.thresholds || {};
+    flaggedIds = new Set(flaggedData.map(v => v.vendor_id));
+    const n = d.summary?.flagged_count || 0;
+    const banner = document.getElementById('flag-banner');
+    if (n > 0) { banner.style.display = 'flex'; document.getElementById('flag-count').textContent = n; }
+    else { banner.style.display = 'none'; }
+    // re-tag any already-rendered rows
+    if (allVendors.length) renderVendors(allVendors);
+  } catch (e) { /* accountability is additive — never blocks the vendor list */ }
+}
+
+const SEV_COLOR = { critical: 'var(--red)', high: 'var(--orange)', medium: 'var(--accent)' };
+
+function openFlagged() {
+  Modal.open('flagged-modal');
+  const el = document.getElementById('flagged-list');
+  if (!flaggedData.length) { el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px">No vendors flagged. 🎉</div>'; }
+  else {
+    el.innerHTML = flaggedData.map(v => {
+      const col = SEV_COLOR[v.severity] || 'var(--accent)';
+      const reasons = (v.reasons || []).map(r => `<div style="font-size:11px;color:var(--text-secondary);margin-top:3px">• <b style="color:${col}">${escHtml(r.label)}</b> <span style="color:var(--text-muted)">— ${escHtml(r.detail)}</span></div>`).join('');
+      const throttle = v.work_throttle || 'normal';
+      const reviewed = v.reviewed_at ? `<span style="font-size:10px;color:var(--green)">✓ reviewed</span>` : '';
+      return `<div style="border:1px solid ${col};border-left-width:3px;border-radius:8px;padding:11px 13px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <div style="font-size:13px;font-weight:700;color:var(--text-primary)">${escHtml(v.vendor_name)}
+            <span style="font-size:9px;font-weight:700;text-transform:uppercase;color:${col};border:1px solid ${col};border-radius:100px;padding:1px 7px;margin-left:6px">${escHtml(v.severity)}</span>
+            <span style="font-size:10px;color:var(--text-muted);margin-left:4px">risk ${v.risk_score}</span> ${reviewed}
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="viewVendor('${v.vendor_id}')">Open</button>
+        </div>
+        ${reasons}
+        <div style="display:flex;align-items:center;gap:8px;margin-top:9px;flex-wrap:wrap">
+          <select class="form-control" style="width:auto;font-size:11px;padding:3px 8px" onchange="setThrottle(${v.vendor_id}, this.value)" title="Reduce/stop work (recorded; not auto-enforced)">
+            <option value="normal" ${throttle==='normal'?'selected':''}>Work: Normal</option>
+            <option value="reduced" ${throttle==='reduced'?'selected':''}>Work: Reduced</option>
+            <option value="paused" ${throttle==='paused'?'selected':''}>Work: Paused</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="markReviewed(${v.vendor_id})">Mark reviewed</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  // threshold tuner
+  const cfg = document.getElementById('flag-config');
+  const labels = { window_days:'Window (days)', stall_hours:'Stall after (hrs)', min_assigned:'Min jobs', noncompletion_count:'Stalled → flag', min_completion_rate:'Min completion %', min_offered:'Min offers', max_reject_rate:'Max decline %' };
+  cfg.innerHTML = Object.keys(labels).map(k => `<label style="font-size:11px;color:var(--text-muted)">${labels[k]}
+    <input type="number" id="thr-${k}" class="form-control" style="margin-top:3px" value="${flagThresholds[k] ?? ''}"></label>`).join('');
+}
+
+async function setThrottle(id, value) {
+  try { await API.patch(`/vendors/${id}/accountability`, { work_throttle: value });
+    Toast.success('Work level set to ' + value + ' (recorded — not auto-enforced).');
+  } catch (e) { Toast.error(e.message || 'Failed'); }
+}
+async function markReviewed(id) {
+  try { await API.patch(`/vendors/${id}/accountability`, { reviewed: true });
+    Toast.success('Marked reviewed.'); await loadFlagged(); openFlagged();
+  } catch (e) { Toast.error(e.message || 'Failed'); }
+}
+async function saveThresholds() {
+  const body = {};
+  ['window_days','stall_hours','min_assigned','noncompletion_count','min_completion_rate','min_offered','max_reject_rate'].forEach(k => {
+    const el = document.getElementById('thr-' + k); if (el && el.value !== '') body[k] = Number(el.value);
+  });
+  try { await API.put('/accountability/config', body);
+    Toast.success('Thresholds saved. Re-evaluating…'); await loadFlagged(); openFlagged();
+  } catch (e) { Toast.error(e.message || 'Failed to save thresholds'); }
+}
 
 async function loadVendors(page = 1) {
   currentPage = page;
@@ -182,6 +284,9 @@ function renderVendors(vendors) {
     const verifiedBadge = isVerified
       ? '<span style="display:inline-flex;align-items:center;gap:2px;font-size:10px;color:var(--green);font-weight:600;margin-left:6px" title="Verified vendor">&#10003; Verified</span>'
       : '';
+    const flagBadge = flaggedIds.has(Number(id) || id) || flaggedIds.has(id)
+      ? '<span style="font-size:10px;color:var(--red);font-weight:700;margin-left:6px;cursor:pointer" title="Flagged for review — click to see why" onclick="openFlagged()">🚩 Flagged</span>'
+      : '';
     return `<tr>
       <td>
         <div style="display:flex;align-items:center;gap:8px">
@@ -189,7 +294,7 @@ function renderVendors(vendors) {
             ${escHtml((v.business_name||v.name||'V').charAt(0).toUpperCase())}
           </div>
           <div>
-            <div style="font-size:12px;color:var(--text-primary);display:flex;align-items:center">${escHtml(Fmt.truncate(v.business_name||v.name,22))}${verifiedBadge}</div>
+            <div style="font-size:12px;color:var(--text-primary);display:flex;align-items:center;flex-wrap:wrap">${escHtml(Fmt.truncate(v.business_name||v.name,22))}${verifiedBadge}${flagBadge}</div>
             <div style="font-size:10px;color:var(--text-muted)">${escHtml(v.owner_name||'')}</div>
             <label style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--text-muted);margin-top:3px;cursor:pointer">
               <input type="checkbox" ${isVerified ? 'checked' : ''} onchange="toggleVerified('${escHtml(id)}', this.checked)" style="margin:0;cursor:pointer">
@@ -261,8 +366,14 @@ async function viewVendor(id) {
     const rawPhone = v.owner_phone || v.phone || '';
     const ph = rawPhone.replace(/\D/g, '').replace(/^91/, '');
     document.getElementById('vendor-modal-title').textContent = v.business_name || v.name || 'Vendor';
+    const flag = flaggedData.find(f => String(f.vendor_id) === String(v.id));
+    const flagBox = flag ? `<div style="border:1px solid var(--red);border-radius:8px;padding:10px 12px;background:rgba(239,68,68,0.08)">
+        <div style="font-size:12px;font-weight:700;color:var(--red)">🚩 Flagged (${escHtml(flag.severity)}, risk ${flag.risk_score})</div>
+        ${(flag.reasons||[]).map(r=>`<div style="font-size:11px;color:var(--text-secondary);margin-top:3px">• ${escHtml(r.label)} <span style="color:var(--text-muted)">— ${escHtml(r.detail)}</span></div>`).join('')}
+      </div>` : '';
     document.getElementById('vendor-modal-body').innerHTML = `
       <div style="display:grid;gap:12px">
+        ${flagBox}
         ${field('Business Name', escHtml(v.business_name||v.name))}
         ${field('Owner', escHtml(v.owner_name))}
         ${field('Email', escHtml(v.owner_email||v.email))}
@@ -344,6 +455,7 @@ async function updateVendorCategory(vendorId, categoryId) {
 
 loadVendors(1);
 loadServiceCategories();
+loadFlagged();
 </script>
 </body>
 </html>

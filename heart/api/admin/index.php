@@ -1910,6 +1910,94 @@ try {
         Response::success(['vendor' => $vendor, 'perf' => $perf]);
     }
 
+    // ══ Vendor accountability — bypass / non-completion auto-flag (V2-VISION §5) ══
+    //  READ-ONLY detection computed from existing jobs + auto_assignments; the
+    //  system flags, the admin acts. Thresholds are app_settings-driven (zero
+    //  hardcoding). Gated by RBAC (today's admin bypasses).
+    require_once SYSTEM_ROOT . '/core/helpers/VendorAccountability.php';
+
+    // ── GET /api/admin/vendors/flagged — the "flagged vendors" list (worst-first)
+    if ($method === 'GET' && $uri === '/api/admin/vendors/flagged') {
+        Permission::enforce($db, $auth, 'vendors.view');
+        $limit = min(200, max(1, (int)($_GET['limit'] ?? 100)));
+        Response::success(VendorAccountability::flaggedList($db, $limit));
+    }
+
+    // ── GET /api/admin/vendors/{id}/accountability — one vendor's flag detail ──
+    if ($method === 'GET' && preg_match('#^/api/admin/vendors/(\d+)/accountability$#', $uri, $m)) {
+        Permission::enforce($db, $auth, 'vendors.view');
+        Response::success(VendorAccountability::forVendor($db, (int)$m[1]));
+    }
+
+    // ── PATCH /api/admin/vendors/{id}/accountability — admin ACTS on a flag ────
+    //  Sets the admin-decision layer (manual flag, review ack, work throttle,
+    //  note). work_throttle is a FUTURE hook — recorded, NOT yet enforced by
+    //  assignment. Schema-defensive: only writes columns that exist.
+    if ($method === 'PATCH' && preg_match('#^/api/admin/vendors/(\d+)/accountability$#', $uri, $m)) {
+        Permission::enforce($db, $auth, 'vendors.manage');
+        $vendorId = (int)$m[1];
+        $input    = json_decode(file_get_contents('php://input'), true) ?? [];
+
+        $vchk = $db->prepare("SELECT id FROM vendors WHERE id = ? LIMIT 1");
+        $vchk->execute([$vendorId]);
+        if (!$vchk->fetchColumn()) Response::notFound('Vendor');
+
+        $set = []; $bind = [];
+        if (array_key_exists('manual_flag', $input) && VendorAccountability::hasColumn($db, 'vendors', 'manual_flag')) {
+            $set[] = 'manual_flag = ?'; $bind[] = $input['manual_flag'] ? 1 : 0;
+        }
+        if (array_key_exists('flag_notes', $input) && VendorAccountability::hasColumn($db, 'vendors', 'flag_notes')) {
+            $set[] = 'flag_notes = ?'; $bind[] = (trim((string)$input['flag_notes']) !== '') ? mb_substr(trim((string)$input['flag_notes']), 0, 255) : null;
+        }
+        if (array_key_exists('work_throttle', $input) && VendorAccountability::hasColumn($db, 'vendors', 'work_throttle')) {
+            $wt = strtolower(trim((string)$input['work_throttle']));
+            if (!in_array($wt, ['normal', 'reduced', 'paused', ''], true)) Response::validation("work_throttle must be normal|reduced|paused");
+            $set[] = 'work_throttle = ?'; $bind[] = ($wt === '' ? null : $wt);
+        }
+        if (array_key_exists('reviewed', $input) && VendorAccountability::hasColumn($db, 'vendors', 'flag_reviewed_at')) {
+            $set[] = 'flag_reviewed_at = ' . ($input['reviewed'] ? 'NOW()' : 'NULL');
+        }
+        if (!$set) Response::validation('No accountability fields to update (or columns not migrated).');
+
+        $db->prepare("UPDATE vendors SET " . implode(', ', $set) . " WHERE id = ?")
+           ->execute(array_merge($bind, [$vendorId]));
+        Logger::info('Admin updated vendor accountability', ['admin_id' => $auth['user_id'], 'vendor_id' => $vendorId, 'fields' => array_keys($input)]);
+        Response::success(VendorAccountability::forVendor($db, $vendorId), 200, 'Accountability updated');
+    }
+
+    // ── GET /api/admin/accountability/config — current tunable thresholds ──────
+    if ($method === 'GET' && $uri === '/api/admin/accountability/config') {
+        Permission::enforce($db, $auth, 'vendors.view');
+        Response::success(['thresholds' => VendorAccountability::thresholds($db), 'defaults' => VendorAccountability::DEFAULTS]);
+    }
+
+    // ── PUT /api/admin/accountability/config — tune thresholds (app_settings) ──
+    if ($method === 'PUT' && $uri === '/api/admin/accountability/config') {
+        Permission::enforce($db, $auth, 'settings.manage');
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        // sane clamps so a typo can't disable the whole rule
+        $ranges = [
+            'window_days' => [1, 365], 'stall_hours' => [1, 2160], 'min_assigned' => [1, 1000],
+            'noncompletion_count' => [1, 1000], 'min_completion_rate' => [0, 100],
+            'min_offered' => [1, 1000], 'max_reject_rate' => [0, 100],
+        ];
+        $up = $db->prepare(
+            "INSERT INTO app_settings (setting_key, setting_value, value_type, is_public, updated_at)
+             VALUES (:k, :v, 'number', 0, NOW())
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()"
+        );
+        $applied = [];
+        foreach ($ranges as $short => $range) {
+            if (!array_key_exists($short, $input) || !is_numeric($input[$short])) continue;
+            $val = max($range[0], min($range[1], (int)$input[$short]));
+            $up->execute([':k' => 'vendor_flag_' . $short, ':v' => (string)$val]);
+            $applied[$short] = $val;
+        }
+        if (!$applied) Response::validation('No valid threshold fields provided.');
+        Logger::info('Admin tuned accountability thresholds', ['admin_id' => $auth['user_id'], 'applied' => $applied]);
+        Response::success(['thresholds' => VendorAccountability::thresholds($db), 'applied' => $applied], 200, 'Thresholds updated');
+    }
+
     // ── POST /api/admin/deliveries/assign ──────────────────────
     if ($method === 'POST' && $uri === '/api/admin/deliveries/assign') {
         $input = json_decode(file_get_contents('php://input'), true) ?? [];
