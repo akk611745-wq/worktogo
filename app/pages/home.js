@@ -134,7 +134,7 @@ export async function render(container) {
     <div id="booking-modal" class="modal-overlay hidden" onclick="HomeModals.closeOnOverlay(event)">
       <div class="modal-sheet booking-bottom-sheet">
         <div class="modal-handle"></div>
-        <button class="modal-close-icon" type="button" onclick="HomeModals.closeBooking()" aria-label="Close inspection request">×</button>
+        <button class="modal-close-icon" type="button" onclick="HomeModals.closeBooking()" aria-label="Close Expert Visit request">×</button>
         <h3 id="booking-modal-title">Book Service</h3>
         <div id="booking-modal-body"></div>
         <div class="modal-actions">
@@ -174,7 +174,7 @@ export async function render(container) {
       }
       const note = document.getElementById("hero-distinction-note");
       if (note) {
-        note.textContent = key === "inspection" ? "Unclear issue? choose inspection." : "Clear job? choose free booking.";
+        note.textContent = key === "inspection" ? "Unclear issue? choose Expert Visit." : "Clear job? choose free booking.";
         note.style.display = willOpen ? "block" : "none";
       }
     },
@@ -312,7 +312,7 @@ export async function render(container) {
       document.querySelectorAll(".booking-mode-option").forEach(btn => btn.classList.remove("active"));
       selectedButton.classList.add("active");
       const confirm = document.getElementById("btn-confirm-booking")?.querySelector(".btn-label");
-      if (confirm) confirm.textContent = mode === "inspection" ? `Pay ${UI.formatCurrency(_inspectionPrice())} Inspection` : mode === "direct_vendor" ? "Book Vendor" : "Submit Free Lead";
+      if (confirm) confirm.textContent = mode === "inspection" ? `Pay ${UI.formatCurrency(_inspectionPrice())} Expert Visit` : mode === "direct_vendor" ? "Book Vendor" : "Submit Free Lead";
       _persistPendingBookingForm();
     },
     selectInspectionCategory(slug = "") {
@@ -395,7 +395,7 @@ export async function render(container) {
       HomeModals.openBooking({
         ...fallbackService,
         id: fallbackId,
-        name: mode === "inspection" ? "Inspection" : "Free booking",
+        name: mode === "inspection" ? "Expert Visit" : "Free booking",
         booking_mode: mode || "free_lead",
         request_source: source,
         category_slug: fallbackCategory,
@@ -763,7 +763,7 @@ window.HomeModals = (() => {
       </div>
       ${_premiumInspectionPanel(category)}
       <div class="booking-mode-picker" role="radiogroup" aria-label="Booking mode">
-        ${_bookingModeOption("inspection", `${UI.formatCurrency(inspectionPrice)} inspection`, "Issue unclear: technician visits first, diagnoses, then final work is confirmed", defaultMode, false, "premium")}
+        ${_bookingModeOption("inspection", `${UI.formatCurrency(inspectionPrice)} Expert Visit`, "Issue unclear: an expert visits first, diagnoses, then final work is confirmed", defaultMode, false, "premium")}
         ${_bookingModeOption("free_lead", "Free booking", "Work understood: WorkToGo starts nearby worker matching directly", defaultMode, false, "default")}
         ${_bookingModeOption("direct_vendor", "Request this worker", "Admin routes this request to the shown worker if available", defaultMode, !service.vendor_id, "direct")}
       </div>
@@ -779,9 +779,9 @@ window.HomeModals = (() => {
       </div>
       ${!AUTH.isLoggedIn() ? `<div class="booking-login-nudge"><strong>Phone verification needed at submit</strong><span>You can fill this now. We will send you to mobile OTP only when you request service.</span></div>` : ""}
       <div class="trust-panel booking-trust-panel fast-booking-trust">
-        <span>✓ Inspection: diagnosis before final work or material decision</span>
+        <span>✓ Expert Visit: diagnosis before final work or material decision</span>
         <span>✓ Free booking: clear job enters admin worker assignment</span>
-        <span>✓ Payment: normal jobs pay after service; inspection starts after payment</span>
+        <span>✓ Payment: normal jobs pay after service; Expert Visit starts after payment</span>
       </div>
       <div class="modal-field">
         <label for="booking-name">Name (optional)</label>
@@ -909,7 +909,7 @@ window.HomeModals = (() => {
       const _savedPayState = _normalizePaymentState(savedInspectionPayment.status_state || savedInspectionPayment.booking.payment_status);
       _showInspectionVerificationState(savedInspectionPayment, { forceOpen: true, checking: _savedPayState === "pending" });
       if (_savedPayState !== "failed" && _savedPayState !== "cancelled") _continueInspectionVerification(savedInspectionPayment);
-      UI.toast(_savedPayState === "failed" ? "Previous payment did not go through. Use New booking to start fresh." : "Your existing inspection request is safely saved. No duplicate request was created.", "info", 5000);
+      UI.toast(_savedPayState === "failed" ? "Previous payment did not go through. Use New booking to start fresh." : "Your existing Expert Visit request is safely saved. No duplicate request was created.", "info", 5000);
       return;
     }
     // No date selected is no longer a hard block — fall back to the next
@@ -1217,7 +1217,7 @@ window.HomeModals = (() => {
         </section>
         <section class="inspection-step">
           <h4>Service</h4>
-          <div class="inspection-chip-row" role="radiogroup" aria-label="Inspection category">
+          <div class="inspection-chip-row" role="radiogroup" aria-label="Expert Visit category">
             ${_inspectionCategoryChips(activeCategory)}
           </div>
         </section>
@@ -1361,7 +1361,7 @@ window.HomeModals = (() => {
     if (!actions) return;
     const isInspection = mode === "inspection";
     actions.innerHTML = isInspection
-      ? `<button class="btn-primary inspection-pay-cta" id="btn-confirm-booking" onclick="HomeModals.confirmBooking()"><span class="btn-label">Proceed to ${UI.formatCurrency(inspectionPrice)} expert visit</span></button>`
+      ? `<button class="btn-primary inspection-pay-cta" id="btn-confirm-booking" onclick="HomeModals.confirmBooking()"><span class="btn-label">Proceed to ${UI.formatCurrency(inspectionPrice)} Expert Visit</span></button>`
       : `<button class="btn-secondary" onclick="HomeModals.closeBooking()">Cancel</button><button class="btn-primary" id="btn-confirm-booking" onclick="HomeModals.confirmBooking()"><span class="btn-label">Confirm Booking</span></button>`;
   }
 
@@ -1402,7 +1402,7 @@ window.HomeModals = (() => {
     const modal = document.getElementById("booking-modal");
     modal?.classList.remove("hidden");
     _lockModalBody("booking");
-    UI.toast(mode === "inspection" ? "Expert visit payment verified. Request saved." : "Request saved. Worker matching started.", "success");
+    UI.toast(mode === "inspection" ? "Expert Visit payment verified. Request saved." : "Request saved. Worker matching started.", "success");
   }
 
   function _successStateForMode(mode = "free_lead", paymentRequired = false) {
@@ -1512,7 +1512,7 @@ window.HomeModals = (() => {
     if (!container) return;
     container.querySelector(".duplicate-booking-warn")?.remove();
     const bookingRef = data.booking_number || `#${data.booking_id}`;
-    const modeLabel  = mode === "inspection" ? `₹${_inspectionPrice()} inspection` : "free service request";
+    const modeLabel  = mode === "inspection" ? `₹${_inspectionPrice()} Expert Visit` : "free service request";
     const warn = document.createElement("div");
     warn.className = "duplicate-booking-warn";
     warn.style.cssText = "background:#fff8e1;border:1px solid #f59e0b;border-radius:0.75rem;padding:1rem;margin-bottom:1rem;";
@@ -1812,7 +1812,7 @@ async function _handleInspectionCheckout(booking, bookingMode, payload = {}) {
       if (status === "failed" || status === "cancelled") {
         saved = _saveInspectionPaymentReturn(booking, { payload, state: status, message: "Payment was not completed. Your request is safely saved." });
         _showInspectionVerificationState(saved, { forceOpen: true });
-        UI.toast("Payment was not completed. Your inspection request is safely saved.", "error", 6000);
+        UI.toast("Payment was not completed. Your Expert Visit request is safely saved.", "error", 6000);
         return "pending";
       }
       saved = _saveInspectionPaymentReturn(booking, { payload, state: "verifying" });
@@ -1836,7 +1836,7 @@ async function _handleInspectionCheckout(booking, bookingMode, payload = {}) {
     saved = _saveInspectionPaymentReturn(booking, { payload, state: "verifying", message: "Payment app was interrupted. Your request is safely saved." });
     _showInspectionVerificationState(saved, { forceOpen: true, checking: true });
     _continueInspectionVerification(saved);
-    UI.toast("Payment check is continuing. Your inspection request is safely saved.", "info", 6000);
+    UI.toast("Payment check is continuing. Your Expert Visit request is safely saved.", "info", 6000);
     return "pending";
   }
 }
@@ -1967,7 +1967,7 @@ function _showInspectionVerificationState(saved = {}, opts = {}) {
 async function _checkInspectionPaymentStatus() {
   const saved = _readInspectionPaymentReturn();
   const bookingId = saved?.booking?.booking_id || saved?.booking?.id;
-  if (!bookingId) { UI.toast("No saved inspection payment check found.", "info"); return; }
+  if (!bookingId) { UI.toast("No saved Expert Visit payment check found.", "info"); return; }
   _showInspectionVerificationState(saved, { forceOpen: true, checking: true });
   const status = await _waitForBookingPaymentTruth(bookingId, { attempts: 5, delayMs: 1200, onPending: state => _showInspectionVerificationState({ ...saved, status_state: state }, { checking: true }) });
   if (status === "paid") {
@@ -2300,7 +2300,7 @@ function _categoryChips() {
     { slug: "cleaning", icon: "🧹", label: "Cleaning" },
     { slug: "appliance", icon: "🔧", label: "Appliance" },
     { slug: "tutor", icon: "📚", label: "Tutor" },
-    { slug: "inspection", icon: "🛡️", label: "Inspection" },
+    { slug: "inspection", icon: "🛡️", label: "Expert Visit" },
   ];
   const merged = dynamic.length ? _mergeCategories(dynamic, []) : _mergeCategories([], fallback);
   return _sortCategories(merged);
@@ -2322,7 +2322,7 @@ function _mergeCategories(dynamic, base) {
 function _categoryMeta(slug = "") {
   const key = _slug(slug);
   if (!key) return CATEGORY_META.all;
-  const meta = CATEGORY_META[key] || { icon: _matchCategoryIcon(key), label: _title(key), hero: `${_title(key)} services for selected area`, subtitle: "Choose a local service and WorkToGo will confirm before visit.", examples: ["Inspection", "Repair", "Installation"], trust: "Verified local support", vendors: "Local provider assignment", inspection: true };
+  const meta = CATEGORY_META[key] || { icon: _matchCategoryIcon(key), label: _title(key), hero: `${_title(key)} services for selected area`, subtitle: "Choose a local service and WorkToGo will confirm before visit.", examples: ["Expert Visit", "Repair", "Installation"], trust: "Verified local support", vendors: "Local provider assignment", inspection: true };
   return { slug: key, ...meta };
 }
 
@@ -2563,7 +2563,7 @@ function _heroHTML(slug = "") {
   const meta = _categoryMeta(slug);
   const localityContext = _resolvedLocality();
   const price = UI.formatCurrency(_inspectionPrice(null, meta));
-  const primaryText = `${price} Inspection`;
+  const primaryText = `${price} Expert Visit`;
   return `
     <div class="service-hero-copy">
       <h1>${_esc(slug ? `${meta.label} services for ${localityContext.label}` : `Trusted services for ${localityContext.label}`)}</h1>
@@ -2600,7 +2600,7 @@ function _trustProofHTML(slug = "") {
   return `
     <div><strong>After request</strong><span>WorkToGo checks service, ${_esc(localityContext.label)} area context, issue note and visit mode before assignment</span></div>
     <div><strong>Worker confirmation</strong><span>${_esc(meta.vendors || "Admin assigns a suitable local worker; cards are request entry points, not live profiles")}</span></div>
-    <div><strong>Payment rule</strong><span>Normal jobs pay after service; inspection is used when diagnosis or estimate is needed first</span></div>`;
+    <div><strong>Payment rule</strong><span>Normal jobs pay after service; an Expert Visit is used when diagnosis or estimate is needed first</span></div>`;
 }
 
 function _visualProofHTML(slug = "") {
@@ -3471,7 +3471,7 @@ function _premiumInspectionPanel(category) {
   const price = UI.formatCurrency(_inspectionPrice(null, category));
   return `<div class="premium-inspection-panel">
     <div class="premium-inspection-mark">🛡️</div>
-    <div><strong>${_esc(price)} inspection</strong><p>Expert diagnosis first · scope clarity · right worker</p></div>
+    <div><strong>${_esc(price)} Expert Visit</strong><p>Expert diagnosis first · scope clarity · right worker</p></div>
     <span>${_esc(price)}</span>
   </div>`;
 }
@@ -3586,7 +3586,7 @@ function _requestType(mode = "") {
 }
 
 function _bookingModeMeaning(mode = "") {
-  if (mode === "inspection") return "Inspection request: paid visit, issue verification and worker assignment";
+  if (mode === "inspection") return "Expert Visit request: paid visit, issue verification and worker assignment";
   if (mode === "direct_vendor") return "Direct worker request: WorkToGo asks the selected worker and confirms availability";
   return "Free match: WorkToGo starts nearby worker matching for a clear job";
 }
@@ -3997,18 +3997,18 @@ let _pilotConfig = {
 };
 
 const CATEGORY_META = {
-  all: { slug: "", icon: "🧰", label: "All services", hero: "Trusted services for your area", subtitle: "Area-based verified workers for repairs, painting, waterproofing, CCTV and home jobs.", ecosystemTitle: "Local workers available now", examples: ["Electrician", "Plumber", "Painting", "CCTV"], tags: ["fan", "leakage", "painter", "CCTV", "carpenter", "waterproofing"], visuals: [{ emoji: "⚡", label: "Fan fixed", note: "from ₹199" }, { emoji: "🎨", label: "Room painted", note: "estimate visit" }, { emoji: "💧", label: "Leak stopped", note: "inspection" }], beforeAfter: [{ title: "Damp wall restored", note: "Seepage inspection, repair and repaint flow" }, { title: "Old room refresh", note: "Putty, primer and clean finish by local painters" }], dealers: ["Mukhani", "Kusumkhera", "Kaladhungi Road"], materials: ["repair parts", "paint", "pipes"], brands: ["Asian", "Dr Fixit", "Havells"], locality: ["Mukhani", "Dahariya", "Lalpur Nayak"], trust: "Local coordination · pay after service · human confirmation", vendors: "Verified local provider network", inspection: true },
+  all: { slug: "", icon: "🧰", label: "All services", hero: "Trusted services for your area", subtitle: "Area-based verified workers for repairs, painting, waterproofing, CCTV and home jobs.", ecosystemTitle: "Local workers available now", examples: ["Electrician", "Plumber", "Painting", "CCTV"], tags: ["fan", "leakage", "painter", "CCTV", "carpenter", "waterproofing"], visuals: [{ emoji: "⚡", label: "Fan fixed", note: "from ₹199" }, { emoji: "🎨", label: "Room painted", note: "estimate visit" }, { emoji: "💧", label: "Leak stopped", note: "expert visit" }], beforeAfter: [{ title: "Damp wall restored", note: "Seepage diagnosis, repair and repaint flow" }, { title: "Old room refresh", note: "Putty, primer and clean finish by local painters" }], dealers: ["Mukhani", "Kusumkhera", "Kaladhungi Road"], materials: ["repair parts", "paint", "pipes"], brands: ["Asian", "Dr Fixit", "Havells"], locality: ["Mukhani", "Dahariya", "Lalpur Nayak"], trust: "Local coordination · pay after service · human confirmation", vendors: "Verified local provider network", inspection: true },
   electrical: { icon: "⚡", label: "Electrical", inspection: false },
   electrician: { icon: "⚡", label: "Electrical", aliases: ["electrical", "electrician", "wiring"], hero: "Electrical workers for your selected area", subtitle: "Fan, switch, MCB, wiring and light installation with quick local confirmation.", examples: ["Fan repair", "Switch board", "MCB issue", "Light installation"], tags: ["fan", "switch", "MCB", "wiring", "geyser", "inverter"], visuals: [{ emoji: "🌀", label: "Fan repair", note: "from ₹199" }, { emoji: "🔌", label: "Switch board", note: "same day" }, { emoji: "💡", label: "Lights", note: "install" }], beforeAfter: [{ title: "Dead fan running", note: "Local electrician visit with quick diagnosis" }, { title: "Unsafe board cleaned", note: "Switch replacement and wiring check" }], dealers: ["Havells point", "Kaladhungi Road electrical", "Mukhani hardware"], materials: ["switch", "MCB", "wire", "fan capacitor"], brands: ["Havells", "Anchor", "Polycab", "Syska"], locality: ["Mukhani", "Kusumkhera", "Nainital Road"], trust: "Safety-first local electricians · pay after service", vendors: "Electrician provider assignment", inspection: false },
   plumber: { icon: "🚰", label: "Plumbing", aliases: ["plumber", "plumbing", "pipe", "tap"], hero: "Plumbers for leakage and fittings", subtitle: "Tap, pipe, bathroom and kitchen plumbing help from nearby workers.", examples: ["Leakage repair", "Tap fitting", "Pipe blockage", "Bathroom fitting"], tags: ["tap leak", "pipe", "flush", "basin", "bathroom", "motor"], visuals: [{ emoji: "🚿", label: "Tap leak", note: "from ₹199" }, { emoji: "🧰", label: "Pipe fix", note: "nearby" }, { emoji: "🚽", label: "Bathroom", note: "fitting" }], beforeAfter: [{ title: "Leakage stopped", note: "Tap and joint repair by local plumber" }, { title: "Bathroom fitting done", note: "Clear scope confirmation before visit" }], dealers: ["Sanitary market", "Mukhani hardware", "Rampur Road pipes"], materials: ["CPVC pipe", "flush kit", "tap", "basin waste"], brands: ["Jaquar", "Astral", "Ashirvad", "Supreme"], locality: ["Kusumkhera", "Dahariya", "Mukhani"], trust: "Local plumbers · clear visit confirmation", vendors: "Plumber provider assignment", inspection: false },
-  painting: { icon: "🎨", label: "Painting", aliases: ["paint", "painter", "painting"], hero: "Painting ecosystem for homes and shops", subtitle: "Painters, wall textures, putty, before/after work and expert visit for estimates.", examples: ["Room painting", "Wall putty", "Exterior painting", "Color consultation"], tags: ["texture", "putty", "primer", "room paint", "exterior", "rental repaint"], visuals: [{ emoji: "🧱", label: "Wall texture", note: "trending" }, { emoji: "🏠", label: "Room paint", note: "quote" }, { emoji: "🪣", label: "Putty repair", note: "before/after" }], beforeAfter: [{ title: "Bedroom repaint", note: "Old patches to clean warm finish" }, { title: "Texture wall upgrade", note: "Accent wall with painter estimate" }, { title: "Exterior refresh", note: "Weather coat and crack prep" }], dealers: ["Paint shop Mukhani", "Kusumkhera colors", "Nainital Road paint"], materials: ["putty", "primer", "emulsion", "texture"], brands: ["Asian Paints", "Nerolac", "Berger", "Dulux"], locality: ["Mukhani", "Lalpur Nayak", "Kaladhungi Road"], trust: "Site inspection option · local painters · estimate before work", vendors: "Painting teams and local contractors", inspection: true },
-  waterproofing: { icon: "💧", label: "Waterproofing", aliases: ["waterproofing", "leakage", "seepage", "damp"], hero: "Leakage and seepage protection", subtitle: "Terrace, wall seepage, bathroom leakage and monsoon protection with inspection offers.", examples: ["Roof seepage", "Wall dampness", "Bathroom leakage", "Crack sealing"], tags: ["terrace", "seepage", "monsoon", "bathroom leak", "damp wall", "crack seal"], visuals: [{ emoji: "🌧️", label: "Monsoon cover", note: "inspection" }, { emoji: "🏚️", label: "Damp wall", note: "diagnosis" }, { emoji: "🧪", label: "Coating", note: "terrace" }], beforeAfter: [{ title: "Terrace leakage sealed", note: "Inspection-led waterproof coating" }, { title: "Seepage wall treated", note: "Dampness source checked before repair" }, { title: "Bathroom leak fixed", note: "Joint sealing and slope check" }], dealers: ["Waterproofing dealer Mukhani", "Paint chemical shop", "Hardware Kaladhungi Road"], materials: ["roof coat", "crack filler", "membrane", "sealant"], brands: ["Dr Fixit", "Sika", "Asian SmartCare", "Nerolac"], locality: ["Dahariya", "Kusumkhera", "Mukhani"], trust: "Inspection-led scope · local repair teams", vendors: "Waterproofing specialists", inspection: true },
+  painting: { icon: "🎨", label: "Painting", aliases: ["paint", "painter", "painting"], hero: "Painting ecosystem for homes and shops", subtitle: "Painters, wall textures, putty, before/after work and expert visit for estimates.", examples: ["Room painting", "Wall putty", "Exterior painting", "Color consultation"], tags: ["texture", "putty", "primer", "room paint", "exterior", "rental repaint"], visuals: [{ emoji: "🧱", label: "Wall texture", note: "trending" }, { emoji: "🏠", label: "Room paint", note: "quote" }, { emoji: "🪣", label: "Putty repair", note: "before/after" }], beforeAfter: [{ title: "Bedroom repaint", note: "Old patches to clean warm finish" }, { title: "Texture wall upgrade", note: "Accent wall with painter estimate" }, { title: "Exterior refresh", note: "Weather coat and crack prep" }], dealers: ["Paint shop Mukhani", "Kusumkhera colors", "Nainital Road paint"], materials: ["putty", "primer", "emulsion", "texture"], brands: ["Asian Paints", "Nerolac", "Berger", "Dulux"], locality: ["Mukhani", "Lalpur Nayak", "Kaladhungi Road"], trust: "Expert visit option · local painters · estimate before work", vendors: "Painting teams and local contractors", inspection: true },
+  waterproofing: { icon: "💧", label: "Waterproofing", aliases: ["waterproofing", "leakage", "seepage", "damp"], hero: "Leakage and seepage protection", subtitle: "Terrace, wall seepage, bathroom leakage and monsoon protection with expert visit offers.", examples: ["Roof seepage", "Wall dampness", "Bathroom leakage", "Crack sealing"], tags: ["terrace", "seepage", "monsoon", "bathroom leak", "damp wall", "crack seal"], visuals: [{ emoji: "🌧️", label: "Monsoon cover", note: "expert visit" }, { emoji: "🏚️", label: "Damp wall", note: "diagnosis" }, { emoji: "🧪", label: "Coating", note: "terrace" }], beforeAfter: [{ title: "Terrace leakage sealed", note: "Expert-visit-led waterproof coating" }, { title: "Seepage wall treated", note: "Dampness source checked before repair" }, { title: "Bathroom leak fixed", note: "Joint sealing and slope check" }], dealers: ["Waterproofing dealer Mukhani", "Paint chemical shop", "Hardware Kaladhungi Road"], materials: ["roof coat", "crack filler", "membrane", "sealant"], brands: ["Dr Fixit", "Sika", "Asian SmartCare", "Nerolac"], locality: ["Dahariya", "Kusumkhera", "Mukhani"], trust: "Expert-visit-led scope · local repair teams", vendors: "Waterproofing specialists", inspection: true },
   cctv: { icon: "📹", label: "CCTV", hero: "CCTV installation for your selected area", subtitle: "Camera setup, wiring, DVR/NVR, shop and home security visits by local technicians.", examples: ["Camera install", "DVR setup", "Wiring", "Shop security"], tags: ["camera", "DVR", "NVR", "home CCTV", "shop CCTV", "wiring"], visuals: [{ emoji: "📹", label: "Camera install", note: "quote" }, { emoji: "🖥️", label: "DVR setup", note: "fast" }, { emoji: "🏪", label: "Shop CCTV", note: "nearby" }], beforeAfter: [{ title: "Shop camera live", note: "Camera angle and DVR configured" }, { title: "Home entry covered", note: "Wiring and mobile view setup" }], trust: "Security technician confirmation · clear install scope", vendors: "CCTV installers", inspection: true },
   carpenter: { icon: "🪚", label: "Carpentry", inspection: true },
-  carpentry: { icon: "🪚", label: "Carpentry", hero: "Carpenters for repair and renovation", subtitle: "Door, wardrobe, modular fixes, polish and furniture repair from local carpenters.", examples: ["Door repair", "Wardrobe", "Furniture fix", "Polish work"], tags: ["door", "wardrobe", "hinge", "modular", "polish", "furniture"], visuals: [{ emoji: "🚪", label: "Door repair", note: "from ₹249" }, { emoji: "🪵", label: "Furniture", note: "fix" }, { emoji: "🧱", label: "Wardrobe", note: "quote" }], beforeAfter: [{ title: "Door alignment fixed", note: "Hinge repair and smooth closing" }, { title: "Furniture restored", note: "Polish and repair work proof" }, { title: "Wardrobe repair", note: "Local carpenter estimate and visit" }], trust: "Local carpenters · inspection for custom work", vendors: "Carpentry workers", inspection: true },
+  carpentry: { icon: "🪚", label: "Carpentry", hero: "Carpenters for repair and renovation", subtitle: "Door, wardrobe, modular fixes, polish and furniture repair from local carpenters.", examples: ["Door repair", "Wardrobe", "Furniture fix", "Polish work"], tags: ["door", "wardrobe", "hinge", "modular", "polish", "furniture"], visuals: [{ emoji: "🚪", label: "Door repair", note: "from ₹249" }, { emoji: "🪵", label: "Furniture", note: "fix" }, { emoji: "🧱", label: "Wardrobe", note: "quote" }], beforeAfter: [{ title: "Door alignment fixed", note: "Hinge repair and smooth closing" }, { title: "Furniture restored", note: "Polish and repair work proof" }, { title: "Wardrobe repair", note: "Local carpenter estimate and visit" }], trust: "Local carpenters · expert visit for custom work", vendors: "Carpentry workers", inspection: true },
   cleaning: { icon: "🧹", label: "Cleaning", hero: "Cleaning services for your selected area", subtitle: "Home, shop, kitchen and deep cleaning requests with local coordination.", examples: ["Home cleaning", "Kitchen cleaning", "Shop cleaning", "Move-in cleaning"], trust: "Clear scope confirmation · pay after service", vendors: "Cleaning partners", inspection: false },
   "ac-repair": { icon: "❄️", label: "AC repair", hero: "AC service and repair", subtitle: "AC checkup, service, cooling issue and installation support with verified local help.", examples: ["AC service", "Cooling issue", "Gas check", "Installation"], trust: "Technician confirmation · pay after service", vendors: "AC technicians", inspection: true },
   appliance: { icon: "🔧", label: "Appliance", hero: "Appliance repair support", subtitle: "Fridge, washing machine, RO and common appliance checks coordinated locally.", examples: ["RO service", "Washer issue", "Fridge check", "Geyser repair"], trust: "Diagnosis-first support · local technicians", vendors: "Appliance technicians", inspection: true },
   tutor: { icon: "📚", label: "Tutor", hero: "Local tutor requests", subtitle: "Tell WorkToGo your class, subject and area. Team will help connect locally.", examples: ["Math tutor", "Science tutor", "Home tuition", "Spoken English"], trust: "Manual matching during pilot", vendors: "Local tutor coordination", inspection: false },
-  inspection: { icon: "🛡️", label: "Inspection", hero: "Premium inspection before big work", subtitle: "For painting, waterproofing, AC, appliance and complex jobs where a site check builds trust.", examples: ["Site visit", "Problem diagnosis", "Estimate support", "Scope clarity"], trust: "Clear visit · clear scope · better estimate", vendors: "Specialist inspection coordination", inspection: true },
+  inspection: { icon: "🛡️", label: "Expert Visit", hero: "Premium expert visit before big work", subtitle: "For painting, waterproofing, AC, appliance and complex jobs where a site check builds trust.", examples: ["Site visit", "Problem diagnosis", "Estimate support", "Scope clarity"], trust: "Clear visit · clear scope · better estimate", vendors: "Specialist expert visit coordination", inspection: true },
 };

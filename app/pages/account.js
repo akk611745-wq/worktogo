@@ -41,7 +41,7 @@ export async function render(container) {
             <div class="menu-icon bookings-icon">📅</div>
             <div class="menu-body">
               <span>Bookings & request tracking</span>
-              <p class="menu-sub">Worker confirmation, inspection and status updates</p>
+              <p class="menu-sub">Worker confirmation, expert visit and status updates</p>
             </div>
             <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
           </div>
@@ -50,7 +50,7 @@ export async function render(container) {
             <div class="menu-icon">🧰</div>
             <div class="menu-body">
               <span>Start a local request</span>
-              <p class="menu-sub">Free booking or inspection from Home</p>
+              <p class="menu-sub">Free booking or Expert Visit from Home</p>
             </div>
             <svg class="chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
           </div>

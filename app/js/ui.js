@@ -47,10 +47,10 @@ const UI = (() => {
     scheduled:   { label: "Scheduled",   cls: "status-confirmed"  },
     ongoing:     { label: "In Progress", cls: "status-processing" },
     payment_pending:       { label: "Payment pending",       cls: "status-pending"    },
-    inspection_requested:  { label: "Inspection requested",  cls: "status-pending"    },
-    inspection_assigned:   { label: "Inspection assigned",   cls: "status-confirmed"  },
-    inspection_scheduled:  { label: "Inspection scheduled",  cls: "status-confirmed"  },
-    inspection_completed:  { label: "Inspection completed",  cls: "status-success"    },
+    inspection_requested:  { label: "Expert Visit requested", cls: "status-pending"    },
+    inspection_assigned:   { label: "Expert Visit assigned",  cls: "status-confirmed"  },
+    inspection_scheduled:  { label: "Expert Visit scheduled", cls: "status-confirmed"  },
+    inspection_completed:  { label: "Expert Visit completed", cls: "status-success"    },
     request_received:      { label: "Request received",      cls: "status-pending"    },
     nearby_matching:       { label: "Matching nearby",       cls: "status-processing" },
     worker_contacting:     { label: "Contacting worker",     cls: "status-processing" },
@@ -172,7 +172,7 @@ const UI = (() => {
           </div>
           <div class="support-options">
             <button onclick="UI.sendSupport('service')"><strong>Talk on WhatsApp</strong><span>Share your request ID or area</span></button>
-            <button onclick="UI.sendSupport('inspection')"><strong>Inspection request</strong><span>₹299 request or visit update</span></button>
+            <button onclick="UI.sendSupport('inspection')"><strong>Expert Visit request</strong><span>₹299 request or visit update</span></button>
             <button onclick="UI.sendSupport('account')"><strong>Account</strong><span>OTP or login help</span></button>
           </div>
         </div>`;
@@ -193,7 +193,7 @@ const UI = (() => {
     const context = directContext || _safeJSON(overlay?.dataset.context) || {};
     const labels = {
       service: "I need help choosing or booking a local service.",
-      inspection: `I need help with my inspection request${context.bookingId ? ` ID ${context.bookingId}` : ""}.`,
+      inspection: `I need help with my Expert Visit request${context.bookingId ? ` ID ${context.bookingId}` : ""}.`,
       account: "I need help with WorkToGo OTP or account access.",
       request: `I need help with my WorkToGo request${context.bookingId ? ` ID ${context.bookingId}` : ""}.`,
     };

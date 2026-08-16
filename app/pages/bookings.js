@@ -156,7 +156,7 @@ window.BookingsPage = (() => {
   function _bookingEmptyState(filter) {
     const title = filter === "all" ? "Request tracking ready" : "No matching requests here";
     const text = filter === "all"
-      ? "Book a service to see matching, worker confirmation, inspection and completion updates here."
+      ? "Book a service to see matching, worker confirmation, expert visit and completion updates here."
       : "When a request reaches this step, WorkToGo will show the update here.";
     return `<div class="empty-state operational-empty-state">
       <div class="empty-icon">📍</div>
@@ -267,13 +267,13 @@ window.BookingsPage = (() => {
       ? (paid ? "inspection_queued" : "payment_pending")
       : raw;
     const table = {
-      payment_pending: ["Payment pending", "Complete inspection payment so the visit can be confirmed", "Inspection request is saved. Payment must be verified before visit assignment."],
-      inspection_queued: ["Inspection queued", "Coordinator is reviewing your inspection request", "Payment is verified and the inspection request is queued."],
-      coordinator_reviewing: ["Coordinator reviewing", "WorkToGo is checking issue details and area", "Your inspection is being reviewed for assignment."],
-      inspection_requested: ["Inspection requested", "WorkToGo will assign an inspection technician", "Your issue details and address are with WorkToGo."],
-      inspection_assigned: ["Inspection worker assigned", "Keep your phone available for timing confirmation", "A technician has been selected for the inspection."],
-      inspection_scheduled: ["Inspection visit scheduled", "Technician will visit at the confirmed time", "Your inspection timing is confirmed."],
-      inspection_completed: ["Inspection completed", "WorkToGo will share next work steps", "Diagnosis is complete and next work can be confirmed."],
+      payment_pending: ["Payment pending", "Complete Expert Visit payment so the visit can be confirmed", "Expert Visit request is saved. Payment must be verified before visit assignment."],
+      inspection_queued: ["Expert Visit queued", "Coordinator is reviewing your Expert Visit request", "Payment is verified and the Expert Visit request is queued."],
+      coordinator_reviewing: ["Coordinator reviewing", "WorkToGo is checking issue details and area", "Your Expert Visit is being reviewed for assignment."],
+      inspection_requested: ["Expert Visit requested", "WorkToGo will assign an expert", "Your issue details and address are with WorkToGo."],
+      inspection_assigned: ["Expert Visit worker assigned", "Keep your phone available for timing confirmation", "An expert has been selected for your visit."],
+      inspection_scheduled: ["Expert Visit scheduled", "The expert will visit at the confirmed time", "Your Expert Visit timing is confirmed."],
+      inspection_completed: ["Expert Visit completed", "WorkToGo will share next work steps", "Diagnosis is complete and next work can be confirmed."],
       request_received: ["Request received", "Nearby worker matching will start", "WorkToGo has your service, area and issue note."],
       nearby_matching: ["Nearby worker matching started", "WorkToGo is checking suitable local workers", "Your request is being matched by area and service type."],
       worker_contacting: ["Worker being contacted", "A worker will confirm availability", "WorkToGo is checking timing with a local worker."],
@@ -285,7 +285,7 @@ window.BookingsPage = (() => {
       completed: ["Completed", "Use booking help if anything needs correction", "This request is marked complete."],
       done: ["Completed", "Use booking help if anything needs correction", "This request is marked complete."],
       cancelled: ["Cancelled", "Book again or contact support if needed", "This request is not active."],
-      pending: mode === "direct_vendor" ? ["Worker requested", "WorkToGo will ask the selected worker", "Your selected worker request has been sent."] : mode === "inspection" ? ["Inspection requested", "WorkToGo will assign an inspection technician", "Your issue details and address are with WorkToGo."] : ["Request received", "Nearby worker matching will start", "WorkToGo has your service, area and issue note."],
+      pending: mode === "direct_vendor" ? ["Worker requested", "WorkToGo will ask the selected worker", "Your selected worker request has been sent."] : mode === "inspection" ? ["Expert Visit requested", "WorkToGo will assign an expert", "Your issue details and address are with WorkToGo."] : ["Request received", "Nearby worker matching will start", "WorkToGo has your service, area and issue note."],
       assigned: ["Worker assigned", "Keep your phone available for visit coordination", "A worker has been assigned to your request."],
       confirmed: mode === "direct_vendor" ? ["Worker confirmed", "Worker visit is being coordinated", "The worker has confirmed your request."] : ["Worker assigned", "Keep your phone available for visit coordination", "A worker has been assigned to your request."],
       in_progress: ["Service in progress", "Pay after service when work is complete", "Your service work has started."],
@@ -320,9 +320,9 @@ window.BookingsPage = (() => {
       confirmed: "Assigned",
       worker_assigned: "Assigned",
       worker_confirmed: "Assigned",
-      inspection_queued: "Inspection queued",
+      inspection_queued: "Expert Visit queued",
       coordinator_reviewing: "Reviewing",
-      inspection_requested: "Inspection queued",
+      inspection_requested: "Expert Visit queued",
       inspection_assigned: "Assigned",
       in_progress: "In progress",
       service_in_progress: "In progress",
@@ -336,7 +336,7 @@ window.BookingsPage = (() => {
   function _paymentBadge(b = {}) {
     const mode = String(b.booking_mode || "free_lead").toLowerCase();
     const state = _normalizePaymentState(b.payment_status || "");
-    if (mode === "inspection") return state === "paid" ? { label: "Paid inspection", tone: "paid" } : { label: "Payment pending", tone: "payment-pending" };
+    if (mode === "inspection") return state === "paid" ? { label: "Paid Expert Visit", tone: "paid" } : { label: "Payment pending", tone: "payment-pending" };
     return { label: "Free request", tone: "free" };
   }
 
