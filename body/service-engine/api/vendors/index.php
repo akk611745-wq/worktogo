@@ -152,6 +152,16 @@ if ($method === 'GET' && $uri === '/api/vendors') {
     $bind  = [];
     $typeColumn = ServiceVendorEligibility::vendorTypeColumn($db);
 
+    // Anti-bypass: a 'paused' vendor is HIDDEN from customer discovery so new
+    // customers can't direct-book them (existing customers/jobs, which query by
+    // vendor_id, are unaffected). 'reduced' vendors are de-prioritised in order.
+    // Schema-defensive: no throttle column -> behaves exactly as today.
+    $hasThrottleCol = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'work_throttle');
+    if ($hasThrottleCol) {
+        $where[] = "(v.work_throttle IS NULL OR v.work_throttle <> 'paused')";
+    }
+    $throttleOrder = $hasThrottleCol ? "(v.work_throttle = 'reduced') ASC, " : '';
+
     if ($type) {
         $where[]              = "v.{$typeColumn} = :type";
         $bind[':type']        = $type;
@@ -181,7 +191,7 @@ if ($method === 'GET' && $uri === '/api/vendors') {
             LEFT JOIN users u ON u.id = v.user_id
             LEFT JOIN categories c ON c.id = v.category_id
             $whereSQL
-            ORDER BY v.rating DESC, v.created_at DESC
+            ORDER BY {$throttleOrder}v.rating DESC, v.created_at DESC
             LIMIT :limit OFFSET :offset";
 
     $stmt = $db->prepare($sql);

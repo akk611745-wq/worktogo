@@ -40,6 +40,9 @@ class ServiceVendorEligibility
             self::tableHasColumn($db, 'vendors', 'is_online') ? "{$alias}.is_online" : '1 AS is_online',
             self::tableHasColumn($db, 'vendors', 'service_localities') ? "{$alias}.service_localities" : 'NULL AS service_localities',
             self::tableHasColumn($db, 'vendors', 'service_area_notes') ? "{$alias}.service_area_notes" : 'NULL AS service_area_notes',
+            // Accountability throttle (paused/reduced/normal). NULL when the column
+            // is not migrated yet -> treated as 'normal' by evaluate().
+            self::tableHasColumn($db, 'vendors', 'work_throttle') ? "{$alias}.work_throttle" : 'NULL AS work_throttle',
         ];
         return implode(', ', $parts);
     }
@@ -140,15 +143,21 @@ class ServiceVendorEligibility
         $isService = (($vendor['type'] ?? '') === 'service');
         $isOnline = (int)($vendor['is_online'] ?? 1) === 1;
         $area = self::localityCovered($vendor['service_localities'] ?? null, $booking['customer_locality'] ?? null);
+        // Accountability throttle (admin-set; enforced here). 'paused' vendors are
+        // NOT offered new work; 'reduced' stay assignable but are de-prioritised
+        // by the caller's sort. Absent column -> 'normal'.
+        $throttle = strtolower(trim((string)($vendor['work_throttle'] ?? ''))) ?: 'normal';
+        $isPaused = ($throttle === 'paused');
         $reasons = [];
 
         if (!$isActive) $reasons[] = 'Vendor inactive';
         if (!$isService) $reasons[] = 'Not a service vendor';
         if (!$isOnline) $reasons[] = 'Vendor offline';
+        if ($isPaused) $reasons[] = 'Vendor paused (throttled)';
         if ($area['covered'] === false) $reasons[] = $area['reason'];
         if ($availability['available'] === false) $reasons[] = $availability['reason'];
 
-        $assignable = $isActive && $isService && $isOnline && $area['covered'] !== false && $availability['available'] !== false;
+        $assignable = $isActive && $isService && $isOnline && !$isPaused && $area['covered'] !== false && $availability['available'] !== false;
 
         return [
             'active' => $isActive,
@@ -157,6 +166,8 @@ class ServiceVendorEligibility
             'service_area' => $area,
             'availability' => $availability,
             'assignable' => $assignable,
+            'work_throttle' => $throttle,
+            'deprioritized' => ($throttle === 'reduced'),
             'status' => $assignable ? 'eligible' : 'not_eligible',
             'reasons' => $reasons,
         ];

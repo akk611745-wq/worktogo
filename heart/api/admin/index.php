@@ -2570,7 +2570,9 @@ try {
                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vendors' AND COLUMN_NAME = 'service_localities'"
             )->fetchColumn() > 0;
             $locSel = $hasLocCol ? ', v.service_localities' : ", '' AS service_localities";
-            $vrStmt = $db->query("SELECT v.id, v.category_id{$locSel} FROM vendors v WHERE v.status = 'active'");
+            $hasThrottleCol = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'work_throttle');
+            $thrSel = $hasThrottleCol ? ', v.work_throttle' : ", NULL AS work_throttle";
+            $vrStmt = $db->query("SELECT v.id, v.category_id{$locSel}{$thrSel} FROM vendors v WHERE v.status = 'active'");
             $vendorRows = $vrStmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (PDOException $ignored) {}
 
@@ -2645,8 +2647,14 @@ try {
                     $areaMatch = stripos($vendorLocRaw, $bookingLocality) !== false
                               || stripos($bookingLocality, strtolower(trim($vendorLocRaw))) !== false;
                 }
-                $assignable = $categoryMatch && ($bookingLocality === '' || $areaMatch);
-                if ($categoryMatch && $areaMatch) {
+                // Accountability throttle: 'paused' vendors are NOT offered new
+                // work (not assignable); 'reduced' stay assignable but sort last.
+                $throttle  = strtolower(trim((string)($vr['work_throttle'] ?? ''))) ?: 'normal';
+                $isPaused  = ($throttle === 'paused');
+                $assignable = $categoryMatch && ($bookingLocality === '' || $areaMatch) && !$isPaused;
+                if ($isPaused) {
+                    $reason = 'Paused (throttled)';
+                } elseif ($categoryMatch && $areaMatch) {
                     $reason = 'Perfect match';
                 } elseif (!$categoryMatch) {
                     $reason = 'Wrong category';
@@ -2661,10 +2669,21 @@ try {
                         'category_match'  => $categoryMatch,
                         'area_match'      => $areaMatch,
                         'reason'          => $reason,
+                        'work_throttle'   => $throttle,
+                        'deprioritized'   => ($throttle === 'reduced'),
                     ],
                     'service_localities' => $vendorLocRaw,
                 ];
             }
+            // Throttle-aware order: assignable first, then de-prioritised ('reduced')
+            // below normal, paused (not assignable) last.
+            usort($eligibleVendors, function ($a, $b) {
+                $ae = $a['eligibility']; $be = $b['eligibility'];
+                if ($ae['assignable'] !== $be['assignable']) return $ae['assignable'] ? -1 : 1;
+                $ad = !empty($ae['deprioritized']); $bd = !empty($be['deprioritized']);
+                if ($ad !== $bd) return $ad ? 1 : -1;
+                return 0;
+            });
             $b['vendor_eligibility'] = ['vendors' => $eligibleVendors, 'eligible_count' => $eligibleCount, 'booking_locality' => $bookingLocality];
             return $b;
         }, $rows);

@@ -812,6 +812,17 @@ function serviceBookingEligibility(PDO $db, array $booking): array
         ];
     }
 
+    // Throttle-aware ordering: assignable first (paused vendors are not
+    // assignable), and among assignable ones the de-prioritised ('reduced')
+    // sink below normal so they are suggested less often.
+    usort($items, function ($a, $b) {
+        $ae = $a['eligibility']; $be = $b['eligibility'];
+        if ($ae['assignable'] !== $be['assignable']) return $ae['assignable'] ? -1 : 1;
+        $ad = !empty($ae['deprioritized']); $bd = !empty($be['deprioritized']);
+        if ($ad !== $bd) return $ad ? 1 : -1;
+        return 0;
+    });
+
     return [
         'booking_locality' => $booking['customer_locality'] ?? null,
         'scheduled_at' => $booking['scheduled_at'] ?? null,

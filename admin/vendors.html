@@ -203,7 +203,11 @@ function openFlagged() {
 
 async function setThrottle(id, value) {
   try { await API.patch(`/vendors/${id}/accountability`, { work_throttle: value });
-    Toast.success('Work level set to ' + value + ' (recorded — not auto-enforced).');
+    const msg = value === 'paused' ? 'Paused — vendor gets no new offers or customer discovery (existing jobs continue).'
+      : value === 'reduced' ? 'Reduced — vendor is de-prioritised in assignment & discovery.'
+      : 'Normal — no throttle.';
+    Toast.success(msg);
+    loadFlagged();
   } catch (e) { Toast.error(e.message || 'Failed'); }
 }
 async function markReviewed(id) {
@@ -387,6 +391,11 @@ async function viewVendor(id) {
   ${(window._serviceCategories||[]).map(c=>`<option value="${c.id}" ${v.category_id==c.id?'selected':''}>${c.name}</option>`).join('')}
 </select>`)}
         ${field('Status', statusBadge(v.status))}
+        ${field('Work throttle', `<select onchange="setThrottle(${v.id}, this.value)" title="Enforced across admin assign, auto-assign & customer discovery" style="background:#1e293b;color:#fff;border:1px solid #334155;padding:4px 8px;border-radius:6px">
+  <option value="normal" ${(v.work_throttle||'normal')==='normal'?'selected':''}>Normal</option>
+  <option value="reduced" ${v.work_throttle==='reduced'?'selected':''}>Reduced (de-prioritised)</option>
+  <option value="paused" ${v.work_throttle==='paused'?'selected':''}>Paused (no new work)</option>
+</select>`)}
         ${field('Verified', (v.is_verified == 1 || v.is_verified === true || v.is_verified === '1') ? '<span style="color:var(--green);font-weight:600">&#10003; Verified</span>' : '<span style="color:var(--text-muted)">Not verified</span>')}
         ${v.experience_years ? field('Experience', `${escHtml(v.experience_years)} yrs`) : ''}
         ${field('Rating', v.rating > 0 ? `&#11088; ${parseFloat(v.rating).toFixed(1)} / 5` : 'Not rated yet')}

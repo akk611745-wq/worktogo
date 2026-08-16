@@ -87,6 +87,16 @@ try {
     );
     $vendorTypeCol = ((int)$vendorTypeColCheck->fetchColumn() > 0) ? 'type' : 'vendor_type';
 
+    // Accountability throttle (admin-set): skip 'paused' vendors (no new offers)
+    // and de-prioritise 'reduced' (offered only when no normal vendor is nearer).
+    // Schema-defensive: if the column isn't migrated yet, behave exactly as before.
+    $hasThrottleCol = ((int)$db->query(
+        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vendors' AND COLUMN_NAME = 'work_throttle'"
+    )->fetchColumn() > 0);
+    $throttleWhere = $hasThrottleCol ? "AND (v.work_throttle IS NULL OR v.work_throttle <> 'paused')" : '';
+    $throttleOrder = $hasThrottleCol ? "(v.work_throttle = 'reduced') ASC, " : '';
+
     foreach ($entitiesToAssign as $entity) {
         $type = $entity['type'];
         $id = $entity['id'];
@@ -151,11 +161,12 @@ try {
             FROM vendors v
             WHERE v.is_online = 1 AND v.status = 'active'
               AND v.{$vendorTypeCol} = ?
+              {$throttleWhere}
               AND v.id NOT IN (
                   SELECT vendor_id FROM auto_assignments
                   WHERE entity_type = ? AND entity_id = ?
               )
-            ORDER BY distance ASC LIMIT 1
+            ORDER BY {$throttleOrder}distance ASC LIMIT 1
         ");
         $stmt->execute([$entityLat, $entityLng, $entityLat, $requiredVendorType, $type, $id]);
         $nextVendor = $stmt->fetchColumn();
