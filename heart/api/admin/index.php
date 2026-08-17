@@ -1998,6 +1998,99 @@ try {
         Response::success(['thresholds' => VendorAccountability::thresholds($db), 'applied' => $applied], 200, 'Thresholds updated');
     }
 
+    // ══ Cities — multi-city management (add / enable a city = data, not a deploy) ══
+    //  The cities table + city_id foundation exist (migration 001); this exposes
+    //  the CRUD so launching a new city is one click. Gated by RBAC settings.*.
+    //  Schema-defensive: if the cities table isn't migrated yet, returns 503.
+    //  No DELETE on purpose — cities are FK-referenced; disable via is_active=0.
+
+    // ── GET /api/admin/cities — all cities (incl. inactive, for management) ────
+    if ($method === 'GET' && $uri === '/api/admin/cities') {
+        Permission::enforce($db, $auth, 'settings.view');
+        try {
+            $rows = $db->query(
+                "SELECT c.id, c.name, c.slug, c.state, c.country, c.center_lat, c.center_lng, c.is_active, c.sort_order,
+                        (SELECT COUNT(*) FROM vendors v  WHERE v.city_id = c.id) AS vendor_count,
+                        (SELECT COUNT(*) FROM bookings b WHERE b.city_id = c.id) AS booking_count
+                   FROM cities c ORDER BY c.sort_order ASC, c.name ASC"
+            )->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rows as &$r) {
+                $r['id'] = (int)$r['id']; $r['is_active'] = (int)$r['is_active']; $r['sort_order'] = (int)$r['sort_order'];
+                $r['vendor_count'] = (int)$r['vendor_count']; $r['booking_count'] = (int)$r['booking_count'];
+            }
+            Response::success(['cities' => $rows]);
+        } catch (PDOException $e) {
+            Response::error('Cities table is not available yet — run the city migration on this environment.', 503);
+        }
+    }
+
+    // ── POST /api/admin/cities — add a city ───────────────────────────────────
+    if ($method === 'POST' && $uri === '/api/admin/cities') {
+        Permission::enforce($db, $auth, 'settings.manage');
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        $v = Validator::make($input, ['name' => 'required|string|max:100', 'slug' => 'string|max:120', 'state' => 'string|max:100']);
+        if ($v->fails()) Response::validation($v->firstError(), $v->errors());
+
+        $name = trim((string)$input['name']);
+        $slug = trim((string)($input['slug'] ?? ''));
+        if ($slug === '') $slug = $name;
+        $slug = trim(preg_replace('/-+/', '-', preg_replace('/[^a-z0-9]+/', '-', strtolower($slug))), '-');
+        if ($slug === '') Response::validation('Could not derive a valid slug from the name');
+
+        try {
+            $exists = $db->prepare("SELECT id FROM cities WHERE slug = ? LIMIT 1");
+            $exists->execute([$slug]);
+            if ($exists->fetchColumn()) Response::error('A city with that slug already exists.', 409);
+
+            $lat = (isset($input['center_lat']) && $input['center_lat'] !== '') ? (float)$input['center_lat'] : null;
+            $lng = (isset($input['center_lng']) && $input['center_lng'] !== '') ? (float)$input['center_lng'] : null;
+            $db->prepare(
+                "INSERT INTO cities (name, slug, state, country, center_lat, center_lng, is_active, sort_order)
+                 VALUES (:name, :slug, :state, :country, :lat, :lng, :active, :sort)"
+            )->execute([
+                ':name' => $name, ':slug' => $slug,
+                ':state' => trim((string)($input['state'] ?? '')) ?: null,
+                ':country' => trim((string)($input['country'] ?? 'India')) ?: 'India',
+                ':lat' => $lat, ':lng' => $lng,
+                ':active' => array_key_exists('is_active', $input) ? ($input['is_active'] ? 1 : 0) : 1,
+                ':sort' => (int)($input['sort_order'] ?? 0),
+            ]);
+            $newId = (int)$db->lastInsertId();
+            Logger::info('Admin added city', ['admin_id' => $auth['user_id'], 'city_id' => $newId, 'slug' => $slug]);
+            Response::success(['id' => $newId, 'name' => $name, 'slug' => $slug], 201, 'City added');
+        } catch (PDOException $e) {
+            Response::error('Cities table is not available yet — run the city migration on this environment.', 503);
+        }
+    }
+
+    // ── PATCH /api/admin/cities/{id} — edit / enable / disable ────────────────
+    if ($method === 'PATCH' && preg_match('#^/api/admin/cities/(\d+)$#', $uri, $m)) {
+        Permission::enforce($db, $auth, 'settings.manage');
+        $cityId = (int)$m[1];
+        $input  = json_decode(file_get_contents('php://input'), true) ?? [];
+        try {
+            $chk = $db->prepare("SELECT id FROM cities WHERE id = ? LIMIT 1");
+            $chk->execute([$cityId]);
+            if (!$chk->fetchColumn()) Response::notFound('City');
+
+            $set = []; $bind = [];
+            if (array_key_exists('name', $input) && trim((string)$input['name']) !== '') { $set[] = 'name = ?'; $bind[] = trim((string)$input['name']); }
+            if (array_key_exists('state', $input)) { $set[] = 'state = ?'; $bind[] = trim((string)$input['state']) ?: null; }
+            if (array_key_exists('center_lat', $input)) { $set[] = 'center_lat = ?'; $bind[] = ($input['center_lat'] === '' || $input['center_lat'] === null) ? null : (float)$input['center_lat']; }
+            if (array_key_exists('center_lng', $input)) { $set[] = 'center_lng = ?'; $bind[] = ($input['center_lng'] === '' || $input['center_lng'] === null) ? null : (float)$input['center_lng']; }
+            if (array_key_exists('is_active', $input)) { $set[] = 'is_active = ?'; $bind[] = $input['is_active'] ? 1 : 0; }
+            if (array_key_exists('sort_order', $input)) { $set[] = 'sort_order = ?'; $bind[] = (int)$input['sort_order']; }
+            if (!$set) Response::validation('Nothing to update');
+            $set[] = 'updated_at = NOW()';
+            $bind[] = $cityId;
+            $db->prepare("UPDATE cities SET " . implode(', ', $set) . " WHERE id = ?")->execute($bind);
+            Logger::info('Admin updated city', ['admin_id' => $auth['user_id'], 'city_id' => $cityId]);
+            Response::success(['id' => $cityId], 200, 'City updated');
+        } catch (PDOException $e) {
+            Response::error('Cities table is not available yet — run the city migration on this environment.', 503);
+        }
+    }
+
     // ── POST /api/admin/deliveries/assign ──────────────────────
     if ($method === 'POST' && $uri === '/api/admin/deliveries/assign') {
         $input = json_decode(file_get_contents('php://input'), true) ?? [];

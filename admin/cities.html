@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Cities</title>
+  <link rel="icon" href="/app/assets/favicon.png"/>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+/* ── Cities ──────────────────────────────────────────────────── */
+.ct-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr)); gap:14px; }
+.ct-card { background:var(--bg-card); border:1px solid var(--border-dim); border-radius:var(--radius-md); padding:14px; display:flex; flex-direction:column; gap:8px; }
+.ct-card.inactive { opacity:0.6; }
+.ct-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.ct-name { font-size:14px; font-weight:700; color:var(--text-primary); }
+.ct-slug { font-size:10px; font-family:var(--mono); color:var(--text-muted); }
+.ct-meta { font-size:11px; color:var(--text-muted); display:flex; gap:10px; }
+.ct-actions { display:flex; gap:6px; }
+.ct-note { font-size:11px; color:var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Cities</h1>
+          <p class="page-subtitle" id="ct-sub">Add or enable a service city — data, not a deploy</p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openAddCity()">+ Add city</button>
+      </div>
+      <div class="ct-grid" id="cities-grid"><div style="grid-column:1/-1;text-align:center;padding:24px"><div class="spinner" style="margin:auto"></div></div></div>
+    </main>
+  </div>
+</div>
+
+<!-- Add/edit city modal -->
+<div class="modal-overlay" id="city-modal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <span class="modal-title" id="city-modal-title">Add city</span>
+      <button class="modal-close" onclick="Modal.close('city-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">CITY NAME</label><input id="city-name" class="form-control" placeholder="e.g. Nainital"></div>
+      <div class="form-group"><label class="form-label">STATE</label><input id="city-state" class="form-control" placeholder="e.g. Uttarakhand"></div>
+      <div style="display:flex;gap:10px">
+        <div class="form-group" style="flex:1"><label class="form-label">CENTER LAT (optional)</label><input id="city-lat" class="form-control" type="number" step="any" placeholder="29.39"></div>
+        <div class="form-group" style="flex:1"><label class="form-label">CENTER LNG (optional)</label><input id="city-lng" class="form-control" type="number" step="any" placeholder="79.45"></div>
+      </div>
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)"><input type="checkbox" id="city-active" checked> Active (available to customers)</label>
+      <p class="ct-note" style="margin-top:10px">A slug is generated from the name. Center lat/lng help area routing. Cities are never deleted — set Inactive to pause one.</p>
+    </div>
+    <div class="modal-footer" id="city-modal-footer"></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/push.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Cities', active: 'cities.html' });
+
+let _editCityId = null, _cities = [];
+
+async function loadCities() {
+  const grid = document.getElementById('cities-grid');
+  try {
+    const res = await API.get('/cities');
+    const cities = res?.data?.cities || [];
+    _cities = cities;
+    document.getElementById('ct-sub').textContent = `${cities.length} cities · ${cities.filter(c => c.is_active).length} active`;
+    if (!cities.length) {
+      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:28px;color:var(--text-muted)">
+        <div style="font-size:30px">📍</div><h3 style="margin:8px 0 4px">No cities yet</h3>
+        <p style="font-size:12px">Add your first service city to start.</p></div>`;
+      return;
+    }
+    grid.innerHTML = cities.map(cityCard).join('');
+  } catch (e) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:24px;color:var(--red)">${escHtml(e.message || 'Failed to load cities')}</div>`;
+    Toast.error(e.message || 'Failed to load cities');
+  }
+}
+
+function cityCard(c) {
+  const active = c.is_active
+    ? '<span class="badge badge-green">Active</span>'
+    : '<span class="badge badge-gray">Inactive</span>';
+  const geo = (c.center_lat && c.center_lng) ? `📍 ${Number(c.center_lat).toFixed(2)}, ${Number(c.center_lng).toFixed(2)}` : 'No center set';
+  return `<div class="ct-card ${c.is_active ? '' : 'inactive'}">
+    <div class="ct-top">
+      <div><div class="ct-name">${escHtml(c.name)}</div><div class="ct-slug">${escHtml(c.slug)}${c.state ? ' · ' + escHtml(c.state) : ''}</div></div>
+      ${active}
+    </div>
+    <div class="ct-meta"><span>🧑‍🔧 ${c.vendor_count} vendors</span><span>📦 ${c.booking_count} bookings</span></div>
+    <div class="ct-note">${geo}</div>
+    <div class="ct-actions">
+      <button class="btn ${c.is_active ? 'btn-warn' : 'btn-success'} btn-sm" onclick="toggleCity(${c.id}, ${c.is_active ? 0 : 1})">${c.is_active ? 'Disable' : 'Enable'}</button>
+      <button class="btn btn-ghost btn-sm" onclick="openEditCity(${c.id})">Edit</button>
+    </div>
+  </div>`;
+}
+
+function openAddCity() {
+  _editCityId = null;
+  document.getElementById('city-modal-title').textContent = 'Add city';
+  document.getElementById('city-name').value = '';
+  document.getElementById('city-state').value = '';
+  document.getElementById('city-lat').value = '';
+  document.getElementById('city-lng').value = '';
+  document.getElementById('city-active').checked = true;
+  document.getElementById('city-modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="Modal.close('city-modal')">Cancel</button>
+    <button class="btn btn-primary" onclick="saveCity()">Add city</button>`;
+  Modal.open('city-modal');
+}
+
+function openEditCity(id) {
+  const c = _cities.find(x => x.id === id);
+  if (!c) return;
+  _editCityId = id;
+  document.getElementById('city-modal-title').textContent = 'Edit city';
+  document.getElementById('city-name').value = c.name || '';
+  document.getElementById('city-state').value = c.state || '';
+  document.getElementById('city-lat').value = (c.center_lat === null || c.center_lat === undefined) ? '' : c.center_lat;
+  document.getElementById('city-lng').value = (c.center_lng === null || c.center_lng === undefined) ? '' : c.center_lng;
+  document.getElementById('city-active').checked = !!c.is_active;
+  document.getElementById('city-modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="Modal.close('city-modal')">Cancel</button>
+    <button class="btn btn-primary" onclick="saveCity()">Save changes</button>`;
+  Modal.open('city-modal');
+}
+
+async function saveCity() {
+  const name = document.getElementById('city-name').value.trim();
+  if (!name) { Toast.warn('City name is required'); return; }
+  const body = {
+    name,
+    state: document.getElementById('city-state').value.trim(),
+    center_lat: document.getElementById('city-lat').value.trim(),
+    center_lng: document.getElementById('city-lng').value.trim(),
+    is_active: document.getElementById('city-active').checked ? 1 : 0,
+  };
+  try {
+    if (_editCityId) await API.patch(`/cities/${_editCityId}`, body);
+    else await API.post('/cities', body);
+    Toast.success(_editCityId ? 'City updated' : 'City added');
+    Modal.close('city-modal');
+    loadCities();
+  } catch (e) { Toast.error(e.message || 'Could not save city'); }
+}
+
+async function toggleCity(id, toActive) {
+  if (!await confirmAction(toActive ? 'Enable this city for customers?' : 'Disable this city? Existing data is kept; it just stops being offered.')) return;
+  try {
+    await API.patch(`/cities/${id}`, { is_active: toActive });
+    Toast.success(toActive ? 'City enabled' : 'City disabled');
+    loadCities();
+  } catch (e) { Toast.error(e.message || 'Could not update city'); }
+}
+
+loadCities();
+</script>
+</body>
+</html>
