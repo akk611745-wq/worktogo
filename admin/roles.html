@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Access Control</title>
+  <link rel="icon" href="/app/assets/favicon.png"/>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+/* ── Access Control (RBAC) ───────────────────────────────────── */
+.ac-tabs { display:flex; gap:6px; margin-bottom:18px; }
+.ac-tab { padding:8px 16px; border-radius:100px; border:1px solid var(--border-mid); background:transparent; color:var(--text-secondary); font-size:12px; font-weight:600; cursor:pointer; }
+.ac-tab.active { background:var(--accent-dim); color:var(--accent); border-color:var(--accent); }
+.ac-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px,1fr)); gap:14px; }
+.ac-role-card { background:var(--bg-card); border:1px solid var(--border-dim); border-radius:var(--radius-md); padding:14px; display:flex; flex-direction:column; gap:8px; }
+.ac-role-card:hover { border-color:var(--border-mid); }
+.ac-role-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.ac-role-name { font-size:14px; font-weight:700; color:var(--text-primary); }
+.ac-slug { font-size:10px; font-family:var(--mono); color:var(--text-muted); }
+.ac-role-desc { font-size:11px; color:var(--text-secondary); line-height:1.45; min-height:16px; }
+.ac-role-meta { font-size:11px; color:var(--text-muted); display:flex; gap:10px; }
+.ac-perm-groups { display:flex; flex-direction:column; gap:12px; }
+.ac-perm-group-title { font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px; }
+.ac-perm-list { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px,1fr)); gap:4px 12px; }
+.ac-perm { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-secondary); cursor:pointer; }
+.ac-perm input { margin:0; cursor:pointer; }
+.ac-perm code { font-size:9px; color:var(--text-muted); font-family:var(--mono); }
+.ac-user-roles { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+.ac-user-role { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border:1px solid var(--border-dim); border-radius:8px; }
+.ac-note { font-size:11px; color:var(--text-muted); }
+.ac-locked { font-size:11px; color:var(--accent); padding:10px; background:var(--accent-dim); border-radius:8px; }
+</style>
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Access Control</h1>
+          <p class="page-subtitle" id="ac-sub">Roles &amp; permissions — assign scoped access without code changes</p>
+        </div>
+        <button class="btn btn-primary btn-sm" id="new-role-btn" onclick="openCreateRole()">+ New role</button>
+      </div>
+
+      <div class="ac-tabs">
+        <button class="ac-tab active" data-tab="roles" onclick="switchTab('roles')">Roles</button>
+        <button class="ac-tab" data-tab="users" onclick="switchTab('users')">Assign to users</button>
+      </div>
+
+      <!-- ROLES TAB -->
+      <div id="tab-roles">
+        <div class="ac-grid" id="roles-grid"><div style="grid-column:1/-1;text-align:center;padding:24px"><div class="spinner" style="margin:auto"></div></div></div>
+      </div>
+
+      <!-- USERS TAB -->
+      <div id="tab-users" style="display:none">
+        <div class="card"><div class="card-body">
+          <div class="filter-bar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="user-search" class="form-control" placeholder="Search users by name, email or phone…">
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="searchUsers()">Search</button>
+          </div>
+          <div id="user-results" style="margin-top:10px"></div>
+        </div></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Create/Edit role modal -->
+<div class="modal-overlay" id="role-modal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-header">
+      <span class="modal-title" id="role-modal-title">Role</span>
+      <button class="modal-close" onclick="Modal.close('role-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" id="role-modal-body"></div>
+    <div class="modal-footer" id="role-modal-footer"></div>
+  </div>
+</div>
+
+<!-- User roles modal -->
+<div class="modal-overlay" id="uroles-modal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <span class="modal-title" id="uroles-title">User roles</span>
+      <button class="modal-close" onclick="Modal.close('uroles-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" id="uroles-body">Loading…</div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/push.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Access Control', active: 'roles.html' });
+
+let _roles = [], _permGrouped = {}, _editRoleId = null, _uroleUserId = null;
+
+function switchTab(tab) {
+  document.querySelectorAll('.ac-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.getElementById('tab-roles').style.display = tab === 'roles' ? '' : 'none';
+  document.getElementById('tab-users').style.display = tab === 'users' ? '' : 'none';
+}
+
+async function loadRoles() {
+  const grid = document.getElementById('roles-grid');
+  try {
+    const [rres, pres] = await Promise.all([API.get('/roles'), API.get('/permissions')]);
+    _roles = rres?.data?.roles || [];
+    _permGrouped = pres?.data?.grouped || {};
+    document.getElementById('ac-sub').textContent = `${_roles.length} roles · ${(pres?.data?.permissions || []).length} permissions in the catalog`;
+    grid.innerHTML = _roles.map(roleCard).join('');
+  } catch (e) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:24px;color:var(--red)">Failed to load: ${escHtml(e.message || '')}</div>`;
+    Toast.error('Failed to load roles');
+  }
+}
+
+function roleCard(r) {
+  const sys = r.is_system ? '<span class="badge badge-purple">System</span>' : '';
+  const act = r.is_active ? '' : '<span class="badge badge-gray">Inactive</span>';
+  return `<div class="ac-role-card">
+    <div class="ac-role-top">
+      <div><div class="ac-role-name">${escHtml(r.name)}</div><div class="ac-slug">${escHtml(r.slug)}</div></div>
+      <div style="display:flex;gap:4px">${sys}${act}</div>
+    </div>
+    <div class="ac-role-desc">${escHtml(r.description || '')}</div>
+    <div class="ac-role-meta"><span>🔑 ${r.permission_count} perms</span><span>👤 ${r.user_count} users</span></div>
+    <button class="btn btn-ghost btn-sm" onclick="openEditRole(${r.id})">${r.is_system ? 'View permissions' : 'Edit'}</button>
+  </div>`;
+}
+
+function openCreateRole() {
+  _editRoleId = null;
+  document.getElementById('role-modal-title').textContent = 'New role';
+  document.getElementById('role-modal-body').innerHTML = `
+    <div class="form-group"><label class="form-label">NAME</label><input id="role-name" class="form-control" placeholder="e.g. Regional Manager"></div>
+    <div class="form-group"><label class="form-label">DESCRIPTION</label><input id="role-desc" class="form-control" placeholder="Short description of what this role does"></div>
+    <p class="ac-note">A slug is generated from the name. After creating, open the role to pick its permissions.</p>`;
+  document.getElementById('role-modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="Modal.close('role-modal')">Cancel</button>
+    <button class="btn btn-primary" onclick="createRole()">Create role</button>`;
+  Modal.open('role-modal');
+}
+
+async function createRole() {
+  const name = document.getElementById('role-name').value.trim();
+  if (!name) { Toast.warn('Name is required'); return; }
+  const description = document.getElementById('role-desc').value.trim();
+  try {
+    const res = await API.post('/roles', { name, description });
+    Toast.success('Role created');
+    Modal.close('role-modal');
+    await loadRoles();
+    if (res?.data?.id) openEditRole(res.data.id);
+  } catch (e) { Toast.error(e.message || 'Could not create role'); }
+}
+
+async function openEditRole(id) {
+  _editRoleId = id;
+  Modal.open('role-modal');
+  document.getElementById('role-modal-title').textContent = 'Role';
+  document.getElementById('role-modal-body').innerHTML = '<div style="text-align:center;padding:20px"><div class="spinner" style="margin:auto"></div></div>';
+  document.getElementById('role-modal-footer').innerHTML = '';
+  try {
+    const res = await API.get(`/roles/${id}`);
+    const role = res?.data?.role || {};
+    const held = new Set(role.permissions || []);
+    document.getElementById('role-modal-title').textContent = role.name || 'Role';
+    const isSystem = !!role.is_system;
+
+    let permHTML;
+    if (isSystem) {
+      permHTML = `<div class="ac-locked">🛡️ System role — holds <b>all</b> permissions. Its permission set is locked and cannot be edited (this protects admin access).</div>`;
+    } else {
+      permHTML = `<div class="ac-perm-groups">${Object.keys(_permGrouped).map(g => `
+        <div><div class="ac-perm-group-title">${escHtml(g)}</div>
+        <div class="ac-perm-list">${_permGrouped[g].map(p => `
+          <label class="ac-perm"><input type="checkbox" value="${escHtml(p.perm_key)}" ${held.has(p.perm_key) ? 'checked' : ''}>
+            <span>${escHtml(p.label)}<br><code>${escHtml(p.perm_key)}</code></span></label>`).join('')}</div></div>`).join('')}</div>`;
+    }
+
+    document.getElementById('role-modal-body').innerHTML = `
+      <div class="form-group"><label class="form-label">NAME</label>
+        <input id="edit-role-name" class="form-control" value="${escHtml(role.name || '')}" ${isSystem ? 'disabled' : ''}></div>
+      <div class="form-group"><label class="form-label">DESCRIPTION</label>
+        <input id="edit-role-desc" class="form-control" value="${escHtml(role.description || '')}" ${isSystem ? 'disabled' : ''}></div>
+      ${isSystem ? '' : `<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);margin-bottom:12px">
+        <input type="checkbox" id="edit-role-active" ${role.is_active ? 'checked' : ''}> Active</label>`}
+      <div style="font-size:11px;color:var(--text-muted);letter-spacing:0.06em;margin:6px 0 8px">PERMISSIONS</div>
+      ${permHTML}`;
+    document.getElementById('role-modal-footer').innerHTML = isSystem
+      ? `<button class="btn btn-ghost" onclick="Modal.close('role-modal')">Close</button>`
+      : `<button class="btn btn-ghost" onclick="Modal.close('role-modal')">Cancel</button>
+         <button class="btn btn-primary" onclick="saveRole(${id})">Save role</button>`;
+  } catch (e) {
+    document.getElementById('role-modal-body').innerHTML = '<p style="color:var(--red)">Failed to load role.</p>';
+  }
+}
+
+async function saveRole(id) {
+  const name = document.getElementById('edit-role-name').value.trim();
+  const description = document.getElementById('edit-role-desc').value.trim();
+  const is_active = document.getElementById('edit-role-active')?.checked ? 1 : 0;
+  const perms = [...document.querySelectorAll('#role-modal-body .ac-perm input:checked')].map(c => c.value);
+  try {
+    await API.patch(`/roles/${id}`, { name, description, is_active });
+    await API.put(`/roles/${id}/permissions`, { permissions: perms });
+    Toast.success('Role saved');
+    Modal.close('role-modal');
+    loadRoles();
+  } catch (e) { Toast.error(e.message || 'Could not save role'); }
+}
+
+// ── Assign to users ──────────────────────────────────────────
+async function searchUsers() {
+  const q = document.getElementById('user-search').value.trim();
+  const box = document.getElementById('user-results');
+  box.innerHTML = '<div style="text-align:center;padding:16px"><div class="spinner" style="margin:auto"></div></div>';
+  try {
+    const res = await API.get('/users', q ? { search: q, limit: 20 } : { limit: 20 });
+    const payload = res?.data && !Array.isArray(res.data) ? res.data : res;
+    const users = payload?.users || payload?.data || [];
+    if (!users.length) { box.innerHTML = '<p class="ac-note" style="padding:14px">No users found.</p>'; return; }
+    box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>NAME</th><th>CONTACT</th><th>LEGACY ROLE</th><th>ACTIONS</th></tr></thead>
+      <tbody>${users.map(u => `<tr>
+        <td style="font-size:12px;color:var(--text-primary)">${escHtml(u.name || '—')}</td>
+        <td style="font-size:11px;color:var(--text-muted)">${escHtml(u.email || u.phone || '')}</td>
+        <td>${statusBadge(u.role || 'customer')}</td>
+        <td><button class="btn btn-ghost btn-sm" onclick="openUserRoles(${u.id})">Manage roles</button></td>
+      </tr>`).join('')}</tbody></table></div>`;
+  } catch (e) { box.innerHTML = `<p style="color:var(--red);padding:14px">Failed: ${escHtml(e.message || '')}</p>`; }
+}
+
+async function openUserRoles(userId) {
+  _uroleUserId = userId;
+  Modal.open('uroles-modal');
+  document.getElementById('uroles-body').innerHTML = '<div style="text-align:center;padding:20px"><div class="spinner" style="margin:auto"></div></div>';
+  try {
+    const res = await API.get(`/users/${userId}/roles`);
+    const d = res?.data || {};
+    document.getElementById('uroles-title').textContent = 'Roles · user #' + userId;
+    const held = d.roles || [];
+    const assignable = _roles.filter(r => r.is_active);
+    document.getElementById('uroles-body').innerHTML = `
+      <p class="ac-note">Legacy role: <b>${escHtml(d.legacy_role || 'customer')}</b> · ${(d.permissions || []).length} effective permissions</p>
+      <div class="ac-user-roles">
+        ${held.length ? held.map(h => `<div class="ac-user-role">
+          <span style="font-size:12px;color:var(--text-primary)">${escHtml(h.name)} <span class="ac-slug">${escHtml(h.scope_type)}${h.scope_id ? ':' + h.scope_id : ''}</span></span>
+          <button class="btn btn-danger btn-sm" onclick="removeUserRole(${userId}, ${h.role_id})">Remove</button>
+        </div>`).join('') : '<p class="ac-note">No roles assigned yet.</p>'}
+      </div>
+      <div style="border-top:1px solid var(--border-dim);margin-top:14px;padding-top:12px">
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">ASSIGN A ROLE</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select id="assign-role" class="form-control" style="width:auto">
+            ${assignable.map(r => `<option value="${r.id}">${escHtml(r.name)}</option>`).join('')}
+          </select>
+          <select id="assign-scope" class="form-control" style="width:auto" onchange="document.getElementById('assign-scope-id').style.display=this.value==='global'?'none':''">
+            <option value="global">Global</option><option value="category">Category</option><option value="city">City</option>
+          </select>
+          <input id="assign-scope-id" class="form-control" style="width:110px;display:none" type="number" placeholder="scope id">
+          <button class="btn btn-primary btn-sm" onclick="assignUserRole(${userId})">Assign</button>
+        </div>
+      </div>`;
+  } catch (e) { document.getElementById('uroles-body').innerHTML = '<p style="color:var(--red)">Failed to load user roles.</p>'; }
+}
+
+async function assignUserRole(userId) {
+  const role_id = Number(document.getElementById('assign-role').value);
+  const scope_type = document.getElementById('assign-scope').value;
+  const scope_id = scope_type === 'global' ? 0 : Number(document.getElementById('assign-scope-id').value || 0);
+  if (scope_type !== 'global' && scope_id <= 0) { Toast.warn('Enter a scope id for category/city'); return; }
+  try {
+    await API.post(`/users/${userId}/roles`, { role_id, scope_type, scope_id });
+    Toast.success('Role assigned');
+    openUserRoles(userId);
+    loadRoles();
+  } catch (e) { Toast.error(e.message || 'Could not assign role'); }
+}
+
+async function removeUserRole(userId, roleId) {
+  if (!await confirmAction('Remove this role from the user?')) return;
+  try {
+    await API.delete(`/users/${userId}/roles/${roleId}`);
+    Toast.success('Role removed');
+    openUserRoles(userId);
+    loadRoles();
+  } catch (e) { Toast.error(e.message || 'Could not remove role'); }
+}
+
+document.getElementById('user-search').addEventListener('keydown', e => { if (e.key === 'Enter') searchUsers(); });
+
+loadRoles();
+</script>
+</body>
+</html>
