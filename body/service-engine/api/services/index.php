@@ -1229,6 +1229,21 @@ if ($method === 'DELETE' && preg_match('#^/api/services/(\d+)$#', $uri, $m)) {
 // â”€â”€ POST /api/service/request (create booking + auto-create job) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($method === 'POST' && $uri === '/api/service/request') {
     $auth  = AuthMiddleware::require();
+
+    // Hardening: throttle booking creation to curb booking-spam / abuse.
+    // Keyed per-user (the action embeds user_id) so one abusive account can't
+    // flood bookings, while a shared NAT IP never penalises other users.
+    // Skipped for internal Heart pipeline calls (already flood-guarded upstream
+    // by HeartRateLimiter). Env-configurable; DB-backed. BOOKING_RATE_MAX=0 disables.
+    if (!defined('HEART_INTERNAL_INC')) {
+        require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/RateLimiter.php';
+        $bkMax    = (int)(getenv('BOOKING_RATE_MAX')    ?: 12);
+        $bkWindow = (int)(getenv('BOOKING_RATE_WINDOW') ?: 300);
+        if ($bkMax > 0 && !RateLimiter::check('booking_create_' . (int)$auth['user_id'], $bkMax, $bkWindow)) {
+            Response::tooManyRequests('Too many booking requests. Please wait a moment and try again.');
+        }
+    }
+
     if (defined('HEART_INTERNAL_INC')) {
         $decoded = json_decode($GLOBALS['HEART_PAYLOAD'] ?? '{}', true) ?: [];
         $input = is_array($decoded['data'] ?? null) ? $decoded['data'] : $decoded;
