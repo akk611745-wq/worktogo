@@ -181,12 +181,17 @@ if ($method === 'GET' && $uri === '/api/vendors') {
     // FIX: Only select columns that actually exist in the vendors table
     $serviceLocalitiesSelect = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'service_localities') ? 'v.service_localities' : 'NULL AS service_localities';
     $serviceAreaNotesSelect = ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'service_area_notes') ? 'v.service_area_notes' : 'NULL AS service_area_notes';
+    // SECURITY (H1): This is a PUBLIC, unauthenticated discovery endpoint. Do NOT
+    // expose the vendor's raw contact (owner_phone/owner_email) here — anonymous
+    // scraping = mass PII harvest, and handing customers the vendor's number up
+    // front defeats the V2 anti-bypass model (contact is revealed only through the
+    // booking/job flow after commitment). owner_name stays for display only.
     $sql = "SELECT v.id, v.business_name, v.slug, v.{$typeColumn} AS type, v.{$typeColumn} AS vendor_type,
                    v.status, v.rating, v.commission_rate, v.is_online,
                    v.lat, v.lng, {$serviceLocalitiesSelect}, {$serviceAreaNotesSelect}, v.created_at,
                    v.category_id, c.name AS category_name,
                    v.experience_years, v.is_verified, v.logo_url,
-                   u.name AS owner_name, u.phone AS owner_phone, u.email AS owner_email
+                   u.name AS owner_name
             FROM vendors v
             LEFT JOIN users u ON u.id = v.user_id
             LEFT JOIN categories c ON c.id = v.category_id
@@ -224,7 +229,7 @@ if ($method === 'GET' && preg_match('#^/api/vendors/(\d+)$#', $uri, $m)) {
                 v.lat, v.lng, " . (ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'service_localities') ? 'v.service_localities' : 'NULL AS service_localities') . ",
                 " . (ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'service_area_notes') ? 'v.service_area_notes' : 'NULL AS service_area_notes') . ",
                 v.created_at, v.updated_at,
-                u.name AS owner_name, u.phone AS owner_phone, u.email AS owner_email
+                u.name AS owner_name
          FROM vendors v
          LEFT JOIN users u ON u.id = v.user_id
          WHERE v.id = ?
