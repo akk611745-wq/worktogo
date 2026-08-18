@@ -75,6 +75,7 @@
   <div id="otpLoginSection" style="display:none;">
     <h1 class="login-title">Login with OTP</h1>
     <p class="login-sub">We'll text a 6-digit code to your phone.</p>
+    <div id="otpLoginInfo" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:0.65rem 0.9rem;border-radius:0.5rem;font-size:0.8rem;line-height:1.5;margin-bottom:1rem;"></div>
     <div class="login-error" id="otpLoginError"></div>
 
     <div class="form-group">
@@ -348,10 +349,24 @@ function showLoginForm(prefill) {
   }
 }
 
-function showOtpLogin() {
+function showOtpLogin(opts) {
   _hideAllAuthSections();
   document.getElementById("otpLoginSection").style.display = "block";
   setActiveTab("signin");
+
+  // Optional prefill + info banner, used when routing an existing-account
+  // vendor applicant here to verify by OTP (called with no args from the
+  // plain "Login with OTP" link, which leaves both cleared).
+  const infoEl = document.getElementById("otpLoginInfo");
+  if (opts && opts.phone) {
+    document.getElementById("otpPhone").value = opts.phone;
+  }
+  if (opts && opts.message) {
+    infoEl.textContent = opts.message;
+    infoEl.style.display = "block";
+  } else {
+    infoEl.style.display = "none";
+  }
 }
 
 function showForgotPassword() {
@@ -433,12 +448,50 @@ async function verifyOtpLogin() {
       return;
     }
     const role = userData?.role || "";
+
+    // Arrived here from the vendor "apply" flow (their account already existed,
+    // possibly passwordless)? OTP has now proven phone ownership — link the
+    // pending vendor application against this session instead of dead-ending on
+    // the role check below. This is the path that rescues OTP-only customers
+    // who could never complete a password sign-in.
+    if (_pendingVendorApplication) {
+      const pending = _pendingVendorApplication;
+      _pendingVendorApplication = null;
+      Auth.setSession(token, userData);
+      let linkErr = null;
+      try {
+        const vendorRes = await fetch(window.WTG_BASE_URL + "/api/vendors", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+          body: JSON.stringify({ business_name: pending.businessName, category: pending.category, type: "service" }),
+        });
+        const vendorData = await vendorRes.json().catch(() => ({}));
+        // A 409 / VENDOR_ALREADY_EXISTS means they had already applied — done.
+        if (!vendorRes.ok && vendorRes.status !== 409 && vendorData?.error?.code !== "VENDOR_ALREADY_EXISTS") {
+          linkErr = vendorData?.message || vendorData?.error || "Verified, but the vendor application could not be linked. Please reopen the Register tab and try again.";
+        }
+      } catch (_) {
+        linkErr = "Verified, but a network error stopped the vendor application from linking. Please reopen the Register tab and try again.";
+      }
+      if (linkErr) {
+        _showOtpErr("otpLoginError", linkErr);
+        return;
+      }
+      // Application is in. Show the same "under review" confirmation the register
+      // flow shows, rather than dropping a still-customer role onto a vendor
+      // dashboard it can't open yet (the role flips to vendor on admin approval).
+      document.getElementById("otpLoginSection").innerHTML =
+        "<p style='text-align:center;color:#166534;background:#dcfce7;border:1px solid #bbf7d0;" +
+        "padding:1rem 1.25rem;border-radius:0.5rem;font-size:0.875rem;line-height:1.6;'>" +
+        "Application submitted! Aapki vendor application review mein hai.<br/>Approve hone par login karein." +
+        "</p>";
+      return;
+    }
+
     if (role !== "vendor_service" && role !== "vendor_shopping") {
-      // OTP login always succeeds for any phone with an account (customer,
-      // vendor, or none yet) — but the vendor panel itself is only usable
-      // by a vendor account, so a non-vendor (e.g. an existing Google/OTP
-      // customer who hasn't applied yet) is told what to do next instead
-      // of being dropped onto a dashboard their role can't access.
+      // Plain OTP login by a non-vendor with no pending application — the vendor
+      // panel is only usable by a vendor account, so tell them how to apply
+      // instead of dropping them on a dashboard their role can't access.
       _showOtpErr("otpLoginError", "This phone is registered, but not as a vendor yet. Use the Register tab to apply, or ask an admin to make you a vendor.");
       return;
     }
@@ -610,17 +663,19 @@ async function handleRegister() {
     const authData = await authRes.json().catch(() => ({}));
     if (!authRes.ok) {
       btn.disabled = false; btn.textContent = "Register";
-      if (authRes.status === 409) {
-        // Account already exists under this email/phone — sending them
-        // back into the same form to fail again isn't useful. Send them to
-        // Sign In instead, pre-filled, so a real login (not a re-typed
-        // guess at their existing password) is what links the vendor
-        // application to their account. handleLogin() submits the vendor
-        // application below once that real login succeeds.
+      if (authRes.status === 409 || authRes.status === 422) {
+        // Account already exists under this email/phone. Do NOT force a
+        // password sign-in here: OTP-only customers (very common on this app)
+        // have no password and would dead-end. Since the H2 backend fix,
+        // becoming a vendor on a passwordless account REQUIRES proving phone
+        // ownership — so route them to OTP login, which works for EVERY account
+        // with a phone. verifyOtpLogin() links the pending vendor application
+        // once the OTP is verified. Password users can still choose
+        // "Back to Sign In" from the OTP screen.
         _pendingVendorApplication = { businessName, category, phone };
-        showLoginForm({
-          email,
-          message: "Aapka account pehle se hai. Login karein — vendor account automatically link ho jaayega.",
+        showOtpLogin({
+          phone,
+          message: "Aapka account pehle se hai. OTP se verify karke apni vendor application link karein. (Agar aapke paas password hai, to 'Back to Sign In' se login kar sakte hain.)",
         });
         return;
       }
