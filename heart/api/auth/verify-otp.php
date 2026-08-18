@@ -142,12 +142,16 @@ try {
         Logger::info('Password reset via OTP', ['user_id' => $userId]);
     }
 
-    // Issue JWT with 30-day expiry (matching AuthController)
+    // Issue JWT with 30-day expiry (matching AuthController).
+    // SECURITY (M2): the 3rd arg is a DURATION — JWT::encode computes
+    // exp = now + $expiresIn. Passing an absolute `time() + 30d` here made
+    // exp = now + (now + 30d) (~year 2083), i.e. customer tokens that never
+    // expire. Pass the duration (86400 * 30) so exp = now + 30 days.
     $token = JWT::encode([
         'user_id' => $userId,
         'role'    => $role,
         'phone'   => $data['phone'],
-    ], JWT_SECRET, time() + (86400 * 30));
+    ], JWT_SECRET, 86400 * 30);
 
     $refreshToken = bin2hex(random_bytes(32));
     $refreshHash = hash('sha256', $refreshToken);
