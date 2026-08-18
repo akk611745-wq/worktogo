@@ -100,13 +100,9 @@ function _sendMsg91(string $phone, string $otp): bool
         'sender'      => getenv('MSG91_SENDER_ID') ?: 'WRKGO',
     ]);
 
-    // TEMPORARY DEBUG — logs exact runtime payload and env values to logs/YYYY-MM-DD.log
-    // Remove this block once OTP delivery is confirmed working live.
-    Logger::error('MSG91_PAYLOAD_DEBUG', [
-        'template_id_from_env' => $templateId,
-        'key_prefix'           => substr($key, 0, 8) . '...',
-        'payload_sent'         => $payload,
-    ]);
+    // SECURITY (M1): removed the TEMP MSG91_PAYLOAD_DEBUG block — it logged the
+    // outgoing payload (which INCLUDES the plaintext OTP) plus a key prefix at
+    // ERROR level on EVERY send. Auth payloads / OTPs must never be logged.
 
     return _httpPost('https://api.msg91.com/api/v5/otp', $payload, [
         'authkey: ' . $key,
@@ -154,6 +150,22 @@ function _sendTwilio(string $phone, string $otp): bool
 
 function _logOtp(string $phone, string $otp): bool
 {
+    // SECURITY (M1): This is the fallback used whenever a real SMS provider key
+    // is missing. NEVER write a plaintext OTP to the log in production — anyone
+    // with log/file access (team member, support, log aggregator, backup) could
+    // read it and authenticate as any user. Only log in an explicitly-dev
+    // environment; anywhere else (production or an unknown/unset APP_ENV) this
+    // is a misconfiguration, so FAIL LOUDLY: log NO secret and return false so
+    // the caller reports "Failed to send OTP" instead of silently "succeeding".
+    $env   = strtolower((string)(getenv('APP_ENV') ?: ''));
+    $isDev = in_array($env, ['local', 'dev', 'development'], true)
+             || getenv('APP_DEBUG') === 'true';
+
+    if (!$isDev) {
+        Logger::error('OTP send fell back to log mode with no SMS provider configured — OTP NOT logged, delivery failed. Configure an SMS provider.', ['phone' => $phone]);
+        return false;
+    }
+
     Logger::info('OTP (dev/log mode)', ['phone' => $phone, 'otp' => $otp]);
     return true;
 }
@@ -180,7 +192,11 @@ function _httpPost(string $url, string $payload, array $headers = [], string $au
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
-    Logger::error('MSG91_RESPONSE', ['code' => $code, 'body' => $res]); // TEMP: downgrade back to warning after debug
+    // Log only failures (as a warning), not every send. The former TEMP
+    // ERROR-level log on every response was log-spam; success needs no log.
+    if ($code < 200 || $code >= 300) {
+        Logger::warning('SMS provider HTTP error', ['code' => $code, 'body' => $res]);
+    }
 
     return $code >= 200 && $code < 300;
 }
