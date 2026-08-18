@@ -56,14 +56,25 @@ function _registerResolveExisting(PDO $db, array $existingUser, string $role, st
         Response::validation('This account is already registered. Please login instead.');
     }
 
+    // SECURITY (H2): An existing account with NO password is an OTP-only
+    // account whose identity is proven solely by control of the phone. A phone
+    // number is a low-secret; without this guard anyone who knows a victim's
+    // number could POST register with role=vendor_* and a password of their
+    // choosing and silently CLAIM the account — injecting an attacker-known
+    // password and flipping the role to vendor with ZERO proof of phone
+    // ownership. Never grant a password or a role change on a bare phone/email
+    // match. The real owner must first prove control of the phone via OTP login,
+    // then upgrade to vendor from the authenticated session (POST /api/vendors).
     if (empty($existingUser['password'])) {
-        // OTP-only account has no password to verify against — trust the
-        // phone/email match and set the password they just chose so they
-        // can also log in with phone/email + password.
-        $hash = password_hash($password, PASSWORD_BCRYPT);
-        $db->prepare("UPDATE users SET password = ? WHERE id = ?")
-           ->execute([$hash, $existingUser['id']]);
-    } elseif (!password_verify($password, (string)$existingUser['password'])) {
+        Response::validation(
+            'An account already exists for these details but has no password set. ' .
+            'Please log in with an OTP to verify ownership, then apply to become a vendor.'
+        );
+    }
+
+    // Existing account HAS a password — knowing it is proof of ownership, so a
+    // customer -> vendor upgrade is allowed only after the correct password.
+    if (!password_verify($password, (string)$existingUser['password'])) {
         Response::validation('This account already exists, but the password is incorrect. Please login instead.');
     }
 
