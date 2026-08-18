@@ -294,46 +294,122 @@ class HeartRateLimiter
 
     public static function check(?string $userId): void
     {
-        if (!function_exists('apcu_add')) {
-            return; // APCu unavailable — degrade gracefully
-        }
-
         $ip = self::clientIp();
 
-        // ── IP-level check (atomic increment) ─────────────────
-        // apcu_add() only sets the key if it does not exist yet,
-        // preserving the TTL window. apcu_inc() is atomic — safe
-        // under concurrent PHP-FPM workers (fixes race condition).
-        $ipKey = 'heart_rl_ip:' . md5($ip);
-        apcu_add($ipKey, 0, self::IP_WINDOW);
-        $ipCount = (int) apcu_inc($ipKey);
-        if ($ipCount > self::IP_MAX) {
-            header('Retry-After: ' . self::IP_WINDOW);
-            http_response_code(429);
-            echo json_encode([
-                'ok'    => false,
-                'error' => 'Too many requests from this IP. Please wait ' . self::IP_WINDOW . ' seconds.',
-                'code'  => 429,
-            ]);
-            exit;
+        // The IP guard always runs; the user guard only when a user is identified.
+        // IP is checked first so an anonymous flood is stopped before the user tier.
+        $checks = [['heart_rl_ip:' . md5($ip), self::IP_MAX, self::IP_WINDOW, 'IP']];
+        if (!empty($userId)) {
+            $checks[] = ['heart_rl_usr:' . md5($userId), self::USER_MAX, self::USER_WINDOW, 'user'];
         }
 
-        // ── User-level check (only if user identified) ────────
-        if (!empty($userId)) {
-            $userKey = 'heart_rl_usr:' . md5($userId);
-            apcu_add($userKey, 0, self::USER_WINDOW);
-            $userCount = (int) apcu_inc($userKey);
-            if ($userCount > self::USER_MAX) {
-                header('Retry-After: ' . self::USER_WINDOW);
-                http_response_code(429);
-                echo json_encode([
-                    'ok'    => false,
-                    'error' => 'Rate limit reached for this user. Please wait ' . self::USER_WINDOW . ' seconds.',
-                    'code'  => 429,
-                ]);
-                exit;
+        // ── Fast path: APCu in-process counters (unchanged behaviour) ──
+        // apcu_add() only sets the key if absent, preserving the TTL window;
+        // apcu_inc() is atomic — safe under concurrent PHP-FPM workers.
+        if (function_exists('apcu_add')) {
+            foreach ($checks as [$key, $max, $window, $label]) {
+                apcu_add($key, 0, $window);
+                if ((int) apcu_inc($key) > $max) {
+                    self::reject($window, $label);
+                }
             }
+            return;
         }
+
+        // ── SECURITY (M3): APCu is an OPTIONAL extension (often absent on basic
+        // shared hosting). This method previously returned here, so the entire
+        // per-IP / per-user flood guard SILENTLY VANISHED. Fall back to a shared
+        // store so flood protection does not depend on one optional extension:
+        //   Redis (already wired via REDIS_* env, as in ReflexEngine) -> DB.
+        // Any backend error FAILS OPEN (request allowed) and is logged — a broken
+        // flood guard must never take down the whole pipeline. The DB-backed auth
+        // limits (login/OTP/register) are separate and unaffected regardless.
+        try {
+            $redis = self::redis();
+            if ($redis !== null) {
+                foreach ($checks as [$key, $max, $window, $label]) {
+                    $count = (int) $redis->incr($key);
+                    if ($count === 1) { $redis->expire($key, $window); }
+                    if ($count > $max) { self::reject($window, $label); }
+                }
+                return;
+            }
+
+            $db = self::db();
+            if ($db !== null) {
+                foreach ($checks as [$key, $max, $window, $label]) {
+                    if (self::dbIncr($db, $key, $label, $ip, $window) > $max) {
+                        self::reject($window, $label);
+                    }
+                }
+                return;
+            }
+
+            HeartLogger::warn('Router flood guard inactive: no APCu, Redis, or DB backend available for this request.');
+        } catch (\Throwable $e) {
+            // Fail open — never let a rate-limiter backend outage break the pipeline.
+            HeartLogger::warn('Router flood-guard fallback error — request allowed', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /** Emit a 429 and terminate. */
+    private static function reject(int $window, string $scope): void
+    {
+        header('Retry-After: ' . $window);
+        http_response_code(429);
+        echo json_encode([
+            'ok'    => false,
+            'error' => $scope === 'IP'
+                ? 'Too many requests from this IP. Please wait ' . $window . ' seconds.'
+                : 'Rate limit reached for this user. Please wait ' . $window . ' seconds.',
+            'code'  => 429,
+        ]);
+        exit;
+    }
+
+    /** Connect to Redis if the extension is loaded and REDIS_HOST is set, else null. */
+    private static function redis(): ?\Redis
+    {
+        if (!extension_loaded('redis') || empty(getenv('REDIS_HOST'))) {
+            return null;
+        }
+        $redis = new \Redis();
+        $redis->connect((string) getenv('REDIS_HOST'), (int) (getenv('REDIS_PORT') ?: 6379), 0.5);
+        if ($pass = getenv('REDIS_PASS')) {
+            $redis->auth($pass);
+        }
+        $rdb = getenv('REDIS_DB');
+        if ($rdb !== false && $rdb !== '') {
+            $redis->select((int) $rdb);
+        }
+        return $redis;
+    }
+
+    /** Shared PDO handle if the heart bootstrap exposed getDB(), else null. */
+    private static function db(): ?\PDO
+    {
+        if (!function_exists('getDB')) {
+            return null;
+        }
+        $db = getDB();
+        return $db instanceof \PDO ? $db : null;
+    }
+
+    /**
+     * Fixed-window counter in the shared `rate_limits` table (PRIMARY KEY = key).
+     * Returns the current attempt count within the window.
+     */
+    private static function dbIncr(\PDO $db, string $key, string $scope, string $ip, int $window): int
+    {
+        $db->prepare("DELETE FROM rate_limits WHERE expires_at <= NOW()")->execute();
+        $db->prepare(
+            "INSERT INTO rate_limits (`key`, action, ip_address, attempts, expires_at)
+             VALUES (?, ?, ?, 1, DATE_ADD(NOW(), INTERVAL ? SECOND))
+             ON DUPLICATE KEY UPDATE attempts = attempts + 1"
+        )->execute([$key, 'heart_flood_' . $scope, substr($ip, 0, 45), $window]);
+        $sel = $db->prepare("SELECT attempts FROM rate_limits WHERE `key` = ?");
+        $sel->execute([$key]);
+        return (int) $sel->fetchColumn();
     }
 
     private static function clientIp(): string
