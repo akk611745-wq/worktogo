@@ -17,6 +17,16 @@ if ($v->fails()) {
 
 $phone = $v->validated()['phone'];
 
+// Hardening: per-IP ceiling on OTP sends. The throttle below is PER-PHONE, so
+// one IP could otherwise bomb many different numbers (SMS-cost abuse + spam).
+// This bounds total sends per source IP. Env-configurable; DB-backed (works
+// with or without APCu). Set OTP_SEND_IP_MAX=0 to disable.
+$otpSendIpMax    = (int)(getenv('OTP_SEND_IP_MAX')    ?: 20);
+$otpSendIpWindow = (int)(getenv('OTP_SEND_IP_WINDOW') ?: 600);
+if ($otpSendIpMax > 0 && !RateLimiter::check('otp_send_ip', $otpSendIpMax, $otpSendIpWindow)) {
+    Response::tooManyRequests('Too many OTP requests from your network. Please try again later.');
+}
+
 try {
     // Rate limit — max OTP_MAX_ATTEMPTS per OTP_RESEND_WAIT seconds
     $recent = $db->prepare(

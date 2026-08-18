@@ -21,6 +21,17 @@ if ($v->fails()) {
 
 $data = $v->validated();
 
+// Hardening: per-IP ceiling on verify attempts. The per-OTP attempt cap
+// (OTP_MAX_ATTEMPTS) resets whenever a NEW OTP is issued, so a script that
+// re-requests OTPs could otherwise keep guessing indefinitely. This IP guard
+// bounds distributed OTP brute-force / enumeration. Env-configurable;
+// DB-backed. Set OTP_VERIFY_IP_MAX=0 to disable.
+$otpVerifyIpMax    = (int)(getenv('OTP_VERIFY_IP_MAX')    ?: 30);
+$otpVerifyIpWindow = (int)(getenv('OTP_VERIFY_IP_WINDOW') ?: 600);
+if ($otpVerifyIpMax > 0 && !RateLimiter::check('otp_verify_ip', $otpVerifyIpMax, $otpVerifyIpWindow)) {
+    Response::tooManyRequests('Too many verification attempts. Please try again later.');
+}
+
 try {
     // Fetch latest unused OTP for this phone
     $stmt = $db->prepare(
