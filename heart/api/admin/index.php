@@ -64,6 +64,13 @@ function adminBuildPackageFields(array $input, bool $isCreate): array {
 
 $auth = AuthMiddleware::requireRole(ROLE_ADMIN);
 
+// ── Commerce control-room routes (Phase 3) ──────────────────────────────────
+// Dedicated commerce admin API in its own file so a separate commerce team owns
+// it. It matches /api/admin/commerce/* (store types, stores, products, inventory),
+// each route RBAC-gated by a commerce permission; non-matching requests fall
+// through to the admin routes below. See heart/api/admin/commerce.php.
+require_once __DIR__ . '/commerce.php';
+
 // Blocker B2 fix — keep jobs.vendor_id in sync with bookings.vendor_id on admin (un)assign.
 // Admin assign historically wrote only bookings.vendor_id, leaving jobs.vendor_id NULL, so the
 // vendor's PATCH /api/jobs/{id}/status ownership check (jobs.vendor_id === vendor) returned 403

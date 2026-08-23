@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Stores & Shop Types</title>
+<link rel="icon" href="/app/assets/favicon.png"/>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+/* ── Commerce: Stores & Shop Types ───────────────────────────── */
+.cm-section { margin-bottom:26px; }
+.cm-section-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 12px; }
+.cm-section-head h2 { font-size:15px; font-weight:700; color:var(--text-primary); margin:0; }
+.cm-section-head p { font-size:11px; color:var(--text-muted); margin:2px 0 0; }
+
+/* Shop types as chips */
+.st-wrap { display:flex; flex-wrap:wrap; gap:8px; }
+.st-chip { display:inline-flex; align-items:center; gap:8px; background:var(--bg-card); border:1px solid var(--border-dim); border-radius:999px; padding:6px 8px 6px 12px; font-size:12px; }
+.st-chip.inactive { opacity:0.5; }
+.st-chip .st-name { font-weight:600; color:var(--text-primary); }
+.st-chip .st-count { font-size:10px; color:var(--text-muted); }
+.st-chip button { background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:11px; padding:2px 4px; border-radius:6px; }
+.st-chip button:hover { background:var(--bg-hover,rgba(255,255,255,0.06)); color:var(--text-primary); }
+
+/* Store cards */
+.store-filters { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+.store-filters select { max-width:180px; }
+.store-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px,1fr)); gap:14px; }
+.store-card { background:var(--bg-card); border:1px solid var(--border-dim); border-radius:var(--radius-md); padding:14px; display:flex; flex-direction:column; gap:8px; }
+.store-card.suspended, .store-card.closed, .store-card.draft { opacity:0.62; }
+.store-top { display:flex; align-items:center; gap:10px; }
+.store-logo { width:40px; height:40px; border-radius:10px; object-fit:cover; background:var(--bg-hover,#222b3d); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:18px; }
+.store-name { font-size:14px; font-weight:700; color:var(--text-primary); line-height:1.2; }
+.store-sub { font-size:10px; color:var(--text-muted); }
+.store-meta { font-size:11px; color:var(--text-secondary); display:flex; flex-wrap:wrap; gap:8px; }
+.store-actions { display:flex; gap:6px; margin-top:2px; }
+.pill { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; padding:2px 7px; border-radius:999px; }
+.pill-company { background:rgba(99,102,241,.16); color:#a5b4fc; }
+.pill-vendor  { background:rgba(16,185,129,.16); color:#6ee7b7; }
+.seg { display:inline-flex; border:1px solid var(--border-dim); border-radius:10px; overflow:hidden; }
+.seg button { background:var(--bg-card); border:none; padding:8px 14px; font-size:12px; color:var(--text-secondary); cursor:pointer; }
+.seg button.on { background:var(--accent,#f5a623); color:#141414; font-weight:700; }
+.row2 { display:flex; gap:10px; } .row2 > * { flex:1; }
+</style>
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Stores &amp; Shop Types</h1>
+          <p class="page-subtitle">Company dark-stores &amp; local seller shops — any shop type, no code</p>
+        </div>
+      </div>
+
+      <!-- Shop types -->
+      <div class="cm-section">
+        <div class="cm-section-head">
+          <div><h2>Shop types</h2><p>Vegetable, kirana, clothing, electronics… add any type — it's data, not a deploy</p></div>
+          <button class="btn btn-primary btn-sm" onclick="openAddType()">+ Add shop type</button>
+        </div>
+        <div class="st-wrap" id="types-wrap"><div class="spinner"></div></div>
+      </div>
+
+      <!-- Stores -->
+      <div class="cm-section">
+        <div class="cm-section-head">
+          <div><h2>Stores</h2><p id="stores-sub">Company dark-stores and local vendor shops, per city</p></div>
+          <button class="btn btn-primary btn-sm" onclick="openAddStore()">+ Add store</button>
+        </div>
+        <div class="store-filters">
+          <select id="f-ownership" class="form-control" onchange="loadStores()"><option value="">All ownership</option><option value="company">Company dark-store</option><option value="vendor">Local vendor</option></select>
+          <select id="f-city" class="form-control" onchange="loadStores()"><option value="">All cities</option></select>
+          <select id="f-status" class="form-control" onchange="loadStores()"><option value="">All status</option><option value="active">Active</option><option value="pending">Pending</option><option value="suspended">Suspended</option><option value="closed">Closed</option><option value="draft">Draft</option></select>
+        </div>
+        <div class="store-grid" id="stores-grid"><div style="grid-column:1/-1;text-align:center;padding:24px"><div class="spinner" style="margin:auto"></div></div></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Shop type modal -->
+<div class="modal-overlay" id="type-modal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header"><span class="modal-title" id="type-modal-title">Add shop type</span>
+      <button class="modal-close" onclick="Modal.close('type-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">TYPE NAME</label><input id="type-name" class="form-control" placeholder="e.g. Vegetable Seller"></div>
+      <div class="form-group"><label class="form-label">DESCRIPTION (optional)</label><input id="type-desc" class="form-control" placeholder="Fresh vegetables and fruits"></div>
+      <div class="row2">
+        <div class="form-group"><label class="form-label">DEFAULT COMMISSION % (optional)</label><input id="type-comm" class="form-control" type="number" step="any" placeholder="10"></div>
+        <div class="form-group"><label class="form-label">SORT</label><input id="type-sort" class="form-control" type="number" placeholder="0"></div>
+      </div>
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)"><input type="checkbox" id="type-active" checked> Active</label>
+    </div>
+    <div class="modal-footer" id="type-modal-footer"></div>
+  </div>
+</div>
+
+<!-- Store modal -->
+<div class="modal-overlay" id="store-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header"><span class="modal-title" id="store-modal-title">Add store</span>
+      <button class="modal-close" onclick="Modal.close('store-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">OWNERSHIP</label>
+        <div class="seg" id="store-own-seg">
+          <button type="button" data-own="company" onclick="setOwnership('company')">Company dark-store</button>
+          <button type="button" data-own="vendor" class="on" onclick="setOwnership('vendor')">Local vendor</button>
+        </div>
+      </div>
+      <div class="form-group" id="store-vendor-wrap"><label class="form-label">OWNER (SELLER)</label>
+        <select id="store-vendor" class="form-control"><option value="">Select shopping vendor…</option></select></div>
+      <div class="form-group"><label class="form-label">STORE NAME</label><input id="store-name" class="form-control" placeholder="e.g. Sharma Vegetables"></div>
+      <div class="row2">
+        <div class="form-group"><label class="form-label">SHOP TYPE</label><select id="store-type" class="form-control"><option value="">—</option></select></div>
+        <div class="form-group"><label class="form-label">CITY</label><select id="store-city" class="form-control"><option value="">—</option></select></div>
+      </div>
+      <div class="row2">
+        <div class="form-group"><label class="form-label">STATUS</label><select id="store-status" class="form-control"><option value="active">Active</option><option value="pending">Pending</option><option value="draft">Draft</option><option value="suspended">Suspended</option><option value="closed">Closed</option></select></div>
+        <div class="form-group"><label class="form-label">PRIORITY</label><input id="store-priority" class="form-control" type="number" placeholder="0 (company higher)"></div>
+      </div>
+      <div class="form-group"><label class="form-label">LOCALITY / AREA</label><input id="store-locality" class="form-control" placeholder="e.g. Mukhani, Haldwani"></div>
+      <div class="row2">
+        <div class="form-group"><label class="form-label">LAT (optional)</label><input id="store-lat" class="form-control" type="number" step="any" placeholder="29.21"></div>
+        <div class="form-group"><label class="form-label">LNG (optional)</label><input id="store-lng" class="form-control" type="number" step="any" placeholder="79.51"></div>
+      </div>
+      <div class="row2">
+        <div class="form-group"><label class="form-label">SERVICE RADIUS KM (optional)</label><input id="store-radius" class="form-control" type="number" step="any" placeholder="5"></div>
+        <div class="form-group"><label class="form-label">MIN ORDER ₹ (optional)</label><input id="store-minord" class="form-control" type="number" step="any" placeholder="99"></div>
+      </div>
+      <div class="form-group" id="store-logo-wrap" style="display:none"><label class="form-label">LOGO</label>
+        <input type="file" id="store-logo" class="form-control" accept="image/*">
+        <p style="font-size:10px;color:var(--text-muted);margin-top:4px">Uploads after the store is saved.</p></div>
+    </div>
+    <div class="modal-footer" id="store-modal-footer"></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/push.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Stores & Shop Types', active: 'commerce-stores.html' });
+
+let _meta = { store_types: [], cities: [], vendors: [] };
+let _types = [], _stores = [], _editTypeId = null, _editStoreId = null, _ownership = 'vendor';
+
+async function uploadFile(path, field, file) {
+  const fd = new FormData(); fd.append(field, file);
+  const token = localStorage.getItem(CONFIG.TOKEN_KEY);
+  const res = await fetch(`${CONFIG.API_BASE_URL}${CONFIG.ADMIN_PREFIX}${path}`, {
+    method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw { status: res.status, message: data.message || 'Upload failed' };
+  return data;
+}
+
+async function loadMeta() {
+  try {
+    const res = await API.get('/commerce/meta');
+    _meta = res?.data || _meta;
+    const cityOpts = ['<option value="">—</option>'].concat(_meta.cities.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`)).join('');
+    document.getElementById('store-city').innerHTML = cityOpts;
+    document.getElementById('f-city').innerHTML = '<option value="">All cities</option>' + _meta.cities.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+    document.getElementById('store-type').innerHTML = '<option value="">—</option>' + _meta.store_types.map(t => `<option value="${t.id}">${escHtml(t.name)}</option>`).join('');
+    document.getElementById('store-vendor').innerHTML = '<option value="">Select shopping vendor…</option>' + _meta.vendors.map(v => `<option value="${v.id}">${escHtml(v.business_name)}</option>`).join('');
+  } catch (e) { Toast.error(e.message || 'Failed to load form data'); }
+}
+
+/* ── Shop types ──────────────────────────────────────────────── */
+async function loadTypes() {
+  const wrap = document.getElementById('types-wrap');
+  try {
+    const res = await API.get('/commerce/store-types');
+    _types = res?.data?.store_types || [];
+    if (!_types.length) { wrap.innerHTML = '<p style="font-size:12px;color:var(--text-muted)">No shop types yet — add your first.</p>'; return; }
+    wrap.innerHTML = _types.map(t => `
+      <span class="st-chip ${t.is_active ? '' : 'inactive'}">
+        <span class="st-name">${escHtml(t.name)}</span>
+        <span class="st-count">${t.store_count} stores</span>
+        <button title="Edit" onclick="openEditType(${t.id})">✏️</button>
+        <button title="${t.is_active ? 'Deactivate' : 'Activate'}" onclick="toggleType(${t.id}, ${t.is_active ? 0 : 1})">${t.is_active ? '🚫' : '✅'}</button>
+      </span>`).join('');
+  } catch (e) { wrap.innerHTML = `<p style="color:var(--red);font-size:12px">${escHtml(e.message || 'Failed to load shop types')}</p>`; }
+}
+function openAddType() {
+  _editTypeId = null; document.getElementById('type-modal-title').textContent = 'Add shop type';
+  ['type-name','type-desc','type-comm','type-sort'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('type-active').checked = true;
+  document.getElementById('type-modal-footer').innerHTML = `<button class="btn btn-ghost" onclick="Modal.close('type-modal')">Cancel</button><button class="btn btn-primary" onclick="saveType()">Add</button>`;
+  Modal.open('type-modal');
+}
+function openEditType(id) {
+  const t = _types.find(x => x.id === id); if (!t) return; _editTypeId = id;
+  document.getElementById('type-modal-title').textContent = 'Edit shop type';
+  document.getElementById('type-name').value = t.name || '';
+  document.getElementById('type-desc').value = t.description || '';
+  document.getElementById('type-comm').value = t.default_commission_rate ?? '';
+  document.getElementById('type-sort').value = t.sort_order ?? 0;
+  document.getElementById('type-active').checked = !!t.is_active;
+  document.getElementById('type-modal-footer').innerHTML = `<button class="btn btn-ghost" onclick="Modal.close('type-modal')">Cancel</button><button class="btn btn-primary" onclick="saveType()">Save</button>`;
+  Modal.open('type-modal');
+}
+async function saveType() {
+  const name = document.getElementById('type-name').value.trim();
+  if (!name) { Toast.warn('Type name is required'); return; }
+  const body = { name, description: document.getElementById('type-desc').value.trim(),
+    default_commission_rate: document.getElementById('type-comm').value.trim(),
+    sort_order: document.getElementById('type-sort').value.trim() || 0,
+    is_active: document.getElementById('type-active').checked ? 1 : 0 };
+  try {
+    if (_editTypeId) await API.patch(`/commerce/store-types/${_editTypeId}`, body);
+    else await API.post('/commerce/store-types', body);
+    Toast.success('Saved'); Modal.close('type-modal'); loadTypes(); loadMeta();
+  } catch (e) { Toast.error(e.message || 'Could not save shop type'); }
+}
+async function toggleType(id, active) {
+  try { await API.patch(`/commerce/store-types/${id}`, { is_active: active }); Toast.success(active ? 'Activated' : 'Deactivated'); loadTypes(); }
+  catch (e) { Toast.error(e.message || 'Could not update'); }
+}
+
+/* ── Stores ──────────────────────────────────────────────────── */
+async function loadStores() {
+  const grid = document.getElementById('stores-grid');
+  const params = {};
+  const own = document.getElementById('f-ownership').value; if (own) params.ownership = own;
+  const city = document.getElementById('f-city').value; if (city) params.city_id = city;
+  const st = document.getElementById('f-status').value; if (st) params.status = st;
+  try {
+    const res = await API.get('/commerce/stores', params);
+    _stores = res?.data?.stores || [];
+    document.getElementById('stores-sub').textContent = `${_stores.length} store(s)`;
+    if (!_stores.length) { grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:26px;color:var(--text-muted)"><div style="font-size:28px">🏬</div><p style="font-size:12px;margin-top:6px">No stores yet — add a company dark-store or a local vendor shop.</p></div>`; return; }
+    grid.innerHTML = _stores.map(storeCard).join('');
+  } catch (e) { grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:24px;color:var(--red)">${escHtml(e.message || 'Failed to load stores')}</div>`; }
+}
+function storeCard(s) {
+  const pill = s.ownership === 'company' ? '<span class="pill pill-company">Dark-store</span>' : '<span class="pill pill-vendor">Vendor</span>';
+  const statusBadge = { active:'badge-green', pending:'badge-amber', suspended:'badge-gray', closed:'badge-gray', draft:'badge-gray' }[s.status] || 'badge-gray';
+  const logo = s.logo_url ? `<img class="store-logo" src="${escHtml(s.logo_url)}" alt="">` : `<div class="store-logo">🏬</div>`;
+  return `<div class="store-card ${s.status}">
+    <div class="store-top">${logo}
+      <div style="min-width:0"><div class="store-name">${escHtml(s.name)}</div>
+        <div class="store-sub">${pill} ${s.type_name ? '· ' + escHtml(s.type_name) : ''}</div></div>
+    </div>
+    <div class="store-meta">
+      <span>📍 ${escHtml(s.city_name || '—')}${s.locality ? ' · ' + escHtml(s.locality) : ''}</span>
+      <span>📦 ${s.product_count} products</span>
+      ${s.vendor_name ? '<span>🧑‍💼 ' + escHtml(s.vendor_name) + '</span>' : ''}
+    </div>
+    <div class="store-top" style="justify-content:space-between">
+      <span class="badge ${statusBadge}">${escHtml(s.status)}</span>
+      <div class="store-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openEditStore(${s.id})">Edit</button>
+        <a class="btn btn-ghost btn-sm" href="commerce-products.html?store_id=${s.id}">Catalog →</a>
+      </div>
+    </div>
+  </div>`;
+}
+function setOwnership(o) {
+  _ownership = o;
+  document.querySelectorAll('#store-own-seg button').forEach(b => b.classList.toggle('on', b.dataset.own === o));
+  document.getElementById('store-vendor-wrap').style.display = (o === 'vendor') ? '' : 'none';
+}
+function openAddStore() {
+  _editStoreId = null; document.getElementById('store-modal-title').textContent = 'Add store';
+  ['store-name','store-locality','store-lat','store-lng','store-radius','store-minord','store-priority'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('store-vendor').value = ''; document.getElementById('store-type').value = '';
+  document.getElementById('store-city').value = ''; document.getElementById('store-status').value = 'active';
+  document.getElementById('store-logo-wrap').style.display = 'none';
+  setOwnership('vendor');
+  document.getElementById('store-modal-footer').innerHTML = `<button class="btn btn-ghost" onclick="Modal.close('store-modal')">Cancel</button><button class="btn btn-primary" onclick="saveStore()">Create store</button>`;
+  Modal.open('store-modal');
+}
+function openEditStore(id) {
+  const s = _stores.find(x => x.id === id); if (!s) return; _editStoreId = id;
+  document.getElementById('store-modal-title').textContent = 'Edit store';
+  document.getElementById('store-name').value = s.name || '';
+  document.getElementById('store-locality').value = s.locality || '';
+  document.getElementById('store-lat').value = s.lat ?? ''; document.getElementById('store-lng').value = s.lng ?? '';
+  document.getElementById('store-priority').value = s.priority ?? 0;
+  document.getElementById('store-type').value = s.store_type_id || '';
+  document.getElementById('store-city').value = s.city_id || '';
+  document.getElementById('store-status').value = s.status || 'active';
+  document.getElementById('store-vendor').value = s.owner_vendor_id || '';
+  document.getElementById('store-radius').value = ''; document.getElementById('store-minord').value = '';
+  setOwnership(s.ownership || 'vendor');
+  document.getElementById('store-logo-wrap').style.display = '';
+  document.getElementById('store-logo').value = '';
+  document.getElementById('store-modal-footer').innerHTML = `<button class="btn btn-ghost" onclick="Modal.close('store-modal')">Cancel</button><button class="btn btn-primary" onclick="saveStore()">Save changes</button>`;
+  Modal.open('store-modal');
+}
+async function saveStore() {
+  const name = document.getElementById('store-name').value.trim();
+  if (!name) { Toast.warn('Store name is required'); return; }
+  if (_ownership === 'vendor' && !document.getElementById('store-vendor').value) { Toast.warn('Pick the owner seller, or switch to Company dark-store'); return; }
+  const body = {
+    ownership: _ownership,
+    owner_vendor_id: _ownership === 'vendor' ? Number(document.getElementById('store-vendor').value) : null,
+    name,
+    store_type_id: document.getElementById('store-type').value || null,
+    city_id: document.getElementById('store-city').value || null,
+    status: document.getElementById('store-status').value,
+    priority: document.getElementById('store-priority').value || 0,
+    locality: document.getElementById('store-locality').value.trim(),
+    lat: document.getElementById('store-lat').value.trim(),
+    lng: document.getElementById('store-lng').value.trim(),
+    service_radius_km: document.getElementById('store-radius').value.trim(),
+    min_order_amount: document.getElementById('store-minord').value.trim(),
+  };
+  try {
+    let storeId = _editStoreId;
+    if (_editStoreId) await API.patch(`/commerce/stores/${_editStoreId}`, body);
+    else { const r = await API.post('/commerce/stores', body); storeId = r?.data?.id; }
+    const logoFile = document.getElementById('store-logo').files[0];
+    if (logoFile && storeId) { try { await uploadFile(`/commerce/stores/${storeId}/logo`, 'logo', logoFile); } catch (e) { Toast.warn('Store saved, but logo upload failed: ' + (e.message || '')); } }
+    Toast.success(_editStoreId ? 'Store updated' : 'Store created'); Modal.close('store-modal'); loadStores();
+  } catch (e) { Toast.error(e.message || 'Could not save store'); }
+}
+
+(async function init() { await loadMeta(); loadTypes(); loadStores(); })();
+</script>
+</body>
+</html>

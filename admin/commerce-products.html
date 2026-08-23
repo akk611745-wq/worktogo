@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Catalog &amp; Stock</title>
+<link rel="icon" href="/app/assets/favicon.png"/>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+.cat-bar { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; margin-bottom:14px; }
+.cat-bar .form-group { margin:0; }
+.cat-bar select, .cat-bar input { max-width:220px; }
+.prod-table { width:100%; border-collapse:collapse; }
+.prod-table th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); padding:8px 10px; border-bottom:1px solid var(--border-dim); }
+.prod-table td { padding:10px; border-bottom:1px solid var(--border-dim); font-size:13px; color:var(--text-secondary); vertical-align:middle; }
+.prod-thumb { width:40px; height:40px; border-radius:8px; object-fit:cover; background:var(--bg-hover,#222b3d); display:flex; align-items:center; justify-content:center; font-size:16px; }
+.prod-name { font-weight:600; color:var(--text-primary); }
+.prod-sku { font-size:10px; color:var(--text-muted); font-family:var(--mono); }
+.stock-low { color:#f59e0b; font-weight:700; }
+.stock-out { color:#ef4444; font-weight:700; }
+.tbl-actions { display:flex; gap:6px; justify-content:flex-end; }
+.row2 { display:flex; gap:10px; } .row2 > * { flex:1; }
+.empty-wrap { text-align:center; padding:34px 16px; color:var(--text-muted); }
+.card-wrap { background:var(--bg-card); border:1px solid var(--border-dim); border-radius:var(--radius-md); overflow-x:auto; }
+</style>
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header">
+        <div><h1 class="page-title">Catalog &amp; Stock</h1><p class="page-subtitle">Products and inventory per store — company dark-stores &amp; local sellers</p></div>
+        <button class="btn btn-primary btn-sm" id="add-prod-btn" onclick="openAddProduct()" disabled>+ Add product</button>
+      </div>
+
+      <div class="cat-bar">
+        <div class="form-group"><label class="form-label">STORE</label><select id="sel-store" class="form-control" onchange="onStoreChange()"><option value="">Select a store…</option></select></div>
+        <div class="form-group"><label class="form-label">STATUS</label><select id="f-status" class="form-control" onchange="loadProducts()"><option value="">All</option><option value="active">Active</option><option value="draft">Draft</option><option value="inactive">Inactive</option><option value="archived">Archived</option></select></div>
+        <div class="form-group"><label class="form-label">SEARCH</label><input id="f-search" class="form-control" placeholder="name or SKU" oninput="debouncedSearch()"></div>
+      </div>
+
+      <div class="card-wrap">
+        <table class="prod-table">
+          <thead><tr><th></th><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th></th></tr></thead>
+          <tbody id="prod-body"><tr><td colspan="7" class="empty-wrap">Pick a store to manage its catalog.</td></tr></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Product modal -->
+<div class="modal-overlay" id="prod-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header"><span class="modal-title" id="prod-modal-title">Add product</span>
+      <button class="modal-close" onclick="Modal.close('prod-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">NAME</label><input id="p-name" class="form-control" placeholder="e.g. Tomatoes 1kg"></div>
+      <div class="row2">
+        <div class="form-group"><label class="form-label">CATEGORY</label><select id="p-category" class="form-control"><option value="">—</option></select></div>
+        <div class="form-group"><label class="form-label">UNIT (optional)</label><input id="p-unit" class="form-control" placeholder="kg / piece / pack"></div>
+      </div>
+      <div class="row2">
+        <div class="form-group"><label class="form-label">PRICE ₹</label><input id="p-price" class="form-control" type="number" step="any" placeholder="40"></div>
+        <div class="form-group"><label class="form-label">SALE PRICE ₹ (optional)</label><input id="p-sale" class="form-control" type="number" step="any" placeholder="35"></div>
+      </div>
+      <div class="row2">
+        <div class="form-group"><label class="form-label">SKU (optional)</label><input id="p-sku" class="form-control" placeholder="VEG-TOM-1"></div>
+        <div class="form-group"><label class="form-label">STATUS</label><select id="p-status" class="form-control"><option value="active">Active</option><option value="draft">Draft</option><option value="inactive">Inactive</option></select></div>
+      </div>
+      <div class="form-group"><label class="form-label">SHORT DESCRIPTION (optional)</label><input id="p-sdesc" class="form-control" placeholder="Fresh, locally sourced"></div>
+      <div class="row2" id="p-stock-row">
+        <div class="form-group"><label class="form-label">INITIAL STOCK</label><input id="p-qty" class="form-control" type="number" placeholder="0"></div>
+        <div class="form-group"><label class="form-label">LOW-STOCK ALERT</label><input id="p-low" class="form-control" type="number" placeholder="5"></div>
+      </div>
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)"><input type="checkbox" id="p-backorder"> Allow backorder (sell when out of stock)</label>
+      <div class="form-group" id="p-photo-wrap" style="margin-top:12px;display:none"><label class="form-label">PHOTO</label><input type="file" id="p-photo" class="form-control" accept="image/*"><p style="font-size:10px;color:var(--text-muted);margin-top:4px">Uploads after the product is saved.</p></div>
+    </div>
+    <div class="modal-footer" id="prod-modal-footer"></div>
+  </div>
+</div>
+
+<!-- Stock modal -->
+<div class="modal-overlay" id="stock-modal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header"><span class="modal-title">Update stock</span>
+      <button class="modal-close" onclick="Modal.close('stock-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body">
+      <div class="row2">
+        <div class="form-group"><label class="form-label">QUANTITY</label><input id="s-qty" class="form-control" type="number"></div>
+        <div class="form-group"><label class="form-label">LOW-STOCK ALERT</label><input id="s-low" class="form-control" type="number"></div>
+      </div>
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)"><input type="checkbox" id="s-backorder"> Allow backorder</label>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="Modal.close('stock-modal')">Cancel</button><button class="btn btn-primary" onclick="saveStock()">Save</button></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/push.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Catalog & Stock', active: 'commerce-products.html' });
+
+let _meta = { categories: [] }, _stores = [], _products = [], _editProdId = null, _stockProdId = null, _searchTimer = null;
+const qsStore = new URLSearchParams(location.search).get('store_id');
+
+async function uploadFile(path, field, file) {
+  const fd = new FormData(); fd.append(field, file);
+  const token = localStorage.getItem(CONFIG.TOKEN_KEY);
+  const res = await fetch(`${CONFIG.API_BASE_URL}${CONFIG.ADMIN_PREFIX}${path}`, { method:'POST', headers: token ? { Authorization:`Bearer ${token}` } : {}, body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw { status: res.status, message: data.message || 'Upload failed' };
+  return data;
+}
+const money = n => n === null || n === undefined ? '—' : '₹' + Number(n).toLocaleString('en-IN');
+
+async function init() {
+  try {
+    const [metaRes, storesRes] = await Promise.all([API.get('/commerce/meta'), API.get('/commerce/stores')]);
+    _meta = metaRes?.data || _meta; _stores = storesRes?.data?.stores || [];
+    document.getElementById('p-category').innerHTML = '<option value="">—</option>' + (_meta.categories || []).map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+    const sel = document.getElementById('sel-store');
+    sel.innerHTML = '<option value="">Select a store…</option>' + _stores.map(s => `<option value="${s.id}">${escHtml(s.name)} · ${s.ownership === 'company' ? 'Dark-store' : 'Vendor'}${s.city_name ? ' · ' + escHtml(s.city_name) : ''}</option>`).join('');
+    if (qsStore) { sel.value = qsStore; onStoreChange(); }
+  } catch (e) { Toast.error(e.message || 'Failed to load'); }
+}
+function currentStoreId() { return document.getElementById('sel-store').value; }
+function onStoreChange() {
+  const has = !!currentStoreId();
+  document.getElementById('add-prod-btn').disabled = !has;
+  if (has) loadProducts();
+  else document.getElementById('prod-body').innerHTML = '<tr><td colspan="7" class="empty-wrap">Pick a store to manage its catalog.</td></tr>';
+}
+function debouncedSearch() { clearTimeout(_searchTimer); _searchTimer = setTimeout(loadProducts, 300); }
+
+async function loadProducts() {
+  const storeId = currentStoreId(); if (!storeId) return;
+  const body = document.getElementById('prod-body');
+  body.innerHTML = '<tr><td colspan="7" class="empty-wrap"><div class="spinner" style="margin:auto"></div></td></tr>';
+  const params = { store_id: storeId };
+  const st = document.getElementById('f-status').value; if (st) params.status = st;
+  const q = document.getElementById('f-search').value.trim(); if (q) params.search = q;
+  try {
+    const res = await API.get('/commerce/products', params);
+    _products = res?.data?.products || [];
+    if (!_products.length) { body.innerHTML = '<tr><td colspan="7" class="empty-wrap">No products in this store yet. Add your first product.</td></tr>'; return; }
+    body.innerHTML = _products.map(prodRow).join('');
+  } catch (e) { body.innerHTML = `<tr><td colspan="7" class="empty-wrap" style="color:var(--red)">${escHtml(e.message || 'Failed to load products')}</td></tr>`; }
+}
+function prodRow(p) {
+  const thumb = p.thumb ? `<img class="prod-thumb" src="${escHtml(p.thumb)}" alt="">` : `<div class="prod-thumb">📦</div>`;
+  const avail = (p.stock_qty ?? 0) - (p.reserved_qty ?? 0);
+  const stockCls = avail <= 0 ? 'stock-out' : (avail <= (p.low_stock_alert ?? 5) ? 'stock-low' : '');
+  const stockTxt = p.stock_qty === null ? '—' : `<span class="${stockCls}">${avail}</span>${p.allow_backorder ? ' <span class="prod-sku">(backorder)</span>' : ''}`;
+  const price = p.sale_price ? `${money(p.sale_price)} <span class="prod-sku" style="text-decoration:line-through">${money(p.price)}</span>` : money(p.price);
+  const statusBadge = { active:'badge-green', draft:'badge-gray', inactive:'badge-gray', archived:'badge-gray' }[p.status] || 'badge-gray';
+  return `<tr>
+    <td>${thumb}</td>
+    <td><div class="prod-name">${escHtml(p.name)}</div>${p.sku ? `<div class="prod-sku">${escHtml(p.sku)}</div>` : ''}</td>
+    <td>${escHtml(p.category_name || '—')}</td>
+    <td>${price}</td>
+    <td>${stockTxt}</td>
+    <td><span class="badge ${statusBadge}">${escHtml(p.status)}</span></td>
+    <td><div class="tbl-actions">
+      <button class="btn btn-ghost btn-sm" onclick="openStock(${p.id})">Stock</button>
+      <button class="btn btn-ghost btn-sm" onclick="openEditProduct(${p.id})">Edit</button>
+    </div></td>
+  </tr>`;
+}
+
+function fillProductForm(p) {
+  document.getElementById('p-name').value = p?.name || '';
+  document.getElementById('p-category').value = p?.category_id || '';
+  document.getElementById('p-unit').value = p?.unit || '';
+  document.getElementById('p-price').value = p?.price ?? '';
+  document.getElementById('p-sale').value = p?.sale_price ?? '';
+  document.getElementById('p-sku').value = p?.sku || '';
+  document.getElementById('p-status').value = p?.status || 'active';
+  document.getElementById('p-sdesc').value = p?.short_desc || '';
+  document.getElementById('p-qty').value = p?.stock_qty ?? '';
+  document.getElementById('p-low').value = p?.low_stock_alert ?? 5;
+  document.getElementById('p-backorder').checked = !!p?.allow_backorder;
+  document.getElementById('p-photo').value = '';
+}
+function openAddProduct() {
+  if (!currentStoreId()) { Toast.warn('Pick a store first'); return; }
+  _editProdId = null; document.getElementById('prod-modal-title').textContent = 'Add product';
+  fillProductForm(null);
+  document.getElementById('p-stock-row').style.display = '';
+  document.getElementById('p-photo-wrap').style.display = 'none';
+  document.getElementById('prod-modal-footer').innerHTML = `<button class="btn btn-ghost" onclick="Modal.close('prod-modal')">Cancel</button><button class="btn btn-primary" onclick="saveProduct()">Create product</button>`;
+  Modal.open('prod-modal');
+}
+async function openEditProduct(id) {
+  _editProdId = id;
+  try {
+    const res = await API.get(`/commerce/products/${id}`);
+    const p = res?.data?.product; if (!p) return;
+    document.getElementById('prod-modal-title').textContent = 'Edit product';
+    fillProductForm(p);
+    document.getElementById('p-stock-row').style.display = 'none'; // stock edited via Stock button
+    document.getElementById('p-photo-wrap').style.display = '';
+    document.getElementById('prod-modal-footer').innerHTML = `<button class="btn btn-ghost" onclick="Modal.close('prod-modal')">Cancel</button><button class="btn btn-primary" onclick="saveProduct()">Save changes</button>`;
+    Modal.open('prod-modal');
+  } catch (e) { Toast.error(e.message || 'Could not load product'); }
+}
+async function saveProduct() {
+  const name = document.getElementById('p-name').value.trim();
+  const price = document.getElementById('p-price').value.trim();
+  if (!name) { Toast.warn('Product name is required'); return; }
+  if (price === '') { Toast.warn('Price is required'); return; }
+  const base = {
+    name, category_id: document.getElementById('p-category').value || null,
+    unit: document.getElementById('p-unit').value.trim(),
+    price, sale_price: document.getElementById('p-sale').value.trim(),
+    sku: document.getElementById('p-sku').value.trim(),
+    status: document.getElementById('p-status').value,
+    short_desc: document.getElementById('p-sdesc').value.trim(),
+  };
+  try {
+    let prodId = _editProdId;
+    if (_editProdId) { await API.patch(`/commerce/products/${_editProdId}`, base); }
+    else {
+      const r = await API.post('/commerce/products', { ...base, store_id: Number(currentStoreId()),
+        quantity: document.getElementById('p-qty').value || 0,
+        low_stock_alert: document.getElementById('p-low').value || 5,
+        allow_backorder: document.getElementById('p-backorder').checked ? 1 : 0 });
+      prodId = r?.data?.id;
+    }
+    const photo = document.getElementById('p-photo').files[0];
+    if (photo && prodId) { try { await uploadFile(`/commerce/products/${prodId}/photo`, 'photo', photo); } catch (e) { Toast.warn('Saved, but photo upload failed: ' + (e.message || '')); } }
+    Toast.success(_editProdId ? 'Product updated' : 'Product created'); Modal.close('prod-modal'); loadProducts();
+  } catch (e) { Toast.error(e.message || 'Could not save product'); }
+}
+
+function openStock(id) {
+  const p = _products.find(x => x.id === id); if (!p) return; _stockProdId = id;
+  document.getElementById('s-qty').value = p.stock_qty ?? 0;
+  document.getElementById('s-low').value = p.low_stock_alert ?? 5;
+  document.getElementById('s-backorder').checked = !!p.allow_backorder;
+  Modal.open('stock-modal');
+}
+async function saveStock() {
+  if (!_stockProdId) return;
+  const body = { quantity: document.getElementById('s-qty').value || 0, low_stock_alert: document.getElementById('s-low').value || 0, allow_backorder: document.getElementById('s-backorder').checked ? 1 : 0 };
+  try { await API.patch(`/commerce/products/${_stockProdId}/inventory`, body); Toast.success('Stock updated'); Modal.close('stock-modal'); loadProducts(); }
+  catch (e) { Toast.error(e.message || 'Could not update stock'); }
+}
+
+init();
+</script>
+</body>
+</html>
