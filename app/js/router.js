@@ -26,13 +26,15 @@ const ROUTER = (() => {
     account:  () => _pageModule("../pages/account.js"),
     orders:   () => _pageModule("../pages/orders.js"),
     bookings: () => _pageModule("../pages/bookings.js"),
+    // Commerce storefront (self-contained under app/commerce/, its own CSS)
+    shop:     () => _pageModule("../commerce/shop.js"),
     // Phase 2: vendor: () => import('../pages/vendor.js'),
     // Phase 3: creator: () => import('../pages/creator.js'),
   };
 
-  const PUBLIC_PAGES = ["login", "home"];
+  const PUBLIC_PAGES = ["login", "home", "shop"];
   const POLLABLE_PAGES = ["orders", "bookings"];
-  const SERVICE_ONLY_HIDDEN_PAGES = ["orders", "products", "search", "services", "register", "vendor", "creator"];
+  const SERVICE_ONLY_HIDDEN_PAGES = ["orders", "products", "search", "services", "register", "vendor", "creator", "shop"];
 
   let _currentPage = null;
   let _pollTimer   = null;

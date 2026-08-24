@@ -203,6 +203,14 @@ if (str_starts_with($uri, '/api/delivery')) {
     exit;
 }
 
+// Commerce storefront API (customer-facing, city-scoped, dual-store).
+// A clean adapter that reuses the never-touch ProductService/CartService/
+// OrderService as-is. See heart/api/shop/index.php.
+if (str_starts_with($uri, '/api/shop')) {
+    require_once HEART_ROOT . '/api/shop/index.php';
+    exit;
+}
+
 // Shopping Orders API
 if (str_starts_with($uri, '/api/orders') || $uri === '/api/order/create' || str_starts_with($uri, '/api/vendor/orders')) {
     require_once SYSTEM_ROOT . '/body/shopping-engine/api/orders/index.php';
