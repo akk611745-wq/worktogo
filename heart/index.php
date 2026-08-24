@@ -197,9 +197,15 @@ if (str_starts_with($uri, '/api/admin')) {
     exit;
 }
 
-// Delivery API
+// Delivery API (native — customer quote/track + admin control-room)
 if (str_starts_with($uri, '/api/delivery')) {
     require_once HEART_ROOT . '/api/delivery/index.php';
+    exit;
+}
+
+// Rider API (delivery riders' own scope — ROLE_DELIVERY)
+if (str_starts_with($uri, '/api/rider')) {
+    require_once HEART_ROOT . '/api/rider/index.php';
     exit;
 }
 

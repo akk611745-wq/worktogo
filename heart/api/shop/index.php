@@ -148,6 +148,30 @@ try {
         exit;
     }
 
+    // ── GET /api/shop/delivery-quote — fee by distance (store → customer) ────
+    // Storefront calls the NATIVE delivery engine (own scope) to show the fee
+    // before ordering. Pickup = the cart's primary store; drop = the customer.
+    if ($method === 'GET' && $uri === '/api/shop/delivery-quote') {
+        $uid = $shopRequireUser();
+        require_once SYSTEM_ROOT . '/core/delivery/DeliveryEngine.php';
+        $cart = (new CartService($db))->get($uid);
+        $subtotal = (float)($cart['subtotal'] ?? 0);
+        $pLat = null; $pLng = null; $cityId = (int)$shopCityId;
+        if (!empty($cart['items'])) {
+            $s = $db->prepare("SELECT st.lat, st.lng, st.city_id FROM products p JOIN stores st ON st.id = p.store_id WHERE p.id = ? LIMIT 1");
+            $s->execute([(int)$cart['items'][0]['product_id']]);
+            if ($row = $s->fetch(PDO::FETCH_ASSOC)) {
+                $pLat = $row['lat'] !== null ? (float)$row['lat'] : null;
+                $pLng = $row['lng'] !== null ? (float)$row['lng'] : null;
+                $cityId = $row['city_id'] ? (int)$row['city_id'] : (int)$shopCityId;
+            }
+        }
+        $dLat = isset($_GET['drop_lat']) && $_GET['drop_lat'] !== '' ? (float)$_GET['drop_lat'] : null;
+        $dLng = isset($_GET['drop_lng']) && $_GET['drop_lng'] !== '' ? (float)$_GET['drop_lng'] : null;
+        Response::success(DeliveryEngine::quote($db, $pLat, $pLng, $dLat, $dLng, $cityId, $subtotal));
+        exit;
+    }
+
     // ── POST /api/shop/cart — add or set quantity (REUSE CartService) ───────
     if ($method === 'POST' && $uri === '/api/shop/cart') {
         $uid = $shopRequireUser(); $b = $shopBody();
@@ -184,6 +208,15 @@ try {
         $order = new OrderService($db, $cart);
         try {
             $result = $order->create($uid, $b);                  // REUSE engine checkout
+            // Order placed → hand to the NATIVE delivery engine (create + price by
+            // distance + auto-assign the nearest rider). Non-fatal: a delivery
+            // hiccup never fails a placed order.
+            try {
+                require_once SYSTEM_ROOT . '/core/delivery/DeliveryEngine.php';
+                $dLat = isset($b['drop_lat']) && $b['drop_lat'] !== '' ? (float)$b['drop_lat'] : null;
+                $dLng = isset($b['drop_lng']) && $b['drop_lng'] !== '' ? (float)$b['drop_lng'] : null;
+                $result['delivery'] = DeliveryEngine::createForOrder($db, (int)$result['order_id'], $dLat, $dLng, (float)($result['subtotal'] ?? 0));
+            } catch (\Throwable $de) { error_log('[shop/checkout] delivery handoff: ' . $de->getMessage()); }
             Response::success($result, 201, 'Order placed');
         } catch (\InvalidArgumentException $e) { Response::error($e->getMessage(), 422); }
         catch (\Throwable $e) { Response::error($e->getMessage(), 400); }

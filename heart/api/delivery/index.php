@@ -1,175 +1,177 @@
 <?php
-/**
- * /api/delivery/* — Delivery endpoints
- * Requires ROLE_DELIVERY or ROLE_ADMIN except webhook callbacks.
- */
+// ============================================================================
+//  /api/delivery/* — NATIVE delivery API (Commerce Phase 5)
+// ----------------------------------------------------------------------------
+//  Replaces the old external SwiftDeliver shim (DISCARDED — founder's unfinished
+//  early build). This is the delivery engine's OWN customer + control-room HTTP
+//  surface, backed by DeliveryEngine (which composes the motherboard's native
+//  deliveries / driver_wallets / delivery_riders / rate-card pieces). Rider-
+//  facing endpoints live separately under /api/rider/* (own scope).
+//
+//  Routes:
+//    GET  /api/delivery/quote            price a delivery by distance (public)
+//    GET  /api/delivery/track/{orderId}  customer tracking snapshot (auth)
+//    Admin control-room (ROLE_ADMIN + delivery.* permission):
+//    GET/POST/PATCH /api/delivery/admin/rate-cards[/{id}]
+//    GET  /api/delivery/admin/deliveries       live deliveries board
+//    GET  /api/delivery/admin/riders           riders + availability
+//    POST /api/delivery/admin/deliveries/{id}/reassign   nearest-rider re-assign
+//
+//  Uses front-controller globals $db, $method, $uri and the Response / Validator
+//  / Permission / AuthMiddleware helpers. Per-route auth (public quote, customer
+//  track, admin control-room).
+// ============================================================================
 
-$auth = ($method === 'POST' && $uri === '/api/delivery/status-update')
-    ? null
-    : AuthMiddleware::requireRole(ROLE_DELIVERY, ROLE_ADMIN);
+require_once SYSTEM_ROOT . '/core/delivery/DeliveryEngine.php';
+
+$numOrNull = function ($v) { return ($v === '' || $v === null) ? null : (float)$v; };
 
 try {
-    // ── GET /api/delivery/quote ───────────────────────────────
+
+    // ── GET /api/delivery/quote?store_id=&drop_lat=&drop_lng=&subtotal= ──────
     if ($method === 'GET' && $uri === '/api/delivery/quote') {
-        $lat1 = floatval($_GET['pickup_lat'] ?? 0);
-        $lon1 = floatval($_GET['pickup_lng'] ?? 0);
-        $lat2 = floatval($_GET['drop_lat'] ?? 0);
-        $lon2 = floatval($_GET['drop_lng'] ?? 0);
-
-        // Validate coordinate ranges
-        if ($lat1 < -90 || $lat1 > 90 || $lat2 < -90 || $lat2 > 90 ||
-            $lon1 < -180 || $lon1 > 180 || $lon2 < -180 || $lon2 > 180) {
-            Response::badRequest('Invalid coordinates');
+        $storeId = isset($_GET['store_id']) ? (int)$_GET['store_id'] : 0;
+        $pLat = $numOrNull($_GET['pickup_lat'] ?? null); $pLng = $numOrNull($_GET['pickup_lng'] ?? null);
+        $cityId = null;
+        if ($storeId) {
+            $s = $db->prepare("SELECT lat, lng, city_id FROM stores WHERE id = ? LIMIT 1");
+            $s->execute([$storeId]);
+            if ($srow = $s->fetch(PDO::FETCH_ASSOC)) {
+                $pLat = $pLat ?? ($srow['lat'] !== null ? (float)$srow['lat'] : null);
+                $pLng = $pLng ?? ($srow['lng'] !== null ? (float)$srow['lng'] : null);
+                $cityId = $srow['city_id'] ? (int)$srow['city_id'] : null;
+            }
         }
-
-        if (!$lat1 || !$lon1 || !$lat2 || !$lon2) {
-            Response::validation('Missing coordinates');
-        }
-
-        require_once dirname(dirname(__DIR__)) . '/core/helpers/DeliveryPricingEngine.php';
-        $engine = new DeliveryPricingEngine($db);
-        $quote = $engine->calculatePricing($lat1, $lon1, $lat2, $lon2);
-
+        $quote = DeliveryEngine::quote(
+            $db, $pLat, $pLng,
+            $numOrNull($_GET['drop_lat'] ?? null), $numOrNull($_GET['drop_lng'] ?? null),
+            $cityId, (float)($_GET['subtotal'] ?? 0)
+        );
         Response::success($quote);
-    }
-
-    // ── POST /api/delivery/dispatch ────────────────────────────
-    if ($method === 'POST' && $uri === '/api/delivery/dispatch') {
-        $input = json_decode(file_get_contents('php://input'), true) ?? [];
-        $orderId = (int) ($input['order_id'] ?? 0);
-
-        if (!$orderId) Response::validation('Order ID required');
-
-        // Logic to send to external Railway-based system
-        $swiftKey = $_ENV['SWIFTDELIVER_SECRET'] ?? getenv('SWIFTDELIVER_SECRET');
-        $swiftUrl = rtrim($_ENV['SWIFTDELIVER_URL'] ?? getenv('SWIFTDELIVER_URL'), '/');
-        
-        $db->prepare("UPDATE orders SET status = 'processing' WHERE id = ?")
-           ->execute([$orderId]);
-
-        // Check if delivery entry exists
-        $stmt = $db->prepare("SELECT id FROM deliveries WHERE order_id = ?");
-        $stmt->execute([$orderId]);
-        $delivery = $stmt->fetch();
-
-        if (!$delivery) {
-            $db->prepare("INSERT INTO deliveries (order_id, status, created_at) VALUES (?, 'pending', NOW())")
-               ->execute([$orderId]);
-            $deliveryId = $db->lastInsertId();
-        } else {
-            $deliveryId = $delivery['id'];
-        }
-
-        // Real external system API call
-        $ch = curl_init($swiftUrl . '/api/dispatch');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            "Authorization: Bearer {$swiftKey}",
-            "Content-Type: application/json"
-        ]);
-        
-        $payload = json_encode([
-            "order_id" => $orderId,
-            "delivery_id" => $deliveryId
-        ]);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        
-        if ($httpCode >= 200 && $httpCode < 300) {
-            Logger::info('Order dispatched to external delivery system', ['order_id' => $orderId, 'delivery_id' => $deliveryId, 'response' => $response]);
-            Response::success(['delivery_id' => $deliveryId], 200, 'Order dispatched to delivery network');
-        } else {
-            Logger::error('Failed to dispatch order to external delivery system', ['order_id' => $orderId, 'delivery_id' => $deliveryId, 'http_code' => $httpCode, 'response' => $response]);
-            Response::error('Delivery network unavailable', 503);
-        }
-    }
-
-    // ── PATCH /api/delivery/{id}/status ────────────────────────
-    if ($method === 'PATCH' && preg_match('#^/api/delivery/(\d+)/status$#', $uri, $m)) {
-        $deliveryId = (int) $m[1];
-        $input = json_decode(file_get_contents('php://input'), true) ?? [];
-        
-        $status = $input['status'] ?? '';
-        $allowed = ['picked', 'delivered', 'cancelled'];
-        
-        if (!in_array($status, $allowed)) Response::validation('Invalid status');
-
-        $db->prepare("UPDATE deliveries SET status = ?, updated_at = NOW() WHERE id = ? AND driver_id = ?")
-           ->execute([$status, $deliveryId, $auth['user_id']]);
-
-        // Mirror to order
-        $orderStatus = ($status === 'delivered') ? 'delivered' : 'shipped';
-        $db->prepare("UPDATE orders SET status = ? WHERE delivery_id = ?")
-           ->execute([$orderStatus, $deliveryId]);
-
-        Response::success(null, 200, 'Delivery updated');
-    }
-} catch (PDOException $e) {
-    Response::serverError();
-}
-
-    // ── POST /api/delivery/status-update (Node/Railway webhook) ──
-    if ($method === 'POST' && $uri === '/api/delivery/status-update') {
-        $input = json_decode(file_get_contents('php://input'), true) ?? [];
-
-        // Verify webhook secret so only Node can call this
-        $incomingSecret = $_SERVER['HTTP_X_WEBHOOK_SECRET'] ?? '';
-        $expectedSecret = $_ENV['SWIFTDELIVER_SECRET'] ?? getenv('SWIFTDELIVER_SECRET') ?? '';
-
-        if (!$expectedSecret || !hash_equals($expectedSecret, $incomingSecret)) {
-            http_response_code(401);
-            echo json_encode(['error' => 'Unauthorized']);
-            exit;
-        }
-
-        $deliveryId = (int) ($input['delivery_id'] ?? 0);
-        $orderId    = (int) ($input['order_id'] ?? 0);
-        $status     = $input['status'] ?? '';
-        $riderId    = (int) ($input['rider_id'] ?? 0);
-
-        $allowed = ['assigned', 'picked', 'delivered', 'cancelled', 'failed'];
-        if (!$deliveryId || !$orderId || !in_array($status, $allowed)) {
-            http_response_code(422);
-            echo json_encode(['error' => 'Invalid payload — delivery_id, order_id, status required']);
-            exit;
-        }
-
-        // Update deliveries table
-        $db->prepare(
-            "UPDATE deliveries 
-             SET status = ?, rider_id = ?, updated_at = NOW()
-             WHERE id = ? AND order_id = ?"
-        )->execute([$status, $riderId ?: null, $deliveryId, $orderId]);
-
-        // Mirror status to orders table
-        $orderStatus = match($status) {
-            'assigned' => 'processing',
-            'picked'   => 'shipped',
-            'delivered'=> 'delivered',
-            'cancelled', 'failed' => 'cancelled',
-            default    => null,
-        };
-
-        if ($orderStatus) {
-            $db->prepare(
-                "UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?"
-            )->execute([$orderStatus, $orderId]);
-        }
-
-        Logger::info('Delivery status webhook received', [
-            'delivery_id' => $deliveryId,
-            'order_id'    => $orderId,
-            'status'      => $status,
-            'rider_id'    => $riderId,
-        ]);
-
-        http_response_code(200);
-        echo json_encode(['success' => true, 'message' => 'Status updated']);
         exit;
     }
+
+    // ── GET /api/delivery/track/{orderId} — customer tracking ───────────────
+    if ($method === 'GET' && preg_match('#^/api/delivery/track/(\d+)$#', $uri, $m)) {
+        AuthMiddleware::requireRole(ROLE_CUSTOMER, ROLE_ADMIN);
+        $track = DeliveryEngine::track($db, (int)$m[1]);
+        if (!$track) { Response::notFound('Delivery'); exit; }
+        Response::success($track);
+        exit;
+    }
+
+    // ══ ADMIN CONTROL-ROOM ══════════════════════════════════════════════════
+    if (strpos($uri, '/api/delivery/admin/') === 0) {
+        $auth = AuthMiddleware::requireRole(ROLE_ADMIN);
+
+        // GET rate cards
+        if ($method === 'GET' && $uri === '/api/delivery/admin/rate-cards') {
+            Permission::enforce($db, $auth, 'delivery.view');
+            $rows = $db->query(
+                "SELECT r.*, c.name AS city_name FROM delivery_rate_cards r
+                   LEFT JOIN cities c ON c.id = r.city_id ORDER BY r.city_id IS NULL, c.name"
+            )->fetchAll(PDO::FETCH_ASSOC);
+            Response::success(['rate_cards' => $rows]);
+            exit;
+        }
+        // POST create rate card
+        if ($method === 'POST' && $uri === '/api/delivery/admin/rate-cards') {
+            Permission::enforce($db, $auth, 'delivery.manage');
+            $in = json_decode(file_get_contents('php://input'), true) ?? [];
+            $db->prepare(
+                "INSERT INTO delivery_rate_cards
+                    (city_id, name, base_fare, per_km_rate, min_fee, free_above_subtotal,
+                     rider_share_pct, platform_margin_pct, max_distance_km, is_active)
+                 VALUES (:city,:name,:base,:km,:min,:free,:rider,:plat,:maxd,:active)"
+            )->execute([
+                ':city' => ($in['city_id'] ?? '') !== '' ? (int)$in['city_id'] : null,
+                ':name' => trim((string)($in['name'] ?? 'Standard')) ?: 'Standard',
+                ':base' => (float)($in['base_fare'] ?? 20), ':km' => (float)($in['per_km_rate'] ?? 8),
+                ':min' => (float)($in['min_fee'] ?? 20),
+                ':free' => $numOrNull($in['free_above_subtotal'] ?? null),
+                ':rider' => (float)($in['rider_share_pct'] ?? 80), ':plat' => (float)($in['platform_margin_pct'] ?? 20),
+                ':maxd' => $numOrNull($in['max_distance_km'] ?? null),
+                ':active' => array_key_exists('is_active', $in) ? ($in['is_active'] ? 1 : 0) : 1,
+            ]);
+            Response::success(['id' => (int)$db->lastInsertId()], 201, 'Rate card created');
+            exit;
+        }
+        // PATCH rate card
+        if ($method === 'PATCH' && preg_match('#^/api/delivery/admin/rate-cards/(\d+)$#', $uri, $m)) {
+            Permission::enforce($db, $auth, 'delivery.manage');
+            $in = json_decode(file_get_contents('php://input'), true) ?? [];
+            $set = []; $bind = [];
+            foreach (['name'] as $f) if (array_key_exists($f, $in)) { $set[] = "$f = ?"; $bind[] = trim((string)$in[$f]); }
+            foreach (['base_fare','per_km_rate','min_fee','rider_share_pct','platform_margin_pct'] as $f)
+                if (array_key_exists($f, $in)) { $set[] = "$f = ?"; $bind[] = (float)$in[$f]; }
+            foreach (['free_above_subtotal','max_distance_km'] as $f)
+                if (array_key_exists($f, $in)) { $set[] = "$f = ?"; $bind[] = $numOrNull($in[$f]); }
+            if (array_key_exists('is_active', $in)) { $set[] = 'is_active = ?'; $bind[] = $in['is_active'] ? 1 : 0; }
+            if (!$set) { Response::validation('Nothing to update'); exit; }
+            $set[] = 'updated_at = NOW()'; $bind[] = (int)$m[1];
+            $db->prepare("UPDATE delivery_rate_cards SET " . implode(', ', $set) . " WHERE id = ?")->execute($bind);
+            Response::success(['id' => (int)$m[1]], 200, 'Rate card updated');
+            exit;
+        }
+        // GET live deliveries board
+        if ($method === 'GET' && $uri === '/api/delivery/admin/deliveries') {
+            Permission::enforce($db, $auth, 'delivery.view');
+            $where = ['1=1']; $bind = [];
+            if (isset($_GET['status']) && $_GET['status'] !== '') { $where[] = 'd.status = ?'; $bind[] = $_GET['status']; }
+            if (isset($_GET['city_id']) && $_GET['city_id'] !== '') { $where[] = 'd.city_id = ?'; $bind[] = (int)$_GET['city_id']; }
+            $st = $db->prepare(
+                "SELECT d.id, d.order_id, d.status, d.price, d.distance_km, d.city_id, d.driver_id,
+                        d.assigned_at, d.picked_at, d.delivered_at, d.created_at,
+                        o.order_number, s.name AS store_name, u.name AS rider_name
+                   FROM deliveries d
+                   LEFT JOIN orders o ON o.id = d.order_id
+                   LEFT JOIN stores s ON s.id = d.store_id
+                   LEFT JOIN users  u ON u.id = d.driver_id
+                  WHERE " . implode(' AND ', $where) . "
+                  ORDER BY FIELD(d.status,'pending','assigned','picked','delivered','cancelled'), d.created_at DESC
+                  LIMIT 200"
+            );
+            $st->execute($bind);
+            Response::success(['deliveries' => $st->fetchAll(PDO::FETCH_ASSOC)]);
+            exit;
+        }
+        // GET riders + availability
+        if ($method === 'GET' && $uri === '/api/delivery/admin/riders') {
+            Permission::enforce($db, $auth, 'delivery.view');
+            $rows = $db->query(
+                "SELECT r.rider_id, r.is_online, r.lat, r.lng, r.last_ping_at, r.vehicle_type,
+                        r.max_active, r.active_count, u.name, u.phone,
+                        w.cash_in_hand, w.collection_limit
+                   FROM delivery_riders r
+                   JOIN users u ON u.id = r.rider_id
+                   LEFT JOIN driver_wallets w ON w.driver_id = r.rider_id
+                  ORDER BY r.is_online DESC, r.active_count ASC"
+            )->fetchAll(PDO::FETCH_ASSOC);
+            Response::success(['riders' => $rows]);
+            exit;
+        }
+        // POST manual reassign (nearest)
+        if ($method === 'POST' && preg_match('#^/api/delivery/admin/deliveries/(\d+)/reassign$#', $uri, $m)) {
+            Permission::enforce($db, $auth, 'delivery.manage');
+            $did = (int)$m[1];
+            // free the current rider, set pending, then re-run nearest assignment
+            $cur = $db->prepare("SELECT driver_id FROM deliveries WHERE id = ? LIMIT 1");
+            $cur->execute([$did]); $curDriver = (int)($cur->fetchColumn() ?: 0);
+            $db->prepare("UPDATE deliveries SET status='pending', driver_id=NULL, assigned_at=NULL, accepted_at=NULL WHERE id = ? AND status IN ('pending','assigned')")->execute([$did]);
+            if ($curDriver) $db->prepare("UPDATE delivery_riders SET active_count = GREATEST(0, active_count-1) WHERE rider_id = ?")->execute([$curDriver]);
+            $rider = DeliveryEngine::assignNearest($db, $did);
+            Response::success(['assigned' => (bool)$rider, 'rider_id' => $rider['rider_id'] ?? null], 200, $rider ? 'Reassigned' : 'No rider available — left pending');
+            exit;
+        }
+
+        Response::notFound('Delivery admin endpoint');
+        exit;
+    }
+
+} catch (\Throwable $e) {
+    error_log('[api/delivery] ' . $e->getMessage());
+    Response::error('Delivery service error.', 500);
+    exit;
+}
 
 Response::notFound('Delivery endpoint');

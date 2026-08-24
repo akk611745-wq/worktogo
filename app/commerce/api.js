@@ -48,4 +48,13 @@ export const ShopAPI = {
   orders:         ()               => _req("GET",  "/orders"),
   order:          (id)             => _req("GET",  `/orders/${id}`),
   cancelOrder:    (id)             => _req("POST", `/orders/${id}/cancel`),
+  // Native delivery engine (own scope): fee by distance + live tracking.
+  deliveryQuote:  (dropLat, dropLng) => _req("GET", "/delivery-quote" + _qs({ drop_lat: dropLat, drop_lng: dropLng })),
+  deliveryTrack:  async (orderId) => {
+    try {
+      const res = await fetch(`${_base()}/api/delivery/track/${orderId}`, { headers: { ..._token() ? { Authorization: `Bearer ${_token()}` } : {} } });
+      const j = await res.json().catch(() => ({}));
+      return (res.ok && j.success !== false) ? { ok: true, data: j.data } : { ok: false, error: j.message };
+    } catch { return { ok: false, error: "offline" }; }
+  },
 };

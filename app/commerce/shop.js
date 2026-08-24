@@ -13,6 +13,7 @@ let _meta = { city: null, store_types: [], categories: [] };
 let _products = [], _stores = [], _activeType = "", _search = "";
 let _cartMap = {}, _cartCount = 0;
 let _product = null, _orderId = null;
+let _drop = { lat: null, lng: null }, _deliveryFee = null;
 
 /* ── utils ─────────────────────────────────────────────────────────────── */
 const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -268,6 +269,8 @@ function renderCheckout() {
     </div>
     <div class="shop-field"><label>State</label><input id="ck-state" value="Uttarakhand"></div>
     <div class="shop-field"><label>Order notes (optional)</label><input id="ck-notes" placeholder="Any instructions for delivery"></div>
+    <div class="summary" id="ck-fee"><div class="ln"><span>Delivery fee</span><span id="ck-fee-val">Locating you…</span></div>
+      <div class="ln" style="font-size:11px;color:var(--shop-muted)"><span id="ck-fee-note">Calculated by distance to the store.</span></div></div>
     <div class="pay-note">💵 Cash on Delivery — pay when your order arrives</div>
     <div style="height:8px"></div>
   </div>`);
@@ -275,6 +278,25 @@ function renderCheckout() {
   bar.className = "sticky-bar";
   bar.innerHTML = `<button class="btn-primary-shop btn-block" onclick="ShopUI.placeOrder()">Place order (COD)</button>`;
   document.getElementById("shop-app").appendChild(bar);
+  quoteDelivery();
+}
+function quoteDelivery() {
+  const setFee = (txt, note) => { const v = document.getElementById("ck-fee-val"), n = document.getElementById("ck-fee-note"); if (v) v.textContent = txt; if (n && note) n.textContent = note; };
+  const doQuote = async () => {
+    const r = await ShopAPI.deliveryQuote(_drop.lat, _drop.lng);
+    if (!r.ok || !r.data) { setFee("At delivery", "We’ll confirm the fee when a rider is assigned."); return; }
+    const q = r.data;
+    if (!q.available) { setFee("Unavailable", q.reason || "This store doesn’t deliver to your area."); return; }
+    _deliveryFee = q.price;
+    setFee(q.price > 0 ? money(q.price) : "FREE", q.distance_km ? `≈ ${q.distance_km} km from the store` : "Estimate — confirmed at rider assignment");
+  };
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => { _drop.lat = pos.coords.latitude; _drop.lng = pos.coords.longitude; doQuote(); },
+      () => { _drop.lat = null; _drop.lng = null; doQuote(); },
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 }
+    );
+  } else doQuote();
 }
 async function placeOrder() {
   const g = id => (document.getElementById(id)?.value || "").trim();
@@ -283,7 +305,7 @@ async function placeOrder() {
   if (missing.length) { toast("Please fill: " + missing.join(", "), "error"); return; }
   const btn = document.querySelector(".sticky-bar .btn-primary-shop");
   if (btn) { btn.disabled = true; btn.textContent = "Placing order…"; }
-  const r = await ShopAPI.checkout({ shipping_address: addr, notes: g("ck-notes") });
+  const r = await ShopAPI.checkout({ shipping_address: addr, notes: g("ck-notes"), drop_lat: _drop.lat, drop_lng: _drop.lng });
   if (!r.ok) { toast(r.error, "error"); if (btn) { btn.disabled = false; btn.textContent = "Place order (COD)"; } return; }
   await refreshCartState();
   toast("Order placed! 🎉", "success");
@@ -338,11 +360,28 @@ async function renderOrder(id) {
     <div class="ord-top" style="margin-bottom:12px"><div><div class="ord-no">#${esc(o.order_number)}</div>
       <div class="ord-when">${money(o.total)} · COD</div></div>
       <span class="pill-status ps-${esc(o.status)}">${esc(o.status)}</span></div>
+    <div id="od-delivery"></div>
     ${timeline}
     ${itemsHtml}
     <div class="summary"><div class="ln total"><span>Total</span><span>${money(o.total)}</span></div></div>
     ${canCancel ? `<div style="height:10px"></div><button class="btn-add" style="border-color:#eab;color:#b91c1c;background:#fff" onclick="ShopUI.cancelOrder(${o.id})">Cancel order</button>` : ""}
     <div style="height:8px"></div>`;
+  loadDeliveryTrack(id);
+}
+async function loadDeliveryTrack(orderId) {
+  const host = document.getElementById("od-delivery"); if (!host) return;
+  const r = await ShopAPI.deliveryTrack(orderId);
+  if (!r.ok || !r.data) return;
+  const d = r.data;
+  const feeLine = d.price != null ? `Delivery ${d.price > 0 ? money(d.price) : "FREE"}${d.distance_km ? ` · ${d.distance_km} km` : ""}` : "";
+  const rider = d.rider ? `<div class="cart-row" style="margin-top:10px"><div class="ph">🛵</div>
+      <div class="mid"><div class="nm">${esc(d.rider.name || "Your rider")}</div>
+        <div class="sub">${d.status === "picked" ? "On the way to you" : "Assigned to your order"}${feeLine ? " · " + feeLine : ""}</div></div>
+      ${d.rider.phone ? `<div class="rt"><a class="btn-add" style="padding:6px 10px" href="tel:${esc(d.rider.phone)}">Call</a></div>` : ""}</div>`
+    : (d.status === "pending"
+        ? `<div class="toast-inline">Finding a rider near the store…${feeLine ? " (" + feeLine + ")" : ""}</div>`
+        : (feeLine ? `<div class="toast-inline">${feeLine}</div>` : ""));
+  host.innerHTML = rider;
 }
 async function cancelOrder(id) {
   if (!confirm("Cancel this order?")) return;

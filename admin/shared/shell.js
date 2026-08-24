@@ -19,6 +19,7 @@ const Shell = {
     { group: 'Commerce', hiddenInServiceOnly: true },
     { href: 'commerce-stores.html',   icon: 'store', label: 'Stores & Shop Types', hiddenInServiceOnly: true },
     { href: 'commerce-products.html', icon: 'box',   label: 'Catalog & Stock',     hiddenInServiceOnly: true },
+    { href: 'delivery-control.html',  icon: 'truck', label: 'Delivery Control',    hiddenInServiceOnly: true },
     { group: 'Operations' },
     { href: 'pricing.html',  icon: 'tag',   label: 'Price Control' },
     { href: 'followup.html', icon: 'bell',  label: 'Follow-up Center' },

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Delivery Control</title>
+<link rel="icon" href="/app/assets/favicon.png"/>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+.dc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;}
+.dc-card{background:var(--bg-card);border:1px solid var(--border-dim);border-radius:var(--radius-md);padding:14px;display:flex;flex-direction:column;gap:8px;}
+.dc-card.inactive{opacity:.55;}
+.dc-name{font-size:14px;font-weight:700;color:var(--text-primary);}
+.dc-rates{font-size:12px;color:var(--text-secondary);display:flex;flex-wrap:wrap;gap:10px;}
+.dc-rates b{color:var(--text-primary);}
+.tbl{width:100%;border-collapse:collapse;}
+.tbl th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);padding:8px 10px;border-bottom:1px solid var(--border-dim);}
+.tbl td{padding:9px 10px;border-bottom:1px solid var(--border-dim);font-size:12.5px;color:var(--text-secondary);}
+.card-wrap{background:var(--bg-card);border:1px solid var(--border-dim);border-radius:var(--radius-md);overflow-x:auto;margin-bottom:22px;}
+.st-pill{font-size:10px;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:99px;}
+.st-pending{background:#fff4e5;color:#b45309;} .st-assigned{background:#e6f0ff;color:#1d4ed8;}
+.st-picked{background:#e0f2fe;color:#0369a1;} .st-delivered{background:#e6f5ee;color:#0b7a43;} .st-cancelled{background:#fde8e8;color:#b91c1c;}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;} .dot.on{background:#10b981;} .dot.off{background:#9ca3af;}
+.row2{display:flex;gap:10px;}.row2>*{flex:1;}
+.sec-title{font-size:14px;font-weight:700;color:var(--text-primary);margin:8px 2px 12px;display:flex;justify-content:space-between;align-items:center;}
+</style>
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="main-wrap">
+    <div id="shell-topbar"></div>
+    <main class="page-content">
+      <div class="page-header"><div>
+        <h1 class="page-title">Delivery Control</h1>
+        <p class="page-subtitle">Native delivery — rate cards, live deliveries, riders</p>
+      </div><button class="btn btn-ghost btn-sm" onclick="loadAll()">↻ Refresh</button></div>
+
+      <div class="sec-title"><span>Rate cards — price is computed by distance (store → customer)</span>
+        <button class="btn btn-primary btn-sm" onclick="openRate(null)">+ Add rate card</button></div>
+      <div class="dc-grid" id="rates"><div class="spinner"></div></div>
+
+      <div class="sec-title" style="margin-top:24px">Live deliveries</div>
+      <div class="card-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Store</th><th>Rider</th><th>Dist</th><th>Fee</th><th>Status</th><th></th></tr></thead>
+        <tbody id="deliveries"><tr><td colspan="7" style="text-align:center;padding:20px"><div class="spinner" style="margin:auto"></div></td></tr></tbody></table></div>
+
+      <div class="sec-title" style="margin-top:6px">Riders</div>
+      <div class="card-wrap"><table class="tbl"><thead><tr><th>Rider</th><th>Status</th><th>Active</th><th>Cash in hand</th><th>Location</th></tr></thead>
+        <tbody id="riders"><tr><td colspan="5" style="text-align:center;padding:20px"><div class="spinner" style="margin:auto"></div></td></tr></tbody></table></div>
+    </main>
+  </div>
+</div>
+
+<div class="modal-overlay" id="rate-modal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header"><span class="modal-title" id="rate-title">Rate card</span>
+      <button class="modal-close" onclick="Modal.close('rate-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">NAME</label><input id="r-name" class="form-control" placeholder="Haldwani Standard"></div>
+      <div class="row2">
+        <div class="form-group"><label class="form-label">BASE FARE ₹</label><input id="r-base" class="form-control" type="number" step="any"></div>
+        <div class="form-group"><label class="form-label">PER KM ₹</label><input id="r-km" class="form-control" type="number" step="any"></div>
+      </div>
+      <div class="row2">
+        <div class="form-group"><label class="form-label">MIN FEE ₹</label><input id="r-min" class="form-control" type="number" step="any"></div>
+        <div class="form-group"><label class="form-label">FREE ABOVE ₹ (optional)</label><input id="r-free" class="form-control" type="number" step="any"></div>
+      </div>
+      <div class="row2">
+        <div class="form-group"><label class="form-label">RIDER SHARE %</label><input id="r-rider" class="form-control" type="number" step="any"></div>
+        <div class="form-group"><label class="form-label">MAX DISTANCE KM (optional)</label><input id="r-maxd" class="form-control" type="number" step="any"></div>
+      </div>
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)"><input type="checkbox" id="r-active" checked> Active</label>
+    </div>
+    <div class="modal-footer" id="rate-footer"></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/push.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Delivery Control', active: 'delivery-control.html' });
+let _rates = [], _editRate = null;
+
+// Native delivery admin routes live at /heart/api/delivery/admin/* (not under the
+// /admin prefix), so call them directly with the admin token.
+async function dapi(method, path, body) {
+  const token = localStorage.getItem(CONFIG.TOKEN_KEY);
+  const res = await fetch(`${CONFIG.API_BASE_URL}${path}`, { method,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}) });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || j.success === false) throw { message: j.message || 'Request failed' };
+  return j.data ?? j;
+}
+const money = n => n == null ? '—' : '₹' + Number(n).toLocaleString('en-IN');
+
+async function loadRates() {
+  const host = document.getElementById('rates');
+  try {
+    const d = await dapi('GET', '/delivery/admin/rate-cards');
+    _rates = d.rate_cards || [];
+    host.innerHTML = _rates.length ? _rates.map(rateCard).join('') : '<p class="ct-note" style="color:var(--text-muted)">No rate cards — add one.</p>';
+  } catch (e) { host.innerHTML = `<p style="color:var(--red)">${escHtml(e.message || 'Failed to load')}</p>`; }
+}
+function rateCard(r) {
+  return `<div class="dc-card ${r.is_active ? '' : 'inactive'}">
+    <div style="display:flex;justify-content:space-between"><span class="dc-name">${escHtml(r.name)}</span>
+      <span class="badge ${r.is_active ? 'badge-green' : 'badge-gray'}">${r.is_active ? 'Active' : 'Off'}</span></div>
+    <div class="ct-slug" style="font-size:11px;color:var(--text-muted)">${escHtml(r.city_name || 'Platform default')}</div>
+    <div class="dc-rates"><span>Base <b>${money(r.base_fare)}</b></span><span>/km <b>${money(r.per_km_rate)}</b></span><span>Min <b>${money(r.min_fee)}</b></span></div>
+    <div class="dc-rates"><span>Rider <b>${r.rider_share_pct}%</b></span>${r.free_above_subtotal ? `<span>Free &gt; <b>${money(r.free_above_subtotal)}</b></span>` : ''}${r.max_distance_km ? `<span>Max <b>${r.max_distance_km}km</b></span>` : ''}</div>
+    <div style="display:flex;gap:6px;margin-top:4px"><button class="btn btn-ghost btn-sm" onclick="openRate(${r.id})">Edit</button>
+      <button class="btn ${r.is_active ? 'btn-warn' : 'btn-success'} btn-sm" onclick="toggleRate(${r.id}, ${r.is_active ? 0 : 1})">${r.is_active ? 'Disable' : 'Enable'}</button></div>
+  </div>`;
+}
+function openRate(id) {
+  _editRate = id; const r = id ? _rates.find(x => x.id === id) : null;
+  document.getElementById('rate-title').textContent = id ? 'Edit rate card' : 'Add rate card';
+  document.getElementById('r-name').value = r?.name || '';
+  document.getElementById('r-base').value = r?.base_fare ?? 20;
+  document.getElementById('r-km').value = r?.per_km_rate ?? 8;
+  document.getElementById('r-min').value = r?.min_fee ?? 20;
+  document.getElementById('r-free').value = r?.free_above_subtotal ?? '';
+  document.getElementById('r-rider').value = r?.rider_share_pct ?? 80;
+  document.getElementById('r-maxd').value = r?.max_distance_km ?? '';
+  document.getElementById('r-active').checked = r ? !!r.is_active : true;
+  document.getElementById('rate-footer').innerHTML = `<button class="btn btn-ghost" onclick="Modal.close('rate-modal')">Cancel</button><button class="btn btn-primary" onclick="saveRate()">Save</button>`;
+  Modal.open('rate-modal');
+}
+async function saveRate() {
+  const body = {
+    name: document.getElementById('r-name').value.trim() || 'Standard',
+    base_fare: document.getElementById('r-base').value, per_km_rate: document.getElementById('r-km').value,
+    min_fee: document.getElementById('r-min').value, free_above_subtotal: document.getElementById('r-free').value,
+    rider_share_pct: document.getElementById('r-rider').value,
+    platform_margin_pct: Math.max(0, 100 - Number(document.getElementById('r-rider').value || 80)),
+    max_distance_km: document.getElementById('r-maxd').value,
+    is_active: document.getElementById('r-active').checked ? 1 : 0,
+  };
+  try {
+    if (_editRate) await dapi('PATCH', `/delivery/admin/rate-cards/${_editRate}`, body);
+    else await dapi('POST', '/delivery/admin/rate-cards', body);
+    Toast.success('Saved'); Modal.close('rate-modal'); loadRates();
+  } catch (e) { Toast.error(e.message || 'Could not save'); }
+}
+async function toggleRate(id, active) { try { await dapi('PATCH', `/delivery/admin/rate-cards/${id}`, { is_active: active }); loadRates(); } catch (e) { Toast.error(e.message); } }
+
+async function loadDeliveries() {
+  const tb = document.getElementById('deliveries');
+  try {
+    const d = await dapi('GET', '/delivery/admin/deliveries');
+    const rows = d.deliveries || [];
+    tb.innerHTML = rows.length ? rows.map(x => `<tr>
+      <td>#${escHtml(x.order_number || x.order_id)}</td><td>${escHtml(x.store_name || '—')}</td>
+      <td>${escHtml(x.rider_name || '—')}</td><td>${x.distance_km ?? '—'} km</td><td>${money(x.price)}</td>
+      <td><span class="st-pill st-${escHtml(x.status)}">${escHtml(x.status)}</span></td>
+      <td>${['pending','assigned'].includes(x.status) ? `<button class="btn btn-ghost btn-sm" onclick="reassign(${x.id})">Reassign</button>` : ''}</td>
+    </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;padding:18px;color:var(--text-muted)">No deliveries yet</td></tr>';
+  } catch (e) { tb.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--red)">${escHtml(e.message)}</td></tr>`; }
+}
+async function reassign(id) { try { const d = await dapi('POST', `/delivery/admin/deliveries/${id}/reassign`, {}); Toast.success(d.assigned ? 'Reassigned' : 'No rider available'); loadDeliveries(); } catch (e) { Toast.error(e.message); } }
+
+async function loadRiders() {
+  const tb = document.getElementById('riders');
+  try {
+    const d = await dapi('GET', '/delivery/admin/riders');
+    const rows = d.riders || [];
+    tb.innerHTML = rows.length ? rows.map(r => `<tr>
+      <td>${escHtml(r.name)}<div style="font-size:10px;color:var(--text-muted)">${escHtml(r.phone || '')}</div></td>
+      <td><span class="dot ${r.is_online ? 'on' : 'off'}"></span>${r.is_online ? 'Online' : 'Offline'}</td>
+      <td>${r.active_count}/${r.max_active}</td><td>${money(r.cash_in_hand)} / ${money(r.collection_limit)}</td>
+      <td>${(r.lat && r.lng) ? Number(r.lat).toFixed(3) + ', ' + Number(r.lng).toFixed(3) : '—'}</td></tr>`).join('')
+      : '<tr><td colspan="5" style="text-align:center;padding:18px;color:var(--text-muted)">No riders onboarded</td></tr>';
+  } catch (e) { tb.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--red)">${escHtml(e.message)}</td></tr>`; }
+}
+
+function loadAll() { loadRates(); loadDeliveries(); loadRiders(); }
+loadAll();
+</script>
+</body>
+</html>
