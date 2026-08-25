@@ -88,6 +88,33 @@ class DeliveryEngine
         ]);
     }
 
+    /**
+     * Server-authoritative quote: prices store → the city's SERVER-KNOWN drop
+     * point (never client-sent coords), so the billed fee can't be tampered.
+     * The drop point is the city centre today; a future address geocoder can
+     * refine it here without changing callers (documented seam).
+     */
+    public static function quoteServerSide(PDO $db, ?float $storeLat, ?float $storeLng, ?int $cityId, float $subtotal = 0.0): array
+    {
+        [$dropLat, $dropLng] = self::cityCenter($db, $cityId);
+        return self::quote($db, $storeLat, $storeLng, $dropLat, $dropLng, $cityId, $subtotal);
+    }
+
+    /** The city's server-known reference point (centre). Used for tamper-proof pricing. */
+    private static function cityCenter(PDO $db, ?int $cityId): array
+    {
+        if (!$cityId) return [null, null];
+        try {
+            $s = $db->prepare("SELECT center_lat, center_lng FROM cities WHERE id = ? LIMIT 1");
+            $s->execute([$cityId]);
+            $r = $s->fetch(PDO::FETCH_ASSOC) ?: [];
+            return [
+                isset($r['center_lat']) && $r['center_lat'] !== null ? (float)$r['center_lat'] : null,
+                isset($r['center_lng']) && $r['center_lng'] !== null ? (float)$r['center_lng'] : null,
+            ];
+        } catch (\Throwable $e) { return [null, null]; }
+    }
+
     /** Pickup store (geo + city) for an order — parent store, else first sub-order's store. */
     private static function orderPickup(PDO $db, int $orderId): ?array
     {
@@ -121,7 +148,11 @@ class DeliveryEngine
     {
         $pickup = self::orderPickup($db, $orderId);
         $cityId = $pickup['city_id'] ?? null;
-        $q = self::quote($db, $pickup['lat'] ?? null, $pickup['lng'] ?? null, $dropLat, $dropLng, $cityId, $subtotal);
+        // M1 fix (audit §4): the BILLED fee is computed server-side (store → the
+        // city's server-known drop point), NEVER from client-sent coords — so a
+        // customer cannot shave the fee by faking a location near the store. The
+        // client coords are kept only as a rider navigation hint (below).
+        $q = self::quoteServerSide($db, $pickup['lat'] ?? null, $pickup['lng'] ?? null, $cityId, $subtotal);
 
         // Upsert one delivery per order.
         $ex = $db->prepare("SELECT id FROM deliveries WHERE order_id = ? LIMIT 1");

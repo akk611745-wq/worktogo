@@ -148,9 +148,10 @@ try {
         exit;
     }
 
-    // ── GET /api/shop/delivery-quote — fee by distance (store → customer) ────
-    // Storefront calls the NATIVE delivery engine (own scope) to show the fee
-    // before ordering. Pickup = the cart's primary store; drop = the customer.
+    // ── GET /api/shop/delivery-quote — fee by distance (store → city) ────────
+    // M1 fix (audit §4): the fee is server-computed (store → the city's known
+    // drop point), NOT from client coords — so the shown estimate equals the
+    // tamper-proof billed fee. Client drop coords are ignored here.
     if ($method === 'GET' && $uri === '/api/shop/delivery-quote') {
         $uid = $shopRequireUser();
         require_once SYSTEM_ROOT . '/core/delivery/DeliveryEngine.php';
@@ -166,9 +167,7 @@ try {
                 $cityId = $row['city_id'] ? (int)$row['city_id'] : (int)$shopCityId;
             }
         }
-        $dLat = isset($_GET['drop_lat']) && $_GET['drop_lat'] !== '' ? (float)$_GET['drop_lat'] : null;
-        $dLng = isset($_GET['drop_lng']) && $_GET['drop_lng'] !== '' ? (float)$_GET['drop_lng'] : null;
-        Response::success(DeliveryEngine::quote($db, $pLat, $pLng, $dLat, $dLng, $cityId, $subtotal));
+        Response::success(DeliveryEngine::quoteServerSide($db, $pLat, $pLng, $cityId, $subtotal));
         exit;
     }
 
