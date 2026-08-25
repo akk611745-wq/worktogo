@@ -36,7 +36,7 @@ if (!$fp || !flock($fp, LOCK_EX | LOCK_NB)) {
     die("Delivery lifecycle is already running.\n");
 }
 
-$summary = ['retried' => 0, 'assigned' => 0, 'no_rider' => 0, 'stuck' => 0, 'late' => 0, 'settled' => 0];
+$summary = ['retried' => 0, 'assigned' => 0, 'no_rider' => 0, 'stuck' => 0, 'late' => 0, 'settled' => 0, 'cancelled' => 0];
 
 try {
     // ── Config (admin-tunable) ───────────────────────────────────────────────
@@ -141,6 +141,14 @@ try {
     foreach ($unsettled as $oid) {
         if (\Core\Helpers\LedgerEngine::processCommerceOrderSettlement((int)$oid, $db)) { $summary['settled']++; }
     }
+
+    // ── G. Order cancelled but delivery still active → cancel + free rider ───
+    // Safety net for cancel paths outside the storefront (admin / vendor cancel).
+    $orphans = $db->query(
+        "SELECT d.order_id FROM deliveries d JOIN orders o ON o.id = d.order_id
+          WHERE o.status = 'cancelled' AND d.status IN ('pending','assigned','picked') LIMIT 100"
+    )->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($orphans as $oid) { $summary['cancelled'] += DeliveryEngine::cancelForOrder($db, (int)$oid); }
 
     echo json_encode(['success' => true, 'summary' => $summary]) . "\n";
 } catch (\Throwable $e) {

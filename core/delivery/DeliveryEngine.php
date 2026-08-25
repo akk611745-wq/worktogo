@@ -399,6 +399,28 @@ class DeliveryEngine
         $db->prepare("UPDATE delivery_riders SET lat = ?, lng = ?, last_ping_at = NOW() WHERE rider_id = ?")->execute([$lat, $lng, $riderId]);
     }
 
+    /**
+     * M3 (audit §4): when an order is cancelled, cancel its active delivery and
+     * free the rider's capacity — otherwise the rider keeps an orphaned job and
+     * a leaked active_count. Non-fatal; safe to call from any cancel path.
+     */
+    public static function cancelForOrder(PDO $db, int $orderId): int
+    {
+        $freed = 0;
+        try {
+            $st = $db->prepare("SELECT id, driver_id FROM deliveries WHERE order_id = ? AND status IN ('pending','assigned','picked')");
+            $st->execute([$orderId]);
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $d) {
+                $db->prepare("UPDATE deliveries SET status='cancelled', flag='none', updated_at=NOW() WHERE id = ?")->execute([(int)$d['id']]);
+                if (!empty($d['driver_id'])) {
+                    $db->prepare("UPDATE delivery_riders SET active_count = GREATEST(0, active_count - 1) WHERE rider_id = ?")->execute([(int)$d['driver_id']]);
+                }
+                $freed++;
+            }
+        } catch (\Throwable $e) { error_log('[DeliveryEngine::cancelForOrder] ' . $e->getMessage()); }
+        return $freed;
+    }
+
     /** Customer/panel tracking snapshot for an order. */
     public static function track(PDO $db, int $orderId): ?array
     {

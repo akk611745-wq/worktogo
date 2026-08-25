@@ -264,8 +264,15 @@ try {
     if ($method === 'POST' && preg_match('#^/api/shop/orders/(\d+)/cancel$#', $uri, $m)) {
         $uid = $shopRequireUser();
         $cart = new CartService($db);
-        try { Response::success((new OrderService($db, $cart))->cancel($uid, (int)$m[1])); }
-        catch (\Throwable $e) { Response::error($e->getMessage(), 400); }
+        try {
+            $res = (new OrderService($db, $cart))->cancel($uid, (int)$m[1]);
+            // M3 (audit §4): cancel the order's active delivery + free the rider
+            // (the never-touch cancel is delivery-unaware). The lifecycle cron is
+            // the safety net for admin/vendor cancel paths.
+            require_once SYSTEM_ROOT . '/core/delivery/DeliveryEngine.php';
+            DeliveryEngine::cancelForOrder($db, (int)$m[1]);
+            Response::success($res);
+        } catch (\Throwable $e) { Response::error($e->getMessage(), 400); }
         exit;
     }
 
