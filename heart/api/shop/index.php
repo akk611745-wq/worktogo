@@ -51,6 +51,16 @@ $shopRequireUser = function () {
 $shopBody = function () {
     return json_decode(file_get_contents('php://input'), true) ?? [];
 };
+// M2 (audit §4): a product is orderable only if its store is in the customer's
+// city. Returns true when allowed — allows a store with no city set (legacy /
+// geo-less), rejects only an explicit cross-city mismatch. Server-side guard so
+// a crafted request can't cart/checkout across cities (browse is already scoped).
+$shopAssertCity = function (int $productId, int $cityId) use ($db) {
+    $s = $db->prepare("SELECT st.city_id FROM products p LEFT JOIN stores st ON st.id = p.store_id WHERE p.id = ? LIMIT 1");
+    $s->execute([$productId]);
+    $r = $s->fetch(PDO::FETCH_ASSOC);
+    return !($r && $r['city_id'] !== null && (int)$r['city_id'] !== $cityId);
+};
 
 try {
 
@@ -177,6 +187,7 @@ try {
         $pid = (int)($b['product_id'] ?? 0); $qty = (int)($b['quantity'] ?? 1);
         $op  = $b['op'] ?? 'add';
         if ($pid <= 0) { Response::validation('product_id is required'); exit; }
+        if (!$shopAssertCity($pid, (int)$shopCityId)) { Response::error('This item isn’t available in your area.', 422); exit; }
         $cart = new CartService($db);
         try {
             $result = ($op === 'set') ? $cart->update($uid, $pid, $qty) : $cart->add($uid, $pid, max(1, $qty));
@@ -204,6 +215,15 @@ try {
         // the engine's, unchanged.
         $b['payment_method'] = 'cod';
         $cart  = new CartService($db);
+        // M2 (audit §4): reject checkout if the cart holds an item from a store
+        // outside the customer's city (defence against crafted cross-city carts).
+        $cartNow = $cart->get($uid);
+        foreach (($cartNow['items'] ?? []) as $it) {
+            if (!$shopAssertCity((int)$it['product_id'], (int)$shopCityId)) {
+                Response::error('Your cart has items not available in your area. Remove them to continue.', 422);
+                exit;
+            }
+        }
         $order = new OrderService($db, $cart);
         try {
             $result = $order->create($uid, $b);                  // REUSE engine checkout
