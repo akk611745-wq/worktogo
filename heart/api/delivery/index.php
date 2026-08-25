@@ -52,9 +52,27 @@ try {
     }
 
     // ── GET /api/delivery/track/{orderId} — customer tracking ───────────────
+    // H1 fix (audit §4): scope to the order's OWNER, its ASSIGNED RIDER, or an
+    // ADMIN. Without this, any logged-in user could enumerate order ids and
+    // harvest rider name/phone/live location. Unauthorised → 404 (don't leak
+    // whether the order exists).
     if ($method === 'GET' && preg_match('#^/api/delivery/track/(\d+)$#', $uri, $m)) {
-        AuthMiddleware::requireRole(ROLE_CUSTOMER, ROLE_ADMIN);
-        $track = DeliveryEngine::track($db, (int)$m[1]);
+        $tauth   = AuthMiddleware::requireRole(ROLE_CUSTOMER, ROLE_DELIVERY, ROLE_ADMIN);
+        $tuid    = (int)($tauth['user_id'] ?? 0);
+        $trole   = (string)($tauth['role'] ?? '');
+        $orderId = (int)$m[1];
+        $own = $db->prepare(
+            "SELECT o.user_id,
+                    (SELECT d.driver_id FROM deliveries d WHERE d.order_id = o.id ORDER BY d.id DESC LIMIT 1) AS driver_id
+               FROM orders o WHERE o.id = ? LIMIT 1"
+        );
+        $own->execute([$orderId]);
+        $row = $own->fetch(PDO::FETCH_ASSOC);
+        $allowed = $row && ($trole === ROLE_ADMIN
+            || (int)$row['user_id'] === $tuid
+            || (int)($row['driver_id'] ?? 0) === $tuid);
+        if (!$allowed) { Response::notFound('Delivery'); exit; }
+        $track = DeliveryEngine::track($db, $orderId);
         if (!$track) { Response::notFound('Delivery'); exit; }
         Response::success($track);
         exit;
