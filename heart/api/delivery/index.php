@@ -153,17 +153,21 @@ try {
             Response::success(['riders' => $rows]);
             exit;
         }
-        // POST manual reassign (nearest)
+        // POST manual reassign / send a backup rider.
+        //   body {} → nearest DIFFERENT rider;  body {rider_id} → that specific backup.
+        //   works for pending / assigned / picked (in-trouble) deliveries.
         if ($method === 'POST' && preg_match('#^/api/delivery/admin/deliveries/(\d+)/reassign$#', $uri, $m)) {
             Permission::enforce($db, $auth, 'delivery.manage');
-            $did = (int)$m[1];
-            // free the current rider, set pending, then re-run nearest assignment
-            $cur = $db->prepare("SELECT driver_id FROM deliveries WHERE id = ? LIMIT 1");
-            $cur->execute([$did]); $curDriver = (int)($cur->fetchColumn() ?: 0);
-            $db->prepare("UPDATE deliveries SET status='pending', driver_id=NULL, assigned_at=NULL, accepted_at=NULL WHERE id = ? AND status IN ('pending','assigned')")->execute([$did]);
-            if ($curDriver) $db->prepare("UPDATE delivery_riders SET active_count = GREATEST(0, active_count-1) WHERE rider_id = ?")->execute([$curDriver]);
-            $rider = DeliveryEngine::assignNearest($db, $did);
-            Response::success(['assigned' => (bool)$rider, 'rider_id' => $rider['rider_id'] ?? null], 200, $rider ? 'Reassigned' : 'No rider available — left pending');
+            $in = json_decode(file_get_contents('php://input'), true) ?? [];
+            $riderId = isset($in['rider_id']) && $in['rider_id'] !== '' ? (int)$in['rider_id'] : null;
+            try {
+                $res = DeliveryEngine::adminReassign($db, (int)$m[1], $riderId);
+                Response::success($res, 200, $res['reassigned']
+                    ? 'Reassigned'
+                    : ($riderId ? 'That rider is unavailable (offline / at capacity / cash-blocked)' : 'No rider available — left pending'));
+            } catch (\RuntimeException $e) {
+                Response::error($e->getMessage(), 400);
+            }
             exit;
         }
 

@@ -169,9 +169,10 @@ class DeliveryEngine
      * Lock-safe nearest-available-rider assignment (mirrors the auto_assign cron
      * pattern: FOR UPDATE SKIP LOCKED). Prefers the nearest online rider WITH a
      * recent location; falls back to the least-loaded online rider in the city.
+     * @param int|null $excludeRiderId skip this rider (e.g. the one who just rejected)
      * @return array|null the assigned rider row, or null if none available
      */
-    public static function assignNearest(PDO $db, int $deliveryId): ?array
+    public static function assignNearest(PDO $db, int $deliveryId, ?int $excludeRiderId = null): ?array
     {
         try {
             $db->beginTransaction();
@@ -189,7 +190,8 @@ class DeliveryEngine
                       FROM delivery_riders r
                      WHERE r.is_online = 1
                        AND r.active_count < r.max_active
-                       AND (:city IS NULL OR r.city_id = :city OR r.city_id IS NULL)";
+                       AND (:city IS NULL OR r.city_id = :city OR r.city_id IS NULL)"
+                . ($excludeRiderId ? " AND r.rider_id <> :excl" : "");
             if ($hasGeo) {
                 $sql .= " AND r.lat IS NOT NULL AND r.lng IS NOT NULL
                           ORDER BY (6371 * ACOS(LEAST(1, GREATEST(-1,
@@ -202,6 +204,7 @@ class DeliveryEngine
             $st = $db->prepare($sql);
             $st->bindValue(':city', $del['city_id'], $del['city_id'] === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
             if ($hasGeo) { $st->bindValue(':plat', $plat); $st->bindValue(':plng', $plng); }
+            if ($excludeRiderId) { $st->bindValue(':excl', $excludeRiderId, PDO::PARAM_INT); }
             $st->execute();
             $candidates = $st->fetchAll(PDO::FETCH_ASSOC);
 
@@ -223,6 +226,67 @@ class DeliveryEngine
             error_log('[DeliveryEngine::assignNearest] ' . $e->getMessage());
             return null;
         }
+    }
+
+    /**
+     * Assign a SPECIFIC rider (admin backup/support). Lock-safe; validates the
+     * rider is online, under capacity, and not cash-blocked. Delivery must be
+     * pending. Returns the rider row or null.
+     */
+    public static function assignSpecific(PDO $db, int $deliveryId, int $riderId): ?array
+    {
+        try {
+            $db->beginTransaction();
+            $d = $db->prepare("SELECT id, status FROM deliveries WHERE id = ? FOR UPDATE");
+            $d->execute([$deliveryId]);
+            $del = $d->fetch(PDO::FETCH_ASSOC);
+            if (!$del || $del['status'] !== 'pending') { $db->rollBack(); return null; }
+
+            $r = $db->prepare("SELECT id, rider_id, active_count, max_active, is_online FROM delivery_riders WHERE rider_id = ? FOR UPDATE");
+            $r->execute([$riderId]);
+            $rider = $r->fetch(PDO::FETCH_ASSOC);
+            if (!$rider || !$rider['is_online'] || $rider['active_count'] >= $rider['max_active']
+                || \Core\Helpers\LedgerEngine::isDriverBlocked($riderId)) { $db->rollBack(); return null; }
+
+            $db->prepare("UPDATE deliveries SET driver_id = ?, status = 'assigned', assigned_at = NOW(), flag = 'none' WHERE id = ?")
+               ->execute([$riderId, $deliveryId]);
+            $db->prepare("UPDATE delivery_riders SET active_count = active_count + 1 WHERE id = ?")->execute([(int)$rider['id']]);
+            $db->commit();
+            return $rider;
+        } catch (\Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            error_log('[DeliveryEngine::assignSpecific] ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Admin reassignment / send-a-backup for an in-trouble delivery. Frees the
+     * current rider, resets the delivery to pending, then assigns either a chosen
+     * backup rider ($newRiderId) or the nearest DIFFERENT rider. Works for
+     * pending / assigned / picked (physical handover of a picked order is manual).
+     * @return array{status:string, rider_id:?int, reassigned:bool}
+     */
+    public static function adminReassign(PDO $db, int $deliveryId, ?int $newRiderId = null): array
+    {
+        $d = $db->prepare("SELECT id, status, driver_id FROM deliveries WHERE id = ? LIMIT 1");
+        $d->execute([$deliveryId]);
+        $del = $d->fetch(PDO::FETCH_ASSOC);
+        if (!$del) throw new \RuntimeException('Delivery not found');
+        if (!in_array($del['status'], ['pending', 'assigned', 'picked'], true)) {
+            throw new \RuntimeException('This delivery cannot be reassigned');
+        }
+        $current = (int)($del['driver_id'] ?? 0);
+        if ($current > 0) {
+            $db->prepare("UPDATE delivery_riders SET active_count = GREATEST(0, active_count - 1) WHERE rider_id = ?")->execute([$current]);
+        }
+        $db->prepare("UPDATE deliveries SET status='pending', driver_id=NULL, assigned_at=NULL, accepted_at=NULL, picked_at=NULL, flag='none' WHERE id = ?")
+           ->execute([$deliveryId]);
+
+        $rider = $newRiderId
+            ? self::assignSpecific($db, $deliveryId, $newRiderId)
+            : self::assignNearest($db, $deliveryId, $current ?: null);
+        return ['status' => $rider ? 'assigned' : 'pending', 'rider_id' => $rider['rider_id'] ?? null, 'reassigned' => (bool)$rider];
     }
 
     /** Mirror a delivery status onto the order so the customer timeline reflects it. */
@@ -255,9 +319,9 @@ class DeliveryEngine
     {
         $d = self::ownedDelivery($db, $deliveryId, $riderId);
         if (!in_array($d['status'], ['assigned'], true)) throw new \RuntimeException('Cannot reject now');
-        $db->prepare("UPDATE deliveries SET status='pending', driver_id=NULL, assigned_at=NULL, accepted_at=NULL WHERE id = ?")->execute([$deliveryId]);
+        $db->prepare("UPDATE deliveries SET status='pending', driver_id=NULL, assigned_at=NULL, accepted_at=NULL, flag='none' WHERE id = ?")->execute([$deliveryId]);
         $db->prepare("UPDATE delivery_riders SET active_count = GREATEST(0, active_count - 1) WHERE rider_id = ?")->execute([$riderId]);
-        $rider = self::assignNearest($db, $deliveryId); // hand to the next nearest
+        $rider = self::assignNearest($db, $deliveryId, $riderId); // hand to a DIFFERENT nearest rider
         return ['status' => $rider ? 'assigned' : 'pending', 'reassigned' => (bool)$rider];
     }
 
