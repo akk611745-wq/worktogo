@@ -19,9 +19,18 @@
 
 require_once SYSTEM_ROOT . '/core/delivery/DeliveryEngine.php';
 
+require_once SYSTEM_ROOT . '/core/helpers/RateLimiter.php';
+
 $auth   = AuthMiddleware::requireRole(ROLE_DELIVERY);
 $riderId = (int)$auth['user_id'];
 $body   = function () { return json_decode(file_get_contents('php://input'), true) ?? []; };
+// M5 (audit §4): per-rider spam guard.
+$riderLimit = function (string $action, int $max, int $windowSec) {
+    if (!RateLimiter::check($action, $max, $windowSec)) {
+        Response::error('Too many requests. Please slow down.', 429);
+        exit;
+    }
+};
 
 try {
     DeliveryEngine::ensureRider($db, $riderId);
@@ -42,6 +51,7 @@ try {
 
     // POST /api/rider/online
     if ($method === 'POST' && $uri === '/api/rider/online') {
+        $riderLimit('rider_write_' . $riderId, 90, 60);
         $b = $body();
         DeliveryEngine::riderSetOnline($db, $riderId, !empty($b['online']));
         Response::success(['online' => !empty($b['online'])], 200, !empty($b['online']) ? 'You are online' : 'You are offline');
@@ -50,9 +60,13 @@ try {
 
     // POST /api/rider/location
     if ($method === 'POST' && $uri === '/api/rider/location') {
+        $riderLimit('rider_ping_' . $riderId, 120, 60);
         $b = $body();
         if (!isset($b['lat'], $b['lng'])) { Response::validation('lat and lng required'); exit; }
-        DeliveryEngine::riderPing($db, $riderId, (float)$b['lat'], (float)$b['lng']);
+        $lat = (float)$b['lat']; $lng = (float)$b['lng'];
+        // L4 (audit §4): validate coordinate ranges before storing.
+        if ($lat < -90 || $lat > 90 || $lng < -180 || $lng > 180) { Response::validation('Invalid coordinates'); exit; }
+        DeliveryEngine::riderPing($db, $riderId, $lat, $lng);
         Response::success(['ok' => true]);
         exit;
     }
@@ -84,6 +98,7 @@ try {
 
     // POST /api/rider/deliveries/{id}/{action}
     if ($method === 'POST' && preg_match('#^/api/rider/deliveries/(\d+)/(accept|reject|pickup|deliver)$#', $uri, $m)) {
+        $riderLimit('rider_write_' . $riderId, 90, 60);
         $did = (int)$m[1]; $action = $m[2];
         try {
             $res = match ($action) {

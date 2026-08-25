@@ -23,6 +23,7 @@
 // ============================================================================
 
 require_once SYSTEM_ROOT . '/core/delivery/DeliveryEngine.php';
+require_once SYSTEM_ROOT . '/core/helpers/RateLimiter.php';
 
 $numOrNull = function ($v) { return ($v === '' || $v === null) ? null : (float)$v; };
 
@@ -30,6 +31,8 @@ try {
 
     // ── GET /api/delivery/quote?store_id=&drop_lat=&drop_lng=&subtotal= ──────
     if ($method === 'GET' && $uri === '/api/delivery/quote') {
+        // M5/L1 (audit §4): this quote is public — throttle per IP to stop probing.
+        if (!RateLimiter::check('delivery_quote', 60, 60)) { Response::error('Too many requests.', 429); exit; }
         $storeId = isset($_GET['store_id']) ? (int)$_GET['store_id'] : 0;
         $pLat = $numOrNull($_GET['pickup_lat'] ?? null); $pLng = $numOrNull($_GET['pickup_lng'] ?? null);
         $cityId = null;

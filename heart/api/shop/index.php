@@ -35,6 +35,15 @@ require_once SYSTEM_ROOT . '/body/shopping-engine/api/products/ProductService.ph
 require_once SYSTEM_ROOT . '/body/shopping-engine/api/cart/CartService.php';
 require_once SYSTEM_ROOT . '/body/shopping-engine/api/orders/OrderService.php';
 require_once SYSTEM_ROOT . '/core/helpers/CityResolver.php';
+require_once SYSTEM_ROOT . '/core/helpers/RateLimiter.php';
+
+// M5 (audit §4): per-user spam/brute guard. Reject with 429 when tripped.
+$shopRateLimit = function (string $action, int $max, int $windowSec) {
+    if (!RateLimiter::check($action, $max, $windowSec)) {
+        Response::error('Too many requests. Please slow down and try again.', 429);
+        exit;
+    }
+};
 
 // ── City resolution (invisible to the customer) ─────────────────────────────
 $shopAuth = AuthMiddleware::optional();
@@ -164,6 +173,7 @@ try {
     // tamper-proof billed fee. Client drop coords are ignored here.
     if ($method === 'GET' && $uri === '/api/shop/delivery-quote') {
         $uid = $shopRequireUser();
+        $shopRateLimit('shop_quote_' . $uid, 30, 60);
         require_once SYSTEM_ROOT . '/core/delivery/DeliveryEngine.php';
         $cart = (new CartService($db))->get($uid);
         $subtotal = (float)($cart['subtotal'] ?? 0);
@@ -184,6 +194,7 @@ try {
     // ── POST /api/shop/cart — add or set quantity (REUSE CartService) ───────
     if ($method === 'POST' && $uri === '/api/shop/cart') {
         $uid = $shopRequireUser(); $b = $shopBody();
+        $shopRateLimit('shop_cart_' . $uid, 60, 60);
         $pid = (int)($b['product_id'] ?? 0); $qty = (int)($b['quantity'] ?? 1);
         $op  = $b['op'] ?? 'add';
         if ($pid <= 0) { Response::validation('product_id is required'); exit; }
@@ -209,6 +220,7 @@ try {
     // ── POST /api/shop/checkout — COD (REUSE OrderService::create) ──────────
     if ($method === 'POST' && $uri === '/api/shop/checkout') {
         $uid = $shopRequireUser(); $b = $shopBody();
+        $shopRateLimit('shop_checkout_' . $uid, 10, 60);
         // Force COD here (the engine COD-locks online; enabling online is a
         // surfaced engine decision — see commerce-06 §5). Everything else — the
         // multi-vendor split, inventory locking, alignment, ledger safety — is
