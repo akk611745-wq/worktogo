@@ -275,8 +275,12 @@ class DeliveryEngine
         $db->prepare("UPDATE deliveries SET status='delivered', delivered_at=NOW() WHERE id = ?")->execute([$deliveryId]);
         $db->prepare("UPDATE delivery_riders SET active_count = GREATEST(0, active_count - 1) WHERE rider_id = ?")->execute([$riderId]);
         self::mirrorOrder($db, (int)$d['order_id'], 'delivered');
-        // NOTE: rider payout / COD cash settlement is booked by LedgerEngine::
-        // processOrderCompletion (order-settlement wiring, Phase C1) — not here.
+        // Delivered = the authoritative completion → book the order money (vendor
+        // earning + platform commission + rider payout + COD cash), idempotent and
+        // collision-safe (reference_type='order'). Non-fatal: a settlement hiccup
+        // must not un-deliver the order; the lifecycle cron retries unsettled ones.
+        try { \Core\Helpers\LedgerEngine::processCommerceOrderSettlement((int)$d['order_id'], $db); }
+        catch (\Throwable $e) { error_log('[DeliveryEngine::riderDeliver] settlement: ' . $e->getMessage()); }
         return ['status' => 'delivered'];
     }
 

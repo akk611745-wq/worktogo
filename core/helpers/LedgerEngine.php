@@ -502,6 +502,122 @@ class LedgerEngine {
     }
 
     /**
+     * COMMERCE ORDER SETTLEMENT (Fix Phase 1) — books money for a delivered
+     * multi-vendor commerce order. The commerce order model is a PARENT order
+     * (vendor_id NULL, subtotal = all items) + per-vendor SUB-orders, with the
+     * delivery/fee on the parent — a shape the legacy flat processOrderCompletion
+     * does not fit. This settles it correctly:
+     *   • per vendor sub-order: vendor pending += subtotal − commission; commission
+     *     rate priority = store override > vendor override > 10%.
+     *   • rider: earnings += rider_payout; if COD, cash_in_hand += the cash the
+     *     rider owes the platform (items + delivery − rider_payout) → this is what
+     *     makes isDriverBlocked's cash-limit guard actually live.
+     *   • platform: items commission + delivery margin.
+     * Every row is reference_type='order', reference_id = the PARENT order id, so
+     * it can NEVER collide with a service booking (reference_type='booking').
+     * TRANSACTIONAL + IDEMPOTENT: one transaction, FOR UPDATE lock on the parent,
+     * skips if orders.ledger_status='processed' or any non-refunded 'order' ledger
+     * row already exists — so a re-run (retry cron / double delivery) is a no-op.
+     * Accepts a parent id OR a sub-order id (resolves to the parent).
+     *
+     * @param int      $orderId a parent order id (or any of its sub-order ids)
+     * @param PDO|null $db      reuse the caller's connection (default: shared)
+     */
+    public static function processCommerceOrderSettlement($orderId, $db = null) {
+        $pdo = $db ?: Database::getConnection();
+        try {
+            $pdo->beginTransaction();
+
+            // Resolve to the parent order, then lock it.
+            $r = $pdo->prepare("SELECT id, parent_order_id FROM orders WHERE id = ? LIMIT 1");
+            $r->execute([(int)$orderId]);
+            $row = $r->fetch(PDO::FETCH_ASSOC);
+            if (!$row) { $pdo->rollBack(); return false; }
+            $parentId = !empty($row['parent_order_id']) ? (int)$row['parent_order_id'] : (int)$row['id'];
+
+            $ps = $pdo->prepare("SELECT id, subtotal, total, delivery_fee, payment_method, ledger_status FROM orders WHERE id = ? FOR UPDATE");
+            $ps->execute([$parentId]);
+            $order = $ps->fetch(PDO::FETCH_ASSOC);
+            if (!$order) { $pdo->rollBack(); return false; }
+            if (($order['ledger_status'] ?? null) === 'processed') { $pdo->rollBack(); return true; }
+
+            // Idempotency: any non-refunded 'order' ledger row for this parent?
+            [$refWhere, $refBind] = self::walletRefMatch($pdo, 'order', $parentId);
+            $chk = $pdo->prepare("SELECT id FROM wallet_transactions WHERE {$refWhere} AND status != 'refunded' FOR UPDATE");
+            $chk->execute($refBind);
+            if ($chk->fetch()) { $pdo->rollBack(); return true; }
+
+            $isCod = (($order['payment_method'] ?? '') === 'cod');
+            $itemsSubtotal = 0.0; $platformCommission = 0.0;
+
+            // Per-vendor sub-orders → vendor earning + platform commission.
+            $subs = $pdo->prepare("
+                SELECT o.id, o.vendor_id, o.subtotal,
+                       v.commission_rate AS vendor_rate, s.commission_rate AS store_rate
+                  FROM orders o
+                  LEFT JOIN vendors v ON v.id = o.vendor_id
+                  LEFT JOIN stores  s ON s.id = o.store_id
+                 WHERE o.parent_order_id = ? FOR UPDATE
+            ");
+            $subs->execute([$parentId]);
+            $subOrders = $subs->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($subOrders as $sub) {
+                $subtotal = (float)$sub['subtotal'];
+                $itemsSubtotal += $subtotal;
+                if (empty($sub['vendor_id'])) continue;
+                $rate = $sub['store_rate'] !== null ? (float)$sub['store_rate']
+                      : ($sub['vendor_rate'] !== null ? (float)$sub['vendor_rate'] : 10.0);
+                $commission  = round($subtotal * $rate / 100, 2);
+                $vendorShare = round($subtotal - $commission, 2);
+                self::ensureVendorWallet($pdo, (int)$sub['vendor_id']);
+                $pdo->prepare("UPDATE vendor_wallets SET pending_balance = pending_balance + ? WHERE vendor_id = ?")
+                    ->execute([$vendorShare, (int)$sub['vendor_id']]);
+                self::insertWalletTx($pdo, 'vendor', (int)$sub['vendor_id'], 'order', $parentId, 'credit', $vendorShare, 'Order earnings', 'pending');
+                $platformCommission += $commission;
+            }
+            // Fallback for a flat order (no sub-orders): the parent's own subtotal.
+            if (empty($subOrders)) { $itemsSubtotal = (float)$order['subtotal']; }
+
+            // Delivery → rider payout + COD cash owed + platform delivery margin.
+            $del = $pdo->prepare("SELECT driver_id, price, rider_payout, platform_fee FROM deliveries WHERE order_id = ? ORDER BY id DESC LIMIT 1");
+            $del->execute([$parentId]);
+            $delivery = $del->fetch(PDO::FETCH_ASSOC) ?: [];
+            $deliveryFee = isset($delivery['price']) && $delivery['price'] !== null ? (float)$delivery['price'] : (float)($order['delivery_fee'] ?? 0);
+            $riderPayout = (float)($delivery['rider_payout'] ?? 0);
+            $platformDelivery = (float)($delivery['platform_fee'] ?? 0);
+            $driverId = (int)($delivery['driver_id'] ?? 0);
+
+            if ($driverId > 0) {
+                self::ensureDriverWallet($pdo, $driverId);
+                if ($riderPayout > 0) {
+                    $pdo->prepare("UPDATE driver_wallets SET earnings = earnings + ? WHERE driver_id = ?")->execute([$riderPayout, $driverId]);
+                    self::insertWalletTx($pdo, 'driver', $driverId, 'order', $parentId, 'credit', $riderPayout, 'Delivery earnings', 'settled');
+                }
+                if ($isCod) {
+                    $owed = round($itemsSubtotal + $deliveryFee - $riderPayout, 2);
+                    if ($owed > 0) {
+                        $pdo->prepare("UPDATE driver_wallets SET cash_in_hand = cash_in_hand + ? WHERE driver_id = ?")->execute([$owed, $driverId]);
+                    }
+                }
+            }
+
+            $platformTotal = round($platformCommission + $platformDelivery, 2);
+            if ($platformTotal != 0.0) {
+                self::insertWalletTx($pdo, 'platform', null, 'order', $parentId, 'credit', $platformTotal, 'Platform commission + delivery margin (order)', 'settled');
+            }
+
+            $pdo->prepare("UPDATE orders SET ledger_status = 'processed' WHERE id = ?")->execute([$parentId]);
+            $pdo->commit();
+            return true;
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            Logger::error("LedgerEngine: commerce order settlement failed", ['error' => $e->getMessage(), 'order_id' => $orderId]);
+            return false;
+        }
+    }
+
+    /**
      * Check if driver is blocked due to exceeding cash_in_hand limit
      */
     public static function isDriverBlocked($driver_id) {
