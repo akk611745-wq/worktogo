@@ -19,6 +19,8 @@
 .st-pill{font-size:10px;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:99px;}
 .st-pending{background:#fff4e5;color:#b45309;} .st-assigned{background:#e6f0ff;color:#1d4ed8;}
 .st-picked{background:#e0f2fe;color:#0369a1;} .st-delivered{background:#e6f5ee;color:#0b7a43;} .st-cancelled{background:#fde8e8;color:#b91c1c;}
+.fl{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;padding:2px 7px;border-radius:99px;margin-left:6px;}
+.fl-no_rider{background:#fde8e8;color:#b91c1c;} .fl-stuck{background:#fef2c7;color:#92400e;} .fl-late{background:#ffe4e6;color:#9f1239;}
 .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;} .dot.on{background:#10b981;} .dot.off{background:#9ca3af;}
 .row2{display:flex;gap:10px;}.row2>*{flex:1;}
 .sec-title{font-size:14px;font-weight:700;color:var(--text-primary);margin:8px 2px 12px;display:flex;justify-content:space-between;align-items:center;}
@@ -39,7 +41,9 @@
         <button class="btn btn-primary btn-sm" onclick="openRate(null)">+ Add rate card</button></div>
       <div class="dc-grid" id="rates"><div class="spinner"></div></div>
 
-      <div class="sec-title" style="margin-top:24px">Live deliveries</div>
+      <div class="sec-title" style="margin-top:24px">Live deliveries
+        <label style="font-size:12px;font-weight:400;color:var(--text-secondary);display:inline-flex;align-items:center;gap:6px">
+          <input type="checkbox" id="f-attention" onchange="loadDeliveries()"> Needs attention only</label></div>
       <div class="card-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Store</th><th>Rider</th><th>Dist</th><th>Fee</th><th>Status</th><th></th></tr></thead>
         <tbody id="deliveries"><tr><td colspan="7" style="text-align:center;padding:20px"><div class="spinner" style="margin:auto"></div></td></tr></tbody></table></div>
 
@@ -151,14 +155,16 @@ async function toggleRate(id, active) { try { await dapi('PATCH', `/delivery/adm
 
 async function loadDeliveries() {
   const tb = document.getElementById('deliveries');
+  const attention = document.getElementById('f-attention')?.checked ? '?attention=1' : '';
   try {
-    const d = await dapi('GET', '/delivery/admin/deliveries');
+    const d = await dapi('GET', '/delivery/admin/deliveries' + attention);
     const rows = d.deliveries || [];
+    const flagPill = f => (f && f !== 'none') ? `<span class="fl fl-${escHtml(f)}">${escHtml(f.replace('_', ' '))}</span>` : '';
     tb.innerHTML = rows.length ? rows.map(x => `<tr>
       <td>#${escHtml(x.order_number || x.order_id)}</td><td>${escHtml(x.store_name || '—')}</td>
       <td>${escHtml(x.rider_name || '—')}</td><td>${x.distance_km ?? '—'} km</td><td>${money(x.price)}</td>
-      <td><span class="st-pill st-${escHtml(x.status)}">${escHtml(x.status)}</span></td>
-      <td>${['pending','assigned'].includes(x.status) ? `<button class="btn btn-ghost btn-sm" onclick="reassign(${x.id})">Reassign</button>` : ''}</td>
+      <td><span class="st-pill st-${escHtml(x.status)}">${escHtml(x.status)}</span>${flagPill(x.flag)}</td>
+      <td>${['pending','assigned','picked'].includes(x.status) ? `<button class="btn btn-ghost btn-sm" onclick="reassign(${x.id})">Reassign</button>` : ''}</td>
     </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;padding:18px;color:var(--text-muted)">No deliveries yet</td></tr>';
   } catch (e) { tb.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--red)">${escHtml(e.message)}</td></tr>`; }
 }

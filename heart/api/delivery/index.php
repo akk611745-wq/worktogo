@@ -119,16 +119,19 @@ try {
             $where = ['1=1']; $bind = [];
             if (isset($_GET['status']) && $_GET['status'] !== '') { $where[] = 'd.status = ?'; $bind[] = $_GET['status']; }
             if (isset($_GET['city_id']) && $_GET['city_id'] !== '') { $where[] = 'd.city_id = ?'; $bind[] = (int)$_GET['city_id']; }
+            if (!empty($_GET['attention'])) { $where[] = "d.flag <> 'none'"; }
             $st = $db->prepare(
                 "SELECT d.id, d.order_id, d.status, d.price, d.distance_km, d.city_id, d.driver_id,
                         d.assigned_at, d.picked_at, d.delivered_at, d.created_at,
+                        d.flag, d.flagged_at, d.assign_attempts, d.eta_minutes,
                         o.order_number, s.name AS store_name, u.name AS rider_name
                    FROM deliveries d
                    LEFT JOIN orders o ON o.id = d.order_id
                    LEFT JOIN stores s ON s.id = d.store_id
                    LEFT JOIN users  u ON u.id = d.driver_id
                   WHERE " . implode(' AND ', $where) . "
-                  ORDER BY FIELD(d.status,'pending','assigned','picked','delivered','cancelled'), d.created_at DESC
+                  ORDER BY (d.flag <> 'none') DESC,
+                           FIELD(d.status,'pending','assigned','picked','delivered','cancelled'), d.created_at DESC
                   LIMIT 200"
             );
             $st->execute($bind);

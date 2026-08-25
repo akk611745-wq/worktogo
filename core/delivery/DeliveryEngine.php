@@ -130,18 +130,20 @@ class DeliveryEngine
         $token = 'DLV' . strtoupper(bin2hex(random_bytes(6)));
 
         if ($deliveryId === 0) {
+            // ETA estimate = prep time + travel (≈4 min/km ~ 15 km/h city riding).
+            $eta = (int) round(10 + (float)($q['distance_km'] ?? 0) * 4);
             $db->prepare(
                 "INSERT INTO deliveries
                     (order_id, store_id, city_id, rate_card_id, status, distance_km, price, rider_payout,
-                     platform_fee, pickup_lat, pickup_lng, drop_lat, drop_lng, tracking_token, created_at)
+                     platform_fee, pickup_lat, pickup_lng, drop_lat, drop_lng, tracking_token, eta_minutes, created_at)
                  VALUES (:oid, :store, :city, :rc, 'pending', :dist, :price, :rp, :pf,
-                     :plat, :plng, :dlat, :dlng, :tok, NOW())"
+                     :plat, :plng, :dlat, :dlng, :tok, :eta, NOW())"
             )->execute([
                 ':oid' => $orderId, ':store' => $pickup['store_id'] ?? null, ':city' => $cityId,
                 ':rc' => $q['rate_card_id'], ':dist' => $q['distance_km'], ':price' => $q['price'],
                 ':rp' => $q['rider_payout'], ':pf' => $q['platform_fee'],
                 ':plat' => $pickup['lat'] ?? null, ':plng' => $pickup['lng'] ?? null,
-                ':dlat' => $dropLat, ':dlng' => $dropLng, ':tok' => $token,
+                ':dlat' => $dropLat, ':dlng' => $dropLng, ':tok' => $token, ':eta' => $eta,
             ]);
             $deliveryId = (int)$db->lastInsertId();
         }
