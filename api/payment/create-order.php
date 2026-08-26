@@ -134,8 +134,14 @@ echo json_encode([
     'status'             => 'success',
     'payment_method'     => 'online',
     'order_id'           => $orderId,
-    'cashfree_order_id'  => $result['cashfree_order_id'],
-    'payment_session_id' => $result['payment_session_id'],
-    'order_token'        => $result['order_token'],
-    'cashfree_env'       => $result['cashfree_env'],
+    // ── Gateway-agnostic keys (abstraction layer) ─────────────────────────────
+    'gateway'            => $result['gateway']          ?? null,
+    'gateway_order_id'   => $result['gateway_order_id'] ?? null,
+    'failover'           => $result['failover']         ?? false,
+    'mode'               => $result['mode']             ?? null,
+    'payment_session_id' => $result['payment_session_id'] ?? null,
+    'order_token'        => $result['order_token']      ?? null,
+    // ── Back-compat keys for existing Cashfree consumers (superset) ───────────
+    'cashfree_order_id'  => $result['cashfree_order_id'] ?? null,
+    'cashfree_env'       => $result['cashfree_env']      ?? null,
 ]);

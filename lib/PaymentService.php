@@ -12,16 +12,20 @@
 
 require_once __DIR__ . '/../config/payment.config.php';
 require_once __DIR__ . '/CashfreeClient.php';
+require_once __DIR__ . '/payment/PaymentGatewayManager.php';
 
 class PaymentService
 {
-    private PDO    $db;
-    private CashfreeClient $cashfree;
+    private PDO $db;
+    private PaymentGatewayManager $gateways;
 
-    public function __construct(PDO $db)
+    public function __construct(PDO $db, ?PaymentGatewayManager $gateways = null)
     {
-        $this->db       = $db;
-        $this->cashfree = new CashfreeClient();
+        $this->db = $db;
+        // Route all gateway I/O through the abstraction layer. Adding/swapping a
+        // gateway (Cashfree, Razorpay, …) or enabling failover is config-only;
+        // this orchestrator never names a concrete gateway.
+        $this->gateways = $gateways ?? new PaymentGatewayManager($db);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -34,21 +38,23 @@ class PaymentService
      * @param int    $orderId    Internal order ID
      * @param float  $amount     Order amount in INR (must match DB — server-side only)
      * @param array  $user       ['id', 'name', 'email', 'phone']
-     * @return array ['success', 'payment_session_id', 'order_token', 'cashfree_order_id', 'error']
+     * @param string $engine     Payment engine context ('commerce'|'service'|'video')
+     *                           — selects the primary/secondary gateway routing.
+     * @return array ['success', 'gateway', 'payment_session_id', 'order_token',
+     *                'cashfree_order_id', 'cashfree_env', 'failover', 'error']
      */
-    public function createOnlinePaymentOrder(int $orderId, float $amount, array $user): array
+    public function createOnlinePaymentOrder(int $orderId, float $amount, array $user, string $engine = 'commerce'): array
     {
-        // ── F15: ENV guard — return 503 if Cashfree not configured ───────────
-        $cashfreeId = (string)(getenv('CASHFREE_APP_ID') ?: '');
-        if (
-            empty($cashfreeId) ||
-            strpos($cashfreeId, 'placeholder') !== false ||
-            strpos($cashfreeId, 'your_') !== false
-        ) {
+        // ── Gateway availability guard — 503 if this engine has NO usable gateway
+        //    (primary or secondary). Replaces the old Cashfree-only F15 guard;
+        //    engine-scoped so one engine's outage never blocks another. ─────────
+        $route = $this->gateways->routeFor($engine);
+        $haveGateway = $this->gateways->isUsable($route['primary'])
+            || ($route['secondary'] !== null && $this->gateways->isUsable($route['secondary']));
+        if (!$haveGateway) {
             http_response_code(503);
             return ['success' => false, 'error' => 'Payment gateway not configured. Contact support.'];
         }
-        // ── End F15 ──────────────────────────────────────────────────────────
 
         // ── 1. Validate order exists and is in correct state ─────────────────
         $order = $this->fetchOrder($orderId);
@@ -73,50 +79,62 @@ class PaymentService
             'payment_status' => 'unpaid',
         ]);
 
-        // ── 4. Build Cashfree order payload ───────────────────────────────────
-        $cfOrderId = 'WTG_' . $orderId . '_' . time(); // Unique Cashfree order ID
+        // ── 4. Build a gateway-NEUTRAL order reference + normalised request ───
+        //    The reference (WTG_{id}_{ts}) is ours and collision-safe against
+        //    booking refs (WTG_B{id}_{ts}); it becomes the webhook correlation key.
+        $orderRef = 'WTG_' . $orderId . '_' . time();
 
-        $payload = [
-            'order_id'       => $cfOrderId,
-            'order_amount'   => $dbAmount,
-            'order_currency' => 'INR',
-            'customer_details' => [
-                'customer_id'    => (string)$user['id'],
-                'customer_name'  => $this->sanitizeString($user['name']),
-                'customer_email' => filter_var($user['email'], FILTER_SANITIZE_EMAIL),
-                'customer_phone' => preg_replace('/\D/', '', $user['phone']),
+        $request = [
+            'order_ref'  => $orderRef,
+            'amount'     => $dbAmount,
+            'currency'   => 'INR',
+            'customer'   => [
+                'id'    => (string)$user['id'],
+                'name'  => (string)($user['name']  ?? 'Customer'),
+                'email' => (string)($user['email'] ?? ''),
+                'phone' => (string)($user['phone'] ?? ''),
             ],
-            'order_meta' => [
-                'return_url'   => PAYMENT_RETURN_URL . '?order_id=' . $orderId,
-                'notify_url'   => PAYMENT_WEBHOOK_URL,
-            ],
-            'order_tags' => [
+            'return_url' => PAYMENT_RETURN_URL . '?order_id=' . $orderId,
+            'notify_url' => PAYMENT_WEBHOOK_URL,
+            'tags'       => [
                 'internal_order_id' => (string)$orderId,
+                'reference_type'    => 'order',
                 'platform'          => 'worktogo',
             ],
         ];
 
-        // ── 5. Call Cashfree API ───────────────────────────────────────────────
-        $result = $this->cashfree->post('/orders', $payload);
+        // ── 5. Route through the abstraction layer (primary → secondary failover)
+        $result = $this->gateways->createOrderWithFailover($engine, $request);
 
-        if (!$result['success']) {
-            return $this->fail('Payment gateway error: ' . $result['error']);
+        if (empty($result['success'])) {
+            return $this->fail('Payment gateway error: ' . ($result['error'] ?? 'unknown'));
         }
 
-        $cfData = $result['data'];
+        $gateway = (string)($result['gateway'] ?? $route['primary']);
 
-        // ── 6. Store Cashfree order ID in DB for webhook correlation ──────────
+        // ── 6. Persist the correlation reference + WHICH gateway handled it ───
+        //    payment_gateway lets the webhook verify/settle with the correct
+        //    gateway. Written defensively (skipped if the column is absent).
         $this->updateOrderPaymentMeta($orderId, [
-            'payment_id' => $cfOrderId,
+            'payment_id'      => $orderRef,
+            'payment_gateway' => $gateway,
         ]);
 
         return [
-            'success'           => true,
-            'payment_session_id' => $cfData['payment_session_id'] ?? null,
-            'order_token'       => $cfData['order_token'] ?? null,
-            'cashfree_order_id' => $cfOrderId,
-            'cashfree_env'      => strtolower(CASHFREE_ENV),
-            'error'             => null,
+            'success'            => true,
+            'gateway'            => $gateway,
+            'payment_gateway'    => $gateway,
+            'failover'           => (bool)($result['failover'] ?? false),
+            'gateway_order_id'   => $result['gateway_order_id'] ?? $orderRef,
+            'payment_session_id' => $result['payment_session_id'] ?? null,
+            'order_token'        => $result['order_token'] ?? null,
+            'mode'               => $result['mode'] ?? null,
+            // ── Back-compat keys for existing Cashfree-era consumers ──────────
+            'cashfree_order_id'  => ($gateway === 'cashfree') ? $orderRef : null,
+            'cashfree_env'       => ($gateway === 'cashfree')
+                ? ($result['mode'] ?? strtolower((string)(defined('CASHFREE_ENV') ? CASHFREE_ENV : 'test')))
+                : null,
+            'error'              => null,
         ];
     }
 
@@ -160,45 +178,79 @@ class PaymentService
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Processes a verified Cashfree webhook payload.
-     * Idempotent: safe to call multiple times with the same event.
+     * Back-compat entry point: process a raw Cashfree webhook payload.
+     * Kept so any legacy caller keeps working; new callers should verify + parse
+     * with the correct gateway adapter and call processWebhookEvent().
      *
-     * @param array $payload  Decoded webhook JSON body
+     * @param array $payload  Decoded Cashfree webhook JSON body
      * @return array ['success', 'message', 'error']
      */
     public function processWebhook(array $payload): array
     {
-        // ── Extract fields from Cashfree webhook structure ────────────────────
-        $cfOrderId     = $payload['data']['order']['order_id']     ?? null;
-        $cfOrderStatus = $payload['data']['order']['order_status'] ?? null;
-        $cfAmount      = $payload['data']['order']['order_amount'] ?? null;
-        $paymentStatus = $payload['data']['payment']['payment_status'] ?? null;
-        $txnId         = $payload['data']['payment']['cf_payment_id'] ?? null;
+        require_once __DIR__ . '/payment/CashfreeAdapter.php';
+        $adapter = new CashfreeAdapter();
+        // Signature verification is the endpoint's responsibility (needs the raw
+        // body); here we only normalise an already-trusted Cashfree payload.
+        $event = $adapter->parseWebhook('', $payload);
+        return $this->processWebhookEvent($event);
+    }
 
-        if (!$cfOrderId) {
-            error_log("[PaymentService][Webhook] Missing order_id in payload.");
-            return $this->fail("Invalid webhook payload.");
+    /**
+     * Processes a VERIFIED, NORMALISED webhook event from ANY gateway.
+     * Idempotent and gateway-agnostic. The calling endpoint must have already
+     * verified the signature with the correct gateway adapter.
+     *
+     * @param array $event Normalised event (see PaymentGateway::parseWebhook):
+     *                     gateway, order_ref, gateway_txn_id, amount,
+     *                     internal_status ('paid'|'failed'|'unpaid'), event_type.
+     * @return array ['success', 'message', 'error']
+     */
+    public function processWebhookEvent(array $event): array
+    {
+        $orderRef     = $event['order_ref'] ?? null;
+        $eventGateway = strtolower((string)($event['gateway'] ?? ''));
+        $cfAmount     = $event['amount'] ?? null;
+        $txnId        = $event['gateway_txn_id'] ?? null;
+        $newStatus    = (string)($event['internal_status'] ?? 'unpaid');
+        if (!in_array($newStatus, ['paid', 'failed', 'unpaid'], true)) {
+            $newStatus = 'unpaid';
+        }
+
+        if (!$orderRef) {
+            error_log("[PaymentService][Webhook] Missing order_ref in event.");
+            return $this->fail("Invalid webhook event.");
         }
 
         try {
             $this->db->beginTransaction();
 
-            // ── Find internal payment target by exact Cashfree order reference ─────
-            $target = $this->fetchPaymentTargetForUpdate($cfOrderId);
+            // ── Find internal payment target by exact order reference ─────────────
+            $target = $this->fetchPaymentTargetForUpdate((string)$orderRef);
 
             if (!$target) {
                 $this->db->rollBack();
-                error_log("[PaymentService][Webhook] No order found for cf_order_id=$cfOrderId");
-                return $this->fail("Order not found for reference: $cfOrderId");
+                error_log("[PaymentService][Webhook] No order found for order_ref=$orderRef");
+                return $this->fail("Order not found for reference: $orderRef");
             }
 
             $internalOrderId = (int)$target['id'];
-            $referenceType = (string)$target['reference_type'];
+            $referenceType   = (string)$target['reference_type'];
+            $storedGateway   = strtolower((string)($target['payment_gateway'] ?? ''));
+
+            // ── Defense: a webhook from gateway X must never settle an order that
+            //    was created on gateway Y. Legacy rows (no stored gateway) are
+            //    accepted and backfilled below. ─────────────────────────────────
+            if ($storedGateway !== '' && $eventGateway !== '' && $storedGateway !== $eventGateway) {
+                $this->db->rollBack();
+                error_log("[PaymentService][Webhook] Gateway mismatch for $orderRef: stored=$storedGateway event=$eventGateway");
+                return $this->fail("Gateway mismatch for reference: $orderRef");
+            }
+            $effectiveGateway = $eventGateway ?: ($storedGateway ?: 'cashfree');
 
             // ── Idempotency: skip if already processed ────────────────────────────
             if ($target['payment_status'] === 'paid') {
-                $this->ensureSuccessfulTransaction($target, $cfAmount, $txnId);
-                if ($target['reference_type'] === 'booking') {
+                $this->ensureSuccessfulTransaction($target, $cfAmount, $txnId, $effectiveGateway);
+                if ($referenceType === 'booking') {
                     $this->syncPaidBookingPropagation((int)$target['id']);
                 }
                 $this->db->rollBack();
@@ -214,18 +266,21 @@ class PaymentService
                 return $this->fail("Amount mismatch in webhook. Flagged for review.");
             }
 
-            // ── Map Cashfree status to internal status ─────────────────────────────
-            $newStatus   = $this->mapCashfreeStatus($cfOrderStatus, $paymentStatus);
             $orderStatus = ($newStatus === 'paid') ? 'confirmed' : null;
 
             $meta = [
                 'payment_status' => $newStatus,
             ];
             if ($txnId) {
-                $meta['payment_id'] = $cfOrderId . '|txn:' . $txnId;
+                $meta['payment_id'] = $orderRef . '|txn:' . $txnId;
             }
             if ($orderStatus) {
                 $meta['status'] = $orderStatus;
+            }
+            // Backfill the gateway on rows created before the column existed
+            // (e.g. the inline service-engine path). Written defensively.
+            if ($storedGateway === '') {
+                $meta['payment_gateway'] = $effectiveGateway;
             }
 
             $updated = $this->updatePaymentTargetMeta($referenceType, $internalOrderId, $meta);
@@ -236,7 +291,7 @@ class PaymentService
             }
 
             if ($newStatus === 'paid') {
-                $this->ensureSuccessfulTransaction($target, $cfAmount, $txnId);
+                $this->ensureSuccessfulTransaction($target, $cfAmount, $txnId, $effectiveGateway);
                 if ($referenceType === 'booking') {
                     $this->syncPaidBookingPropagation($internalOrderId);
                 }
@@ -350,12 +405,18 @@ class PaymentService
 
     private function fetchPaymentTargetForUpdate(string $reference): ?array
     {
+        // Select payment_gateway defensively — the column may not exist on a DB
+        // where the abstraction migration hasn't run (existing Cashfree-only setup).
+        // The expression is derived from a schema check, never from user input.
+        $orderGw   = $this->tableHasColumn('orders', 'payment_gateway')   ? 'payment_gateway' : 'NULL AS payment_gateway';
+        $bookingGw = $this->tableHasColumn('bookings', 'payment_gateway') ? 'payment_gateway' : 'NULL AS payment_gateway';
+
         $orderStmt = $this->db->prepare(
-            'SELECT id, user_id, total, payment_status, payment_method, :reference_type AS reference_type
+            "SELECT id, user_id, total, payment_status, payment_method, $orderGw, :reference_type AS reference_type
              FROM orders
              WHERE payment_id = :ref
                 OR payment_id LIKE :ref_prefix
-             LIMIT 1 FOR UPDATE'
+             LIMIT 1 FOR UPDATE"
         );
         $orderStmt->execute([
             ':reference_type' => 'order',
@@ -366,11 +427,11 @@ class PaymentService
         if ($order) return $order;
 
         $bookingStmt = $this->db->prepare(
-            'SELECT id, user_id, total, payment_status, payment_method, :reference_type AS reference_type
+            "SELECT id, user_id, total, payment_status, payment_method, $bookingGw, :reference_type AS reference_type
              FROM bookings
              WHERE payment_id = :ref
                 OR payment_id LIKE :ref_prefix
-             LIMIT 1 FOR UPDATE'
+             LIMIT 1 FOR UPDATE"
         );
         $bookingStmt->execute([
             ':reference_type' => 'booking',
@@ -390,6 +451,7 @@ class PaymentService
             'payment_status',
             'payment_method',
             'payment_id',
+            'payment_gateway',
             'status',
         ];
 
@@ -398,6 +460,8 @@ class PaymentService
 
         foreach ($meta as $col => $val) {
             if (!in_array($col, $allowed, true)) continue;
+            // Schema-defensive: skip the new column if the DB hasn't migrated yet.
+            if ($col === 'payment_gateway' && !$this->tableHasColumn('orders', 'payment_gateway')) continue;
             $setClauses[] = "`$col` = :$col";
             $params[":$col"] = $val;
         }
@@ -419,6 +483,7 @@ class PaymentService
             'payment_status',
             'payment_method',
             'payment_id',
+            'payment_gateway',
             'status',
         ];
 
@@ -427,6 +492,8 @@ class PaymentService
 
         foreach ($meta as $col => $val) {
             if (!in_array($col, $allowed, true)) continue;
+            // Schema-defensive: skip the new column if the DB hasn't migrated yet.
+            if ($col === 'payment_gateway' && !$this->tableHasColumn('bookings', 'payment_gateway')) continue;
             $setClauses[] = "`$col` = :$col";
             $params[":$col"] = $val;
         }
@@ -438,7 +505,7 @@ class PaymentService
         return $stmt->execute($params);
     }
 
-    private function ensureSuccessfulTransaction(array $target, mixed $cfAmount, ?string $txnId): void
+    private function ensureSuccessfulTransaction(array $target, mixed $cfAmount, ?string $txnId, string $gateway = 'cashfree'): void
     {
         $txnCheck = $this->db->prepare(
             'SELECT id
@@ -472,7 +539,7 @@ class PaymentService
             ':reference_type' => (string)$target['reference_type'],
             ':amount'         => $amount,
             ':status'         => 'success',
-            ':gateway'        => 'cashfree',
+            ':gateway'        => $gateway !== '' ? $gateway : 'cashfree',
             ':gateway_ref'    => $txnId,
         ]);
     }
@@ -528,23 +595,10 @@ class PaymentService
     // ─────────────────────────────────────────────────────────────────────────
     // Utility
     // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Maps Cashfree order/payment status to internal status.
-     */
-    private function mapCashfreeStatus(?string $orderStatus, ?string $paymentStatus): string
-    {
-        $status = strtoupper((string)($paymentStatus ?: $orderStatus));
-
-        return match ($status) {
-            'SUCCESS', 'PAID'    => 'paid',
-            'FAILED', 'FAILURE'  => 'failed',
-            'USER_DROPPED'       => 'failed',
-            'CANCELLED'          => 'failed',
-            'FLAGGED'            => 'unpaid', // Needs manual review
-            default              => 'unpaid',
-        };
-    }
+    //
+    // NOTE: gateway status mapping now lives in each gateway adapter
+    // (e.g. CashfreeAdapter::mapStatus) — the single source of truth — so it is
+    // no longer duplicated here. This closes the drift risk flagged in the audit.
 
     private function sanitizeString(string $input): string
     {
