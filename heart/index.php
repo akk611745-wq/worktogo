@@ -217,6 +217,14 @@ if (str_starts_with($uri, '/api/shop')) {
     exit;
 }
 
+// Agent API (AI assistant front-door — register-gated, privacy-walled).
+// Clean-scoped: all logic lives in core/agent/*; this reuses the never-touch
+// engines only later via adapters, never editing them. See heart/api/agent/index.php.
+if (str_starts_with($uri, '/api/agent')) {
+    require_once HEART_ROOT . '/api/agent/index.php';
+    exit;
+}
+
 // Shopping Orders API
 if (str_starts_with($uri, '/api/orders') || $uri === '/api/order/create' || str_starts_with($uri, '/api/vendor/orders')) {
     require_once SYSTEM_ROOT . '/body/shopping-engine/api/orders/index.php';
