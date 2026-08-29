@@ -84,24 +84,39 @@ try {
             Response::tooManyRequests('You are messaging too fast. Please wait a moment.');
         }
 
-        // 4. Validate input.
+        // 4. Validate input. A turn is a message, an explicit action (tapped
+        //    card), or a confirmation of a pending write — at least one.
         $body    = json_decode(file_get_contents('php://input'), true) ?: [];
         $message = is_string($body['message'] ?? null) ? trim($body['message']) : '';
-        if ($message === '') {
-            Response::validation('A message is required.');
+        $action  = is_array($body['action'] ?? null) ? $body['action'] : null;
+        $confirm = is_string($body['confirm_token'] ?? null) ? $body['confirm_token'] : '';
+        if ($message === '' && $action === null && $confirm === '') {
+            Response::validation('A message, action, or confirm_token is required.');
         }
         if (mb_strlen($message) > 2000) {
             Response::validation('Message is too long (max 2000 characters).');
         }
 
-        // 5. Run the turn through the wall + provider layer.
+        // 5. Forward the caller's own JWT to the backend so the engine authorizes
+        //    the REAL user (RBAC/ownership/city). The agent never elevates.
+        $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+        $bearer     = str_starts_with($authHeader, 'Bearer ') ? trim(substr($authHeader, 7)) : null;
+
+        // 6. Build the action runtime: wall + planner + tool registry + engine.
         $wall         = new PiiWall($db);
         $manager      = new AiProviderManager($db);
-        $orchestrator = new AgentOrchestrator($wall, $manager, $db);
+        $registry     = ToolRegistry::defaultRegistry();
+        $planner      = new ToolPlanner($wall, $manager, $registry);
+        $engine       = new HttpEngineClient($bearer);
+        $orchestrator = new AgentActionOrchestrator($wall, $planner, $registry, $engine, $db);
         $ctx          = AgentContext::fromAuth($auth, $body, $db);
 
         try {
-            $result = $orchestrator->handle($ctx, $message);
+            $result = $orchestrator->handle($ctx, [
+                'message'       => $message,
+                'action'        => $action,
+                'confirm_token' => $confirm,
+            ]);
         } catch (PiiLeakException $e) {
             // Fail-closed: nothing was sent. Ask the user to rephrase — never echo the reason.
             Logger::warning('agent.pii_blocked', ['request_id' => $ctx->requestId]);

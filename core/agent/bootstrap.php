@@ -25,3 +25,12 @@ require_once __DIR__ . '/ai/OpenAiAdapter.php';
 require_once __DIR__ . '/ai/GeminiAdapter.php';
 require_once __DIR__ . '/ai/AiProviderManager.php';
 require_once __DIR__ . '/AgentOrchestrator.php';
+
+// ── Phase 2: action / tool layer ─────────────────────────────────────────────
+require_once __DIR__ . '/tools/EngineClient.php';
+require_once __DIR__ . '/tools/AgentTool.php';
+require_once __DIR__ . '/tools/ServiceTools.php';
+require_once __DIR__ . '/tools/ToolRegistry.php';
+require_once __DIR__ . '/tools/ConfirmToken.php';
+require_once __DIR__ . '/ToolPlanner.php';
+require_once __DIR__ . '/AgentActionOrchestrator.php';
