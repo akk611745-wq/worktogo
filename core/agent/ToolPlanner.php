@@ -82,8 +82,8 @@ final class ToolPlanner
             return new ToolPlan('list_my_jobs', [], 'Here are your jobs.', 'deterministic');
         }
 
-        // Customer: a category keyword ⇒ find vendors. Covers "painter chahiye",
-        // "need a plumber", "plumber dikhao", "electrician chahiye", …
+        // Customer: a SERVICE category keyword ⇒ find vendors. Covers "painter
+        // chahiye", "need a plumber", "plumber dikhao", "electrician chahiye", …
         if ($ctx->role === 'customer') {
             $category = $this->detectCategory($m);
             if ($category !== null) {
@@ -94,9 +94,44 @@ final class ToolPlanner
                     'deterministic'
                 );
             }
+
+            // Customer COMMERCE intents (Phase 5). Cart / orders first (specific),
+            // then a general shopping keyword ⇒ browse products with the query.
+            if (str_contains($m, 'cart') || str_contains($m, 'basket') || str_contains($m, 'tokri')) {
+                return new ToolPlan('view_cart', [], 'Yeh raha aapka cart 🛒', 'deterministic');
+            }
+            if (str_contains($m, 'my order') || str_contains($m, 'mere order') || str_contains($m, 'meri order') || str_contains($m, 'order status') || str_contains($m, 'order kahan')) {
+                return new ToolPlan('list_orders', [], 'Yeh rahi aapki recent orders 📦', 'deterministic');
+            }
+            if ($this->looksLikeShopping($m)) {
+                return new ToolPlan('browse_products', ['query' => $this->shoppingQuery($message)], 'Dekhiye aapke area ke products 🛍️', 'deterministic');
+            }
         }
 
         return null; // fall through to the AI
+    }
+
+    /** Does the message read like a shopping intent? */
+    private function looksLikeShopping(string $lowerMessage): bool
+    {
+        foreach (['kapde', 'kapda', 'clothes', 'kurta', 'kurti', 'shirt', 'saree', 'jeans',
+                  'shoes', 'juta', 'grocery', 'saaman', 'saman', 'product', 'shop', 'kharid',
+                  'buy', 'khareed', 'gift', 'diwali', 'kharidna', 'shopping'] as $word) {
+            if (str_contains($lowerMessage, $word)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** A light free-text query for the storefront search (drops filler words). */
+    private function shoppingQuery(string $message): string
+    {
+        $stop = ['chahiye', 'chaiye', 'mujhe', 'ek', 'ke', 'liye', 'aa', 'rahi', 'raha', 'hai',
+                 'dikhao', 'need', 'want', 'the', 'buy', 'some', 'and', 'for'];
+        $words = preg_split('/\s+/', mb_strtolower(trim($message))) ?: [];
+        $kept  = array_values(array_filter($words, static fn ($w) => $w !== '' && !in_array($w, $stop, true) && mb_strlen($w) >= 3));
+        return trim(implode(' ', array_slice($kept, 0, 4)));
     }
 
     /** First recognised service category word in the message, else null. */

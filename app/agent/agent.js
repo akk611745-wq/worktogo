@@ -87,7 +87,7 @@ function shell() {
 // warm generic greeting; returning users are recognised ("I know you like …").
 async function openGreeting() {
   const name = friendlyName();
-  const defaultChips = ["painter chahiye", "plumber chahiye", "painting packages", "expert visit"];
+  const defaultChips = ["painter chahiye", "kapde chahiye", "painting packages", "expert visit"];
 
   if (S.mock) {
     const g = mockGreeting(name);
@@ -182,6 +182,18 @@ function handle(res) {
     d.packages.length ? renderPackageCards(d.packages) : addAgent("Is category ke liye abhi packages set nahi hain.");
   } else if (res.tool === "get_expert_visit_price" && (("amount" in d) || ("is_free" in d))) {
     renderExpertPrice(d, res._category || S.lastCategory);
+  } else if (res.tool === "browse_products" && Array.isArray(d.products)) {
+    d.products.length ? renderProductCards(d.products) : addAgent("Is search ke liye abhi koi product nahi mila. 😔");
+  } else if (res.tool === "get_product" && d.product) {
+    renderProductCards([d.product]);
+  } else if (res.tool === "add_to_cart") {
+    renderCartAdded(d);
+  } else if (res.tool === "view_cart") {
+    renderCart(d);
+  } else if (res.tool === "list_orders" && Array.isArray(d.orders)) {
+    d.orders.length ? renderOrders(d.orders) : addAgent("Abhi koi order nahi hai.");
+  } else if (res.tool === "track_order" && d.order) {
+    renderOrderDetail(d.order);
   } else if (res.widget) {
     renderWidget(res.widget);   // unified inline action: confirm / upload / otp
   } else if (res.requires_confirmation) {
@@ -190,6 +202,8 @@ function handle(res) {
     renderBooking(d, "Booking");
   } else if (res.executed && res.tool === "request_expert_visit") {
     renderBooking(d, "Expert visit");
+  } else if (res.executed && res.tool === "checkout") {
+    renderOrderPlaced(d);
   }
   // rejected / degraded / chat: the reply bubble already said it.
 }
@@ -441,6 +455,158 @@ async function proposeExpertVisit(category) {
   setBusy(false);
 }
 
+// ── Commerce (Phase 5): product cards, cart, checkout, orders ────────────────
+function productImage(p) {
+  let img = p.image || p.thumbnail || p.image_url || "";
+  if (!img && p.images) {
+    if (Array.isArray(p.images)) img = p.images[0] || "";
+    else if (typeof p.images === "string") { try { const a = JSON.parse(p.images); img = Array.isArray(a) ? a[0] : p.images; } catch { img = p.images; } }
+  }
+  return typeof img === "string" ? img : (img && img.url) || "";
+}
+function priceHtml(p) {
+  const price = Number(p.price || 0);
+  const sale = p.sale_price != null && Number(p.sale_price) > 0 && Number(p.sale_price) < price ? Number(p.sale_price) : null;
+  if (sale != null) return `<span class="ag-price">₹${esc(sale)}</span> <span class="ag-price-strike">₹${esc(price)}</span>`;
+  return `<span class="ag-price">₹${esc(price)}</span>`;
+}
+
+function renderProductCards(products) {
+  const cards = cardWrap();
+  products.slice(0, 8).forEach((p) => {
+    const name = p.name || "Product";
+    const img = productImage(p);
+    const rating = p.rating != null && Number(p.rating) > 0 ? Number(p.rating).toFixed(1) : null;
+    const card = el(`
+      <div class="ag-card ag-product">
+        <div class="ag-product-row">
+          ${img ? `<img class="ag-product-img" src="${esc(img)}" alt="" loading="lazy" onerror="this.style.display='none'"/>` : `<div class="ag-product-img ag-noimg">🛍️</div>`}
+          <div class="ag-product-meta">
+            <div class="ag-card-title">${esc(name)}</div>
+            <div class="ag-card-sub">${esc(p.store_name || "")}${p.is_company ? ' · <span class="ag-badge ok">Company</span>' : ""}</div>
+            <div class="ag-price-row">${priceHtml(p)} ${rating ? `<span class="ag-badge star">⭐ ${esc(rating)}</span>` : ""}</div>
+          </div>
+        </div>
+        <div class="ag-card-actions">
+          <button class="ag-btn primary" data-add="${esc(p.id)}" data-name="${esc(name)}">Add to cart</button>
+        </div>
+      </div>`);
+    card.querySelector("[data-add]").addEventListener("click", (e) =>
+      addToCart(e.currentTarget.getAttribute("data-add"), e.currentTarget.getAttribute("data-name")));
+    cards.appendChild(card);
+  });
+  mountCards(cards);
+}
+
+function renderCartAdded(cart) {
+  const count = cart && (cart.count != null ? cart.count : (Array.isArray(cart.items) ? cart.items.length : 0));
+  const subtotal = cart && (cart.subtotal != null ? cart.subtotal : 0);
+  const cards = cardWrap();
+  const card = el(`
+    <div class="ag-card ag-success">
+      <div class="ag-card-title">Cart mein add ho gaya ✓</div>
+      <div class="ag-card-sub">${esc(count)} item(s)${subtotal ? " · ₹" + esc(subtotal) : ""}</div>
+      <div class="ag-card-actions">
+        <button class="ag-btn primary" data-checkout>Checkout (COD)</button>
+        <button class="ag-btn ghost" data-viewcart>View cart</button>
+      </div>
+    </div>`);
+  card.querySelector("[data-checkout]").addEventListener("click", proposeCheckout);
+  card.querySelector("[data-viewcart]").addEventListener("click", () => run({ action: { tool: "view_cart", args: {} } }));
+  cards.appendChild(card); mountCards(cards);
+}
+
+function renderCart(cart) {
+  const items = Array.isArray(cart && cart.items) ? cart.items : [];
+  if (!items.length) { addAgent("Aapka cart abhi khali hai. 🛒 Kuch dhoondein?"); return; }
+  const cards = cardWrap();
+  const rows = items.slice(0, 10).map((it) =>
+    `<div class="ag-cart-row"><span>${esc(it.name || it.product_name || "Item")} × ${esc(it.quantity || 1)}</span><span>₹${esc(it.line_total || it.price || 0)}</span></div>`).join("");
+  const card = el(`
+    <div class="ag-card">
+      <div class="ag-card-title">Your cart 🛒</div>
+      ${rows}
+      <div class="ag-cart-row ag-cart-total"><span>Total</span><span>₹${esc(cart.subtotal || 0)}</span></div>
+      <div class="ag-card-actions"><button class="ag-btn primary" data-checkout>Checkout (COD)</button></div>
+    </div>`);
+  card.querySelector("[data-checkout]").addEventListener("click", proposeCheckout);
+  cards.appendChild(card); mountCards(cards);
+}
+
+function renderOrderPlaced(d) {
+  const id = d.order_id || d.id || "";
+  const cards = cardWrap();
+  const card = el(`
+    <div class="ag-card ag-success">
+      <div class="ag-card-head">
+        <div class="ag-success-icon">✅</div>
+        <div>
+          <div class="ag-card-title">Order placed</div>
+          <div class="ag-card-sub">${id ? "Order #" + esc(id) : ""} · Cash on Delivery</div>
+        </div>
+      </div>
+      <div class="ag-card-actions"><button class="ag-btn ghost" data-track="${esc(id)}">Track order</button></div>
+    </div>`);
+  card.querySelector("[data-track]").addEventListener("click", (e) => {
+    const oid = e.currentTarget.getAttribute("data-track");
+    if (oid) run({ action: { tool: "track_order", args: { id: Number(oid) } } });
+  });
+  cards.appendChild(card); mountCards(cards);
+}
+
+function renderOrders(orders) {
+  const cards = cardWrap();
+  orders.slice(0, 8).forEach((o) => {
+    const id = o.id || o.order_id || "";
+    const card = el(`
+      <div class="ag-card">
+        <div class="ag-card-title">Order #${esc(id)}</div>
+        <div class="ag-card-sub">${esc(o.status || "pending")}${o.total != null ? " · ₹" + esc(o.total) : (o.grand_total != null ? " · ₹" + esc(o.grand_total) : "")}</div>
+        <div class="ag-card-actions"><button class="ag-btn ghost" data-track="${esc(id)}">Track</button></div>
+      </div>`);
+    card.querySelector("[data-track]").addEventListener("click", (e) =>
+      run({ action: { tool: "track_order", args: { id: Number(e.currentTarget.getAttribute("data-track")) } } }));
+    cards.appendChild(card);
+  });
+  mountCards(cards);
+}
+
+function renderOrderDetail(o) {
+  const id = o.id || o.order_id || "";
+  const items = Array.isArray(o.items) ? o.items : [];
+  const cards = cardWrap();
+  const rows = items.slice(0, 10).map((it) => `<div class="ag-cart-row"><span>${esc(it.name || it.product_name || "Item")} × ${esc(it.quantity || 1)}</span><span>₹${esc(it.line_total || it.price || 0)}</span></div>`).join("");
+  const card = el(`
+    <div class="ag-card">
+      <div class="ag-card-title">Order #${esc(id)}</div>
+      <div class="ag-card-sub">Status: ${esc(o.status || "pending")}</div>
+      ${rows}
+    </div>`);
+  cards.appendChild(card); mountCards(cards);
+}
+
+async function addToCart(productId, name) {
+  if (S.busy) return;
+  addUser(`Add ${name}`);
+  await run({ action: { tool: "add_to_cart", args: { product_id: Number(productId), quantity: 1 } } });
+}
+
+async function proposeCheckout() {
+  if (S.busy) return;
+  addUser("Checkout");
+  setBusy(true);
+  const typing = showTyping();
+  const res = await transport({ action: { tool: "checkout", args: {} } });
+  typing.remove();
+  if (res && res.requires_confirmation) {
+    if (res.reply) addAgent(res.reply);
+    renderConfirm(res.confirm_token, "Order place karein? (Cash on Delivery)", "Aap delivery par payment karenge — agent paisa nahi leta.");
+  } else {
+    handle(res);
+  }
+  setBusy(false);
+}
+
 // ── Bubbles / typing / helpers ───────────────────────────────────────────────
 function addUser(text) { addBubble("user", text); }
 function addAgent(text, cls) { addBubble("agent", text, cls); }
@@ -577,6 +743,24 @@ const MOCK_PACKAGES = [
   { name: "Premium", description: "2 coats, minor crack repair, taped edges.", rate_per_sqft: 18, features: ["Crack repair", "2 coats", "Taped edges", "Cleanup"] },
   { name: "Luxury", description: "Texture/designer finish, 3 coats, full prep.", rate_per_sqft: 28, features: ["Designer finish", "3 coats", "Full surface prep", "Warranty"] },
 ];
+// Commerce demo data (city-scoped, dual-store: company + local vendor)
+const MOCK_PRODUCTS = [
+  { id: 9001, name: "Cotton Kurta (Men)",           store_name: "Haldwani Vastralay", is_company: true,  price: 899,  sale_price: 699,  rating: 4.6 },
+  { id: 9002, name: "Silk Saree — Diwali Special",  store_name: "Rangoli Fabrics",    is_company: false, price: 2499, sale_price: 1999, rating: 4.8 },
+  { id: 9003, name: "Kids Ethnic Set",              store_name: "Haldwani Vastralay", is_company: true,  price: 1199, rating: 4.5 },
+  { id: 9004, name: "Festive Kurti (Women)",        store_name: "Trendz Boutique",    is_company: false, price: 1299, sale_price: 999,  rating: 4.7 },
+];
+const MOCK_CART = { items: [] };
+function mockFindProduct(pid) { return MOCK_PRODUCTS.find((p) => p.id === Number(pid)) || null; }
+function mockCartAdd(pid) {
+  const p = mockFindProduct(pid); if (!p) return;
+  const ex = MOCK_CART.items.find((i) => i.product_id === p.id);
+  if (ex) ex.quantity++; else MOCK_CART.items.push({ product_id: p.id, name: p.name, price: p.sale_price || p.price, quantity: 1 });
+}
+function mockCartGet() {
+  const items = MOCK_CART.items.map((i) => ({ ...i, line_total: i.price * i.quantity }));
+  return { items, count: items.reduce((s, i) => s + i.quantity, 0), subtotal: items.reduce((s, i) => s + i.line_total, 0) };
+}
 
 // Mock memory (demo only) — persists in localStorage so a SECOND visit is
 // personalized, mirroring the real server-side memory behind the wall.
@@ -592,11 +776,11 @@ function mockGreeting(name) {
     };
   }
   if ((m.turns || 0) > 0) {
-    return { reply: `Welcome back, ${name}! 👋 Bataiye aaj kya chahiye?`, chips: ["painter chahiye", "plumber chahiye", "painting packages", "expert visit"] };
+    return { reply: `Welcome back, ${name}! 👋 Bataiye aaj kya chahiye?`, chips: ["painter chahiye", "kapde chahiye", "painting packages", "expert visit"] };
   }
   return {
     reply: `Namaste ${name}! 👋 Main aapka WorkToGo assistant hoon.\nBataiye kya chahiye — main dhoond ke, dikhake, book bhi kar deta hoon.`,
-    chips: ["painter chahiye", "plumber chahiye", "painting packages", "expert visit"],
+    chips: ["painter chahiye", "kapde chahiye", "painting packages", "expert visit"],
   };
 }
 
@@ -609,6 +793,10 @@ function _mock(payload) {
     if (tool === "request_expert_visit") {
       return { reply: "✅ Ho gaya! Expert visit request bhej di gayi. Team jaldi contact karegi.", tool, executed: true, data: { booking_id: 5502, status: "pending", booking_mode: "inspection" } };
     }
+    if (tool === "checkout") {
+      MOCK_CART.items = [];
+      return { reply: "✅ Order place ho gaya! (Cash on Delivery)", tool: "checkout", executed: true, data: { order_id: 8801, status: "pending" } };
+    }
     return { reply: "✅ Ho gaya! Aapki booking confirm ho gayi hai.", tool: "create_booking", executed: true, data: { booking_id: 5501, status: "pending", booking_mode: "direct_vendor" } };
   }
   if (payload.event === "open") {
@@ -617,7 +805,13 @@ function _mock(payload) {
   }
   if (payload.action && payload.action.tool) {
     const tool = payload.action.tool;
-    return { reply: "Bas ek baar confirm kar dijiye 👍", tool, requires_confirmation: true, confirm_token: "mock-confirm-" + tool, args_summary: Object.keys(payload.action.args || {}), executed: false, widget: { type: "confirm", question: "Confirm karein?", confirm_token: "mock-confirm-" + tool } };
+    const args = payload.action.args || {};
+    // Read-mode actions execute immediately (no confirm) — mirrors the backend.
+    if (tool === "add_to_cart") { mockCartAdd(args.product_id); return { reply: "", tool, executed: true, data: mockCartGet() }; }
+    if (tool === "view_cart")   { return { reply: "", tool, executed: true, data: mockCartGet() }; }
+    if (tool === "track_order") { return { reply: "Yeh raha aapka order 👇", tool, executed: true, data: { order: { id: args.id || 8801, status: "pending", items: mockCartGet().items } } }; }
+    // Writes → confirmation.
+    return { reply: "Bas ek baar confirm kar dijiye 👍", tool, requires_confirmation: true, confirm_token: "mock-confirm-" + tool, args_summary: Object.keys(args), executed: false, widget: { type: "confirm", question: "Confirm karein?", confirm_token: "mock-confirm-" + tool } };
   }
   const msg = String(payload.message || "").toLowerCase();
   // Inline UI-action widgets
@@ -633,6 +827,16 @@ function _mock(payload) {
   }
   if (/(expert|visit|company|inspection)/.test(msg)) {
     return { reply: "Company expert visit ka charge yeh hai 👇", tool: "get_expert_visit_price", executed: true, data: { is_free: false, amount: 299 }, _category: "painting" };
+  }
+  // Commerce
+  if (/(cart|basket|tokri)/.test(msg)) {
+    return { reply: "Yeh raha aapka cart 🛒", tool: "view_cart", executed: true, data: mockCartGet() };
+  }
+  if (/(my order|mere order|meri order|order status|order kahan|orders)/.test(msg)) {
+    return { reply: "Yeh rahi aapki recent orders 📦", tool: "list_orders", executed: true, data: { orders: [{ id: 8801, status: "pending", total: 699 }] } };
+  }
+  if (/(kapde|kapda|clothes|kurta|kurti|saree|shirt|jeans|shoes|juta|grocery|saaman|saman|shop|kharid|khareed|buy|gift|diwali|product|shopping)/.test(msg)) {
+    return { reply: "Dekhiye aapke area ke products 🛍️ (company + local stores) — kisi ko bhi \"Add to cart\" kijiye.", tool: "browse_products", executed: true, data: { products: MOCK_PRODUCTS } };
   }
   const cat = detectCat(msg);
   if (cat) {

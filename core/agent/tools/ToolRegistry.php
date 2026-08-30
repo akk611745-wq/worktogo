@@ -16,6 +16,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/AgentTool.php';
 require_once __DIR__ . '/ServiceTools.php';
+require_once __DIR__ . '/CommerceTools.php';
 require_once __DIR__ . '/WidgetTools.php';
 
 final class ToolRegistry
@@ -86,6 +87,14 @@ final class ToolRegistry
         $r->register(new GetExpertVisitPriceTool());
         $r->register(new CreateBookingTool());
         $r->register(new RequestExpertVisitTool());
+        // Customer commerce-agent (Phase 5)
+        $r->register(new BrowseProductsTool());
+        $r->register(new GetProductTool());
+        $r->register(new ViewCartTool());
+        $r->register(new AddToCartTool());
+        $r->register(new ListOrdersTool());
+        $r->register(new TrackOrderTool());
+        $r->register(new CheckoutTool());
         // Vendor service-agent
         $r->register(new ListMyJobsTool());
         $r->register(new GetMyProfileTool());
