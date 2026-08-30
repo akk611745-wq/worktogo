@@ -30,7 +30,11 @@ require_once __DIR__ . '/AgentOrchestrator.php';
 require_once __DIR__ . '/tools/EngineClient.php';
 require_once __DIR__ . '/tools/AgentTool.php';
 require_once __DIR__ . '/tools/ServiceTools.php';
+require_once __DIR__ . '/tools/WidgetTools.php';
 require_once __DIR__ . '/tools/ToolRegistry.php';
 require_once __DIR__ . '/tools/ConfirmToken.php';
 require_once __DIR__ . '/ToolPlanner.php';
+
+// ── Phase 4: memory / personalization ────────────────────────────────────────
+require_once __DIR__ . '/AgentMemory.php';
 require_once __DIR__ . '/AgentActionOrchestrator.php';

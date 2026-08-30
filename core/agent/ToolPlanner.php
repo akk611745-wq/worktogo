@@ -46,7 +46,7 @@ final class ToolPlanner
         private readonly ToolRegistry      $registry,
     ) {}
 
-    public function plan(AgentContext $ctx, string $rawMessage): ToolPlan
+    public function plan(AgentContext $ctx, string $rawMessage, array $hints = []): ToolPlan
     {
         // 1. System-first deterministic rules (no external AI).
         $det = $this->deterministic($ctx, $rawMessage);
@@ -54,14 +54,27 @@ final class ToolPlanner
             return $det;
         }
 
-        // 2. AI fallback — through the wall.
-        return $this->viaAi($ctx, $rawMessage);
+        // 2. AI fallback — through the wall. `hints` are memory-derived,
+        //    non-identifying tokens (see AgentMemory::hints); they help the AI
+        //    personalise its proposal without ever seeing who the user is.
+        return $this->viaAi($ctx, $rawMessage, $hints);
     }
 
     // ── Stage 1: deterministic (zero-cost, fully private) ────────────────────────
     private function deterministic(AgentContext $ctx, string $message): ?ToolPlan
     {
         $m = mb_strtolower($message);
+
+        // Any role: phone verification → inline OTP widget.
+        if (str_contains($m, 'otp') || str_contains($m, 'verify') || str_contains($m, 'verification')) {
+            return new ToolPlan('verify_phone', [], 'Chaliye aapka number verify karte hain.', 'deterministic');
+        }
+
+        // Vendor: "upload (work) photo" → inline upload widget (checked before "work"→jobs).
+        if ($ctx->role === 'vendor_service'
+            && (str_contains($m, 'photo') || str_contains($m, 'foto') || str_contains($m, 'upload'))) {
+            return new ToolPlan('upload_work_photo', [], 'Apni kaam ki photo upload kijiye 👇', 'deterministic');
+        }
 
         // Vendor: "my jobs" / "kaam"
         if ($ctx->role === 'vendor_service'
@@ -100,13 +113,14 @@ final class ToolPlanner
     }
 
     // ── Stage 2: AI fallback (through the privacy wall) ──────────────────────────
-    private function viaAi(AgentContext $ctx, string $rawMessage): ToolPlan
+    private function viaAi(AgentContext $ctx, string $rawMessage, array $hints = []): ToolPlan
     {
-        $system   = $this->systemPrompt($ctx->role);
+        $system   = $this->systemPrompt($ctx->role, $hints);
         $capNames = $this->registry->toolNamesForRole($ctx->role);
 
-        // PRIVACY WALL: raw message is scrubbed before anything leaves.
-        $prompt = $this->wall->sanitize($ctx, $rawMessage, $system, $capNames, 'understand');
+        // PRIVACY WALL: raw message is scrubbed before anything leaves; the
+        // anonymized hints are allow-listed + tripwire-scanned by the wall too.
+        $prompt = $this->wall->sanitize($ctx, $rawMessage, $system, $capNames, 'understand', $hints);
         $resp   = $this->manager->complete($prompt, 'understand');
 
         if (!$resp->success) {
@@ -128,12 +142,17 @@ final class ToolPlanner
     }
 
     /** Strict-JSON instruction + the role's tool catalog (public, non-sensitive). */
-    private function systemPrompt(string $role): string
+    private function systemPrompt(string $role, array $hints = []): string
     {
         $catalog = json_encode($this->registry->catalogForRole($role), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        // Non-identifying personalization hints (safe to send — no identity/data).
+        $hintLine = $hints
+            ? "\nNon-identifying context about this anonymous user (use to personalise, "
+              . "never ask for identity): " . implode(', ', $hints) . "\n"
+            : "";
         return "You are WorkToGo's assistant. Decide which ONE tool best serves the user, "
             . "using ONLY the tools in this catalog (do not invent tools):\n"
-            . $catalog . "\n\n"
+            . $catalog . $hintLine . "\n"
             . "Reply with STRICT JSON only, no prose, in exactly this shape:\n"
             . '{"tool":"<tool name or none>","args":{...},"say":"<one short friendly sentence>"}' . "\n"
             . "Put only arguments that appear in the chosen tool's args. If nothing fits, use "

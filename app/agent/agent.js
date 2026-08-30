@@ -25,7 +25,7 @@
 
 const AG_VERSION = (typeof window !== "undefined" && window.WTG_ASSET_VERSION) || "1";
 
-const S = { msgs: null, input: null, send: null, busy: false, mock: false, lastCategory: "painting" };
+const S = { msgs: null, input: null, send: null, busy: false, mock: false, role: "customer", lastCategory: "painting" };
 
 const CATS = {
   painter: "painting", paint: "painting", painting: "painting",
@@ -39,6 +39,7 @@ const CATS = {
 export async function render(app, opts = {}) {
   injectCss();
   S.mock = opts.mock ?? mockEnabled();
+  S.role = opts.role || currentRole();
 
   // Register-gate (defensive; the router already guards this route).
   if (!S.mock && typeof AUTH !== "undefined" && AUTH.isLoggedIn && !AUTH.isLoggedIn()) {
@@ -58,7 +59,7 @@ export async function render(app, opts = {}) {
   });
   S.input.addEventListener("input", autoGrow);
 
-  greet();
+  openGreeting();
 }
 
 // ── Shell markup ─────────────────────────────────────────────────────────────
@@ -81,15 +82,38 @@ function shell() {
     </div>`;
 }
 
-function greet() {
+// Personalized opener. Real mode asks the backend (which reads OUR memory behind
+// the wall) for a greeting; mock mode reads local mock-memory. New users get a
+// warm generic greeting; returning users are recognised ("I know you like …").
+async function openGreeting() {
   const name = friendlyName();
-  addAgent(`Namaste ${name}! 👋 Main aapka WorkToGo assistant hoon.\nBataiye kya chahiye — main dhoond ke, dikhake, book bhi kar deta hoon.`);
-  const chips = ["painter chahiye", "plumber chahiye", "painting packages", "expert visit"];
+  const defaultChips = ["painter chahiye", "plumber chahiye", "painting packages", "expert visit"];
+
+  if (S.mock) {
+    const g = mockGreeting(name);
+    addAgent(g.reply);
+    renderChips(g.chips.length ? g.chips : defaultChips);
+    return;
+  }
+  const typing = showTyping();
+  let res = null;
+  try { res = await transport({ event: "open" }); } catch {}
+  typing.remove();
+  if (res && res.reply && !res._error) {
+    addAgent(res.reply);
+    renderChips(Array.isArray(res.chips) && res.chips.length ? res.chips : defaultChips);
+  } else {
+    addAgent(`Namaste ${name}! 👋 Main aapka WorkToGo assistant hoon.\nBataiye kya chahiye?`);
+    renderChips(defaultChips);
+  }
+}
+
+function renderChips(chips) {
   const row = document.createElement("div");
   row.className = "ag-row agent";
   const wrap = document.createElement("div");
   wrap.className = "ag-chips";
-  chips.forEach((c) => {
+  chips.slice(0, 6).forEach((c) => {
     const b = document.createElement("button");
     b.className = "ag-chip";
     b.textContent = c;
@@ -158,6 +182,8 @@ function handle(res) {
     d.packages.length ? renderPackageCards(d.packages) : addAgent("Is category ke liye abhi packages set nahi hain.");
   } else if (res.tool === "get_expert_visit_price" && (("amount" in d) || ("is_free" in d))) {
     renderExpertPrice(d, res._category || S.lastCategory);
+  } else if (res.widget) {
+    renderWidget(res.widget);   // unified inline action: confirm / upload / otp
   } else if (res.requires_confirmation) {
     renderConfirm(res.confirm_token, res.reply || "Confirm karein?", null);
   } else if (res.executed && res.tool === "create_booking") {
@@ -294,6 +320,92 @@ function renderBooking(d, label) {
   mountCards(cards);
 }
 
+// ── Inline UI-action widgets (Phase 4) ───────────────────────────────────────
+// The agent opens a real action right in the chat; it completes against the
+// EXISTING backend endpoint (with the user's JWT) — no page change, no engine edit.
+function renderWidget(w) {
+  if (!w || !w.type) return;
+  if (w.type === "confirm") return renderConfirm(w.confirm_token, w.question || "Confirm karein?", null);
+  if (w.type === "upload")  return renderUpload(w);
+  if (w.type === "otp")     return renderOtp(w);
+}
+
+function renderUpload(w) {
+  const cards = cardWrap();
+  const card = el(`
+    <div class="ag-card ag-widget">
+      <div class="ag-card-title">${esc(w.title || "Upload photo")}</div>
+      <input type="file" class="ag-file" accept="${esc(w.accept || "image/*")}" />
+      <input type="text" class="ag-textin ag-cap" placeholder="Caption (optional)" />
+      <div class="ag-card-actions"><button class="ag-btn primary" data-up>Upload</button></div>
+      <div class="ag-widget-status"></div>
+    </div>`);
+  const fileEl = card.querySelector(".ag-file");
+  const capEl  = card.querySelector(".ag-cap");
+  const btn    = card.querySelector("[data-up]");
+  const status = card.querySelector(".ag-widget-status");
+  btn.addEventListener("click", async () => {
+    const f = fileEl.files && fileEl.files[0];
+    if (!f) { status.textContent = "Pehle ek photo chuniye."; return; }
+    btn.disabled = true; status.textContent = "Uploading…";
+    let ok = false, msg = "";
+    if (S.mock) { await sleep(600); ok = true; }
+    else if (typeof API !== "undefined" && API.uploadMultipart) {
+      const fd = new FormData();
+      fd.append(w.field || "photo", f);
+      if (w.caption_field && capEl.value.trim()) fd.append(w.caption_field, capEl.value.trim());
+      const r = await API.uploadMultipart(w.endpoint, fd);
+      ok = r.ok; msg = r.error || "";
+    } else { msg = "Upload unavailable."; }
+    if (ok) { card.classList.add("done"); status.textContent = w.success_text || "Uploaded ✓"; }
+    else { btn.disabled = false; status.textContent = msg || "Upload fail hua. Dobara try kijiye."; }
+  });
+  cards.appendChild(card); mountCards(cards);
+}
+
+function renderOtp(w) {
+  const cards = cardWrap();
+  const card = el(`
+    <div class="ag-card ag-widget">
+      <div class="ag-card-title">${esc(w.title || "Verify your number")}</div>
+      <input type="tel" class="ag-textin ag-phone" placeholder="Phone number" value="${esc(currentPhone())}" />
+      <div class="ag-card-actions"><button class="ag-btn ghost" data-send>Send OTP</button></div>
+      <div class="ag-otp-step" hidden>
+        <input type="text" inputmode="numeric" class="ag-textin ag-otp" placeholder="Enter OTP" maxlength="6" />
+        <div class="ag-card-actions"><button class="ag-btn primary" data-verify>Verify</button></div>
+      </div>
+      <div class="ag-widget-status"></div>
+    </div>`);
+  const phoneEl  = card.querySelector(".ag-phone");
+  const step     = card.querySelector(".ag-otp-step");
+  const otpEl    = card.querySelector(".ag-otp");
+  const status   = card.querySelector(".ag-widget-status");
+  const sendBtn  = card.querySelector("[data-send]");
+  const verifyBtn= card.querySelector("[data-verify]");
+  sendBtn.addEventListener("click", async () => {
+    const ph = (phoneEl.value || "").trim();
+    if (ph.replace(/\D/g, "").length < 10) { status.textContent = "Sahi number daaliye."; return; }
+    sendBtn.disabled = true; status.textContent = "OTP bhej rahe hain…";
+    let ok = true, msg = "";
+    if (!S.mock && typeof API !== "undefined" && API.sendOtp) { const r = await API.sendOtp(ph); ok = r.ok; msg = r.error || ""; }
+    else { await sleep(500); }
+    if (!ok) { sendBtn.disabled = false; status.textContent = msg || "OTP send fail hua."; return; }
+    step.hidden = false;
+    status.textContent = S.mock ? "OTP bheja gaya (demo: koi bhi 4–6 digit)." : "OTP aapke number par bheja gaya hai.";
+  });
+  verifyBtn.addEventListener("click", async () => {
+    const code = (otpEl.value || "").trim();
+    if (!/^\d{4,6}$/.test(code)) { status.textContent = "4–6 digit OTP daaliye."; return; }
+    verifyBtn.disabled = true; status.textContent = "Verifying…";
+    let ok = false, msg = "";
+    if (S.mock) { await sleep(500); ok = true; }
+    else if (typeof API !== "undefined" && API.verifyOtp) { const r = await API.verifyOtp((phoneEl.value || "").trim(), code); ok = r.ok; msg = r.error || ""; }
+    if (ok) { card.classList.add("done"); step.hidden = true; status.textContent = w.success_text || "Verified ✓"; }
+    else { verifyBtn.disabled = false; status.textContent = msg || "Galat OTP. Dobara try kijiye."; }
+  });
+  cards.appendChild(card); mountCards(cards);
+}
+
 // ── Card actions (writes: propose → confirm) ─────────────────────────────────
 async function proposeBooking(vendorId, vendorName) {
   if (S.busy) return;
@@ -384,6 +496,22 @@ function friendlyName() {
   return "dost";
 }
 
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+function currentRole() {
+  try { const r = new URLSearchParams(location.search).get("role"); if (r) return r; } catch {}
+  try {
+    if (typeof AUTH !== "undefined" && AUTH.getRole) return AUTH.getRole();
+    if (typeof AUTH !== "undefined" && AUTH.getUser) { const u = AUTH.getUser(); if (u && u.role) return u.role; }
+  } catch {}
+  return "customer";
+}
+
+function currentPhone() {
+  try { if (typeof AUTH !== "undefined" && AUTH.getUser) { const u = AUTH.getUser(); if (u && u.phone) return String(u.phone); } } catch {}
+  return "";
+}
+
 function detectCat(msg) {
   const m = String(msg).toLowerCase();
   for (const k of Object.keys(CATS)) if (m.includes(k)) return CATS[k];
@@ -450,6 +578,28 @@ const MOCK_PACKAGES = [
   { name: "Luxury", description: "Texture/designer finish, 3 coats, full prep.", rate_per_sqft: 28, features: ["Designer finish", "3 coats", "Full surface prep", "Warranty"] },
 ];
 
+// Mock memory (demo only) — persists in localStorage so a SECOND visit is
+// personalized, mirroring the real server-side memory behind the wall.
+function mockMem() { try { return JSON.parse(localStorage.getItem("wtg_agent_mock_mem") || "{}") || {}; } catch { return {}; } }
+function mockMemSave(m) { try { localStorage.setItem("wtg_agent_mock_mem", JSON.stringify(m)); } catch {} }
+function mockMemRecord(cat) { const m = mockMem(); m.turns = (m.turns || 0) + 1; if (cat) m.lastCat = cat; mockMemSave(m); }
+function mockGreeting(name) {
+  const m = mockMem();
+  if ((m.turns || 0) > 0 && m.lastCat) {
+    return {
+      reply: `Welcome back, ${name}! 👋 Pichli baar aapne ${m.lastCat} dekha tha — aaj wahi chahiye ya kuch aur?`,
+      chips: [`${m.lastCat} chahiye`, `book ${m.lastCat}`, `${m.lastCat} packages`, "expert visit"],
+    };
+  }
+  if ((m.turns || 0) > 0) {
+    return { reply: `Welcome back, ${name}! 👋 Bataiye aaj kya chahiye?`, chips: ["painter chahiye", "plumber chahiye", "painting packages", "expert visit"] };
+  }
+  return {
+    reply: `Namaste ${name}! 👋 Main aapka WorkToGo assistant hoon.\nBataiye kya chahiye — main dhoond ke, dikhake, book bhi kar deta hoon.`,
+    chips: ["painter chahiye", "plumber chahiye", "painting packages", "expert visit"],
+  };
+}
+
 function mockAgent(payload) {
   return new Promise((resolve) => setTimeout(() => resolve(_mock(payload)), 480));
 }
@@ -461,12 +611,24 @@ function _mock(payload) {
     }
     return { reply: "✅ Ho gaya! Aapki booking confirm ho gayi hai.", tool: "create_booking", executed: true, data: { booking_id: 5501, status: "pending", booking_mode: "direct_vendor" } };
   }
+  if (payload.event === "open") {
+    const g = mockGreeting(friendlyName());
+    return { reply: g.reply, chips: g.chips, tool: null, executed: false };
+  }
   if (payload.action && payload.action.tool) {
     const tool = payload.action.tool;
-    return { reply: "Bas ek baar confirm kar dijiye 👍", tool, requires_confirmation: true, confirm_token: "mock-confirm-" + tool, args_summary: Object.keys(payload.action.args || {}), executed: false };
+    return { reply: "Bas ek baar confirm kar dijiye 👍", tool, requires_confirmation: true, confirm_token: "mock-confirm-" + tool, args_summary: Object.keys(payload.action.args || {}), executed: false, widget: { type: "confirm", question: "Confirm karein?", confirm_token: "mock-confirm-" + tool } };
   }
   const msg = String(payload.message || "").toLowerCase();
+  // Inline UI-action widgets
+  if (String(S.role).indexOf("vendor") === 0 && /(upload|photo|foto)/.test(msg)) {
+    return { reply: "Apni kaam ki photo upload kijiye 👇", tool: "upload_work_photo", executed: true, data: {}, widget: { type: "upload", title: "Apni kaam ki photo upload kijiye", endpoint: "/api/vendor/work-photo", field: "photo", accept: "image/*", caption_field: "caption", success_text: "Photo aapke profile mein add ho gayi ✓" } };
+  }
+  if (/(otp|verify|verification)/.test(msg)) {
+    return { reply: "Chaliye aapka number verify karte hain 👇", tool: "verify_phone", executed: true, data: {}, widget: { type: "otp", title: "Apna number verify karein", send_path: "/api/auth/otp/send", verify_path: "/api/auth/otp/verify", success_text: "Number verified ✓" } };
+  }
   if (/(package|packages|estimate|sqft)/.test(msg)) {
+    mockMemRecord("painting");
     return { reply: "Yeh rahe painting ke packages 👇 (aap area sqft batayenge to exact cost bhi nikal denge)", tool: "get_packages", executed: true, data: { packages: MOCK_PACKAGES } };
   }
   if (/(expert|visit|company|inspection)/.test(msg)) {
@@ -474,6 +636,7 @@ function _mock(payload) {
   }
   const cat = detectCat(msg);
   if (cat) {
+    mockMemRecord(cat);   // remember for the next visit (demo mirror of real memory)
     return { reply: `Yeh rahe aapke area ke ${cat} experts 👇 Kisi ko bhi "Book now" karke turant book kar sakte hain.`, tool: "find_vendors", executed: true, data: { vendors: MOCK_VENDORS(cat) }, _category: cat };
   }
   return { reply: "Main aapki madad kar sakta hoon — painter, plumber, electrician dhoondhne mein, packages dikhane mein, ya booking karne mein. Bataiye kya chahiye? 🙂", tool: null, executed: false };

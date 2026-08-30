@@ -234,5 +234,29 @@ const API = (() => {
     async agentStatus() {
       return _request("GET", "/api/agent/status");
     },
+
+    // Multipart upload (e.g. agent's inline upload widget → existing media route).
+    // Attaches the JWT; lets the browser set the multipart boundary itself.
+    async uploadMultipart(path, formData) {
+      const token = _getToken();
+      try {
+        const res = await fetch(`${CONFIG.BASE_URL}${path}`, {
+          method: "POST",
+          headers: token ? { "Authorization": `Bearer ${token}` } : {},
+          body: formData,
+        });
+        const data = await _parseJSON(res);
+        if (res.status === 401) {
+          if (typeof AUTH !== "undefined" && AUTH.logout) AUTH.logout();
+          return { ok: false, error: "Session expired. Please login again." };
+        }
+        if (!res.ok) {
+          return { ok: false, status: res.status, error: data?.message || data?.error || `Upload failed (${res.status}).`, data };
+        }
+        return { ok: true, status: res.status, data };
+      } catch (err) {
+        return { ok: false, error: navigator.onLine ? "Upload failed. Please try again." : "No internet connection." };
+      }
+    },
   };
 })();

@@ -44,8 +44,12 @@ require_once __DIR__ . '/SanitizedPrompt.php';
 
 final class PiiWall
 {
-    /** The ONLY meta keys allowed to describe the user to a provider (deny-by-default). */
-    private const ALLOWED_META_KEYS = ['role', 'lang', 'period', 'capabilities'];
+    /** The ONLY meta keys allowed to describe the user to a provider (deny-by-default).
+     *  'hints' carries memory-DERIVED, non-identifying tokens only (e.g.
+     *  'returning', 'pref_category:painting', 'area_known') — never a raw memory
+     *  row, id, area or city value. See AgentMemory::hints(). The tripwire below
+     *  re-scans everything, so any hint that still looks like PII is refused. */
+    private const ALLOWED_META_KEYS = ['role', 'lang', 'period', 'capabilities', 'hints'];
 
     /**
      * Ordered PII detectors. Order matters: the most specific / longest patterns
@@ -93,7 +97,8 @@ final class PiiWall
         string $rawUserText,
         string $system,
         array $capabilities = [],
-        string $task = 'understand'
+        string $task = 'understand',
+        array $hints = []
     ): SanitizedPrompt {
         $requestId = $ctx->requestId;
 
@@ -104,9 +109,18 @@ final class PiiWall
         $this->counts[$requestId] = $counts;
 
         // 2. Build the coarse, deny-by-default meta. Only allow-listed keys survive.
+        //    `hints` are memory-derived, non-identifying tokens (short strings);
+        //    anything longer/odd is dropped here, and the tripwire re-checks all.
+        $safeHints = array_values(array_filter(
+            array_map('strval', $hints),
+            static fn ($h) => $h !== '' && mb_strlen($h) <= 40
+        ));
         $meta = $this->filterMeta(array_merge(
             $ctx->coarseMeta(),
-            ['capabilities' => array_values(array_filter(array_map('strval', $capabilities)))]
+            [
+                'capabilities' => array_values(array_filter(array_map('strval', $capabilities))),
+                'hints'        => $safeHints,
+            ]
         ));
 
         // 3. FAIL-CLOSED tripwire: re-scan the exact bytes that would leave.

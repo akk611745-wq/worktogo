@@ -16,6 +16,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/AgentTool.php';
 require_once __DIR__ . '/ServiceTools.php';
+require_once __DIR__ . '/WidgetTools.php';
 
 final class ToolRegistry
 {
@@ -88,6 +89,9 @@ final class ToolRegistry
         // Vendor service-agent
         $r->register(new ListMyJobsTool());
         $r->register(new GetMyProfileTool());
+        // Inline UI-action widgets (Phase 4)
+        $r->register(new UploadWorkPhotoTool());   // vendor only (RBAC)
+        $r->register(new VerifyPhoneTool());       // any registered user
         return $r;
     }
 }

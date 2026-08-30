@@ -90,8 +90,9 @@ try {
         $message = is_string($body['message'] ?? null) ? trim($body['message']) : '';
         $action  = is_array($body['action'] ?? null) ? $body['action'] : null;
         $confirm = is_string($body['confirm_token'] ?? null) ? $body['confirm_token'] : '';
-        if ($message === '' && $action === null && $confirm === '') {
-            Response::validation('A message, action, or confirm_token is required.');
+        $event   = is_string($body['event'] ?? null) ? trim($body['event']) : '';
+        if ($message === '' && $action === null && $confirm === '' && $event === '') {
+            Response::validation('A message, action, confirm_token, or event is required.');
         }
         if (mb_strlen($message) > 2000) {
             Response::validation('Message is too long (max 2000 characters).');
@@ -108,11 +109,13 @@ try {
         $registry     = ToolRegistry::defaultRegistry();
         $planner      = new ToolPlanner($wall, $manager, $registry);
         $engine       = new HttpEngineClient($bearer);
-        $orchestrator = new AgentActionOrchestrator($wall, $planner, $registry, $engine, $db);
+        $memory       = new AgentMemory($db);
+        $orchestrator = new AgentActionOrchestrator($wall, $planner, $registry, $engine, $db, $memory);
         $ctx          = AgentContext::fromAuth($auth, $body, $db);
 
         try {
             $result = $orchestrator->handle($ctx, [
+                'event'         => $event,
                 'message'       => $message,
                 'action'        => $action,
                 'confirm_token' => $confirm,

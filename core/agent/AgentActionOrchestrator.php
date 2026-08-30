@@ -24,6 +24,7 @@ require_once __DIR__ . '/AgentExceptions.php';
 require_once __DIR__ . '/AgentContext.php';
 require_once __DIR__ . '/PiiWall.php';
 require_once __DIR__ . '/ToolPlanner.php';
+require_once __DIR__ . '/AgentMemory.php';
 require_once __DIR__ . '/tools/ToolRegistry.php';
 require_once __DIR__ . '/tools/AgentTool.php';   // defines ToolContext + AgentTool
 require_once __DIR__ . '/tools/EngineClient.php';
@@ -37,6 +38,7 @@ final class AgentActionOrchestrator
         private readonly ToolRegistry $registry,
         private readonly EngineClient $engine,
         private readonly ?PDO         $db = null,
+        private readonly ?AgentMemory $memory = null,
     ) {}
 
     /**
@@ -48,6 +50,26 @@ final class AgentActionOrchestrator
     public function handle(AgentContext $ctx, array $input): array
     {
         $tc = new ToolContext($ctx, $this->engine, $this->db);
+
+        // Load this user's memory ONCE (internal only). Used for the personalized
+        // opener, and to derive the anonymized hints the planner may send the AI.
+        $mem   = $this->memory ? $this->memory->load($ctx->userId) : [];
+        $hints = $this->memory ? $this->memory->hints($mem) : [];
+
+        // ── Path 0: session open → a personalized greeting (from OUR memory) ─────
+        if (($input['event'] ?? '') === 'open') {
+            $g = $this->memory
+                ? $this->memory->personalizedGreeting($mem)
+                : ['reply' => 'Namaste! 👋 Bataiye kya chahiye?', 'chips' => [], 'personalized' => false];
+            $this->audit($ctx, '-', 'chat', 'open', 'chat', 0, [], null);
+            return $this->finish($ctx, [
+                'reply'        => $g['reply'],
+                'tool'         => null,
+                'executed'     => false,
+                'chips'        => $g['chips'] ?? [],
+                'personalized' => (bool) ($g['personalized'] ?? false),
+            ]);
+        }
 
         // ── Path A: confirmation of a pending WRITE ──────────────────────────────
         $confirm = is_string($input['confirm_token'] ?? null) ? $input['confirm_token'] : '';
@@ -68,7 +90,8 @@ final class AgentActionOrchestrator
             return $this->chat($ctx, 'Tell me what you need — for example, "painter chahiye".', 'none');
         }
 
-        $plan = $this->planner->plan($ctx, $message);
+        // The planner gets only the anonymized hints (never the memory row).
+        $plan = $this->planner->plan($ctx, $message, $hints);
         if ($plan->tool === null) {
             return $this->chat($ctx, $plan->say !== '' ? $plan->say : 'How can I help?', $plan->source);
         }
@@ -93,7 +116,9 @@ final class AgentActionOrchestrator
 
         $tool = $this->registry->get($toolName);
 
-        // WRITE: never execute now — require explicit confirmation.
+        // WRITE: never execute now — require explicit confirmation. The confirm is
+        // also surfaced as a unified `widget` so the UI has one renderer for all
+        // inline actions (confirm / upload / otp).
         if ($tool->mode() === 'write') {
             $token = ConfirmToken::issue($ctx->userId, $toolName, $args);
             $this->audit($ctx, $toolName, 'write', $source, 'proposed', 0, array_keys($args), null);
@@ -105,11 +130,15 @@ final class AgentActionOrchestrator
                 'confirm_token'         => $token,
                 'args_summary'          => array_keys($args),
                 'executed'              => false,
+                'widget'                => ['type' => 'confirm', 'question' => $reply, 'confirm_token' => $token],
             ]);
         }
 
         // READ: run freely through the backend.
         $result = $tool->run($tc, $args);
+        if ($result->ok && $this->memory) {
+            $this->memory->record($ctx, $toolName, $args); // learn from this turn (internal)
+        }
         return $this->respondFromResult($ctx, $toolName, 'read', $source, $result, $say);
     }
 
@@ -142,6 +171,9 @@ final class AgentActionOrchestrator
         }
 
         $result = $tool->run($tc, $args);
+        if ($result->ok && $this->memory) {
+            $this->memory->record($ctx, $toolName, $args); // learn from this confirmed action
+        }
         return $this->respondFromResult($ctx, $toolName, 'write', 'confirm', $result, 'Done.');
     }
 
@@ -160,12 +192,20 @@ final class AgentActionOrchestrator
         }
 
         $this->audit($ctx, $toolName, $mode, $source, 'executed', $result->status, [], null);
-        return $this->finish($ctx, [
+        $data = is_array($result->data) ? $result->data : [];
+        $out  = [
             'reply'    => $okSay !== '' ? $okSay : 'Here you go.',
             'tool'     => $toolName,
             'executed' => true,
-            'data'     => $result->data,   // OUR real data → to the user (never went to the AI)
-        ]);
+            'data'     => $data,           // OUR real data → to the user (never went to the AI)
+        ];
+        // A widget tool returns a UI-action descriptor under `_widget`; lift it to
+        // the top level so the chat UI can render + complete it inline.
+        if (isset($data['_widget']) && is_array($data['_widget'])) {
+            $out['widget'] = $data['_widget'];
+            unset($out['data']['_widget']);
+        }
+        return $this->finish($ctx, $out);
     }
 
     private function chat(AgentContext $ctx, string $say, string $source): array
