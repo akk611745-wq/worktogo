@@ -28,6 +28,9 @@ const ROUTER = (() => {
     bookings: () => _pageModule("../pages/bookings.js"),
     // Commerce storefront (self-contained under app/commerce/, its own CSS)
     shop:     () => _pageModule("../commerce/shop.js"),
+    // Agent chat (self-contained under app/agent/, its own CSS). Register-gated
+    // automatically — 'agent' is not in PUBLIC_PAGES.
+    agent:    () => _pageModule("../agent/agent.js"),
     // Phase 2: vendor: () => import('../pages/vendor.js'),
     // Phase 3: creator: () => import('../pages/creator.js'),
   };

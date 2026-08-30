@@ -224,5 +224,15 @@ const API = (() => {
     async getVendorProfile() {
       return _request("GET", "/api/vendor/profile");
     },
+
+    // ── Agent (AI assistant — Phase 3 chat) ─────────────────────────────
+    // One turn: send { message } | { action:{tool,args} } | { confirm_token }.
+    // The Authorization header is attached automatically (register-gated server-side).
+    async agentMessage(payload) {
+      return _request("POST", "/api/agent/message", payload);
+    },
+    async agentStatus() {
+      return _request("GET", "/api/agent/status");
+    },
   };
 })();

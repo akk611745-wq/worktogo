@@ -1,0 +1,169 @@
+/* =============================================================================
+ *  WorkToGo — Agent Chat UI (Phase 3)  ·  self-contained, own scope
+ * -----------------------------------------------------------------------------
+ *  A clean, friendly, mobile-first chat screen (WhatsApp/ChatGPT-like). It is
+ *  fully standalone — it does NOT depend on main.css / service / commerce
+ *  styles, so it renders identically inside the app router AND in the static
+ *  demo harness (agent/demo.html). All classes are namespaced `ag-` to avoid
+ *  any collision with the rest of the app.
+ * ========================================================================== */
+
+.ag-root {
+  --ag-bg:        #0c0d12;
+  --ag-surface:   #171922;
+  --ag-surface-2: #1f2230;
+  --ag-line:      #2a2e3d;
+  --ag-text:      #f2f3f7;
+  --ag-muted:     #9aa0b2;
+  --ag-accent:    #e8681a;
+  --ag-accent-2:  #ff8a3d;
+  --ag-user:      #2b6ef2;
+  --ag-ok:        #2ecc71;
+
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ag-bg);
+  color: var(--ag-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+.ag-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  padding-top: max(12px, env(safe-area-inset-top));
+  background: var(--ag-surface);
+  border-bottom: 1px solid var(--ag-line);
+  flex-shrink: 0;
+}
+.ag-back {
+  background: none; border: none; color: var(--ag-text);
+  font-size: 22px; line-height: 1; cursor: pointer; padding: 4px 6px; border-radius: 10px;
+}
+.ag-back:active { background: var(--ag-surface-2); }
+.ag-avatar {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--ag-accent), var(--ag-accent-2));
+  display: grid; place-items: center; font-size: 19px; flex-shrink: 0;
+}
+.ag-head-meta { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.ag-head-name { font-weight: 700; font-size: 15px; }
+.ag-head-status { font-size: 12px; color: var(--ag-ok); display: flex; align-items: center; gap: 5px; }
+.ag-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ag-ok); }
+
+/* ── Messages ─────────────────────────────────────────────────────────────── */
+.ag-msgs {
+  flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 16px 12px 8px; display: flex; flex-direction: column; gap: 10px;
+}
+.ag-row { display: flex; width: 100%; }
+.ag-row.user { justify-content: flex-end; }
+.ag-row.agent { justify-content: flex-start; }
+
+.ag-bubble {
+  max-width: 82%; padding: 10px 13px; border-radius: 16px; font-size: 14.5px;
+  line-height: 1.45; word-wrap: break-word; white-space: pre-wrap;
+}
+.ag-row.agent .ag-bubble {
+  background: var(--ag-surface); border: 1px solid var(--ag-line);
+  border-bottom-left-radius: 5px; color: var(--ag-text);
+}
+.ag-row.user .ag-bubble {
+  background: var(--ag-user); color: #fff; border-bottom-right-radius: 5px;
+}
+.ag-bubble.error { background: #3a1d1d; border-color: #6b2b2b; color: #ffd9d9; }
+
+/* ── Inline cards (real UI the agent renders) ─────────────────────────────── */
+.ag-cards { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 92%; }
+.ag-card {
+  background: var(--ag-surface); border: 1px solid var(--ag-line);
+  border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 8px;
+}
+.ag-card-head { display: flex; align-items: center; gap: 10px; }
+.ag-card-ava {
+  width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0;
+  background: linear-gradient(135deg, #3a3f52, #262a38);
+  display: grid; place-items: center; font-weight: 700; font-size: 16px; color: #fff;
+}
+.ag-card-title { font-weight: 700; font-size: 14.5px; }
+.ag-card-sub { font-size: 12.5px; color: var(--ag-muted); }
+.ag-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.ag-badge {
+  font-size: 11px; padding: 3px 8px; border-radius: 999px;
+  background: var(--ag-surface-2); color: var(--ag-muted); border: 1px solid var(--ag-line);
+}
+.ag-badge.star { color: #ffca3a; }
+.ag-badge.ok   { color: var(--ag-ok); border-color: #1e5c3a; }
+.ag-card-price { font-size: 18px; font-weight: 800; color: var(--ag-accent-2); }
+.ag-feat { margin: 0; padding-left: 16px; color: var(--ag-muted); font-size: 12.5px; line-height: 1.6; }
+
+.ag-card-actions { display: flex; gap: 8px; margin-top: 2px; }
+.ag-btn {
+  flex: 1; border: none; border-radius: 10px; padding: 9px 12px; font-size: 13.5px;
+  font-weight: 700; cursor: pointer; transition: transform .05s ease, opacity .15s ease;
+}
+.ag-btn:active { transform: scale(.98); }
+.ag-btn.primary { background: linear-gradient(135deg, var(--ag-accent), var(--ag-accent-2)); color: #fff; }
+.ag-btn.ghost   { background: var(--ag-surface-2); color: var(--ag-text); border: 1px solid var(--ag-line); }
+.ag-btn:disabled { opacity: .5; cursor: default; }
+
+/* ── Confirmation card (writes) ───────────────────────────────────────────── */
+.ag-confirm {
+  background: linear-gradient(135deg, #241a12, #1c1d26);
+  border: 1px solid #5a3a1e;
+}
+.ag-confirm .ag-confirm-q { font-weight: 700; font-size: 14.5px; }
+.ag-confirm .ag-confirm-note { font-size: 12px; color: var(--ag-muted); }
+.ag-confirm.done { border-color: #1e5c3a; }
+.ag-confirm.cancelled { opacity: .6; }
+
+/* ── Success (booking created) ────────────────────────────────────────────── */
+.ag-success { border-color: #1e5c3a; background: linear-gradient(135deg, #10241a, #171922); }
+.ag-success .ag-success-icon { font-size: 26px; }
+
+/* ── Typing indicator ─────────────────────────────────────────────────────── */
+.ag-typing { display: inline-flex; gap: 4px; align-items: center; padding: 12px 14px; }
+.ag-typing span {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--ag-muted);
+  animation: ag-blink 1.2s infinite both;
+}
+.ag-typing span:nth-child(2) { animation-delay: .2s; }
+.ag-typing span:nth-child(3) { animation-delay: .4s; }
+@keyframes ag-blink { 0%, 80%, 100% { opacity: .3; } 40% { opacity: 1; } }
+
+/* ── Suggestion chips (empty state) ───────────────────────────────────────── */
+.ag-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.ag-chip {
+  background: var(--ag-surface-2); color: var(--ag-text); border: 1px solid var(--ag-line);
+  border-radius: 999px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+}
+.ag-chip:active { background: var(--ag-surface); }
+
+/* ── Composer ─────────────────────────────────────────────────────────────── */
+.ag-composer {
+  display: flex; gap: 8px; align-items: flex-end; padding: 10px 12px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  background: var(--ag-surface); border-top: 1px solid var(--ag-line); flex-shrink: 0;
+}
+.ag-input {
+  flex: 1; resize: none; max-height: 120px; min-height: 22px;
+  background: var(--ag-surface-2); color: var(--ag-text); border: 1px solid var(--ag-line);
+  border-radius: 20px; padding: 11px 14px; font-size: 15px; line-height: 1.35;
+  font-family: inherit; outline: none;
+}
+.ag-input::placeholder { color: var(--ag-muted); }
+.ag-input:focus { border-color: var(--ag-accent); }
+.ag-send {
+  width: 44px; height: 44px; border-radius: 50%; border: none; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--ag-accent), var(--ag-accent-2));
+  color: #fff; font-size: 18px; cursor: pointer; display: grid; place-items: center;
+}
+.ag-send:disabled { opacity: .45; cursor: default; }
+
+/* Hide the app-wide launcher while the chat is open */
+body:has(.ag-root) .wtg-agent-fab { display: none !important; }

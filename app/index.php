@@ -125,6 +125,18 @@ function wtg_build_version(): string {
     </div>
   </div>
 
+  <!-- Agent assistant launcher (app-wide). Chat lives self-contained under
+       app/agent/ (own page + own CSS). The route is register-gated by the
+       router; agent.css hides this button while the chat is open. -->
+  <style>
+    .wtg-agent-fab{position:fixed;right:16px;bottom:88px;width:56px;height:56px;
+      border-radius:50%;background:linear-gradient(135deg,#e8681a,#ff8a3d);color:#fff;
+      display:grid;place-items:center;font-size:26px;text-decoration:none;
+      box-shadow:0 8px 24px rgba(232,104,26,.45);z-index:900;}
+    .wtg-agent-fab:active{transform:scale(.95);}
+  </style>
+  <a class="wtg-agent-fab" href="#agent" aria-label="Chat with WorkToGo Assistant" title="Assistant">🤖</a>
+
   <!--
     ─────────────────────────────────────────────────────────────
     DEPLOYMENT: Edit env.js to set your real API base URL.
