@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Agent Control</title>
+<link rel="icon" href="/app/assets/favicon.png"/>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  :root { --accent:#e94560; --ok:#16a34a; --warn:#d97706; --bad:#dc2626; --line:#e5e7eb; --muted:#6b7280; }
+  body { font-family:'Inter',system-ui,sans-serif; margin:0; }
+  .page-content { background:#f7f7fb; min-height:100vh; padding:1.5rem; }
+  .page-title { margin:0 0 .25rem; font-size:1.5rem; color:#1a1a2e; }
+  .page-sub { color:var(--muted); margin:0 0 1.25rem; font-size:.9rem; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:1.25rem; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:1.1rem 1.25rem; }
+  .card h2 { margin:0 0 .9rem; font-size:1.05rem; color:#1a1a2e; display:flex; align-items:center; gap:.5rem; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px dashed var(--line); }
+  .row:last-child { border-bottom:none; }
+  .row label { font-size:.92rem; color:#333; }
+  .hint { font-size:.78rem; color:var(--muted); }
+  .switch { position:relative; width:46px; height:26px; flex-shrink:0; }
+  .switch input { opacity:0; width:0; height:0; }
+  .slider { position:absolute; inset:0; background:#cbd5e1; border-radius:999px; transition:.2s; cursor:pointer; }
+  .slider:before { content:""; position:absolute; height:20px; width:20px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.2s; }
+  .switch input:checked + .slider { background:var(--ok); }
+  .switch input:checked + .slider:before { transform:translateX(20px); }
+  .killswitch input:checked + .slider { background:var(--ok); }
+  .killswitch input:not(:checked) + .slider { background:var(--bad); }
+  input.num { width:90px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; font-size:.9rem; }
+  input.txt { width:130px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; font-size:.85rem; }
+  .btn { background:var(--accent); color:#fff; border:none; padding:8px 14px; border-radius:8px; cursor:pointer; font-weight:600; font-size:.85rem; }
+  .btn.ghost { background:#eef0f5; color:#333; }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .pill { font-size:.72rem; padding:2px 9px; border-radius:999px; font-weight:600; }
+  .pill.on { background:#dcfce7; color:#166534; } .pill.off { background:#fee2e2; color:#991b1b; }
+  .pill.warn { background:#fef3c7; color:#92400e; }
+  .stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .stat { background:#f7f7fb; border:1px solid var(--line); border-radius:10px; padding:10px; text-align:center; }
+  .stat b { display:block; font-size:1.25rem; color:#1a1a2e; } .stat span { font-size:.72rem; color:var(--muted); }
+  table { width:100%; border-collapse:collapse; font-size:.82rem; }
+  th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--muted); font-weight:600; }
+  .st { font-size:.72rem; padding:1px 7px; border-radius:999px; }
+  .st.executed{background:#dcfce7;color:#166534;} .st.proposed{background:#e0e7ff;color:#3730a3;}
+  .st.blocked,.st.pii_blocked,.st.rejected{background:#fee2e2;color:#991b1b;} .st.failed{background:#fef3c7;color:#92400e;}
+  .st.chat{background:#f1f5f9;color:#475569;}
+  #toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#1a1a2e; color:#fff; padding:10px 18px; border-radius:8px; font-size:.85rem; opacity:0; transition:.25s; pointer-events:none; z-index:9999; }
+  #toast.show { opacity:1; }
+  .full { grid-column:1 / -1; }
+</style>
+</head>
+<body>
+<div class="page-content" id="app">
+  <h1 class="page-title">🤖 Agent Control Room</h1>
+  <p class="page-sub">Govern the assistant — turn it off instantly, pause capabilities, cap the AI budget, pick the provider, and watch what it's doing. Everything is data-driven and takes effect on the next turn. <span id="loadstate" class="hint"></span></p>
+  <div class="grid" id="cards"></div>
+</div>
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/push.js"></script>
+<script src="shared/shell.js"></script>
+<script>
+let OV = null;
+
+function toast(msg, ok = true) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.style.background = ok ? "#1a1a2e" : "#991b1b";
+  t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 2200);
+}
+async function savingSetting(key, value, okMsg) {
+  try { await API.put(`/api/admin/settings/${key}`, { value }); toast(okMsg || "Saved ✓"); return true; }
+  catch (e) { toast("Save failed: " + (e.message || key), false); return false; }
+}
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+async function load() {
+  document.getElementById("loadstate").textContent = "· loading…";
+  try {
+    const r = await API.get("/api/admin/agent/overview");
+    OV = r.data || r;
+    render();
+    document.getElementById("loadstate").textContent = "· updated " + new Date().toLocaleTimeString();
+  } catch (e) {
+    document.getElementById("cards").innerHTML = `<div class="card full"><b>Could not load.</b> ${esc(e.message || "")} — is the agent migrated & the API reachable?</div>`;
+  }
+  loadActivity();
+}
+
+function render() {
+  const s = OV.settings || {}, caps = s.capabilities || {}, lim = s.limits || {}, bud = s.budget || {}, guards = s.guardrails || {};
+  const providers = OV.providers || {}, routing = OV.routing || {}, sum = OV.summary_24h || {};
+  const enabled = !!s.enabled;
+
+  const capRow = (key, label) => `<div class="row"><label>${label}</label>
+     <span class="switch"><input type="checkbox" data-cap="${key}" ${caps[key] ? "checked" : ""}><span class="slider"></span></span></div>`;
+  const provRows = Object.keys(providers).map(p =>
+     `<div class="row"><label>${esc(p)}</label><span class="pill ${providers[p] ? "on" : "off"}">${providers[p] ? "usable" : "off"}</span></div>`).join("");
+  const toolRows = (sum.tools || []).map(t => `<tr><td>${esc(t.tool)}</td><td>${t.count}</td></tr>`).join("") || `<tr><td colspan="2" class="hint">No activity in 24h.</td></tr>`;
+  const budPaused = bud.paused;
+
+  document.getElementById("cards").innerHTML = `
+    <div class="card">
+      <h2>⏻ Global kill-switch</h2>
+      <div class="row"><label><b>Agent enabled</b><div class="hint">Off = the whole assistant stops instantly (the app keeps working).</div></label>
+        <span class="switch killswitch"><input id="killswitch" type="checkbox" ${enabled ? "checked" : ""}><span class="slider"></span></span></div>
+      <div class="row"><label>Current state</label><span class="pill ${enabled ? "on" : "off"}">${enabled ? "LIVE" : "OFF"}</span></div>
+    </div>
+
+    <div class="card">
+      <h2>🧩 Capabilities</h2>
+      ${capRow("service", "Service (find vendors, book, expert visit)")}
+      ${capRow("commerce", "Commerce (products, cart, checkout)")}
+      ${capRow("vendor", "Vendor (listing, status, reminders)")}
+      ${capRow("writes", "Allow WRITES (booking / order / changes)")}
+      <div class="hint" style="margin-top:8px">Turn a class off to pause it; turn WRITES off to let users browse but pause all bookings/orders/changes.</div>
+    </div>
+
+    <div class="card">
+      <h2>💸 AI budget</h2>
+      <div class="row"><label>Monthly cap (USD, 0 = unlimited)</label><input class="num" id="bud_cap" type="number" min="0" step="1" value="${Number(bud.monthly_cap_usd || 0)}"></div>
+      <div class="row"><label>Auto-pause when exceeded</label><span class="switch"><input id="bud_auto" type="checkbox" ${bud.auto_pause ? "checked" : ""}><span class="slider"></span></span></div>
+      <div class="row"><label>Spent this month</label><b>$${Number(bud.spent_usd || 0).toFixed(4)}</b></div>
+      <div class="row"><label>Status</label><span class="pill ${budPaused ? "off" : "on"}">${budPaused ? "PAUSED (AI stopped)" : "OK"}</span></div>
+      <div style="margin-top:10px"><button class="btn" onclick="saveBudget()">Save budget</button></div>
+    </div>
+
+    <div class="card">
+      <h2>🚦 Limits & guardrails</h2>
+      <div class="row"><label>Messages / minute / user</label><input class="num" id="lim_rate" type="number" min="1" value="${Number(lim.msg_per_min || 30)}"></div>
+      <div class="row"><label>Max actions / session</label><input class="num" id="lim_sess" type="number" min="1" value="${Number(lim.actions_per_session || 20)}"></div>
+      <div class="row"><label>Max message length</label><input class="num" id="grd_chars" type="number" min="1" value="${Number(guards.max_message_chars || 2000)}"></div>
+      <div style="margin-top:10px"><button class="btn" onclick="saveLimits()">Save limits</button></div>
+    </div>
+
+    <div class="card">
+      <h2>🔌 AI provider & routing</h2>
+      ${provRows || '<div class="hint">No providers.</div>'}
+      <div class="row"><label>understand → primary</label><input class="txt" id="rt_u_p" value="${esc((routing.understand || {}).primary || "")}"></div>
+      <div class="row"><label>understand → secondary</label><input class="txt" id="rt_u_s" value="${esc((routing.understand || {}).secondary || "")}"></div>
+      <div class="hint" style="margin:8px 0">Swap the active provider by changing the primary; route away to disable one. Secondary = failover.</div>
+      <button class="btn" onclick="saveRouting()">Save routing</button>
+    </div>
+
+    <div class="card">
+      <h2>📊 Last 24 hours</h2>
+      <div class="stat-grid">
+        <div class="stat"><b>${sum.turns || 0}</b><span>turns</span></div>
+        <div class="stat"><b>${sum.ai_calls || 0}</b><span>AI calls</span></div>
+        <div class="stat"><b>${(sum.tokens || 0).toLocaleString()}</b><span>tokens</span></div>
+        <div class="stat"><b>${sum.blocked || 0}</b><span>blocked</span></div>
+        <div class="stat"><b>${sum.pii_blocked || 0}</b><span>PII-blocked</span></div>
+        <div class="stat"><b>${sum.rejected || 0}</b><span>rejected</span></div>
+      </div>
+      <table style="margin-top:12px"><thead><tr><th>Top tools</th><th>runs</th></tr></thead><tbody>${toolRows}</tbody></table>
+    </div>
+
+    <div class="card full">
+      <h2>🕓 Recent activity <span class="hint">(metadata only — no message content, no PII)</span></h2>
+      <div id="activity"><div class="hint">Loading…</div></div>
+    </div>`;
+
+  // Wire kill-switch + capability toggles (instant).
+  document.getElementById("killswitch").addEventListener("change", async (e) => {
+    const ok = await savingSetting("agent_enabled", e.target.checked ? 1 : 0, e.target.checked ? "Agent turned ON" : "Agent turned OFF ⏻");
+    if (ok) setTimeout(load, 300);
+  });
+  document.querySelectorAll("[data-cap]").forEach(el => el.addEventListener("change", saveCaps));
+}
+
+async function saveCaps() {
+  const caps = {};
+  document.querySelectorAll("[data-cap]").forEach(el => caps[el.getAttribute("data-cap")] = el.checked);
+  await savingSetting("agent_capabilities", caps, "Capabilities updated ✓");
+}
+async function saveBudget() {
+  const value = { monthly_cap_usd: Number(document.getElementById("bud_cap").value || 0), auto_pause: document.getElementById("bud_auto").checked };
+  if (await savingSetting("agent_budget", value, "Budget saved ✓")) setTimeout(load, 300);
+}
+async function saveLimits() {
+  await savingSetting("agent_limits", { msg_per_min: Number(document.getElementById("lim_rate").value || 30), actions_per_session: Number(document.getElementById("lim_sess").value || 20) });
+  await savingSetting("agent_guardrails", { max_message_chars: Number(document.getElementById("grd_chars").value || 2000) }, "Limits & guardrails saved ✓");
+}
+async function saveRouting() {
+  const clean = (v) => (v && v.trim() !== "" ? v.trim() : null);
+  const value = {
+    default:    { primary: clean(document.getElementById("rt_u_p").value) || "anthropic", secondary: clean(document.getElementById("rt_u_s").value) },
+    understand: { primary: clean(document.getElementById("rt_u_p").value) || "anthropic", secondary: clean(document.getElementById("rt_u_s").value) },
+    generate:   { primary: clean(document.getElementById("rt_u_p").value) || "anthropic", secondary: clean(document.getElementById("rt_u_s").value) },
+  };
+  if (await savingSetting("agent_ai_routing", value, "Routing saved ✓")) setTimeout(load, 300);
+}
+
+async function loadActivity() {
+  const box = document.getElementById("activity");
+  if (!box) return;
+  try {
+    const r = await API.get("/api/admin/agent/activity", { limit: 40 });
+    const rows = (r.data && r.data.activity) || [];
+    if (!rows.length) { box.innerHTML = '<div class="hint">No activity yet.</div>'; return; }
+    box.innerHTML = `<table><thead><tr><th>Time</th><th>User</th><th>Tool</th><th>Mode</th><th>Source</th><th>Status</th><th>HTTP</th></tr></thead><tbody>${
+      rows.map(a => `<tr>
+        <td>${esc((a.created_at || "").replace("T"," ").slice(0,19))}</td>
+        <td>${esc(a.user_id ?? "")}</td>
+        <td>${esc(a.tool)}</td>
+        <td>${esc(a.mode)}</td>
+        <td>${esc(a.source)}</td>
+        <td><span class="st ${esc(a.status)}">${esc(a.status)}</span></td>
+        <td>${esc(a.http_status)}</td></tr>`).join("")}</tbody></table>`;
+  } catch (e) { box.innerHTML = '<div class="hint">Could not load activity.</div>'; }
+}
+
+// Init
+if (Auth && Auth.requireAuth && Auth.requireAuth()) {
+  if (typeof Shell !== "undefined") Shell.init({ title: "Agent Control", active: "agent.html" });
+  load();
+  setInterval(load, 15000);
+}
+</script>
+</body>
+</html>

@@ -25,6 +25,7 @@ require_once __DIR__ . '/AgentContext.php';
 require_once __DIR__ . '/PiiWall.php';
 require_once __DIR__ . '/ToolPlanner.php';
 require_once __DIR__ . '/AgentMemory.php';
+require_once __DIR__ . '/AgentPolicy.php';
 require_once __DIR__ . '/tools/ToolRegistry.php';
 require_once __DIR__ . '/tools/AgentTool.php';   // defines ToolContext + AgentTool
 require_once __DIR__ . '/tools/EngineClient.php';
@@ -39,6 +40,7 @@ final class AgentActionOrchestrator
         private readonly EngineClient $engine,
         private readonly ?PDO         $db = null,
         private readonly ?AgentMemory $memory = null,
+        private readonly ?AgentPolicy $policy = null,
     ) {}
 
     /**
@@ -90,8 +92,10 @@ final class AgentActionOrchestrator
             return $this->chat($ctx, 'Tell me what you need — for example, "painter chahiye".', 'none');
         }
 
-        // The planner gets only the anonymized hints (never the memory row).
-        $plan = $this->planner->plan($ctx, $message, $hints);
+        // The planner gets only the anonymized hints (never the memory row). When
+        // the AI budget is exhausted (admin auto-pause), it runs deterministic-only.
+        $aiAllowed = !$this->policy || $this->policy->aiAllowed();
+        $plan = $this->planner->plan($ctx, $message, $hints, $aiAllowed);
         if ($plan->tool === null) {
             return $this->chat($ctx, $plan->say !== '' ? $plan->say : 'How can I help?', $plan->source);
         }
@@ -115,6 +119,11 @@ final class AgentActionOrchestrator
         }
 
         $tool = $this->registry->get($toolName);
+
+        // GOVERNANCE: an admin may have paused this capability (or all writes).
+        if ($blocked = $this->policyBlock($ctx, $toolName, $tool->mode(), $source)) {
+            return $blocked;
+        }
 
         // WRITE: never execute now — require explicit confirmation. The confirm is
         // also surfaced as a unified `widget` so the UI has one renderer for all
@@ -170,6 +179,12 @@ final class AgentActionOrchestrator
             return $this->finish($ctx, ['reply' => "Sorry, that action can't be confirmed.", 'tool' => $toolName, 'executed' => false]);
         }
 
+        // GOVERNANCE re-check at execution time (capability / writes may have been
+        // paused between propose and confirm).
+        if ($blocked = $this->policyBlock($ctx, $toolName, 'write', 'confirm')) {
+            return $blocked;
+        }
+
         $result = $tool->run($tc, $args);
         if ($result->ok && $this->memory) {
             $this->memory->record($ctx, $toolName, $args); // learn from this confirmed action
@@ -223,6 +238,38 @@ final class AgentActionOrchestrator
         $out['request_id'] = $ctx->requestId;
         $this->wall->forget($ctx->requestId);
         return $out;
+    }
+
+    /**
+     * Data-driven governance gate: returns a finished refusal if the admin has
+     * paused this capability or all writes, else null. (The kill-switch itself is
+     * enforced at the entry.)
+     */
+    private function policyBlock(AgentContext $ctx, string $toolName, string $mode, string $source): ?array
+    {
+        if ($this->policy === null) {
+            return null;
+        }
+        $group = $this->policy->groupForTool($toolName);
+        if (!$this->policy->capabilityEnabled($group)) {
+            $this->audit($ctx, $toolName, $mode, $source, 'blocked', 0, [], 'capability paused: ' . $group);
+            return $this->finish($ctx, [
+                'reply'    => "Yeh feature abhi kuch der ke liye paused hai. Thodi der baad try kijiye. 🙏",
+                'tool'     => $toolName,
+                'blocked'  => true,
+                'executed' => false,
+            ]);
+        }
+        if ($mode === 'write' && !$this->policy->writesEnabled()) {
+            $this->audit($ctx, $toolName, $mode, $source, 'blocked', 0, [], 'writes paused');
+            return $this->finish($ctx, [
+                'reply'    => "Abhi nayi booking/order/change temporarily paused hai — aap dekh sakte hain, baad mein kar sakte hain. 🙂",
+                'tool'     => $toolName,
+                'blocked'  => true,
+                'executed' => false,
+            ]);
+        }
+        return null;
     }
 
     private function friendlyError(EngineResult $r): string

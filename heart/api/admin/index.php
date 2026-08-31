@@ -71,6 +71,15 @@ $auth = AuthMiddleware::requireRole(ROLE_ADMIN);
 // through to the admin routes below. See heart/api/admin/commerce.php.
 require_once __DIR__ . '/commerce.php';
 
+// ── Agent control-room monitor (Phase 7) ────────────────────────────────────
+// Read-only monitor for governing the agent (kill-switch/capabilities/limits/
+// budget/providers + activity from the agent audit tables). Settings are changed
+// via the existing PUT /api/admin/settings/{key}. See heart/api/admin/agent.php.
+if (str_starts_with($uri, '/api/admin/agent')) {
+    require_once __DIR__ . '/agent.php';
+    exit;
+}
+
 // Blocker B2 fix — keep jobs.vendor_id in sync with bookings.vendor_id on admin (un)assign.
 // Admin assign historically wrote only bookings.vendor_id, leaving jobs.vendor_id NULL, so the
 // vendor's PATCH /api/jobs/{id}/status ownership check (jobs.vendor_id === vendor) returned 403

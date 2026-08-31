@@ -39,4 +39,8 @@ require_once __DIR__ . '/ToolPlanner.php';
 
 // ── Phase 4: memory / personalization ────────────────────────────────────────
 require_once __DIR__ . '/AgentMemory.php';
+
+// ── Phase 7: governance / admin control-room policy ───────────────────────────
+require_once __DIR__ . '/AgentPolicy.php';
+
 require_once __DIR__ . '/AgentActionOrchestrator.php';

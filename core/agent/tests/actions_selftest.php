@@ -165,6 +165,38 @@ $rG  = $orch->handle(customer(), ['confirm_token' => $bad]);
 check('G1 tampered token rejected',    ($rG['executed'] ?? true) === false);
 check('G2 no booking created',         $engine->countPost('/api/service/request') === 0);
 
+// ── H. Governance (Phase 7): admin control-room enforcement ──────────────────
+function govSetup(array $cfg, AgentPolicy $policy): array {
+    $wall = new PiiWall(null);
+    $orch = new AgentActionOrchestrator($wall, new ToolPlanner($wall, new AiProviderManager(null, $cfg), ToolRegistry::defaultRegistry()),
+        ToolRegistry::defaultRegistry(), $en = new MockEngineClient(), null, null, $policy);
+    return [$orch, $en];
+}
+
+// H1: capability OFF (commerce) → those tools refuse, backend never called.
+[$orch, $engine] = govSetup($cfg, new AgentPolicy(null, ['agent_enabled' => '1', 'agent_capabilities' => ['commerce' => false]]));
+$rH = $orch->handle(customer(), ['action' => ['tool' => 'browse_products', 'args' => ['query' => 'kapde']]]);
+check('H1 commerce paused → browse blocked', ($rH['blocked'] ?? false) === true && count($engine->calls) === 0);
+
+// H2: WRITES OFF → a write refuses, but reads still work.
+[$orch, $engine] = govSetup($cfg, new AgentPolicy(null, ['agent_enabled' => '1', 'agent_capabilities' => ['writes' => false]]));
+$rH2 = $orch->handle(customer(), ['action' => ['tool' => 'create_booking', 'args' => ['vendor_id' => 101, 'scheduled_at' => '2099-01-01 10:00:00']]]);
+check('H2 writes paused → booking blocked', ($rH2['blocked'] ?? false) === true);
+[$orch, $engine] = govSetup($cfg, new AgentPolicy(null, ['agent_enabled' => '1', 'agent_capabilities' => ['writes' => false]]));
+$rH3 = $orch->handle(customer(), ['message' => 'painter chahiye']);
+check('H3 writes paused → reads still work', ($rH3['tool'] ?? '') === 'find_vendors' && ($rH3['executed'] ?? false) === true);
+
+// H4: AI budget auto-pause → planner runs deterministic-only (no external AI call).
+$planner = new ToolPlanner(new PiiWall(null), new AiProviderManager(null, $cfg), ToolRegistry::defaultRegistry());
+$detOk  = $planner->plan(customer(), 'painter chahiye', [], false);        // deterministic still works
+$aiSkip = $planner->plan(customer(), 'I want to renovate my home', [], false); // needs AI, but paused
+check('H4 AI paused → deterministic works',      $detOk->tool === 'find_vendors');
+check('H5 AI paused → non-deterministic no AI',  $aiSkip->tool === null && $aiSkip->source === 'none');
+
+// H6: budget snapshot logic — unlimited (cap 0) is never paused.
+$b0 = (new AgentPolicy(null, ['agent_budget' => ['monthly_cap_usd' => 0]]))->budget();
+check('H6 cap 0 = unlimited, not paused', $b0['paused'] === false);
+
 echo "\n----------------------------------------\n";
 echo "RESULT: {$pass} passed, {$fail} failed\n";
 exit($fail === 0 ? 0 : 1);

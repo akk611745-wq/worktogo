@@ -74,13 +74,18 @@ try {
         $auth   = AuthMiddleware::require();
         $userId = (int) ($auth['user_id'] ?? 0);
 
+        // Governance: everything the admin control-room decides, loaded fresh.
+        $policy = new AgentPolicy($db);
+        $limits = $policy->limits();
+        $guards = $policy->guardrails();
+
         // 2. Kill-switch (default OFF — never spends until the founder enables it).
-        if (!$agentSetting('agent_enabled', false)) {
+        if (!$policy->agentEnabled()) {
             Response::unavailable('The assistant is not enabled yet.');
         }
 
-        // 3. Per-user rate limit.
-        if (!RateLimiter::check('agent_msg_' . $userId, 30, 60)) {
+        // 3. Per-user rate limit (admin-configurable).
+        if (!RateLimiter::check('agent_msg_' . $userId, $limits['msg_per_min'], 60)) {
             Response::tooManyRequests('You are messaging too fast. Please wait a moment.');
         }
 
@@ -91,11 +96,18 @@ try {
         $action  = is_array($body['action'] ?? null) ? $body['action'] : null;
         $confirm = is_string($body['confirm_token'] ?? null) ? $body['confirm_token'] : '';
         $event   = is_string($body['event'] ?? null) ? trim($body['event']) : '';
+        $session = is_string($body['session_id'] ?? null) ? trim($body['session_id']) : '';
         if ($message === '' && $action === null && $confirm === '' && $event === '') {
             Response::validation('A message, action, confirm_token, or event is required.');
         }
-        if (mb_strlen($message) > 2000) {
-            Response::validation('Message is too long (max 2000 characters).');
+        if (mb_strlen($message) > $guards['max_message_chars']) {
+            Response::validation('Message is too long (max ' . $guards['max_message_chars'] . ' characters).');
+        }
+
+        // 4b. Per-session action cap (admin-configurable). Only real turns count.
+        if ($session !== '' && $event === ''
+            && !RateLimiter::check('agent_sess_' . substr($session, 0, 64), $limits['actions_per_session'], 3600)) {
+            Response::tooManyRequests('This session has reached its limit. Please start a new chat.');
         }
 
         // 5. Forward the caller's own JWT to the backend so the engine authorizes
@@ -110,7 +122,7 @@ try {
         $planner      = new ToolPlanner($wall, $manager, $registry);
         $engine       = new HttpEngineClient($bearer);
         $memory       = new AgentMemory($db);
-        $orchestrator = new AgentActionOrchestrator($wall, $planner, $registry, $engine, $db, $memory);
+        $orchestrator = new AgentActionOrchestrator($wall, $planner, $registry, $engine, $db, $memory, $policy);
         $ctx          = AgentContext::fromAuth($auth, $body, $db);
 
         try {
@@ -123,6 +135,13 @@ try {
         } catch (PiiLeakException $e) {
             // Fail-closed: nothing was sent. Ask the user to rephrase — never echo the reason.
             Logger::warning('agent.pii_blocked', ['request_id' => $ctx->requestId]);
+            // Record the block (metadata only) so the control-room monitor can see it.
+            try {
+                $db->prepare(
+                    "INSERT INTO agent_action_log (request_id, user_id, tool, mode, source, status, http_status, created_at)
+                     VALUES (?, ?, '-', 'chat', 'wall', 'pii_blocked', 0, NOW())"
+                )->execute([$ctx->requestId, $ctx->userId]);
+            } catch (\Throwable $ignored) {}
             Response::error(
                 "Sorry, I couldn't process that safely. Please try again without sensitive details "
                 . "like phone numbers or IDs.",

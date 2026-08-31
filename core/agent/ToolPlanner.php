@@ -46,17 +46,23 @@ final class ToolPlanner
         private readonly ToolRegistry      $registry,
     ) {}
 
-    public function plan(AgentContext $ctx, string $rawMessage, array $hints = []): ToolPlan
+    public function plan(AgentContext $ctx, string $rawMessage, array $hints = [], bool $aiAllowed = true): ToolPlan
     {
-        // 1. System-first deterministic rules (no external AI).
+        // 1. System-first deterministic rules (no external AI). Always available.
         $det = $this->deterministic($ctx, $rawMessage);
         if ($det !== null) {
             return $det;
         }
 
-        // 2. AI fallback — through the wall. `hints` are memory-derived,
-        //    non-identifying tokens (see AgentMemory::hints); they help the AI
-        //    personalise its proposal without ever seeing who the user is.
+        // 2. AI fallback — through the wall. If the admin's AI budget is paused,
+        //    we do NOT call the external AI: common asks still work (above), and
+        //    anything else degrades to a friendly nudge instead of spending.
+        if (!$aiAllowed) {
+            return new ToolPlan(null, [], 'Filhaal main seedhe requests samajh sakta hoon — jaise "painter chahiye" ya "kapde chahiye". 🙂', 'none');
+        }
+
+        // `hints` are memory-derived, non-identifying tokens (see AgentMemory::hints);
+        // they help the AI personalise its proposal without ever seeing the user.
         return $this->viaAi($ctx, $rawMessage, $hints);
     }
 
