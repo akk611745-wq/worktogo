@@ -54,6 +54,9 @@ interface EngineClient
 
     /** POST a backend endpoint. Never throws — returns EngineResult. */
     public function post(string $path, array $body = []): EngineResult;
+
+    /** PATCH a backend endpoint. Never throws — returns EngineResult. */
+    public function patch(string $path, array $body = []): EngineResult;
 }
 
 /**
@@ -84,6 +87,11 @@ final class HttpEngineClient implements EngineClient
     public function post(string $path, array $body = []): EngineResult
     {
         return $this->send('POST', $path, $body);
+    }
+
+    public function patch(string $path, array $body = []): EngineResult
+    {
+        return $this->send('PATCH', $path, $body);
     }
 
     private function send(string $method, string $path, ?array $body): EngineResult

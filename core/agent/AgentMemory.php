@@ -156,8 +156,18 @@ final class AgentMemory
      *
      * @return array{reply:string,chips:string[],personalized:bool}
      */
-    public function personalizedGreeting(array $memory, string $displayName = 'dost'): array
+    public function personalizedGreeting(array $memory, string $displayName = 'dost', string $role = 'customer'): array
     {
+        // Vendor-agent: the recruiting pitch — the vendor never learns a dashboard.
+        if (str_starts_with($role, 'vendor')) {
+            return [
+                'reply'        => "Namaste {$displayName}! 👋 Aap apni skill bataiye — main aapke liye premium "
+                                . "customers laa dunga. Kuch seekhna nahi, bas baat kijiye 🙂",
+                'chips'        => ['listing banao', 'mera status', 'photo upload', 'weekly reminder'],
+                'personalized' => (int) ($memory['turn_count'] ?? 0) > 0,
+            ];
+        }
+
         $returning = (int) ($memory['turn_count'] ?? 0) > 0;
         $top       = $this->topCategory($memory);
 

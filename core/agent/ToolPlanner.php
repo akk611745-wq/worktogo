@@ -70,8 +70,27 @@ final class ToolPlanner
             return new ToolPlan('verify_phone', [], 'Chaliye aapka number verify karte hain.', 'deterministic');
         }
 
+        // Vendor-agent (Phase 6): onboard / status / reminders (both vendor roles).
+        $isVendor = str_starts_with($ctx->role, 'vendor');
+        if ($isVendor) {
+            if (str_contains($m, 'listing') || str_contains($m, 'profile ban') || str_contains($m, 'register')
+                || str_contains($m, 'onboard') || str_contains($m, 'shuru') || str_contains($m, 'sign up')
+                || str_contains($m, 'join')) {
+                return new ToolPlan('start_listing', [], 'Chaliye, kuch seekhna nahi — bas jawab dijiye 🙂', 'deterministic');
+            }
+            if (str_contains($m, 'status') || str_contains($m, 'kaisa chal') || str_contains($m, 'growth')
+                || str_contains($m, 'kitne log') || str_contains($m, 'kitne customer') || str_contains($m, 'report')) {
+                return new ToolPlan('my_status', [], 'Yeh raha aapka status 👇', 'deterministic');
+            }
+            if (str_contains($m, 'remind') || str_contains($m, 'reminder') || str_contains($m, 'yaad')) {
+                $cadence = (str_contains($m, 'daily') || str_contains($m, 'roz')) ? 'daily' : 'weekly';
+                $title   = str_contains($m, 'photo') ? 'Weekly work-photo upload' : 'Weekly business reminder';
+                return new ToolPlan('set_reminder', ['title' => $title, 'cadence' => $cadence], 'Reminder set kar dete hain ⏰', 'deterministic');
+            }
+        }
+
         // Vendor: "upload (work) photo" → inline upload widget (checked before "work"→jobs).
-        if ($ctx->role === 'vendor_service'
+        if ($isVendor
             && (str_contains($m, 'photo') || str_contains($m, 'foto') || str_contains($m, 'upload'))) {
             return new ToolPlan('upload_work_photo', [], 'Apni kaam ki photo upload kijiye 👇', 'deterministic');
         }

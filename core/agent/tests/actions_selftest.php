@@ -77,6 +77,10 @@ final class MockEngineClient implements EngineClient {
         }
         return EngineResult::ok(200, []);
     }
+    public function patch(string $path, array $body = []): EngineResult {
+        $this->calls[] = ['PATCH', $path, $body];
+        return EngineResult::ok(200, ['updated' => true]);
+    }
     public function countPost(string $path): int {
         return count(array_filter($this->calls, fn ($c) => $c[0] === 'POST' && $c[1] === $path));
     }

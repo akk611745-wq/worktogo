@@ -59,7 +59,7 @@ final class AgentActionOrchestrator
         // ── Path 0: session open → a personalized greeting (from OUR memory) ─────
         if (($input['event'] ?? '') === 'open') {
             $g = $this->memory
-                ? $this->memory->personalizedGreeting($mem)
+                ? $this->memory->personalizedGreeting($mem, 'dost', $ctx->role)
                 : ['reply' => 'Namaste! 👋 Bataiye kya chahiye?', 'chips' => [], 'personalized' => false];
             $this->audit($ctx, '-', 'chat', 'open', 'chat', 0, [], null);
             return $this->finish($ctx, [

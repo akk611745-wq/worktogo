@@ -194,8 +194,10 @@ function handle(res) {
     d.orders.length ? renderOrders(d.orders) : addAgent("Abhi koi order nahi hai.");
   } else if (res.tool === "track_order" && d.order) {
     renderOrderDetail(d.order);
+  } else if (res.tool === "my_status" && d.status) {
+    renderStatus(d.status);
   } else if (res.widget) {
-    renderWidget(res.widget);   // unified inline action: confirm / upload / otp
+    renderWidget(res.widget);   // unified inline action: confirm / upload / otp / onboard
   } else if (res.requires_confirmation) {
     renderConfirm(res.confirm_token, res.reply || "Confirm karein?", null);
   } else if (res.executed && res.tool === "create_booking") {
@@ -204,6 +206,10 @@ function handle(res) {
     renderBooking(d, "Expert visit");
   } else if (res.executed && res.tool === "checkout") {
     renderOrderPlaced(d);
+  } else if (res.executed && res.tool === "save_listing") {
+    renderListingSaved(d);
+  } else if (res.executed && res.tool === "set_reminder") {
+    renderReminderSet(d.reminder || {});
   }
   // rejected / degraded / chat: the reply bubble already said it.
 }
@@ -342,6 +348,146 @@ function renderWidget(w) {
   if (w.type === "confirm") return renderConfirm(w.confirm_token, w.question || "Confirm karein?", null);
   if (w.type === "upload")  return renderUpload(w);
   if (w.type === "otp")     return renderOtp(w);
+  if (w.type === "onboard") return renderOnboard(w);
+}
+
+// ── Vendor-agent (Phase 6): onboarding stepper, status card, reminders ───────
+// The vendor never learns a dashboard — one friendly question at a time.
+function renderOnboard(w) {
+  const steps = Array.isArray(w.steps) ? w.steps : [];
+  if (!steps.length) { addAgent("Onboarding abhi available nahi hai."); return; }
+  const answers = {};
+  let i = 0;
+  const cards = cardWrap();
+  const card = el(`<div class="ag-card ag-widget ag-onboard">
+      <div class="ag-onboard-progress"></div>
+      <div class="ag-onboard-q"></div>
+      <div class="ag-onboard-body"></div>
+      <div class="ag-card-actions"><button class="ag-btn primary" data-next>Next →</button></div>
+      <div class="ag-widget-status"></div>
+    </div>`);
+  const progress = card.querySelector(".ag-onboard-progress");
+  const qEl = card.querySelector(".ag-onboard-q");
+  const body = card.querySelector(".ag-onboard-body");
+  const nextBtn = card.querySelector("[data-next]");
+  const status = card.querySelector(".ag-widget-status");
+
+  function paintStep() {
+    const s = steps[i];
+    progress.textContent = `Step ${i + 1} / ${steps.length}`;
+    qEl.textContent = s.q || "";
+    body.innerHTML = "";
+    if (s.kind === "select") {
+      const sel = document.createElement("select");
+      sel.className = "ag-textin ag-onboard-input";
+      sel.innerHTML = `<option value="">— choose —</option>` + (s.options || []).map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join("");
+      body.appendChild(sel);
+    } else if (s.kind === "multiselect") {
+      const wrap = document.createElement("div"); wrap.className = "ag-chips ag-onboard-multi";
+      (s.options || []).forEach((o) => {
+        const b = document.createElement("button"); b.type = "button"; b.className = "ag-chip"; b.textContent = o.label; b.dataset.value = o.value;
+        b.addEventListener("click", () => b.classList.toggle("sel"));
+        wrap.appendChild(b);
+      });
+      body.appendChild(wrap);
+    } else {
+      const inp = document.createElement("input");
+      inp.className = "ag-textin ag-onboard-input";
+      inp.type = s.kind === "number" ? "number" : "text";
+      if (s.placeholder) inp.placeholder = s.placeholder;
+      body.appendChild(inp);
+    }
+    nextBtn.textContent = i === steps.length - 1 ? "Review →" : "Next →";
+    status.textContent = "";
+  }
+
+  function readStep() {
+    const s = steps[i];
+    if (s.kind === "multiselect") {
+      const vals = Array.from(body.querySelectorAll(".ag-chip.sel")).map((b) => b.dataset.value);
+      return vals.join(",");
+    }
+    const inp = body.querySelector(".ag-onboard-input");
+    return inp ? String(inp.value).trim() : "";
+  }
+
+  nextBtn.addEventListener("click", () => {
+    const s = steps[i];
+    const val = readStep();
+    if ((s.kind === "text" || s.kind === "number" || s.kind === "select") && val === "" && s.key === "name") {
+      status.textContent = "Yeh zaroori hai 🙂"; return;
+    }
+    if (val !== "") answers[s.key] = val;
+    if (i < steps.length - 1) { i++; paintStep(); return; }
+    // Last step → review + submit.
+    card.remove();
+    proposeSaveListing(answers, w.submit_tool || "save_listing", steps);
+  });
+
+  cards.appendChild(card); mountCards(cards); paintStep();
+}
+
+function proposeSaveListing(answers, submitTool, steps) {
+  // Human-readable summary (labels, not ids) for the review.
+  const labelFor = (key, val) => {
+    const s = (steps || []).find((x) => x.key === key);
+    if (s && (s.kind === "select" || s.kind === "multiselect") && Array.isArray(s.options)) {
+      const parts = String(val).split(",").map((v) => (s.options.find((o) => String(o.value) === String(v)) || {}).label || v);
+      return parts.join(", ");
+    }
+    return val;
+  };
+  const nice = { name: "Naam", category_id: "Kaam", area: "Area", experience_years: "Experience", languages: "Bhasha" };
+  const lines = Object.keys(answers).map((k) => `${nice[k] || k}: ${esc(labelFor(k, answers[k]))}`).join("\n");
+  addAgent("Bas ek nazar daal lijiye 👇\n" + lines);
+  run({ action: { tool: submitTool, args: answers } });
+}
+
+function renderListingSaved(d) {
+  const cards = cardWrap();
+  const card = el(`<div class="ag-card ag-success">
+      <div class="ag-card-head"><div class="ag-success-icon">🎉</div>
+        <div><div class="ag-card-title">Listing ban gayi!</div>
+        <div class="ag-card-sub">Admin approve karte hi customers ko dikhne lagegi.</div></div></div>
+      <div class="ag-card-actions"><button class="ag-btn ghost" data-photo>Work photo add karein</button></div>
+    </div>`);
+  card.querySelector("[data-photo]").addEventListener("click", () => run({ message: "upload work photo" }));
+  cards.appendChild(card); mountCards(cards);
+}
+
+function renderStatus(st) {
+  const hints = Array.isArray(st.growth_hints) ? st.growth_hints : [];
+  const cards = cardWrap();
+  const card = el(`<div class="ag-card ag-status">
+      <div class="ag-card-head">
+        <div class="ag-card-ava">${esc(initial(st.business_name))}</div>
+        <div><div class="ag-card-title">${esc(st.business_name || "Aap")}</div>
+        <div class="ag-card-sub">Status: <span class="ag-badge ${st.status === "active" ? "ok" : ""}">${esc(st.status || "pending")}</span></div></div>
+      </div>
+      <div class="ag-stat-row">
+        <div class="ag-stat"><b>${esc(st.completed_jobs || 0)}</b><span>jobs</span></div>
+        <div class="ag-stat"><b>${st.rating ? esc(Number(st.rating).toFixed(1)) : "—"}</b><span>rating</span></div>
+        <div class="ag-stat"><b>${esc(st.photo_count || 0)}</b><span>photos</span></div>
+        <div class="ag-stat"><b>${esc(st.followers || 0)}</b><span>followers</span></div>
+      </div>
+      ${hints.length ? `<div class="ag-hints">${hints.map((h) => `<div class="ag-hint">💡 ${esc(h)}</div>`).join("")}</div>` : ""}
+      <div class="ag-card-actions">
+        <button class="ag-btn primary" data-photo>Add work photo</button>
+        <button class="ag-btn ghost" data-remind>Weekly reminder</button>
+      </div>
+    </div>`);
+  card.querySelector("[data-photo]").addEventListener("click", () => run({ message: "upload work photo" }));
+  card.querySelector("[data-remind]").addEventListener("click", () => run({ message: "weekly photo reminder" }));
+  cards.appendChild(card); mountCards(cards);
+}
+
+function renderReminderSet(r) {
+  const cards = cardWrap();
+  const card = el(`<div class="ag-card ag-success">
+      <div class="ag-card-title">Reminder set ⏰</div>
+      <div class="ag-card-sub">${esc(r.title || "Reminder")} · ${esc(r.cadence || "weekly")}</div>
+    </div>`);
+  cards.appendChild(card); mountCards(cards);
 }
 
 function renderUpload(w) {
@@ -750,6 +896,18 @@ const MOCK_PRODUCTS = [
   { id: 9003, name: "Kids Ethnic Set",              store_name: "Haldwani Vastralay", is_company: true,  price: 1199, rating: 4.5 },
   { id: 9004, name: "Festive Kurti (Women)",        store_name: "Trendz Boutique",    is_company: false, price: 1299, sale_price: 999,  rating: 4.7 },
 ];
+const MOCK_CATEGORIES = [
+  { value: 1, label: "Painting" }, { value: 2, label: "Plumber" }, { value: 3, label: "Electrician" },
+  { value: 4, label: "Waterproofing" }, { value: 5, label: "CCTV" },
+];
+const MOCK_STATUS = {
+  business_name: "Sharma Painters", status: "pending", rating: 4.6, experience_years: 6,
+  languages: ["hindi"], completed_jobs: 12, bookings_today: 1, followers: 8, photo_count: 0,
+  growth_hints: [
+    "Abhi koi work photo nahi hai — 3 achhi photo add karo, customers ka trust 2x badhta hai. 📸",
+    "Aapki listing abhi review mein hai — approve hote hi customers ko dikhne lagegi.",
+  ],
+};
 const MOCK_CART = { items: [] };
 function mockFindProduct(pid) { return MOCK_PRODUCTS.find((p) => p.id === Number(pid)) || null; }
 function mockCartAdd(pid) {
@@ -768,6 +926,12 @@ function mockMem() { try { return JSON.parse(localStorage.getItem("wtg_agent_moc
 function mockMemSave(m) { try { localStorage.setItem("wtg_agent_mock_mem", JSON.stringify(m)); } catch {} }
 function mockMemRecord(cat) { const m = mockMem(); m.turns = (m.turns || 0) + 1; if (cat) m.lastCat = cat; mockMemSave(m); }
 function mockGreeting(name) {
+  if (String(S.role).indexOf("vendor") === 0) {
+    return {
+      reply: `Namaste ${name}! 👋 Aap apni skill bataiye — main aapke liye premium customers laa dunga. Kuch seekhna nahi, bas baat kijiye 🙂`,
+      chips: ["listing banao", "mera status", "photo upload", "weekly reminder"],
+    };
+  }
   const m = mockMem();
   if ((m.turns || 0) > 0 && m.lastCat) {
     return {
@@ -797,6 +961,12 @@ function _mock(payload) {
       MOCK_CART.items = [];
       return { reply: "✅ Order place ho gaya! (Cash on Delivery)", tool: "checkout", executed: true, data: { order_id: 8801, status: "pending" } };
     }
+    if (tool === "save_listing") {
+      return { reply: "", tool: "save_listing", executed: true, data: { updated: true } };
+    }
+    if (tool === "set_reminder") {
+      return { reply: "", tool: "set_reminder", executed: true, data: { reminder: { title: "Weekly work-photo upload", cadence: "weekly" } } };
+    }
     return { reply: "✅ Ho gaya! Aapki booking confirm ho gayi hai.", tool: "create_booking", executed: true, data: { booking_id: 5501, status: "pending", booking_mode: "direct_vendor" } };
   }
   if (payload.event === "open") {
@@ -814,6 +984,29 @@ function _mock(payload) {
     return { reply: "Bas ek baar confirm kar dijiye 👍", tool, requires_confirmation: true, confirm_token: "mock-confirm-" + tool, args_summary: Object.keys(args), executed: false, widget: { type: "confirm", question: "Confirm karein?", confirm_token: "mock-confirm-" + tool } };
   }
   const msg = String(payload.message || "").toLowerCase();
+  // Vendor-agent (Phase 6)
+  if (String(S.role).indexOf("vendor") === 0) {
+    if (/(listing|onboard|register|profile ban|shuru|sign up|join)/.test(msg)) {
+      return { reply: "Chaliye, kuch seekhna nahi — bas jawab dijiye 🙂", tool: "start_listing", executed: true, data: {}, widget: {
+        type: "onboard", title: "Chaliye 2 minute mein aapki listing bana dete hain", submit_tool: "save_listing",
+        steps: [
+          { key: "name", q: "Aapka naam ya business ka naam?", kind: "text", placeholder: "e.g. Sharma Painters" },
+          { key: "category_id", q: "Aap kya kaam karte ho?", kind: "select", options: MOCK_CATEGORIES },
+          { key: "area", q: "Aap kis area/ilaake mein kaam karte ho?", kind: "text", placeholder: "e.g. Rajpur Road" },
+          { key: "experience_years", q: "Kitne saal ka experience hai?", kind: "number", placeholder: "e.g. 5" },
+          { key: "languages", q: "Aap kaunsi bhasha bolte ho?", kind: "multiselect", options: [
+            { value: "hindi", label: "Hindi" }, { value: "english", label: "English" }, { value: "punjabi", label: "Punjabi" }, { value: "kumaoni", label: "Kumaoni" } ] },
+        ],
+      } };
+    }
+    if (/(status|kaisa chal|growth|kitne log|kitne customer|report)/.test(msg)) {
+      return { reply: "Yeh raha aapka status 👇", tool: "my_status", executed: true, data: { status: MOCK_STATUS } };
+    }
+    if (/(remind|reminder|yaad)/.test(msg)) {
+      const title = /photo/.test(msg) ? "Weekly work-photo upload" : "Weekly business reminder";
+      return { reply: "Reminder set kar dein?", tool: "set_reminder", requires_confirmation: true, confirm_token: "mock-confirm-set_reminder", args_summary: ["title", "cadence"], executed: false, widget: { type: "confirm", question: `${title} — weekly reminder set karein?`, confirm_token: "mock-confirm-set_reminder" } };
+    }
+  }
   // Inline UI-action widgets
   if (String(S.role).indexOf("vendor") === 0 && /(upload|photo|foto)/.test(msg)) {
     return { reply: "Apni kaam ki photo upload kijiye 👇", tool: "upload_work_photo", executed: true, data: {}, widget: { type: "upload", title: "Apni kaam ki photo upload kijiye", endpoint: "/api/vendor/work-photo", field: "photo", accept: "image/*", caption_field: "caption", success_text: "Photo aapke profile mein add ho gayi ✓" } };

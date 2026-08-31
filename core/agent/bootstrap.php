@@ -31,6 +31,7 @@ require_once __DIR__ . '/tools/EngineClient.php';
 require_once __DIR__ . '/tools/AgentTool.php';
 require_once __DIR__ . '/tools/ServiceTools.php';
 require_once __DIR__ . '/tools/CommerceTools.php';
+require_once __DIR__ . '/tools/VendorTools.php';
 require_once __DIR__ . '/tools/WidgetTools.php';
 require_once __DIR__ . '/tools/ToolRegistry.php';
 require_once __DIR__ . '/tools/ConfirmToken.php';
