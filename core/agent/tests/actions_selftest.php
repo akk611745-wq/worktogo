@@ -197,6 +197,24 @@ check('H5 AI paused → non-deterministic no AI',  $aiSkip->tool === null && $ai
 $b0 = (new AgentPolicy(null, ['agent_budget' => ['monthly_cap_usd' => 0]]))->budget();
 check('H6 cap 0 = unlimited, not paused', $b0['paused'] === false);
 
+// ── I. Connections (Phase 8): recipient PII never reaches the AI ─────────────
+// I1: a saved contact NAME is scrubbed out of what the provider sees.
+$wall = new PiiWall(null);
+$wall->setContactTerms(['Priya']);
+$ctxI = AgentContext::fromAuth(['user_id' => 7, 'role' => 'customer'], [], null);
+$pmt  = $wall->sanitize($ctxI, 'Priya ke liye kapde bhej do', 'You are the assistant.', ['browse_products'], 'understand');
+check('I1 contact name scrubbed to <PERSON_1>', strpos($pmt->userText, '<PERSON_1>') !== false && strpos($pmt->userText, 'Priya') === false);
+
+// I2: order_for is a WRITE and respects the control-room writes toggle.
+[$orch, $engine] = govSetup($cfg, new AgentPolicy(null, ['agent_enabled' => '1', 'agent_capabilities' => ['writes' => false]]));
+$rI2 = $orch->handle(customer(), ['action' => ['tool' => 'order_for', 'args' => ['person_id' => 501]]]);
+check('I2 writes paused → order_for blocked', ($rI2['blocked'] ?? false) === true && count($engine->calls) === 0);
+
+// I3: commerce paused → order_for blocked (gifting is commerce).
+[$orch, $engine] = govSetup($cfg, new AgentPolicy(null, ['agent_enabled' => '1', 'agent_capabilities' => ['commerce' => false]]));
+$rI3 = $orch->handle(customer(), ['action' => ['tool' => 'order_for', 'args' => ['person_id' => 501]]]);
+check('I3 commerce paused → order_for blocked', ($rI3['blocked'] ?? false) === true);
+
 echo "\n----------------------------------------\n";
 echo "RESULT: {$pass} passed, {$fail} failed\n";
 exit($fail === 0 ? 0 : 1);

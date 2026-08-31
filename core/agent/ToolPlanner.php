@@ -110,6 +110,13 @@ final class ToolPlanner
         // Customer: a SERVICE category keyword ⇒ find vendors. Covers "painter
         // chahiye", "need a plumber", "plumber dikhao", "electrician chahiye", …
         if ($ctx->role === 'customer') {
+            // Connections (Phase 8): "behen ke liye kapde order karo" → open the
+            // people picker first; the chosen person becomes the delivery target.
+            if ($this->mentionsRelation($m)
+                && (str_contains($m, 'order') || str_contains($m, 'gift') || str_contains($m, 'bhej') || str_contains($m, 'ke liye') || $this->looksLikeShopping($m))) {
+                return new ToolPlan('list_people', [], 'Kiske liye order karna hai? 👇', 'deterministic');
+            }
+
             $category = $this->detectCategory($m);
             if ($category !== null) {
                 return new ToolPlan(
@@ -134,6 +141,19 @@ final class ToolPlanner
         }
 
         return null; // fall through to the AI
+    }
+
+    /** Does the message name a saved-person relationship? */
+    private function mentionsRelation(string $lowerMessage): bool
+    {
+        $m = ' ' . $lowerMessage . ' ';
+        foreach ([' behen', ' bahan', ' bhai', ' sister', ' brother', ' friend', ' dost',
+                  ' papa', ' mummy', ' maa', ' wife', ' husband', ' beta', ' beti', ' saved'] as $w) {
+            if (str_contains($m, $w)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Does the message read like a shopping intent? */

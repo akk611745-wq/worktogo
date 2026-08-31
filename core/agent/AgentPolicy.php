@@ -51,6 +51,9 @@ final class AgentPolicy
         // vendor
         'start_listing' => 'vendor', 'save_listing' => 'vendor', 'my_status' => 'vendor',
         'set_reminder' => 'vendor', 'upload_work_photo' => 'vendor',
+        // connections — gifting is commerce; managing your own people is core
+        'order_for' => 'commerce',
+        'list_people' => 'core', 'get_person' => 'core', 'add_person' => 'core', 'save_person' => 'core',
         // core (never gated by a capability toggle)
         'verify_phone' => 'core',
     ];

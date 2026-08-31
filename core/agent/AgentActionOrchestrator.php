@@ -26,6 +26,7 @@ require_once __DIR__ . '/PiiWall.php';
 require_once __DIR__ . '/ToolPlanner.php';
 require_once __DIR__ . '/AgentMemory.php';
 require_once __DIR__ . '/AgentPolicy.php';
+require_once __DIR__ . '/AgentPeople.php';
 require_once __DIR__ . '/tools/ToolRegistry.php';
 require_once __DIR__ . '/tools/AgentTool.php';   // defines ToolContext + AgentTool
 require_once __DIR__ . '/tools/EngineClient.php';
@@ -57,6 +58,12 @@ final class AgentActionOrchestrator
         // opener, and to derive the anonymized hints the planner may send the AI.
         $mem   = $this->memory ? $this->memory->load($ctx->userId) : [];
         $hints = $this->memory ? $this->memory->hints($mem) : [];
+
+        // Connections: feed the wall the user's saved contact NAMES so it scrubs
+        // them out of anything sent to the AI (recipient PII never leaves).
+        if ($this->db instanceof PDO) {
+            $this->wall->setContactTerms((new AgentPeople($this->db))->names($ctx->userId));
+        }
 
         // ── Path 0: session open → a personalized greeting (from OUR memory) ─────
         if (($input['event'] ?? '') === 'open') {
@@ -90,6 +97,12 @@ final class AgentActionOrchestrator
         $message = is_string($input['message'] ?? null) ? trim($input['message']) : '';
         if ($message === '') {
             return $this->chat($ctx, 'Tell me what you need — for example, "painter chahiye".', 'none');
+        }
+
+        // Anonymized hint when the turn references a relationship — the AI is told
+        // "ordering for a saved contact", never who they are.
+        if ($this->mentionsContact($message)) {
+            $hints[] = 'ordering_for_contact';
         }
 
         // The planner gets only the anonymized hints (never the memory row). When
@@ -270,6 +283,19 @@ final class AgentActionOrchestrator
             ]);
         }
         return null;
+    }
+
+    /** Does the message reference a person/relationship (for the anonymized hint)? */
+    private function mentionsContact(string $message): bool
+    {
+        $m = ' ' . mb_strtolower($message) . ' ';
+        foreach ([' behen', ' bhai', ' sister', ' brother', ' friend', ' dost', ' papa', ' mummy',
+                  ' maa', ' wife', ' husband', ' beta', ' beti', ' ke liye', ' gift', ' bhej'] as $w) {
+            if (str_contains($m, $w)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function friendlyError(EngineResult $r): string

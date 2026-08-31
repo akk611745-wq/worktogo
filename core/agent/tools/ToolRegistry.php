@@ -18,6 +18,7 @@ require_once __DIR__ . '/AgentTool.php';
 require_once __DIR__ . '/ServiceTools.php';
 require_once __DIR__ . '/CommerceTools.php';
 require_once __DIR__ . '/VendorTools.php';
+require_once __DIR__ . '/ConnectionTools.php';
 require_once __DIR__ . '/WidgetTools.php';
 
 final class ToolRegistry
@@ -96,6 +97,12 @@ final class ToolRegistry
         $r->register(new ListOrdersTool());
         $r->register(new TrackOrderTool());
         $r->register(new CheckoutTool());
+        // Connections — order/gift for saved people (Phase 8)
+        $r->register(new ListPeopleTool());
+        $r->register(new GetPersonTool());
+        $r->register(new AddPersonTool());
+        $r->register(new SavePersonTool());
+        $r->register(new OrderForTool());
         // Vendor service-agent
         $r->register(new ListMyJobsTool());
         $r->register(new GetMyProfileTool());

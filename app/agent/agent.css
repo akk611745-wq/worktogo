@@ -220,5 +220,11 @@
   border: 1px solid var(--ag-line); border-radius: 10px; padding: 8px 10px; line-height: 1.4;
 }
 
+/* ── Connections: people picker + add-person (Phase 8) ────────────────────── */
+.ag-people { display: flex; flex-direction: column; gap: 8px; }
+.ag-person { display: flex; align-items: center; gap: 10px; padding: 8px; border: 1px solid var(--ag-line); border-radius: 11px; background: var(--ag-surface-2); }
+.ag-person .ag-btn { flex: 0 0 auto; padding: 7px 12px; }
+.ag-addperson { display: flex; flex-direction: column; gap: 8px; }
+
 /* Hide the app-wide launcher while the chat is open */
 body:has(.ag-root) .wtg-agent-fab { display: none !important; }

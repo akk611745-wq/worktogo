@@ -25,7 +25,7 @@
 
 const AG_VERSION = (typeof window !== "undefined" && window.WTG_ASSET_VERSION) || "1";
 
-const S = { msgs: null, input: null, send: null, busy: false, mock: false, role: "customer", lastCategory: "painting" };
+const S = { msgs: null, input: null, send: null, busy: false, mock: false, role: "customer", lastCategory: "painting", orderingFor: null };
 
 const CATS = {
   painter: "painting", paint: "painting", painting: "painting",
@@ -87,7 +87,7 @@ function shell() {
 // warm generic greeting; returning users are recognised ("I know you like …").
 async function openGreeting() {
   const name = friendlyName();
-  const defaultChips = ["painter chahiye", "kapde chahiye", "painting packages", "expert visit"];
+  const defaultChips = ["painter chahiye", "kapde chahiye", "behen ke liye gift", "expert visit"];
 
   if (S.mock) {
     const g = mockGreeting(name);
@@ -196,8 +196,10 @@ function handle(res) {
     renderOrderDetail(d.order);
   } else if (res.tool === "my_status" && d.status) {
     renderStatus(d.status);
+  } else if (res.tool === "list_people" && Array.isArray(d.people)) {
+    renderPeoplePicker(d.people);
   } else if (res.widget) {
-    renderWidget(res.widget);   // unified inline action: confirm / upload / otp / onboard
+    renderWidget(res.widget);   // unified inline action: confirm / upload / otp / onboard / add_person
   } else if (res.requires_confirmation) {
     renderConfirm(res.confirm_token, res.reply || "Confirm karein?", null);
   } else if (res.executed && res.tool === "create_booking") {
@@ -210,6 +212,10 @@ function handle(res) {
     renderListingSaved(d);
   } else if (res.executed && res.tool === "set_reminder") {
     renderReminderSet(d.reminder || {});
+  } else if (res.executed && res.tool === "save_person" && d.person) {
+    renderPersonSaved(d.person);
+  } else if (res.executed && res.tool === "order_for") {
+    renderOrderPlacedFor(d);
   }
   // rejected / degraded / chat: the reply bubble already said it.
 }
@@ -349,6 +355,97 @@ function renderWidget(w) {
   if (w.type === "upload")  return renderUpload(w);
   if (w.type === "otp")     return renderOtp(w);
   if (w.type === "onboard") return renderOnboard(w);
+  if (w.type === "add_person") return renderAddPerson(w);
+}
+
+// ── Connections (Phase 8): people picker, add-person, order-for ──────────────
+function setOrderingFor(person) {
+  S.orderingFor = person ? { id: person.id, name: person.name } : null;
+  if (person) addAgent(`Theek hai — ${person.name} ke liye. 🎁 Ab bataiye kya bhejein? (jaise "kapde chahiye")`);
+}
+
+function renderPeoplePicker(people) {
+  const cards = cardWrap();
+  const wrap = el(`<div class="ag-card"><div class="ag-card-title">Kiske liye order karna hai?</div><div class="ag-people"></div>
+    <div class="ag-card-actions"><button class="ag-btn ghost" data-addnew>➕ Nayi person add karein</button></div></div>`);
+  const list = wrap.querySelector(".ag-people");
+  if (!people.length) {
+    list.innerHTML = `<div class="ag-card-sub">Abhi koi saved person nahi hai — nayi add kijiye.</div>`;
+  } else {
+    people.forEach((p) => {
+      const row = el(`<div class="ag-person">
+          <div class="ag-card-ava">${esc(initial(p.name))}</div>
+          <div style="flex:1;min-width:0"><div class="ag-card-title">${esc(p.name)}</div>
+            <div class="ag-card-sub">${esc(p.relation || "")}${p.city ? " · " + esc(p.city) : ""}</div></div>
+          <button class="ag-btn primary ag-person-pick" data-id="${esc(p.id)}" data-name="${esc(p.name)}">Order for</button>
+        </div>`);
+      row.querySelector(".ag-person-pick").addEventListener("click", (e) =>
+        setOrderingFor({ id: Number(e.currentTarget.getAttribute("data-id")), name: e.currentTarget.getAttribute("data-name") }));
+      list.appendChild(row);
+    });
+  }
+  wrap.querySelector("[data-addnew]").addEventListener("click", () => run({ action: { tool: "add_person", args: {} } }));
+  cards.appendChild(wrap); mountCards(cards);
+}
+
+function renderAddPerson(w) {
+  const fields = Array.isArray(w.fields) ? w.fields : [];
+  const cards = cardWrap();
+  const card = el(`<div class="ag-card ag-widget"><div class="ag-card-title">${esc(w.title || "Add person")}</div>
+      <div class="ag-addperson"></div>
+      <div class="ag-card-actions"><button class="ag-btn primary" data-save>Save & continue</button></div>
+      <div class="ag-widget-status"></div></div>`);
+  const body = card.querySelector(".ag-addperson");
+  fields.forEach((f) => {
+    const inp = document.createElement("input");
+    inp.className = "ag-textin"; inp.type = "text"; inp.dataset.key = f.key;
+    inp.placeholder = (f.q || f.key) + (f.placeholder ? " — " + f.placeholder : "");
+    body.appendChild(inp);
+  });
+  const status = card.querySelector(".ag-widget-status");
+  card.querySelector("[data-save]").addEventListener("click", async () => {
+    const args = {};
+    body.querySelectorAll("input").forEach((i) => { if (i.value.trim() !== "") args[i.dataset.key] = i.value.trim(); });
+    if (!args.name) { status.textContent = "Naam zaroori hai 🙂"; return; }
+    card.classList.add("done");
+    await run({ action: { tool: w.submit_tool || "save_person", args } });
+  });
+  cards.appendChild(card); mountCards(cards);
+}
+
+function renderPersonSaved(person) {
+  const cards = cardWrap();
+  const card = el(`<div class="ag-card ag-success"><div class="ag-card-title">${esc(person.name)} save ho gaye ✓</div>
+      <div class="ag-card-sub">${esc(person.relation || "")}${person.city ? " · " + esc(person.city) : ""}</div></div>`);
+  cards.appendChild(card); mountCards(cards);
+  setOrderingFor(person);
+}
+
+function renderOrderPlacedFor(d) {
+  const id = d.order_id || d.id || "";
+  const who = S.orderingFor ? S.orderingFor.name : "them";
+  const cards = cardWrap();
+  const card = el(`<div class="ag-card ag-success">
+      <div class="ag-card-head"><div class="ag-success-icon">🎁</div>
+        <div><div class="ag-card-title">Order placed for ${esc(who)}</div>
+        <div class="ag-card-sub">${id ? "Order #" + esc(id) : ""} · COD · unke address pe deliver hoga</div></div></div>
+    </div>`);
+  cards.appendChild(card); mountCards(cards);
+  S.orderingFor = null;
+}
+
+async function proposeOrderFor() {
+  if (S.busy || !S.orderingFor) return;
+  addUser(`Checkout for ${S.orderingFor.name}`);
+  setBusy(true);
+  const typing = showTyping();
+  const res = await transport({ action: { tool: "order_for", args: { person_id: S.orderingFor.id } } });
+  typing.remove();
+  if (res && res.requires_confirmation) {
+    if (res.reply) addAgent(res.reply);
+    renderConfirm(res.confirm_token, `${S.orderingFor.name} ke liye order place karein? (COD)`, "Unke saved address pe deliver hoga — agent paisa nahi leta.");
+  } else { handle(res); }
+  setBusy(false);
 }
 
 // ── Vendor-agent (Phase 6): onboarding stepper, status card, reminders ───────
@@ -653,7 +750,7 @@ function renderCartAdded(cart) {
       <div class="ag-card-title">Cart mein add ho gaya ✓</div>
       <div class="ag-card-sub">${esc(count)} item(s)${subtotal ? " · ₹" + esc(subtotal) : ""}</div>
       <div class="ag-card-actions">
-        <button class="ag-btn primary" data-checkout>Checkout (COD)</button>
+        <button class="ag-btn primary" data-checkout>${checkoutLabel()}</button>
         <button class="ag-btn ghost" data-viewcart>View cart</button>
       </div>
     </div>`);
@@ -673,7 +770,7 @@ function renderCart(cart) {
       <div class="ag-card-title">Your cart 🛒</div>
       ${rows}
       <div class="ag-cart-row ag-cart-total"><span>Total</span><span>₹${esc(cart.subtotal || 0)}</span></div>
-      <div class="ag-card-actions"><button class="ag-btn primary" data-checkout>Checkout (COD)</button></div>
+      <div class="ag-card-actions"><button class="ag-btn primary" data-checkout>${checkoutLabel()}</button></div>
     </div>`);
   card.querySelector("[data-checkout]").addEventListener("click", proposeCheckout);
   cards.appendChild(card); mountCards(cards);
@@ -737,8 +834,11 @@ async function addToCart(productId, name) {
   await run({ action: { tool: "add_to_cart", args: { product_id: Number(productId), quantity: 1 } } });
 }
 
+function checkoutLabel() { return S.orderingFor ? `Checkout for ${esc(S.orderingFor.name)}` : "Checkout (COD)"; }
+
 async function proposeCheckout() {
   if (S.busy) return;
+  if (S.orderingFor) return proposeOrderFor();   // gifting → deliver to the saved person
   addUser("Checkout");
   setBusy(true);
   const typing = showTyping();
@@ -908,6 +1008,11 @@ const MOCK_STATUS = {
     "Aapki listing abhi review mein hai — approve hote hi customers ko dikhne lagegi.",
   ],
 };
+const MOCK_PEOPLE = [
+  { id: 501, name: "Priya", relation: "behen", city: "Haldwani", address_text: "12, Rajpur Road", phone: "9876500001", lat: 29.22, lng: 79.51 },
+  { id: 502, name: "Rahul", relation: "dost", city: "Haldwani", address_text: "5, Kathgodam", phone: "9876500002" },
+];
+let MOCK_PEOPLE_NEXT = 600;
 const MOCK_CART = { items: [] };
 function mockFindProduct(pid) { return MOCK_PRODUCTS.find((p) => p.id === Number(pid)) || null; }
 function mockCartAdd(pid) {
@@ -940,11 +1045,11 @@ function mockGreeting(name) {
     };
   }
   if ((m.turns || 0) > 0) {
-    return { reply: `Welcome back, ${name}! 👋 Bataiye aaj kya chahiye?`, chips: ["painter chahiye", "kapde chahiye", "painting packages", "expert visit"] };
+    return { reply: `Welcome back, ${name}! 👋 Bataiye aaj kya chahiye?`, chips: ["painter chahiye", "kapde chahiye", "behen ke liye gift", "expert visit"] };
   }
   return {
     reply: `Namaste ${name}! 👋 Main aapka WorkToGo assistant hoon.\nBataiye kya chahiye — main dhoond ke, dikhake, book bhi kar deta hoon.`,
-    chips: ["painter chahiye", "kapde chahiye", "painting packages", "expert visit"],
+    chips: ["painter chahiye", "kapde chahiye", "behen ke liye gift", "expert visit"],
   };
 }
 
@@ -967,6 +1072,10 @@ function _mock(payload) {
     if (tool === "set_reminder") {
       return { reply: "", tool: "set_reminder", executed: true, data: { reminder: { title: "Weekly work-photo upload", cadence: "weekly" } } };
     }
+    if (tool === "order_for") {
+      MOCK_CART.items = [];
+      return { reply: "✅ Gift order place ho gaya!", tool: "order_for", executed: true, data: { order_id: 8802, status: "pending" } };
+    }
     return { reply: "✅ Ho gaya! Aapki booking confirm ho gayi hai.", tool: "create_booking", executed: true, data: { booking_id: 5501, status: "pending", booking_mode: "direct_vendor" } };
   }
   if (payload.event === "open") {
@@ -980,6 +1089,16 @@ function _mock(payload) {
     if (tool === "add_to_cart") { mockCartAdd(args.product_id); return { reply: "", tool, executed: true, data: mockCartGet() }; }
     if (tool === "view_cart")   { return { reply: "", tool, executed: true, data: mockCartGet() }; }
     if (tool === "track_order") { return { reply: "Yeh raha aapka order 👇", tool, executed: true, data: { order: { id: args.id || 8801, status: "pending", items: mockCartGet().items } } }; }
+    // Connections (read / light-write actions execute immediately).
+    if (tool === "list_people") { return { reply: "Kiske liye order karna hai? 👇", tool, executed: true, data: { people: MOCK_PEOPLE } }; }
+    if (tool === "get_person")  { return { reply: "", tool, executed: true, data: { person: MOCK_PEOPLE.find(p => p.id === Number(args.id)) || MOCK_PEOPLE[0] } }; }
+    if (tool === "add_person")  { return { reply: "Unki detail bhar dijiye 👇", tool, executed: true, data: {}, widget: { type: "add_person", title: "Kiske liye order karna hai? Unki detail save kijiye", submit_tool: "save_person", fields: [
+        { key: "name", q: "Naam", kind: "text", placeholder: "e.g. Priya" },
+        { key: "relation", q: "Rishta", kind: "text", placeholder: "e.g. behen" },
+        { key: "phone", q: "Phone (optional)", kind: "text", placeholder: "10-digit" },
+        { key: "address_text", q: "Address", kind: "text", placeholder: "ghar ka pata" },
+        { key: "city", q: "City (optional)", kind: "text", placeholder: "e.g. Haldwani" } ] } }; }
+    if (tool === "save_person") { const p = { id: MOCK_PEOPLE_NEXT++, name: args.name || "New person", relation: args.relation || "", city: args.city || "", address_text: args.address_text || "", phone: args.phone || "" }; MOCK_PEOPLE.unshift(p); return { reply: "", tool, executed: true, data: { person: p } }; }
     // Writes → confirmation.
     return { reply: "Bas ek baar confirm kar dijiye 👍", tool, requires_confirmation: true, confirm_token: "mock-confirm-" + tool, args_summary: Object.keys(args), executed: false, widget: { type: "confirm", question: "Confirm karein?", confirm_token: "mock-confirm-" + tool } };
   }
@@ -1020,6 +1139,11 @@ function _mock(payload) {
   }
   if (/(expert|visit|company|inspection)/.test(msg)) {
     return { reply: "Company expert visit ka charge yeh hai 👇", tool: "get_expert_visit_price", executed: true, data: { is_free: false, amount: 299 }, _category: "painting" };
+  }
+  // Connections — gift/order for a saved person (before commerce, since "kapde" also matches).
+  if (/(behen|bahan|bhai|sister|brother|friend|dost|papa|mummy|maa|wife|husband|beta|beti)/.test(msg)
+      && /(order|gift|bhej|ke liye|kapde|kapda|clothes|kurta|rakhi|saree)/.test(msg)) {
+    return { reply: "Kiske liye order karna hai? 👇", tool: "list_people", executed: true, data: { people: MOCK_PEOPLE } };
   }
   // Commerce
   if (/(cart|basket|tokri)/.test(msg)) {

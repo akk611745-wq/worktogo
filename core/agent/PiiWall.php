@@ -73,6 +73,21 @@ final class PiiWall
     private array $maps = [];
     /** requestId → [type => count]  (redaction summary for audit). */
     private array $counts = [];
+    /** Saved contact names to tokenize as <PERSON_n> (Phase 8 connections). */
+    private array $contactTerms = [];
+
+    /**
+     * Give the wall the user's saved contact NAMES so it scrubs them out of the
+     * message before anything leaves (the blueprint's saved-contact tokenization).
+     * Names shorter than 3 chars are ignored to avoid over-scrubbing.
+     */
+    public function setContactTerms(array $terms): void
+    {
+        $this->contactTerms = array_values(array_unique(array_filter(
+            array_map(static fn ($t) => trim((string) $t), $terms),
+            static fn ($t) => mb_strlen($t) >= 3
+        )));
+    }
 
     public function __construct(?PDO $db = null)
     {
@@ -175,6 +190,19 @@ final class PiiWall
         $map    = [];
         $counts = [];
         $seq    = [];
+
+        // Pre-pass: tokenize saved contact names → <PERSON_n> (runs before the
+        // regex detectors so a name is never emitted to the AI).
+        foreach ($this->contactTerms as $term) {
+            $pat = '/\b' . preg_quote($term, '/') . '\b/iu';
+            $text = preg_replace_callback($pat, function ($m) use (&$map, &$counts, &$seq) {
+                $seq['PERSON'] = ($seq['PERSON'] ?? 0) + 1;
+                $token = '<PERSON_' . $seq['PERSON'] . '>';
+                $map[$token] = $m[0];
+                $counts['PERSON'] = ($counts['PERSON'] ?? 0) + 1;
+                return $token;
+            }, $text) ?? $text;
+        }
 
         foreach (self::DETECTORS as [$type, $regex]) {
             $text = preg_replace_callback($regex, function ($m) use ($type, &$map, &$counts, &$seq) {
