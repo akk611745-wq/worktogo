@@ -122,7 +122,8 @@ try {
         $planner      = new ToolPlanner($wall, $manager, $registry);
         $engine       = new HttpEngineClient($bearer);
         $memory       = new AgentMemory($db);
-        $orchestrator = new AgentActionOrchestrator($wall, $planner, $registry, $engine, $db, $memory, $policy);
+        $demand       = new DemandSignals($db);   // Phase 9: capture demand signals (our data only)
+        $orchestrator = new AgentActionOrchestrator($wall, $planner, $registry, $engine, $db, $memory, $policy, $demand);
         $ctx          = AgentContext::fromAuth($auth, $body, $db);
 
         try {

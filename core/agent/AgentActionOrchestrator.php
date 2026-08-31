@@ -27,6 +27,7 @@ require_once __DIR__ . '/ToolPlanner.php';
 require_once __DIR__ . '/AgentMemory.php';
 require_once __DIR__ . '/AgentPolicy.php';
 require_once __DIR__ . '/AgentPeople.php';
+require_once __DIR__ . '/DemandSignals.php';
 require_once __DIR__ . '/tools/ToolRegistry.php';
 require_once __DIR__ . '/tools/AgentTool.php';   // defines ToolContext + AgentTool
 require_once __DIR__ . '/tools/EngineClient.php';
@@ -39,9 +40,10 @@ final class AgentActionOrchestrator
         private readonly ToolPlanner  $planner,
         private readonly ToolRegistry $registry,
         private readonly EngineClient $engine,
-        private readonly ?PDO         $db = null,
-        private readonly ?AgentMemory $memory = null,
-        private readonly ?AgentPolicy $policy = null,
+        private readonly ?PDO           $db = null,
+        private readonly ?AgentMemory   $memory = null,
+        private readonly ?AgentPolicy   $policy = null,
+        private readonly ?DemandSignals $demand = null,
     ) {}
 
     /**
@@ -161,6 +163,10 @@ final class AgentActionOrchestrator
         if ($result->ok && $this->memory) {
             $this->memory->record($ctx, $toolName, $args); // learn from this turn (internal)
         }
+        // Proactive nervous-system: capture a demand signal for a real search/browse
+        // (metadata only — the category/area + how many results the engine returned).
+        // Only the agent sees a zero-result ask, so this is where growth intel is born.
+        $this->captureDemand($ctx, $toolName, $args, $result);
         return $this->respondFromResult($ctx, $toolName, 'read', $source, $result, $say);
     }
 
@@ -304,6 +310,60 @@ final class AgentActionOrchestrator
         return $r->error && $r->status >= 400 && $r->status < 500
             ? $r->error
             : "I couldn't complete that right now. Please try again in a moment.";
+    }
+
+    /**
+     * Record a demand signal from a real search/browse result (Phase 9). This is
+     * the ONLY place a zero-supply ask is visible (a booking needs a vendor to
+     * exist; a search does not), so it is where "where should we grow?" is learned.
+     * Metadata only — category + INTERNAL city + optional area + how many results
+     * the engine returned (a live supply proxy). Fail-open: never breaks a turn.
+     */
+    private function captureDemand(AgentContext $ctx, string $toolName, array $args, EngineResult $result): void
+    {
+        if ($this->demand === null || !$result->ok) {
+            return;
+        }
+        // Only the genuine supply-bearing searches: service vendors and products.
+        $scope = match ($toolName) {
+            'find_vendors'    => 'service',
+            'browse_products' => 'commerce',
+            default           => null,
+        };
+        if ($scope === null) {
+            return;
+        }
+
+        $raw = $scope === 'commerce'
+            ? (string) ($args['query'] ?? $args['search'] ?? '')
+            : (string) ($args['category'] ?? '');
+        $categoryKey = mb_strtolower(trim($raw));
+        if ($scope === 'service' && class_exists('ServiceCategoryMap')) {
+            $categoryKey = ServiceCategoryMap::normalize($categoryKey);
+        }
+        if ($categoryKey === '') {
+            return;
+        }
+
+        $area  = isset($args['area']) && is_string($args['area']) && $args['area'] !== '' ? $args['area'] : null;
+        $count = $this->countResults($result->data, $scope);
+
+        try {
+            $this->demand->record($scope, $categoryKey, $ctx->cityId, $area, $count, $ctx->userId);
+        } catch (\Throwable $e) { /* never break a turn */ }
+    }
+
+    /** How many results the engine returned — the supply proxy for the demand signal. */
+    private function countResults(?array $data, string $scope): int
+    {
+        if (!is_array($data)) {
+            return 0;
+        }
+        $key = $scope === 'commerce' ? 'products' : 'vendors';
+        if (isset($data[$key]) && is_array($data[$key])) {
+            return count($data[$key]);
+        }
+        return array_is_list($data) ? count($data) : 0;
     }
 
     /**

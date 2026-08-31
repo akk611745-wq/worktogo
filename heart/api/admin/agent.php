@@ -91,4 +91,54 @@ if ($method === 'GET' && $uri === '/api/admin/agent/activity') {
     exit;
 }
 
+// ── GET /api/admin/agent/growth-signals ──────────────────────────────────────
+// The demand-detection surface (Phase 9): "where should we grow?" — computed from
+// OUR data by cron/agent_demand_detect.php. Metadata only (category / city / area
+// / counts) — no PII, no message text. Newest & still-open first.
+if ($method === 'GET' && $uri === '/api/admin/agent/growth-signals') {
+    $limit = min(100, max(1, (int) ($_GET['limit'] ?? 50)));
+
+    // Live thresholds so the UI can show what "qualifies" (kept in sync with the cron).
+    $th = ['window_days' => 14, 'min_asks' => 5, 'min_distinct_users' => 3, 'max_supply' => 2, 'cooldown_hours' => 168];
+    try {
+        $raw = $db->query("SELECT setting_value FROM app_settings WHERE setting_key = 'agent_demand_thresholds' LIMIT 1")->fetchColumn();
+        $dec = is_string($raw) ? json_decode($raw, true) : null;
+        if (is_array($dec)) { $th = array_merge($th, $dec); }
+    } catch (\Throwable $e) { /* defaults */ }
+
+    $signals = [];
+    try {
+        $stmt = $db->prepare(
+            "SELECT scope, category_key, city_id, area, ask_count, distinct_users, supply_estimate,
+                    status, first_seen_at, last_seen_at, alerted_at
+               FROM agent_demand_signals
+              ORDER BY (status = 'alerted') DESC, last_seen_at DESC
+              LIMIT :lim"
+        );
+        $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $qualifies = (int) $r['ask_count'] >= (int) $th['min_asks']
+                && (int) $r['distinct_users'] >= (int) $th['min_distinct_users']
+                && (int) $r['supply_estimate'] <= (int) $th['max_supply'];
+            $signals[] = [
+                'scope'           => (string) $r['scope'],
+                'category_key'    => (string) $r['category_key'],
+                'city_id'         => (int) $r['city_id'],
+                'area'            => $r['area'],
+                'ask_count'       => (int) $r['ask_count'],
+                'distinct_users'  => (int) $r['distinct_users'],
+                'supply_estimate' => (int) $r['supply_estimate'],
+                'status'          => (string) $r['status'],
+                'qualifies'       => $qualifies,
+                'last_seen_at'    => $r['last_seen_at'],
+                'alerted_at'      => $r['alerted_at'],
+            ];
+        }
+    } catch (\Throwable $e) { /* table not migrated yet — empty list */ }
+
+    Response::success(['thresholds' => $th, 'signals' => $signals]);
+    exit;
+}
+
 Response::notFound('Agent admin endpoint');

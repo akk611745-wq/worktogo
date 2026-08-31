@@ -35,6 +35,7 @@ require_once __DIR__ . '/tools/VendorTools.php';
 require_once __DIR__ . '/AgentPeople.php';
 require_once __DIR__ . '/tools/ConnectionTools.php';
 require_once __DIR__ . '/tools/WidgetTools.php';
+require_once __DIR__ . '/tools/ReminderTools.php';
 require_once __DIR__ . '/tools/ToolRegistry.php';
 require_once __DIR__ . '/tools/ConfirmToken.php';
 require_once __DIR__ . '/ToolPlanner.php';
@@ -44,5 +45,9 @@ require_once __DIR__ . '/AgentMemory.php';
 
 // ── Phase 7: governance / admin control-room policy ───────────────────────────
 require_once __DIR__ . '/AgentPolicy.php';
+
+// ── Phase 9: proactive nervous-system (reminder delivery + demand detection) ──
+require_once __DIR__ . '/DemandSignals.php';
+require_once __DIR__ . '/ReminderDelivery.php';
 
 require_once __DIR__ . '/AgentActionOrchestrator.php';

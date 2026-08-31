@@ -20,6 +20,7 @@ require_once __DIR__ . '/CommerceTools.php';
 require_once __DIR__ . '/VendorTools.php';
 require_once __DIR__ . '/ConnectionTools.php';
 require_once __DIR__ . '/WidgetTools.php';
+require_once __DIR__ . '/ReminderTools.php';
 
 final class ToolRegistry
 {
@@ -111,6 +112,8 @@ final class ToolRegistry
         $r->register(new SaveListingTool());
         $r->register(new MyStatusTool());
         $r->register(new SetReminderTool());
+        // Proactive: surface the user's own reminders in chat (Phase 9)
+        $r->register(new ListRemindersTool());
         // Inline UI-action widgets (Phase 4)
         $r->register(new UploadWorkPhotoTool());   // vendor only (RBAC)
         $r->register(new VerifyPhoneTool());       // any registered user

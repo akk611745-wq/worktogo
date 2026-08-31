@@ -51,6 +51,8 @@ final class AgentPolicy
         // vendor
         'start_listing' => 'vendor', 'save_listing' => 'vendor', 'my_status' => 'vendor',
         'set_reminder' => 'vendor', 'upload_work_photo' => 'vendor',
+        // proactive: listing one's own reminders is a private, ungated read (Phase 9)
+        'list_reminders' => 'core',
         // connections — gifting is commerce; managing your own people is core
         'order_for' => 'commerce',
         'list_people' => 'core', 'get_person' => 'core', 'add_person' => 'core', 'save_person' => 'core',

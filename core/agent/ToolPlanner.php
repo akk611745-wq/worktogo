@@ -76,6 +76,16 @@ final class ToolPlanner
             return new ToolPlan('verify_phone', [], 'Chaliye aapka number verify karte hain.', 'deterministic');
         }
 
+        // Any role: "show my reminders" → list them (Phase 9). Must beat the vendor
+        // set_reminder rule below, so it needs a LISTING verb, not just "reminder".
+        if ((str_contains($m, 'reminder') || str_contains($m, 'yaad') || str_contains($m, 'remind'))
+            && (str_contains($m, 'mere') || str_contains($m, 'meri') || str_contains($m, 'my ')
+                || str_contains($m, 'list') || str_contains($m, 'dikha') || str_contains($m, 'show')
+                || str_contains($m, 'pending') || str_contains($m, 'upcoming') || str_contains($m, 'batao')
+                || str_contains($m, 'kaun') || str_contains($m, 'kitne'))) {
+            return new ToolPlan('list_reminders', [], 'Yeh rahe aapke reminders ⏰', 'deterministic');
+        }
+
         // Vendor-agent (Phase 6): onboard / status / reminders (both vendor roles).
         $isVendor = str_starts_with($ctx->role, 'vendor');
         if ($isVendor) {

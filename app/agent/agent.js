@@ -196,6 +196,8 @@ function handle(res) {
     renderOrderDetail(d.order);
   } else if (res.tool === "my_status" && d.status) {
     renderStatus(d.status);
+  } else if (res.tool === "list_reminders" && Array.isArray(d.reminders)) {
+    d.reminders.length ? renderReminders(d.reminders) : addAgent("Abhi koi reminder set nahi hai. \"weekly reminder\" bolkar set kar sakte hain ⏰");
   } else if (res.tool === "list_people" && Array.isArray(d.people)) {
     renderPeoplePicker(d.people);
   } else if (res.widget) {
@@ -585,6 +587,19 @@ function renderReminderSet(r) {
       <div class="ag-card-sub">${esc(r.title || "Reminder")} · ${esc(r.cadence || "weekly")}</div>
     </div>`);
   cards.appendChild(card); mountCards(cards);
+}
+
+// Phase 9: show the user's upcoming reminders (the delivery cron fires them).
+function renderReminders(list) {
+  const cards = cardWrap();
+  list.slice(0, 10).forEach((r) => {
+    const when = String(r.next_at || "").replace("T", " ").slice(0, 16);
+    cards.appendChild(el(`<div class="ag-card">
+        <div class="ag-card-title">⏰ ${esc(r.title || "Reminder")}</div>
+        <div class="ag-card-sub">${esc(r.cadence || "weekly")}${when ? " · agla: " + esc(when) : ""}</div>
+      </div>`));
+  });
+  mountCards(cards);
 }
 
 function renderUpload(w) {
@@ -1012,6 +1027,10 @@ const MOCK_PEOPLE = [
   { id: 501, name: "Priya", relation: "behen", city: "Haldwani", address_text: "12, Rajpur Road", phone: "9876500001", lat: 29.22, lng: 79.51 },
   { id: 502, name: "Rahul", relation: "dost", city: "Haldwani", address_text: "5, Kathgodam", phone: "9876500002" },
 ];
+const MOCK_REMINDERS = [
+  { title: "Weekly work-photo upload", cadence: "weekly", next_at: "2026-09-07 11:00:00" },
+  { title: "Weekly business reminder", cadence: "weekly", next_at: "2026-09-07 11:00:00" },
+];
 let MOCK_PEOPLE_NEXT = 600;
 const MOCK_CART = { items: [] };
 function mockFindProduct(pid) { return MOCK_PRODUCTS.find((p) => p.id === Number(pid)) || null; }
@@ -1034,7 +1053,7 @@ function mockGreeting(name) {
   if (String(S.role).indexOf("vendor") === 0) {
     return {
       reply: `Namaste ${name}! 👋 Aap apni skill bataiye — main aapke liye premium customers laa dunga. Kuch seekhna nahi, bas baat kijiye 🙂`,
-      chips: ["listing banao", "mera status", "photo upload", "weekly reminder"],
+      chips: ["listing banao", "mera status", "photo upload", "weekly reminder", "mere reminders"],
     };
   }
   const m = mockMem();
@@ -1103,6 +1122,10 @@ function _mock(payload) {
     return { reply: "Bas ek baar confirm kar dijiye 👍", tool, requires_confirmation: true, confirm_token: "mock-confirm-" + tool, args_summary: Object.keys(args), executed: false, widget: { type: "confirm", question: "Confirm karein?", confirm_token: "mock-confirm-" + tool } };
   }
   const msg = String(payload.message || "").toLowerCase();
+  // Phase 9: "show my reminders" (any role) — must beat the vendor set-reminder rule.
+  if (/(reminder|yaad|remind)/.test(msg) && /(mere|meri|my |list|dikha|show|pending|upcoming|batao|kaun|kitne)/.test(msg)) {
+    return { reply: "Yeh rahe aapke reminders ⏰", tool: "list_reminders", executed: true, data: { reminders: MOCK_REMINDERS } };
+  }
   // Vendor-agent (Phase 6)
   if (String(S.role).indexOf("vendor") === 0) {
     if (/(listing|onboard|register|profile ban|shuru|sign up|join)/.test(msg)) {

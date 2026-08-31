@@ -87,6 +87,36 @@ async function load() {
     document.getElementById("cards").innerHTML = `<div class="card full"><b>Could not load.</b> ${esc(e.message || "")} — is the agent migrated & the API reachable?</div>`;
   }
   loadActivity();
+  loadGrowth();
+}
+
+async function loadGrowth() {
+  const box = document.getElementById("growth");
+  if (!box) return;
+  try {
+    const r = await API.get("/api/admin/agent/growth-signals", { limit: 50 });
+    const d = r.data || r;
+    const rows = d.signals || [], th = d.thresholds || {};
+    if (!rows.length) {
+      box.innerHTML = `<div class="hint">No demand signals yet. As users search, this fills in — an admin alert fires when a category has ≥ ${th.min_asks || 5} asks from ≥ ${th.min_distinct_users || 3} users with ≤ ${th.max_supply || 2} vendors/stores in the last ${th.window_days || 14} days.</div>`;
+      return;
+    }
+    box.innerHTML = `<table><thead><tr><th>Scope</th><th>Category</th><th>Where</th><th>Asks</th><th>Users</th><th>Supply</th><th>Signal</th><th>Last seen</th></tr></thead><tbody>${
+      rows.map(s => {
+        const label = s.qualifies ? (s.status === "alerted" ? "alerted" : "grow here") : "ok";
+        const cls   = s.status === "alerted" ? "warn" : (s.qualifies ? "off" : "on");
+        const where = esc(s.area || (s.city_id ? ("city #" + s.city_id) : "—"));
+        return `<tr>
+          <td>${esc(s.scope)}</td>
+          <td><b>${esc(s.category_key)}</b></td>
+          <td>${where}</td>
+          <td>${s.ask_count}</td>
+          <td>${s.distinct_users}</td>
+          <td>${s.supply_estimate}</td>
+          <td><span class="pill ${cls}">${label}</span></td>
+          <td>${esc((s.last_seen_at || "").replace("T", " ").slice(0, 16))}</td></tr>`;
+      }).join("")}</tbody></table>`;
+  } catch (e) { box.innerHTML = '<div class="hint">Could not load growth signals.</div>'; }
 }
 
 function render() {
@@ -155,6 +185,11 @@ function render() {
         <div class="stat"><b>${sum.rejected || 0}</b><span>rejected</span></div>
       </div>
       <table style="margin-top:12px"><thead><tr><th>Top tools</th><th>runs</th></tr></thead><tbody>${toolRows}</tbody></table>
+    </div>
+
+    <div class="card full">
+      <h2>🌱 Growth signals <span class="hint">(where to add vendors/stores — computed from OUR data; no PII)</span></h2>
+      <div id="growth"><div class="hint">Loading…</div></div>
     </div>
 
     <div class="card full">
