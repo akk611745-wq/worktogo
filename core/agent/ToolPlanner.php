@@ -214,13 +214,22 @@ final class ToolPlanner
         $resp   = $this->manager->complete($prompt, 'understand');
 
         if (!$resp->success) {
-            return new ToolPlan(null, [], 'I can help you find and book services — what do you need?', 'none');
+            return new ToolPlan(null, [], $this->fallbackNudge(), 'none');
+        }
+
+        // The mock/echo provider is a keyless DEV + failover stand-in — its
+        // diagnostic echo ("[mock:understand] I understood: …") must NEVER surface
+        // to a real user (audit M3). If it resolved (real key down/absent), degrade
+        // to a clean deterministic nudge instead of echoing.
+        if ($resp->provider === 'mock' || str_starts_with(ltrim($resp->text), '[mock:')) {
+            return new ToolPlan(null, [], $this->fallbackNudge(), 'none');
         }
 
         $parsed = $this->parseJson($resp->text);
         if ($parsed === null) {
-            // AI replied but not as a tool proposal — treat its text as chat.
-            return new ToolPlan(null, [], $resp->text !== '' ? $resp->text : 'How can I help?', 'ai');
+            // A real provider replied but not as a tool proposal — surface its (safe,
+            // rehydrated-for-owner) sentence; fall back to a nudge if it is empty.
+            return new ToolPlan(null, [], $resp->text !== '' ? $resp->text : $this->fallbackNudge(), 'ai');
         }
 
         $tool = isset($parsed['tool']) && is_string($parsed['tool']) ? trim($parsed['tool']) : '';
@@ -229,6 +238,12 @@ final class ToolPlanner
         $say  = is_string($parsed['say'] ?? null) ? $parsed['say'] : '';
 
         return new ToolPlan($tool, $args, $say, 'ai');
+    }
+
+    /** A clean, deterministic "how can I help" nudge — never a provider's raw text (audit M3). */
+    private function fallbackNudge(): string
+    {
+        return 'Main aapki madad kar sakta hoon — jaise "painter chahiye", "kapde chahiye", ya "meri booking dikhao". Bataiye kya chahiye? 🙂';
     }
 
     /** Strict-JSON instruction + the role's tool catalog (public, non-sensitive). */

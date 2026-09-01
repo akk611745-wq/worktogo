@@ -17,6 +17,13 @@
  * degrades cleanly when the AI is unavailable (system-first), and it finalises
  * one audit row per turn.
  *
+ * ⚠ TEST-ONLY (audit L2): this foundation skeleton is NOT the production runtime.
+ * The live entry (heart/api/agent/index.php) uses AgentActionOrchestrator. This is
+ * retained only for foundation_selftest, which deliberately surfaces the mock's
+ * echo to prove the wall's re-hydration round-trip (a real user never sees mock
+ * text — the production planner guards that, see ToolPlanner::viaAi / audit M3).
+ * Do NOT wire production traffic to this class.
+ *
  * It is deliberately construction-injected (wall, manager, db) so it can be
  * driven headless by the self-test with db=null and a mock provider.
  */

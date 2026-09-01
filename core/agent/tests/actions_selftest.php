@@ -237,6 +237,17 @@ check('M2 widget question == the deterministic reply',
 check('M2 nothing executed on propose',
       ($rM2['executed'] ?? true) === false && $engine->countPost('/api/service/request') === 0);
 
+// ── M3 (audit): the mock/echo provider never leaks into a user-facing reply ───
+$cfgMock = [
+    'providers' => ['mock' => ['adapter' => 'MockAiAdapter', 'enabled' => true]],
+    'routing'   => ['understand' => ['primary' => 'mock', 'secondary' => null]],
+];
+$plM3 = new ToolPlanner(new PiiWall(null), new AiProviderManager(null, $cfgMock), ToolRegistry::defaultRegistry());
+$rM3  = $plM3->plan(customer(), 'I want to renovate my whole home this year', [], true);
+check('M3 mock echo never surfaces (clean nudge instead)',
+      $rM3->tool === null && $rM3->source === 'none'
+      && stripos($rM3->say, '[mock:') === false && stripos($rM3->say, 'I understood') === false);
+
 echo "\n----------------------------------------\n";
 echo "RESULT: {$pass} passed, {$fail} failed\n";
 exit($fail === 0 ? 0 : 1);
