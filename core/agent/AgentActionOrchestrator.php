@@ -61,10 +61,13 @@ final class AgentActionOrchestrator
         $mem   = $this->memory ? $this->memory->load($ctx->userId) : [];
         $hints = $this->memory ? $this->memory->hints($mem) : [];
 
-        // Connections: feed the wall the user's saved contact NAMES so it scrubs
-        // them out of anything sent to the AI (recipient PII never leaves).
+        // Feed the wall the person deny-list so it scrubs names out of anything sent
+        // to the AI (audit C1): the user's OWN name + their saved-contact NAMES.
         if ($this->db instanceof PDO) {
-            $this->wall->setContactTerms((new AgentPeople($this->db))->names($ctx->userId));
+            $this->wall->setContactTerms(array_merge(
+                $this->ownerNameTerms($ctx->userId),
+                (new AgentPeople($this->db))->names($ctx->userId)
+            ));
         }
 
         // ── Path 0: session open → a personalized greeting (from OUR memory) ─────
@@ -302,6 +305,37 @@ final class AgentActionOrchestrator
             }
         }
         return false;
+    }
+
+    /**
+     * The caller's OWN name (+ its word parts) as exact deny-list terms for the
+     * privacy wall, so the user's name never reaches the AI even when typed in free
+     * text (audit C1). INTERNAL read only — the name is used to REDACT, never sent.
+     * Fully defensive: a missing users table/name degrades to no terms.
+     */
+    private function ownerNameTerms(int $userId): array
+    {
+        if (!$this->db instanceof PDO || $userId <= 0) {
+            return [];
+        }
+        try {
+            $stmt = $this->db->prepare("SELECT name FROM users WHERE id = ? LIMIT 1");
+            $stmt->execute([$userId]);
+            $name = trim((string) $stmt->fetchColumn());
+            if ($name === '') {
+                return [];
+            }
+            $terms = [$name];
+            foreach (preg_split('/\s+/', $name) ?: [] as $w) {
+                $w = trim($w);
+                if (mb_strlen($w) >= 3) {
+                    $terms[] = $w;
+                }
+            }
+            return $terms;
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     private function friendlyError(EngineResult $r): string

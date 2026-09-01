@@ -9,10 +9,14 @@
  *
  * What the wall guarantees (the founder's #1 requirement):
  *   1. NO PII LEAVES. Before any text is packaged for a provider it is scrubbed:
- *      phone numbers, emails, UPI ids, card-like numbers, Aadhaar-like numbers,
- *      our order/booking refs, URLs and long id-like digit runs are replaced with
- *      neutral placeholders (<PHONE_1>, <EMAIL_1>, …). The provider reasons over
- *      placeholders; meaning survives, identity does not.
+ *      phone numbers (incl. space/dash/dot-separated forms), emails, UPI ids,
+ *      card-like numbers, Aadhaar-like numbers, our order/booking refs, URLs,
+ *      street ADDRESSES (house/plot/gali/road/sector patterns), the user's own +
+ *      saved-contact NAMES (exact deny-list) and self-introduced names, and long
+ *      id-like digit runs are replaced with neutral placeholders (<PHONE_1>,
+ *      <ADDR_1>, <PERSON_1>, …). The provider reasons over placeholders; meaning
+ *      survives, identity does not. Bare city/locality words are a documented
+ *      residual (full name/address coverage wants NER — see below).
  *   2. DENY-BY-DEFAULT ENVELOPE. The only structured context that may accompany
  *      the text is a coarse, allow-listed set (role, language, time-of-day,
  *      public capability verbs). Anything not on the allow-list is dropped. The
@@ -62,8 +66,27 @@ final class PiiWall
         ['ID',      '/\bWTG_[A-Za-z0-9_]+/i'],                 // our order/booking refs (WTG_… / WTG_B…)
         ['AADHAAR', '/\b\d{4}\s\d{4}\s\d{4}\b/'],              // 12 digits, space-grouped
         ['CARD',    '/\b\d(?:[ \-]?\d){12,18}\b/'],            // 13–19 digit card-like runs
-        ['PHONE',   '/(?:\+?91[\-\s]?|\b0)?[6-9]\d{9}\b/'],    // Indian mobile, optional +91/0
+        // PHONE — Indian mobile, tolerant of spaces / dashes / dots between digits
+        // and an optional +91 or 0 prefix, so "98765 43210", "987-654-3210",
+        // "+91 98765 43210" are ALL caught (the old contiguous-only rule leaked
+        // separator-formatted numbers — audit C1). Runs after AADHAAR/CARD so those
+        // longer structured runs win first.
+        ['PHONE',   '/\b(?:(?:\+?91|0)[\s.\-]?)?[6-9]\d(?:[\s.\-]?\d){8}\b/'],
         ['UPI',     '/\b[A-Za-z0-9.\-_]{2,}@[A-Za-z]{2,}\b/'], // vpa@handle (no dot TLD)
+        // ADDRESS (audit C1) — three passes, deliberately over-redacting (a leak is
+        // worse than a masked tag): (a) a house/plot/flat/gali number keyword;
+        // (b) a number-led street ("45 MG Road", "12/3 Green Park Colony");
+        // (c) a capitalised street/locality name ("MG Road", "Rajpur Nagar").
+        // A bare city/locality with no street-type word is a documented residual
+        // (full coverage needs NER — see the file header).
+        ['ADDR',    '/\b(?:h(?:ouse)?|plot|flat|door|shop|gali|galli|quarter|ward|khasra|makaan|makan)\.?\s*(?:no\.?|number|#)?\s*[:\-]?\s*\d+[a-z0-9\/\-]*/i'],
+        ['ADDR',    '/\b\d{1,5}[a-z]?(?:[\/\-]\d{1,5}[a-z]?)?(?:,?\s+[a-z0-9.\-]+){0,4}\s+(?:road|rd|marg|street|lane|gali|galli|nagar|colony|vihar|sector|block|chowk|mohalla|bazaar|bazar|market|enclave|society|apartments?|towers?|puram|ganj|pura)\b/i'],
+        ['ADDR',    '/\b(?:[A-Z][A-Za-z]+\.?\s+){1,3}(?:Road|Rd|Marg|Street|Lane|Nagar|Colony|Vihar|Sector|Block|Chowk|Mohalla|Bazaar|Enclave|Society|Apartments?|Towers?|Puram|Ganj)\b/'],
+        // NAME (conservative backup, audit C1) — a capitalised name right after a
+        // strong self-introduction. \K keeps the intro and masks only the name. The
+        // PRIMARY name defence is the exact deny-list (user's own name + saved
+        // contacts) applied in scrub() AND re-checked by the tripwire.
+        ['NAME',    '/(?i:\bmy name is|\bmera naam|\bmera nam|\bnaam hai|\bmyself|\bcall me)\s+\K[A-Z][a-zA-Z.\'\-]+(?:\s+[A-Z][a-zA-Z.\'\-]+){0,2}/'],
         ['NUM',     '/\b\d{6,}\b/'],                            // catch-all: OTPs, pincodes, ids
     ];
 
@@ -83,10 +106,14 @@ final class PiiWall
      */
     public function setContactTerms(array $terms): void
     {
-        $this->contactTerms = array_values(array_unique(array_filter(
+        $clean = array_values(array_unique(array_filter(
             array_map(static fn ($t) => trim((string) $t), $terms),
             static fn ($t) => mb_strlen($t) >= 3
         )));
+        // Longest-first so a full name ("Priya Sharma") masks as one <PERSON_n>
+        // before its parts, and so the tripwire checks the most specific term first.
+        usort($clean, static fn ($a, $b) => mb_strlen($b) <=> mb_strlen($a));
+        $this->contactTerms = $clean;
     }
 
     public function __construct(?PDO $db = null)
@@ -238,6 +265,15 @@ final class PiiWall
      */
     private function assertOutboundClean(string $blob, string $requestId): void
     {
+        // Person deny-list (user's own name + saved-contact names) — the tripwire
+        // enforces these too, so a name that slipped past scrub (a variant, or one
+        // that leaked into the system/meta) is still refused, not sent.
+        foreach ($this->contactTerms as $term) {
+            if (preg_match('/\b' . preg_quote($term, '/') . '\b/iu', $blob) === 1) {
+                $this->forget($requestId);
+                throw new PiiLeakException('Outbound text failed the PII tripwire (PERSON); request refused.');
+            }
+        }
         foreach (self::DETECTORS as [$type, $regex]) {
             if (preg_match($regex, $blob) === 1) {
                 // Scrub the request-scoped map so nothing lingers after a refusal.

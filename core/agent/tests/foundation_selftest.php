@@ -114,6 +114,42 @@ try {
     check('AgentContext requires an authenticated user (register-gate)', true);
 }
 
+// ── 6. Hardened PII detectors + name deny-list (audit C1) ─────────────────────
+$freshCtx = static fn (int $uid): AgentContext =>
+    AgentContext::fromAuth(['user_id' => $uid, 'role' => 'customer'], [], null);
+
+$p6a = (new PiiWall(null))->sanitize($freshCtx(11), 'call me 98765 43210', 'You are the assistant.', [], 'understand');
+check('6a spaced phone redacted (was a leak)', strpos($p6a->userText, '98765 43210') === false && strpos($p6a->userText, '<PHONE_1>') !== false);
+
+$p6b = (new PiiWall(null))->sanitize($freshCtx(12), 'my cell 987-654-3210 ok', 'You are the assistant.', [], 'understand');
+check('6b dashed phone redacted', strpos($p6b->userText, '987-654-3210') === false && strpos($p6b->userText, '<PHONE_') !== false);
+
+$p6c = (new PiiWall(null))->sanitize($freshCtx(13), 'deliver to 45 MG Road', 'You are the assistant.', [], 'understand');
+check('6c number-led street address redacted', strpos($p6c->userText, 'Road') === false && strpos($p6c->userText, '<ADDR_') !== false);
+
+$p6d = (new PiiWall(null))->sanitize($freshCtx(14), 'I live near Rajpur Road here', 'You are the assistant.', [], 'understand');
+check('6d capitalised street redacted', strpos($p6d->userText, 'Rajpur') === false && strpos($p6d->userText, '<ADDR_') !== false);
+
+$p6e = (new PiiWall(null))->sanitize($freshCtx(15), 'myself Rajesh Kumar', 'You are the assistant.', [], 'understand');
+check('6e self-introduced name redacted', strpos($p6e->userText, 'Rajesh') === false && strpos($p6e->userText, '<NAME_') !== false);
+
+$w6f = new PiiWall(null);
+$w6f->setContactTerms(['Rajesh Kumar']);      // the user's own name / a saved contact
+$p6f = $w6f->sanitize($freshCtx(16), 'this parcel is from Rajesh Kumar', 'You are the assistant.', [], 'understand');
+check('6f deny-list name redacted to <PERSON_1>', strpos($p6f->userText, 'Rajesh') === false && strpos($p6f->userText, '<PERSON_1>') !== false);
+
+// Tripwire fail-closed: PII that reaches the outbound blob (here via system text) is refused.
+$threw6g = false;
+try { (new PiiWall(null))->sanitize($freshCtx(17), 'hello', 'Reach me at 98765 43210 please.', [], 'understand'); }
+catch (PiiLeakException $e) { $threw6g = true; }
+check('6g tripwire blocks a spaced phone on the wire', $threw6g);
+
+$w6h = new PiiWall(null); $w6h->setContactTerms(['Priya']);
+$threw6h = false;
+try { $w6h->sanitize($freshCtx(18), 'hello', 'Ask Priya to confirm the slot.', [], 'understand'); }
+catch (PiiLeakException $e) { $threw6h = true; }
+check('6h tripwire blocks a deny-list name on the wire', $threw6h);
+
 echo "\n----------------------------------------\n";
 echo "RESULT: {$pass} passed, {$fail} failed\n";
 exit($fail === 0 ? 0 : 1);
