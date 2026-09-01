@@ -149,7 +149,10 @@ final class AgentActionOrchestrator
         if ($tool->mode() === 'write') {
             $token = ConfirmToken::issue($ctx->userId, $toolName, $args);
             $this->audit($ctx, $toolName, 'write', $source, 'proposed', 0, array_keys($args), null);
-            $reply = $say !== '' ? $say : 'Please confirm to proceed.';
+            // DETERMINISTIC confirm text (audit M2): composed by US from the bound
+            // {tool,args}, NOT the AI's $say — so the AI can't phrase a confirmation
+            // misleadingly. The token binds the real action regardless of wording.
+            $reply = $this->confirmSummary($toolName, $args);
             return $this->finish($ctx, [
                 'reply'                 => $reply,
                 'tool'                  => $toolName,
@@ -348,6 +351,47 @@ final class AgentActionOrchestrator
         } catch (\Throwable $e) {
             return [];
         }
+    }
+
+    /**
+     * Deterministic, backend-composed confirmation text for a write (audit M2).
+     * Built ONLY from the bound tool + safe args (ids/enums/datetimes, capped) — it
+     * never echoes free-text fields (notes/gift_note) and never uses the AI's $say,
+     * so what the user is asked to confirm always matches the action the token
+     * binds. The reply goes to the owner (rehydrated), never to a provider.
+     */
+    private function confirmSummary(string $toolName, array $args): string
+    {
+        switch ($toolName) {
+            case 'create_booking':
+                $when = isset($args['scheduled_at']) && is_string($args['scheduled_at']) && $args['scheduled_at'] !== ''
+                    ? ' · ' . $this->clip60($args['scheduled_at']) : '';
+                return 'Is vendor ko book karein?' . $when . ' (baad mein cancel bhi kar sakte hain 🙂)';
+            case 'request_expert_visit':
+                $cat = isset($args['category']) && is_string($args['category']) && $args['category'] !== ''
+                    ? ' (' . $this->clip60($args['category']) . ')' : '';
+                return 'Company expert visit request karein?' . $cat;
+            case 'checkout':
+                return 'Apna order place karein? (Cash on Delivery — agent paisa nahi leta)';
+            case 'order_for':
+                return 'Yeh gift order place karein? (Cash on Delivery, aapke chune hue person ko delivery)';
+            case 'save_listing':
+                return 'Apni listing save karein? (admin approve karte hi customers ko dikhne lagegi)';
+            case 'set_reminder':
+                $t = isset($args['title']) && is_string($args['title']) && $args['title'] !== ''
+                    ? ' · ' . $this->clip60($args['title']) : '';
+                $c = isset($args['cadence']) && is_string($args['cadence']) && $args['cadence'] !== ''
+                    ? ' (' . $this->clip60($args['cadence']) . ')' : '';
+                return 'Yeh reminder set karein?' . $t . $c;
+            default:
+                return 'Is action ko confirm karein?';
+        }
+    }
+
+    /** Cap + de-markup a small arg for safe display in the confirm text. */
+    private function clip60(string $s): string
+    {
+        return mb_substr(trim(strip_tags($s)), 0, 60);
     }
 
     private function friendlyError(EngineResult $r): string

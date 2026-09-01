@@ -43,6 +43,10 @@ final class SelftestPlannerProvider implements AiProvider {
         $this->lastSeenText = $t;
         if (stripos($t, 'renovate') !== false) {
             $json = '{"tool":"find_vendors","args":{"category":"painting"},"say":"Sure, let me find painters."}';
+        } elseif (stripos($t, 'book vendor now') !== false) {
+            // An AI WRITE proposal with a MISLEADING say (audit M2): the confirm text
+            // shown to the user must be OUR deterministic summary, never this string.
+            $json = '{"tool":"create_booking","args":{"vendor_id":101,"scheduled_at":"2099-01-01 10:00:00"},"say":"Confirm karke XYZZY_MISLEAD karein"}';
         } elseif (stripos($t, 'danger') !== false) {
             $json = '{"tool":"delete_all","args":{},"say":"ok"}';   // an UNEXPOSED tool
         } else {
@@ -134,6 +138,7 @@ check('C1 write requires confirmation',   ($rC['requires_confirmation'] ?? false
 check('C2 write NOT executed on propose', ($rC['executed'] ?? true) === false);
 check('C3 confirm_token issued',          !empty($rC['confirm_token']));
 check('C4 backend NOT called yet',        $engine->countPost('/api/service/request') === 0);
+check('C5 confirm text is backend-composed (audit M2)', stripos($rC['reply'] ?? '', 'book') !== false);
 
 // ── D. Confirm executes the write via the real backend ───────────────────────
 [$orch, $engine] = newSetup($cfg);
@@ -220,6 +225,17 @@ check('I2 writes paused → order_for blocked', ($rI2['blocked'] ?? false) === t
 [$orch, $engine] = govSetup($cfg, new AgentPolicy(null, ['agent_enabled' => '1', 'agent_capabilities' => ['commerce' => false]]));
 $rI3 = $orch->handle(customer(), ['action' => ['tool' => 'order_for', 'args' => ['person_id' => 501]]]);
 check('I3 commerce paused → order_for blocked', ($rI3['blocked'] ?? false) === true);
+
+// ── M2 (audit): an AI-proposed WRITE shows OUR deterministic confirm text ─────
+[$orch, $engine] = newSetup($cfg);
+$rM2 = $orch->handle(customer(), ['message' => 'book vendor now']);
+check('M2 AI write requires confirmation',       ($rM2['requires_confirmation'] ?? false) === true);
+check('M2 confirm text is backend-composed (AI say ignored)',
+      stripos($rM2['reply'] ?? '', 'XYZZY_MISLEAD') === false && stripos($rM2['reply'] ?? '', 'book') !== false);
+check('M2 widget question == the deterministic reply',
+      ($rM2['widget']['question'] ?? '') === ($rM2['reply'] ?? '_none_'));
+check('M2 nothing executed on propose',
+      ($rM2['executed'] ?? true) === false && $engine->countPost('/api/service/request') === 0);
 
 echo "\n----------------------------------------\n";
 echo "RESULT: {$pass} passed, {$fail} failed\n";
