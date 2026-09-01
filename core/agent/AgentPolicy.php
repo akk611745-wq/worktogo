@@ -29,7 +29,11 @@ final class AgentPolicy
 {
     private const CAP_DEFAULTS    = ['service' => true, 'commerce' => true, 'vendor' => true, 'writes' => true];
     private const LIMIT_DEFAULTS  = ['msg_per_min' => 30, 'actions_per_session' => 20];
-    private const BUDGET_DEFAULTS = ['monthly_cap_usd' => 0.0, 'auto_pause' => true];
+    // A SAFE non-zero default cap (audit M1): a real AI key can never run a runaway
+    // bill by accident — spend past this auto-pauses the external AI (degrades to
+    // deterministic, never breaks). The control-room can raise it; an admin may set
+    // 0 to opt into unlimited deliberately.
+    private const BUDGET_DEFAULTS = ['monthly_cap_usd' => 20.0, 'auto_pause' => true];
     private const GUARD_DEFAULTS  = ['max_message_chars' => 2000];
 
     /** Per-1M-token [input, output] USD prices, for live spend from agent_ai_log. */

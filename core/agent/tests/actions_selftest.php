@@ -197,6 +197,12 @@ check('H5 AI paused → non-deterministic no AI',  $aiSkip->tool === null && $ai
 $b0 = (new AgentPolicy(null, ['agent_budget' => ['monthly_cap_usd' => 0]]))->budget();
 check('H6 cap 0 = unlimited, not paused', $b0['paused'] === false);
 
+// H7 (audit M1): the DEFAULT budget cap is a SAFE non-zero value with auto-pause,
+// so a real AI key can't run a runaway bill by accident; an explicit 0 stays an
+// opt-in "unlimited".
+$bDef = (new AgentPolicy(null, []))->budget();
+check('H7 default budget cap is safe non-zero + auto-pause', $bDef['monthly_cap_usd'] > 0 && $bDef['auto_pause'] === true);
+
 // ── I. Connections (Phase 8): recipient PII never reaches the AI ─────────────
 // I1: a saved contact NAME is scrubbed out of what the provider sees.
 $wall = new PiiWall(null);
