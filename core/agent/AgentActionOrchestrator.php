@@ -207,6 +207,18 @@ final class AgentActionOrchestrator
             return $blocked;
         }
 
+        // SINGLE-USE (audit H1): atomically claim this confirmation now — right
+        // before the write — so the SAME token can't be replayed to double-execute
+        // (duplicate booking/order). A replay (or concurrent duplicate) is refused.
+        if (!ConfirmToken::consume($this->db, $payload)) {
+            $this->audit($ctx, $toolName, 'write', 'confirm', 'rejected', 0, array_keys($args), 'confirm token already used (replay)');
+            return $this->finish($ctx, [
+                'reply'    => "Yeh action pehle hi ho chuka hai — dobara karna ho to naya request bhejein. 🙂",
+                'tool'     => $toolName,
+                'executed' => false,
+            ]);
+        }
+
         $result = $tool->run($tc, $args);
         if ($result->ok && $this->memory) {
             $this->memory->record($ctx, $toolName, $args); // learn from this confirmed action

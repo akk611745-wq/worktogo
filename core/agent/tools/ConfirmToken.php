@@ -11,6 +11,10 @@
  *   • HMAC-SHA256 over the payload ⇒ the tool/args cannot be altered after issue.
  *   • uid binding ⇒ user A's confirmation can't trigger user B's action.
  *   • exp ⇒ a stale confirmation can't be replayed later.
+ *   • nonce + a used-token store ⇒ SINGLE-USE: the SAME confirmation can't be
+ *     replayed within its TTL to double-execute a write (audit H1). The signature
+ *     stays stateless for integrity/uid/exp; only the tiny used-nonce set is
+ *     persisted (agent_used_tokens), claimed atomically before the write runs.
  *
  * The token carries only ids/enums/datetimes (no PII) and is shown to the user
  * whose action it is. The secret is the app's JWT_SECRET (or AGENT_CONFIRM_SECRET).
@@ -32,7 +36,7 @@ final class ConfirmToken
             'tool'  => $tool,
             'args'  => $args,
             'exp'   => time() + max(30, $ttl),
-            'nonce' => bin2hex(random_bytes(6)),
+            'nonce' => bin2hex(random_bytes(16)),   // 128-bit jti for the single-use store (audit H1)
         ];
         $body = self::b64url(json_encode($payload, JSON_UNESCAPED_UNICODE) ?: '{}');
         $sig  = self::sign($body);
@@ -71,7 +75,60 @@ final class ConfirmToken
         if ($tool === '') {
             return null;
         }
-        return ['tool' => $tool, 'args' => $args];
+        // Return the full VERIFIED payload — the caller needs `nonce` to enforce
+        // single-use (audit H1), plus uid/exp for the used-token store.
+        return [
+            'tool'  => $tool,
+            'args'  => $args,
+            'uid'   => (int) ($payload['uid'] ?? 0),
+            'exp'   => (int) ($payload['exp'] ?? 0),
+            'nonce' => (string) ($payload['nonce'] ?? ''),
+        ];
+    }
+
+    /**
+     * Enforce SINGLE-USE (audit H1). Atomically claims this token's nonce in the
+     * used-token store so the SAME confirmation cannot be replayed within its TTL
+     * to double-execute a write. The PRIMARY KEY on `jti` is the gate: the first
+     * caller inserts and proceeds; a concurrent/duplicate caller hits a duplicate
+     * key and is refused. Must be called AFTER verify() and BEFORE the write runs.
+     *
+     * @return bool true ⇒ first use, may proceed; false ⇒ replay, refuse.
+     *
+     * Defensive posture: with no DB it degrades to the prior stateless behaviour
+     * (returns true) so writes aren't blocked before the migration is applied —
+     * single-use activates once `agent_used_tokens` exists (a table-missing error
+     * degrades the same way). Any OTHER db error fails SAFE (false) so a write is
+     * never doubled on ambiguity. A malformed payload is refused.
+     */
+    public static function consume(?PDO $db, array $payload): bool
+    {
+        $jti = (string) ($payload['nonce'] ?? '');
+        $uid = (int) ($payload['uid'] ?? 0);
+        $exp = (int) ($payload['exp'] ?? 0);
+        if ($jti === '' || $uid <= 0) {
+            return false; // malformed → refuse (safe)
+        }
+        if (!$db instanceof PDO) {
+            return true;  // no store available → prior behaviour (caller logs)
+        }
+        try {
+            // Opportunistic purge of expired rows (bounded — only confirmed writes).
+            $db->prepare("DELETE FROM agent_used_tokens WHERE expires_at <= NOW()")->execute();
+            $db->prepare(
+                "INSERT INTO agent_used_tokens (jti, user_id, expires_at, used_at)
+                 VALUES (:jti, :uid, FROM_UNIXTIME(:exp), NOW())"
+            )->execute([':jti' => $jti, ':uid' => $uid, ':exp' => $exp]);
+            return true;  // first use — claimed
+        } catch (\PDOException $e) {
+            $state = (string) $e->getCode();
+            if ($state === '23000') { return false; }  // duplicate jti → replay, refuse
+            if ($state === '42S02') { return true; }    // table absent → single-use not yet active
+            if (class_exists('Logger')) {
+                Logger::warning('agent.confirm consume error', ['sqlstate' => $state]);
+            }
+            return false;  // unknown DB error → fail safe (never double-execute a write)
+        }
     }
 
     private static function sign(string $body): string
