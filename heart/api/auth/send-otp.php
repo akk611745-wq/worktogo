@@ -2,8 +2,16 @@
 // ============================================================
 //  POST /api/auth/otp/send
 //  Generates and sends a 6-digit OTP to a phone number.
-//  Stores hashed OTP in DB. Supports MSG91 / Fast2SMS / Twilio.
+//  Stores hashed OTP in DB. Delivery goes through the Smart Auth Layer
+//  (lib/auth): a config-driven OTP-channel manager with primary→secondary
+//  FAILOVER (MSG91 SMS today; a 2nd SMS provider + WhatsApp are drop-in
+//  slots). The legacy sender (Fast2SMS/Twilio/log) is retained as a
+//  backward-compatible fallback for older SMS_PROVIDER setups. Only the SEND
+//  is abstracted — OTP generation, hashing, rate-limits and verify are
+//  unchanged.
 // ============================================================
+
+require_once SYSTEM_ROOT . '/lib/auth/bootstrap.php';
 
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
 
@@ -53,18 +61,34 @@ try {
          VALUES (?, ?, ?, 0, NOW())"
     )->execute([$phone, $hash, $expires]);
 
-    // Send via configured provider
-    $sent = _sendOtp($phone, $otp);
+    // ── Send via the Smart Auth Layer (config-driven channel + failover) ────────
+    // Delivery kind: default SMS; honor an explicit WhatsApp request ONLY if a
+    // WhatsApp channel is actually configured (else fall back to SMS). Our system
+    // uses providers, never depends on one — a down/unconfigured provider fails
+    // over to the next configured channel.
+    $otpMgr  = new OtpChannelManager($db);
+    $reqKind = strtolower((string) ($input['channel'] ?? $input['method'] ?? 'sms'));
+    $kind    = ($reqKind === 'whatsapp' && $otpMgr->channelUsable('whatsapp')) ? 'whatsapp' : 'sms';
+
+    $res  = $otpMgr->sendWithFailover($kind, $phone, $otp, ['expiry_seconds' => OTP_EXPIRY]);
+    $sent = !empty($res['success']);
+
+    // Backward-compat: if the layer has NO usable channel on this deploy (e.g. an
+    // older setup relying on SMS_PROVIDER=fast2sms/twilio), defer to the legacy
+    // sender so nothing regresses. MSG91 + dev-log are already first-class channels.
+    if (!$sent && !empty($res['no_usable_channel'])) {
+        $sent = _sendOtp($phone, $otp);
+    }
 
     if (!$sent) {
         Logger::error('OTP send failed', ['phone' => $phone]);
         Response::serverError('Failed to send OTP. Please try again.');
     }
 
-    Logger::info('OTP sent', ['phone' => $phone]);
+    Logger::info('OTP sent', ['phone' => $phone, 'via' => $kind]);
 
     // Never return the OTP in production
-    $responseData = ['phone' => $phone, 'expires_in' => OTP_EXPIRY];
+    $responseData = ['phone' => $phone, 'expires_in' => OTP_EXPIRY, 'via' => $kind];
 
     if (getenv('APP_ENV') === 'local' || getenv('APP_DEBUG') === 'true') {
         $responseData['otp_debug'] = $otp; // Only in local dev
