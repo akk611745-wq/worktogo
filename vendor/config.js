@@ -30,8 +30,8 @@ const CONFIG = {
     SHOPPING_VENDOR_UI: false,
     VENDOR_ANALYTICS: false,
     VENDOR_REALTIME_LABEL: false,
-    VENDOR_ONBOARDING: false,
-    SERVICE_PROOF_UPLOAD: false,
+    VENDOR_ONBOARDING: false,    // reserved: declared but not yet wired to any gate
+    SERVICE_PROOF_UPLOAD: false, // reserved: declared but not yet wired to any gate
   },
 
   // Role constants

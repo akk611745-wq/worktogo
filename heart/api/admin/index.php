@@ -1947,8 +1947,11 @@ try {
 
     // ── PATCH /api/admin/vendors/{id}/accountability — admin ACTS on a flag ────
     //  Sets the admin-decision layer (manual flag, review ack, work throttle,
-    //  note). work_throttle is a FUTURE hook — recorded, NOT yet enforced by
-    //  assignment. Schema-defensive: only writes columns that exist.
+    //  note). work_throttle IS enforced by assignment: 'paused' vendors are
+    //  excluded from and 'reduced' de-prioritised in both cron/auto_assign.php
+    //  and the eligible-vendor query (core/helpers/ServiceVendorEligibility.php
+    //  + body/service-engine/api/vendors). Schema-defensive: writes only columns
+    //  that exist.
     if ($method === 'PATCH' && preg_match('#^/api/admin/vendors/(\d+)/accountability$#', $uri, $m)) {
         Permission::enforce($db, $auth, 'vendors.manage');
         $vendorId = (int)$m[1];
