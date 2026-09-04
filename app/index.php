@@ -83,9 +83,16 @@ function wtg_build_version(): string {
   <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-  <!-- Firebase Cloud Messaging (browser push notifications) -->
+  <!-- Firebase Cloud Messaging — loaded ONLY when FCM is configured (env keys
+       present). Notifications are off at launch and the keys are absent, so
+       ~100 KB of Firebase SDK is not shipped to every visitor on first open.
+       push.js guards on the SAME keys (WTG_FCM_API_KEY + WTG_FCM_VAPID_KEY)
+       client-side, so this stays consistent: no keys → no SDK and no usage.
+       When both keys are set, the SDK loads exactly as before. -->
+  <?php if (getenv('FCM_API_KEY') && getenv('FCM_VAPID_KEY')): ?>
   <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js"></script>
+  <?php endif; ?>
 
   <!-- Google Maps — loaded ON DEMAND, never on first paint (weak-internet
        friendly). Previously a render-blocking <script> that stalled first paint
