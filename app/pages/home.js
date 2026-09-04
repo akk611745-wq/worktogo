@@ -3002,11 +3002,14 @@ function _searchPlacesAsync(query = "") {
   const search = _cleanLocality(query).toLowerCase();
   if (search.length < 2) return;
 
-  _placesDebounceTimer = setTimeout(() => {
+  _placesDebounceTimer = setTimeout(async () => {
     const listEl = document.getElementById("locality-suggestions");
     if (!listEl) return;
 
     const rowStyle = "min-height:56px;padding:14px 12px;display:flex;align-items:center;gap:10px;width:100%;border:none;border-bottom:1px solid var(--clr-border);background:transparent;color:var(--clr-text-1);font-size:15px;text-align:left;cursor:pointer;box-sizing:border-box;";
+
+    // Load the Maps SDK on demand the first time the user searches an area.
+    if (window.WTG_loadMaps) { try { await window.WTG_loadMaps(); } catch (_) {} }
 
     if (!window.google?.maps?.places) {
       listEl.innerHTML = `<p style="padding:14px 16px;color:var(--clr-text-2);font-size:14px;margin:0;">Could not search right now — try again</p>`;
@@ -3306,9 +3309,14 @@ function _maybeAutoDetectLocality() {
   if (!saved?.label) _detectGPSLocality();
 }
 
-function _attachAddressAutocomplete() {
+async function _attachAddressAutocomplete() {
   const input = document.getElementById("booking-address");
-  if (!input || !window.google?.maps?.places) return;
+  if (!input) return;
+  // Load the Maps SDK on demand (first time the booking form is opened), not on
+  // first paint. If it can't load (no key / offline), the guard below leaves the
+  // plain text input working — no dead-end.
+  if (window.WTG_loadMaps) { try { await window.WTG_loadMaps(); } catch (_) {} }
+  if (!window.google?.maps?.places) return;
   const autocomplete = new google.maps.places.Autocomplete(input, {
     componentRestrictions: { country: "in" },
     fields: ["formatted_address", "geometry", "name", "address_components"],

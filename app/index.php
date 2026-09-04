@@ -87,11 +87,31 @@ function wtg_build_version(): string {
   <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js"></script>
 
-  <!-- Google Maps (geocoding + Places autocomplete) -->
+  <!-- Google Maps — loaded ON DEMAND, never on first paint (weak-internet
+       friendly). Previously a render-blocking <script> that stalled first paint
+       on a slow connection. window.WTG_loadMaps() injects the Places SDK the
+       first time a location/address feature is used and resolves when ready; it
+       resolves to false (never throws) if there is no key or the load fails, so
+       callers degrade gracefully to manual address input. Idempotent (one load,
+       cached promise). -->
   <script>
     window.WTG_GOOGLE_KEY = "<?php echo htmlspecialchars(getenv('GOOGLE_MAPS_API_KEY') ?: '', ENT_QUOTES, 'UTF-8'); ?>";
+    window.WTG_loadMaps = function () {
+      if (window._wtgMapsPromise) return window._wtgMapsPromise;
+      window._wtgMapsPromise = new Promise(function (resolve) {
+        if (window.google && window.google.maps && window.google.maps.places) return resolve(true);
+        var key = window.WTG_GOOGLE_KEY || "";
+        if (!key) return resolve(false);
+        var s = document.createElement("script");
+        s.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(key) + "&libraries=places&language=hi";
+        s.async = true; s.defer = true;
+        s.onload = function () { resolve(!!(window.google && window.google.maps && window.google.maps.places)); };
+        s.onerror = function () { resolve(false); };
+        document.head.appendChild(s);
+      });
+      return window._wtgMapsPromise;
+    };
   </script>
-  <script src="https://maps.googleapis.com/maps/api/js?key=<?php echo urlencode(getenv('GOOGLE_MAPS_API_KEY') ?: ''); ?>&libraries=places&language=hi"></script>
 </head>
 <body>
 
