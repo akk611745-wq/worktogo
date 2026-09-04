@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Service Vendor Dashboard — WorkToGo</title>
   <link rel="icon" href="/app/assets/favicon.png"/>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root {
     --sidebar-bg: #1a1a2e;
@@ -1293,9 +1293,13 @@
   }
 
   function renderAnalyticsChart(labels, data) {
-    const ctx = document.getElementById('bookingsChart').getContext('2d');
+    // Degrade gracefully if the Chart.js CDN is slow/blocked (weak internet) —
+    // the rest of the dashboard keeps working instead of throwing here.
+    const canvas = document.getElementById('bookingsChart');
+    if (typeof Chart === 'undefined' || !canvas) return;
+    const ctx = canvas.getContext('2d');
     if (chartInstance) chartInstance.destroy();
-    
+
     chartInstance = new Chart(ctx, {
       type: 'line',
       data: {
