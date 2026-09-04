@@ -3,7 +3,10 @@
    Mobile-first. Clean. Fast. Production-ready.
    ═══════════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=DM+Mono:wght@400;500&display=swap');
+/* Fonts are loaded via a parallel <link> in app/index.php (with the fonts
+   preconnect), NOT a CSS @import — an @import here serialised the fetch
+   (main.css → parse → discover @import → font CSS) and delayed first paint.
+   The <link> keeps display=swap so text paints immediately in the fallback. */
 
 /* ── Variables ─────────────────────────────────────────────────────────── */
 

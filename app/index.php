@@ -79,6 +79,10 @@ function wtg_build_version(): string {
   <!-- Preconnect for fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <!-- Fonts via a parallel <link> (was a render-blocking @import inside
+       main.css, which serialised the fetch). display=swap keeps text visible
+       in the system fallback immediately, swapping when the webfont arrives. -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=DM+Mono:wght@400;500&display=swap"/>
 
   <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
