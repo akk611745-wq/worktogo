@@ -7,7 +7,7 @@
   <link rel="icon" href="/app/assets/favicon.png"/>
 <link rel="stylesheet" href="assets/style.css"/>
 <script>
-  window.WTG_BASE_URL = "<?php echo rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?? 'https://worktogo.in', '/'); ?>";
+  window.WTG_BASE_URL = "<?php echo rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?? '', '/'); ?>";
 </script>
 <script defer src="config.js"></script>
 <script defer src="shared/auth.js"></script>

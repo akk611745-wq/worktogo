@@ -7,8 +7,15 @@
 
 const CONFIG = {
   // ─── API ───────────────────────────────────────
-  // Set your real backend URL here — no trailing slash
-  BASE_URL: (typeof window !== "undefined" && window.WTG_BASE_URL) || "https://worktogo.in",
+  // Environment-driven. The server injects window.WTG_BASE_URL from the APP_URL
+  // env var (see app/index.php); env.js seeds it to "" (same-origin) by default.
+  // We honor an explicitly-injected value — INCLUDING "" — and fall back to
+  // same-origin ("") when it is unset. Never hardcode production here: a same-
+  // origin default means staging talks to staging and can never hit prod by
+  // accident. To point at a cross-origin API, set APP_URL / window.WTG_BASE_URL.
+  BASE_URL: (typeof window !== "undefined" && typeof window.WTG_BASE_URL === "string")
+    ? window.WTG_BASE_URL.replace(/\/+$/, "")
+    : "",
 
   // Google Maps key, injected by index.php from GOOGLE_MAPS_API_KEY env var
   GOOGLE_MAPS_KEY: (typeof window !== "undefined" && window.WTG_GOOGLE_KEY) || "",

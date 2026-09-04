@@ -5,8 +5,14 @@
  * All other files import from here — single source of truth.
  */
 const CONFIG = {
-  // ✏️  Change this to your actual backend URL
-  BASE_URL: (typeof window !== "undefined" && window.WTG_BASE_URL) || "https://worktogo.in",
+  // Environment-driven. The vendor pages inject window.WTG_BASE_URL from the
+  // APP_URL env var (see vendor/*.php). We honor an explicitly-injected value —
+  // INCLUDING "" — and fall back to same-origin ("") when unset. Never hardcode
+  // production: a same-origin default keeps staging pointed at staging and can
+  // never hit prod by accident. Set APP_URL to use a cross-origin API host.
+  BASE_URL: (typeof window !== "undefined" && typeof window.WTG_BASE_URL === "string")
+    ? window.WTG_BASE_URL.replace(/\/+$/, "")
+    : "",
 
   // Token storage key
   TOKEN_KEY: "wtg_vendor_token",

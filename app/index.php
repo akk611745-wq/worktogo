@@ -149,7 +149,7 @@ function wtg_build_version(): string {
 
   <!-- Core Scripts (order matters) -->
   <script>
-    window.WTG_BASE_URL         = "<?php echo rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?? 'https://worktogo.in', '/'); ?>";
+    window.WTG_BASE_URL         = "<?php echo rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?? '', '/'); ?>";
     window.WTG_GOOGLE_CLIENT_ID = "<?php echo htmlspecialchars(getenv('GOOGLE_CLIENT_ID') ?: ''); ?>";
     window.WTG_ASSET_VERSION    = "<?php echo wtg_build_version(); ?>";
     window.WTG_OTP_METHOD       = "<?php echo htmlspecialchars(getenv('OTP_METHOD') ?: 'sms'); ?>";
