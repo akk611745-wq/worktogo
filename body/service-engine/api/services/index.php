@@ -1651,24 +1651,6 @@ if ($method === 'POST' && $uri === '/api/service/request') {
                         ],
                     ]);
 
-                    // DEBUG — CASHFREE-PROD-FAILURE (B1). Captures exactly what was sent
-                    // plus Cashfree's exact reply so a staging failure is self-diagnosing.
-                    // Remove once the prod root cause is confirmed on staging.
-                    Logger::error('CASHFREE_ORDER_DEBUG', [
-                        'booking_id'  => $bookingId,
-                        'cf_order_id' => $cfOrderId,
-                        'env'         => CASHFREE_ENV,
-                        'api_base'    => CASHFREE_API_BASE,
-                        'app_url'     => defined('APP_URL') ? APP_URL : '(undef)',
-                        'return_url'  => $returnUrl,
-                        'notify_url'  => $notifyUrl,
-                        'app_id_tail' => substr((string)CASHFREE_APP_ID, -4),
-                        'http_code'   => $cfResult['http_code'] ?? null,
-                        'success'     => $cfResult['success'] ?? null,
-                        'error'       => $cfResult['error'] ?? null,
-                        'data'        => $cfResult['data'] ?? null,
-                    ]);
-
                     if (!$cfResult['success']) {
                         throw new RuntimeException('Cashfree error: ' . ($cfResult['error'] ?? 'unknown'));
                     }
