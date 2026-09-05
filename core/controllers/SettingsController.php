@@ -85,7 +85,11 @@ class SettingsController
             if (!$type) {
                 $type = is_array($value) || is_object($value) ? 'json' : 'text';
                 $label = ucwords(str_replace('_', ' ', $key));
-                $this->db->prepare("INSERT INTO app_settings (setting_key, setting_value, value_type, label, is_public, created_at, updated_at) VALUES (?, '', ?, ?, 1, NOW(), NOW())")
+                // Fail-closed: a NEW/unknown key is created PRIVATE (is_public=0). A
+                // mistyped or governance key must not become world-readable via the
+                // public settings endpoint by default; expose it deliberately if
+                // needed (role-01 must-fix).
+                $this->db->prepare("INSERT INTO app_settings (setting_key, setting_value, value_type, label, is_public, created_at, updated_at) VALUES (?, '', ?, ?, 0, NOW(), NOW())")
                     ->execute([$key, $type, $label]);
             }
 
