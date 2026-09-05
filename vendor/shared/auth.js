@@ -67,22 +67,56 @@ const Auth = (() => {
     const user = getUser();
     const role = user?.role;
     
-    // BUG FIX: Check if user has vendor role
+    // Vendor approved but the JWT still carries the old 'customer' role — a fresh
+    // sign-in mints the vendor token. Guide them with a clean overlay, not a
+    // blocking alert() that reads like an error (role-02 polish).
     if (role === 'customer') {
-      // User is logged in but role is still customer (vendor application approved but not relogged in)
-      alert('Your vendor application is approved. Please logout and login again.');
-      logout();
+      _showReloginOverlay(
+        '🎉 Your vendor account is approved',
+        'Please sign in again to open your vendor dashboard.',
+        'Sign in again'
+      );
       return null;
     }
-    
-    // BUG FIX: Ensure user has vendor role (vendor_service or vendor_shopping)
+
+    // Any non-vendor role reaching the panel: guide a re-login the same clean way.
     if (role !== CONFIG.ROLES.SERVICE && role !== CONFIG.ROLES.SHOPPING) {
-      alert('Access denied. Please logout and login again to access vendor panel.');
-      logout();
+      _showReloginOverlay(
+        'Please sign in again',
+        'Your session needs a refresh to access the vendor panel.',
+        'Sign in again'
+      );
       return null;
     }
-    
+
     return user;
+  }
+
+  /**
+   * Clean, non-blocking re-login prompt (replaces the old alert()+logout()).
+   * Self-contained (inline styles), mobile-first, XSS-safe. The button performs
+   * the logout → redirect to the login page.
+   */
+  function _showReloginOverlay(title, message, cta) {
+    if (document.getElementById('wtg-relogin-overlay')) return;
+    const esc = (s) => { const d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; };
+    const o = document.createElement('div');
+    o.id = 'wtg-relogin-overlay';
+    o.setAttribute('role', 'dialog');
+    o.setAttribute('aria-modal', 'true');
+    o.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(10,12,20,.72);' +
+      'display:flex;align-items:center;justify-content:center;padding:24px;';
+    o.innerHTML =
+      '<div style="background:#fff;border-radius:16px;max-width:340px;width:100%;padding:24px;' +
+      'box-shadow:0 12px 40px rgba(0,0,0,.3);text-align:center;font-family:system-ui,-apple-system,sans-serif;">' +
+        '<div style="font-size:17px;font-weight:700;color:#111;margin-bottom:8px;">' + esc(title) + '</div>' +
+        '<div style="font-size:14px;color:#555;line-height:1.5;margin-bottom:20px;">' + esc(message) + '</div>' +
+        '<button id="wtg-relogin-btn" style="width:100%;background:#e8681a;color:#fff;border:none;' +
+        'border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;">' + esc(cta) + '</button>' +
+      '</div>';
+    document.body.appendChild(o);
+    const btn = document.getElementById('wtg-relogin-btn');
+    if (btn) btn.addEventListener('click', logout);
   }
 
   /** Auth header for API requests */
