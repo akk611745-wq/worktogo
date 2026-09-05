@@ -1754,10 +1754,24 @@ try {
         }
         $role = $v->validated()['role'];
 
-        $userRow = $db->prepare("SELECT id, name FROM users WHERE id = ? LIMIT 1");
+        $userRow = $db->prepare("SELECT id, name, role FROM users WHERE id = ? LIMIT 1");
         $userRow->execute([$userId]);
         $user = $userRow->fetch(PDO::FETCH_ASSOC);
         if (!$user) Response::notFound('User');
+
+        // Lockout protection: never let an admin lose the panel's last administrator.
+        // Demoting an admin to a non-admin role is blocked when (a) it is the acting
+        // admin demoting themselves, or (b) they are the only admin left. Promotions
+        // to admin and edits to non-admin users are unaffected.
+        if (($user['role'] ?? '') === 'admin' && $role !== 'admin') {
+            if ($userId === (int) $auth['user_id']) {
+                Response::error('You cannot remove your own admin access. Ask another admin to change your role.', 409);
+            }
+            $adminCount = (int) $db->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn();
+            if ($adminCount <= 1) {
+                Response::error('Cannot demote the last remaining admin — the panel would be left with no administrator.', 409);
+            }
+        }
 
         $db->prepare("UPDATE users SET role = ?, updated_at = NOW() WHERE id = ?")
            ->execute([$role, $userId]);
