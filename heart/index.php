@@ -250,7 +250,7 @@ if (str_starts_with($uri, '/api/services') || str_starts_with($uri, '/api/servic
 }
 
 // Service Vendors & Jobs API (includes vendor profile REST endpoint)
-if (str_starts_with($uri, '/api/vendors') || str_starts_with($uri, '/api/vendor/jobs') || str_starts_with($uri, '/api/vendor/profile')) {
+if (str_starts_with($uri, '/api/vendors') || str_starts_with($uri, '/api/vendor/jobs') || str_starts_with($uri, '/api/vendor/profile') || str_starts_with($uri, '/api/vendor/earnings')) {
     require_once SYSTEM_ROOT . '/body/service-engine/api/vendors/index.php';
     exit;
 }

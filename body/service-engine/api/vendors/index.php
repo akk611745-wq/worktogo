@@ -328,6 +328,51 @@ if ($method === 'GET' && preg_match('#^/api/vendor/jobs/(\d+)$#', $uri, $m)) {
     Response::success(['job' => $job]);
 }
 
+// ── GET /api/vendor/earnings — the vendor's OWN earnings (read-only) ──────────────
+//  Closes the "earnings-blindness" gap: a partner can finally see what they earned.
+//  Ownership-scoped — the vendor id is resolved from the JWT (resolveVendorId), so a
+//  vendor can ONLY ever see their own numbers (no client-supplied id → no IDOR).
+//  Reuses the exact per-vendor computation the admin already trusts
+//  (PaymentReport::vendorRevenue), which is schema-defensive: it fail-softs to zeros
+//  when the wallet/ledger tables aren't present on an environment. Adds the vendor's
+//  effective commission rate for transparency (their net already has it deducted).
+if ($method === 'GET' && $uri === '/api/vendor/earnings') {
+    $auth     = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_VENDOR_SHOPPING);
+    $vendorId = resolveVendorId($db, (int)$auth['user_id']);
+
+    require_once dirname(dirname(dirname(dirname(__DIR__)))) . '/core/helpers/PaymentReport.php';
+
+    $allowedPeriods = ['all', '7d', '30d', '90d', '365d'];
+    $period = in_array($_GET['period'] ?? 'all', $allowedPeriods, true) ? $_GET['period'] : 'all';
+
+    $data = PaymentReport::vendorRevenue($db, $vendorId, $period);
+
+    // Effective commission rate (transparency). Vendor-level override if the column
+    // exists; null means "no per-vendor override" (it varies by service category,
+    // and the net figure below already has commission deducted).
+    $rate = null;
+    try {
+        if (ServiceVendorEligibility::tableHasColumn($db, 'vendors', 'commission_rate')) {
+            $rs = $db->prepare("SELECT commission_rate FROM vendors WHERE id = ? LIMIT 1");
+            $rs->execute([$vendorId]);
+            $rv = $rs->fetchColumn();
+            $rate = ($rv !== false && $rv !== null && $rv !== '') ? (float)$rv : null;
+        }
+    } catch (\Throwable $e) { /* column/table absent — leave null */ }
+
+    $data['commission_rate'] = $rate;
+    $data['commission_note'] = 'Commission can vary by service category. Your net earnings already have it deducted.';
+    // Per-job hint for project/bargaining jobs whose price locks later: a completed
+    // job with zero value is "quote pending", not "₹0" — the UI reads this.
+    foreach ($data['recent'] as &$__job) {
+        $__job['amount_state'] = ((float)($__job['value'] ?? 0) <= 0
+            && !in_array($__job['status'] ?? '', ['completed', 'cancelled'], true)) ? 'quote_pending' : 'set';
+    }
+    unset($__job);
+
+    Response::success($data);
+}
+
 // ── GET /api/vendor/profile ──────────────────────────────────────────────────────
 if ($method === 'GET' && $uri === '/api/vendor/profile') {
     $auth   = AuthMiddleware::requireRole(ROLE_VENDOR_SERVICE, ROLE_VENDOR_SHOPPING);
