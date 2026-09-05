@@ -833,9 +833,13 @@
 
   // ==== AUTH & INIT ====
   function checkAuth() {
-    const token = localStorage.getItem('vendor_token');
+    // Unified vendor token: login + onboarding both store 'wtg_vendor_token'
+    // (vendor/config.js CONFIG.TOKEN_KEY). Read the SAME key here so this
+    // dashboard is reachable from the normal flow, and bounce to the real
+    // login (index.php) — not a non-existent login.html.
+    const token = localStorage.getItem('wtg_vendor_token');
     if (!token) {
-      window.location.href = '/vendor/login.html';
+      window.location.href = '/vendor/index.php';
       return null;
     }
     return token;
@@ -872,8 +876,8 @@
   }
 
   function logout() {
-    localStorage.removeItem('vendor_token');
-    window.location.href = '/vendor/login.html';
+    localStorage.removeItem('wtg_vendor_token');
+    window.location.href = '/vendor/index.php';
   }
 
   // ==== UI ROUTING ====

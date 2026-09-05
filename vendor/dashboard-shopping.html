@@ -779,9 +779,12 @@
 
   // ==== AUTH & INIT ====
   function checkAuth() {
-    const token = localStorage.getItem('vendor_token');
+    // Unified vendor token: login + onboarding both store 'wtg_vendor_token'.
+    // Read the SAME key here (not the never-set 'vendor_token') and bounce to
+    // the real login (index.php), not a non-existent login.html.
+    const token = localStorage.getItem('wtg_vendor_token');
     if (!token) {
-      window.location.href = 'login.html';
+      window.location.href = 'index.php';
       return null;
     }
     return token;
@@ -818,8 +821,8 @@
   }
 
   function logout() {
-    localStorage.removeItem('vendor_token');
-    window.location.href = 'login.html';
+    localStorage.removeItem('wtg_vendor_token');
+    window.location.href = 'index.php';
   }
 
   // ==== UI ROUTING ====

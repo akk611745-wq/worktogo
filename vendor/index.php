@@ -176,9 +176,14 @@
 // once the user proves account ownership via a real login.
 let _pendingVendorApplication = null;
 
-// Redirect if already logged in
+// Redirect if already logged in — to the canonical role dashboard (the rich
+// single-page panel with the sidebar nav incl. Earnings), same target as login
+// and onboarding so a vendor always lands on ONE coherent panel.
 window.addEventListener('DOMContentLoaded', function() {
-  if (Auth.isLoggedIn()) window.location.href = "dashboard.php";
+  if (Auth.isLoggedIn()) {
+    const r = (typeof Auth.getRole === 'function') ? Auth.getRole() : '';
+    window.location.href = (r === CONFIG.ROLES.SHOPPING) ? "dashboard-shopping.html" : "dashboard-service.html";
+  }
 
   const params = new URLSearchParams(window.location.search);
   if (params.get('apply') === '1') {
@@ -301,12 +306,14 @@ async function handleLogin() {
     }
   }
 
-  // Role-based redirect
+  // Role-based redirect to the canonical rich dashboard (sidebar nav incl.
+  // Earnings) — the same panel onboarding lands on, so login and onboarding
+  // converge on one coherent UI.
   const role = userData?.role || "";
   if (role === CONFIG.ROLES.SERVICE) {
-    window.location.href = "bookings.php";
+    window.location.href = "dashboard-service.html";
   } else {
-    window.location.href = "dashboard.php";
+    window.location.href = "dashboard-shopping.html";
   }
 }
 
@@ -496,7 +503,7 @@ async function verifyOtpLogin() {
       return;
     }
     Auth.setSession(token, userData);
-    window.location.href = role === CONFIG.ROLES.SERVICE ? "bookings.php" : "dashboard.php";
+    window.location.href = role === CONFIG.ROLES.SERVICE ? "dashboard-service.html" : "dashboard-shopping.html";
   } catch (_) {
     btn.disabled = false; btn.textContent = "Verify & Login";
     _showOtpErr("otpLoginError", "Network error. Please try again.");
