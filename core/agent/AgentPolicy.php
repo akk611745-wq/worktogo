@@ -27,7 +27,11 @@ declare(strict_types=1);
 
 final class AgentPolicy
 {
-    private const CAP_DEFAULTS    = ['service' => true, 'commerce' => true, 'vendor' => true, 'writes' => true];
+    // 'commerce' defaults OFF: at a service-only launch the agent must not offer
+    // customers commerce tools (browse/checkout/order_for) that the rest of the app
+    // hides (role-04 must-fix). Turn it on in the control-room (agent_capabilities
+    // JSON) when commerce launches. service/vendor/writes stay on by default.
+    private const CAP_DEFAULTS    = ['service' => true, 'commerce' => false, 'vendor' => true, 'writes' => true];
     private const LIMIT_DEFAULTS  = ['msg_per_min' => 30, 'actions_per_session' => 20];
     // A SAFE non-zero default cap (audit M1): a real AI key can never run a runaway
     // bill by accident — spend past this auto-pauses the external AI (degrades to
