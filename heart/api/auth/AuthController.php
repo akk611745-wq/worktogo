@@ -171,11 +171,15 @@ class AuthController {
             'role' => $userRow['role']
         ];
 
+        // Admin sessions are short-lived (12h) so a leaked admin token can't be
+        // replayed for a month; it roughly matches the panel's own session window.
+        // Customers/vendors keep the 30-day convenience token. (role-01 must-fix)
+        $tokenTtl = ($userRow['role'] === 'admin') ? (12 * 3600) : (86400 * 30);
         $token = JWT::encode([
             'user_id' => $userRow['id'],
             'role' => $userRow['role'],
             'iat' => time(),
-            'exp' => time() + (86400 * 30) // 30 days
+            'exp' => time() + $tokenTtl
         ], JWT_SECRET);
 
         $stmt = $this->db->prepare("UPDATE users SET last_login_at = NOW() WHERE id = ?");
