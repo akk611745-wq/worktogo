@@ -476,6 +476,7 @@
       <a class="nav-item" onclick="showSection('availability')">🗓️ Availability</a>
       <a class="nav-item" onclick="showSection('portfolio')">🖼️ Portfolio</a>
       <a class="nav-item" onclick="showSection('analytics')">📈 Analytics</a>
+      <a class="nav-item" onclick="showSection('earnings')">💰 Earnings</a>
       <a class="nav-item" onclick="showSection('reviews')">⭐ Reviews</a>
       <a class="nav-item" onclick="showSection('profile')">👤 Profile</a>
       <a class="nav-item" onclick="toggleNotifications()">🔔 Notifications</a>
@@ -636,6 +637,32 @@
       <div class="chart-summary" id="analyticsSummary" style="margin-top: -1rem; margin-bottom: 2rem;">
         <!-- Populated by JS -->
       </div>
+    </main>
+
+    <!-- SECTION: EARNINGS -->
+    <main class="page-section" id="sec-earnings">
+      <h1 class="section-title">My Earnings</h1>
+      <div class="stats-grid" id="earnings-stats">
+        <div class="stat-card card-green loading">
+          <div class="stat-label">Net earned</div>
+          <div class="stat-value" id="earn-net">-</div>
+        </div>
+        <div class="stat-card card-blue loading">
+          <div class="stat-label">Available to pay out</div>
+          <div class="stat-value" id="earn-available">-</div>
+        </div>
+        <div class="stat-card card-yellow loading">
+          <div class="stat-label">Pending settlement</div>
+          <div class="stat-value" id="earn-pending">-</div>
+        </div>
+        <div class="stat-card card-purple loading">
+          <div class="stat-label">Jobs completed</div>
+          <div class="stat-value" id="earn-jobs">-</div>
+        </div>
+      </div>
+      <p id="earn-note" style="color:#6b7280;font-size:13px;margin:12px 4px 20px;line-height:1.5;"></p>
+      <h2 style="font-size:15px;margin:8px 4px 4px;">Recent jobs</h2>
+      <div id="earn-recent"><!-- rows populated by JS --></div>
     </main>
 
     <!-- SECTION: REVIEWS -->
@@ -869,6 +896,7 @@
     if (sectionId === 'availability') { loadSchedule(); renderCalendar(); }
     if (sectionId === 'portfolio') { loadPortfolio(); loadCategories(); }
     if (sectionId === 'analytics') loadAnalytics();
+    if (sectionId === 'earnings') loadEarnings();
     if (sectionId === 'reviews') loadReviews();
     if (sectionId === 'profile') loadProfile();
   }
@@ -1319,6 +1347,48 @@
         scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
       }
     });
+  }
+
+  // ==== EARNINGS ====
+  function _fmtINR(n) { return '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 }); }
+  function _escEarn(s) { const d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+  async function loadEarnings() {
+    const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    const cards = document.querySelectorAll('#earnings-stats .stat-card');
+    cards.forEach(c => c.classList.add('loading'));
+    const box = document.getElementById('earn-recent');
+    try {
+      const res = await fetchApi('/vendor/earnings');
+      const d = (res && res.data) ? res.data : (res || {});
+      const wallet = d.wallet || {};
+      setText('earn-net',       _fmtINR(d.earned));
+      setText('earn-available', _fmtINR(wallet.available_balance));
+      setText('earn-pending',   _fmtINR(d.pending != null ? d.pending : wallet.pending_balance));
+      setText('earn-jobs',      String(d.jobs_completed != null ? d.jobs_completed : 0));
+
+      const rate = (d.commission_rate != null) ? (d.commission_rate + '% commission') : 'Commission varies by category';
+      const note = document.getElementById('earn-note');
+      if (note) note.textContent = `Gross work value ${_fmtINR(d.job_value)} · ${rate}. ${d.commission_note || 'Your net already has commission deducted.'}`;
+
+      const recent = Array.isArray(d.recent) ? d.recent : [];
+      if (box) {
+        box.innerHTML = recent.length ? recent.map(j => {
+          const pm = (j.payment_method || '').toLowerCase();
+          const pay = (pm === 'cod' || pm === 'cash') ? '💵 Cash' : (pm === 'online' ? '🌐 Online' : '');
+          const amount = (j.amount_state === 'quote_pending') ? 'Quote pending' : _fmtINR(j.value);
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 4px;border-bottom:1px solid rgba(0,0,0,.06);">
+            <div><div style="font-weight:600;font-size:14px;">${_escEarn(j.ref || ('#' + j.id))}</div>
+              <div style="font-size:12px;color:#6b7280;">${_escEarn(j.status || '')}${pay ? ' · ' + pay : ''}</div></div>
+            <div style="font-weight:700;font-size:14px;white-space:nowrap;">${_escEarn(amount)}</div>
+          </div>`;
+        }).join('') : '<p style="color:#6b7280;font-size:13px;padding:12px 4px;">No jobs yet — your earnings will appear here after your first completed job.</p>';
+      }
+    } catch (e) {
+      if (box) box.innerHTML = '<p style="color:#b91c1c;font-size:13px;padding:12px 4px;">Could not load earnings right now. Please try again.</p>';
+    } finally {
+      cards.forEach(c => c.classList.remove('loading'));
+    }
   }
 
   // ==== REVIEWS ====
