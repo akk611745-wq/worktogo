@@ -1,11 +1,32 @@
+# ── Secrets & environment — NEVER commit ─────────────────────────────────────
 .env
+.env.*
+!.env.example
 core/secrets/
+*.pem
+*-service-account*.json
 
-# Local verification artifacts — never deploy/commit
+# ── Logs & local verification artifacts — never deploy/commit ────────────────
 logs/
+*.log
 AUTHENTICATED_FLOW_TEST_GUIDE.md
 FIXES_APPLIED.md
 FIX_VERIFICATION_REPORT.md
 ROOT_CAUSE_AUDIT.md
 admin/test-auth-flow.html
 admin/test-url-fix.html
+
+# ── Runtime-uploaded media — keep the folder structure, ignore what users upload
+uploads/*
+!uploads/.gitkeep
+!uploads/.htaccess
+!uploads/vendors/
+uploads/vendors/*
+!uploads/vendors/.gitkeep
+
+# ── OS / editor noise ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
