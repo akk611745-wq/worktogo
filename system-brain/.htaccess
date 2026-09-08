@@ -1,0 +1,15 @@
+# WorkToGo — planning/audit docs (the "System Brain").
+# These are INTERNAL documents (architecture, security analysis, audits).
+# They must NEVER be served over the web, even though they live in the repo
+# for backup + version history. Block all HTTP access to this folder.
+
+# Apache 2.4+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+
+# Apache 2.2 (fallback)
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
