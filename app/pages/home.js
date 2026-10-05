@@ -2466,7 +2466,7 @@ function _companyViewHTML(slug = "") {
         <div class="company-path-copy">
           <h3>Choose a Package</h3>
           <p>Already know what you want? Pick a Standard / Premium / Luxury package and see a live estimate for your area.</p>
-          <span class="company-path-cta company-path-cta--soon">Packages arriving soon →</span>
+          <span class="company-path-cta">See packages &amp; live estimate →</span>
         </div>
       </button>
     </section>

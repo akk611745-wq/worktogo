@@ -89,7 +89,13 @@ function renderPage() {
         <h1 class="page-title">Jobs</h1>
         <p class="page-sub">Check new requests, contact customer, then update status &middot; <span id="lastRefreshLabel" class="text-muted">Loading&hellip;</span></p>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="loadBookings()">Refresh</button>
+      <div class="flex-gap" style="gap:0.4rem;">
+        <!-- Cross-links: the login landing (dashboard-service.html) and this
+             working jobs page were split with no link between them. -->
+        <a class="btn btn-ghost btn-sm" href="/vendor/dashboard-service.html" style="text-decoration:none;">Dashboard</a>
+        <a class="btn btn-ghost btn-sm" href="/vendor/dashboard-service.html#earnings" style="text-decoration:none;">Earnings</a>
+        <button class="btn btn-ghost btn-sm" onclick="loadBookings()">Refresh</button>
+      </div>
     </div>
 
     <div id="analyticsStrip"></div>

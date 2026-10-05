@@ -882,6 +882,12 @@
 
   // ==== UI ROUTING ====
   function showSection(sectionId) {
+    // PB-2: the in-dashboard Bookings tab called /api/vendor/bookings, which has
+    // no route (regression from 32abf62) → "Failed to load bookings". Route the
+    // painter to the working jobs page (vendor:list_jobs / update_job_status —
+    // accept / reject / start / complete all work there) so a vendor can
+    // actually see and act on assigned jobs from their home screen.
+    if (sectionId === 'bookings') { window.location.href = '/vendor/bookings.php'; return; }
     document.querySelectorAll('.page-section').forEach(el => el.classList.remove('active'));
     const sec = document.getElementById(`sec-${sectionId}`);
     if (sec) sec.classList.add('active');
@@ -1652,9 +1658,11 @@
     }
   }
 
-  // Initialize
+  // Initialize — honor a #section hash (e.g. the Jobs page's "Earnings" link).
   if(checkAuth()) {
-    showSection('dashboard');
+    var _hash = (location.hash || '').replace('#','').trim();
+    var _known = ['dashboard','availability','portfolio','analytics','earnings','reviews','profile'];
+    showSection(_known.includes(_hash) ? _hash : 'dashboard');
   }
 
 </script>
