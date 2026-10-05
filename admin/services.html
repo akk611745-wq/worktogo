@@ -741,6 +741,20 @@ function openOpsDetail(bookingId) {
   }
   const currentVendorId = String(booking.vendor_id || '');
   const isAssigned = !!booking.vendor_id;
+  // Fulfilment + COD money (launch unit) — read flat booking fields returned by
+  // GET /api/admin/service/bookings.
+  const fulfType = String(booking.fulfilment_type || view.fulfilment_type || '').toLowerCase();
+  const fulfLabel = fulfType === 'company' ? 'Company team'
+                  : (fulfType === 'vendor' || isAssigned) ? 'Vendor' : 'Unassigned';
+  const companyWorker = booking.company_worker_name || '';
+  const amtRaw = (booking.final_quote_amount != null && booking.final_quote_amount !== '')
+    ? booking.final_quote_amount : (booking.amount ?? booking.total);
+  const amountValue = (amtRaw != null && amtRaw !== '' && Number(amtRaw) > 0) ? Number(amtRaw) : '';
+  const amountLabel = amountValue !== '' ? ('₹' + Number(amountValue).toLocaleString('en-IN')) : '— not set';
+  const payStatus = String(booking.payment_status || '').toLowerCase();
+  const payStatusLabel = payStatus === 'paid' ? 'Collected'
+                       : (payStatus === '' || payStatus === 'unpaid') ? 'Pending' : payStatus;
+  const collectedBy = booking.payment_collected_by || '';
   const vendors = [`<option value="">${vendorPlaceholder}</option>`].concat(vendorPool.map(v => {
     const vid = String(v.id || v._id || '');
     return `<option value="${escHtml(vid)}" ${vid === currentVendorId ? 'selected' : ''}>${escHtml(v.business_name || v.name || ('Vendor #' + vid))}</option>`;
@@ -800,6 +814,31 @@ function openOpsDetail(bookingId) {
             ${quote}</div></div>`;
         })()}
         <div class="card"><div class="card-body"><b>Actions</b><div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:8px">${vendorActionHtml}<label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-secondary);cursor:pointer;margin-left:4px"><input type="checkbox" id="override-payment-${escHtml(String(bookingId))}" style="accent-color:var(--red)"> Confirm payment verified</label><span style="font-size:9px;color:var(--red)">⚠ Inspection override only</span><button class="btn btn-sm btn-warn" onclick="simulateOpsAction('${escHtml(String(bookingId))}','unassign_vendor')">Unassign</button>${inspectionActionsHtml}<button class="btn btn-sm btn-warn" onclick="simulateOpsAction('${escHtml(String(bookingId))}','mark_escalated')">Escalate</button></div></div></div>
+        <div class="card"><div class="card-body"><b>🏢 Fulfilment &amp; Payment (COD / manual)</b>
+          <div style="font-size:12px;color:var(--text-muted);margin:4px 0 10px">
+            Fulfilment: <b style="color:var(--text-primary)">${escHtml(fulfLabel)}</b>${companyWorker ? ' · worker: ' + escHtml(companyWorker) : ''}
+            · Amount: <b style="color:var(--text-primary)">${amountLabel}</b>
+            · Payment: <b style="color:var(--text-primary)">${escHtml(payStatusLabel)}</b>${collectedBy ? ' (by ' + escHtml(collectedBy) + ')' : ''}
+          </div>
+          <div class="filter-bar" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+            <span style="font-size:11px;color:var(--text-secondary);min-width:130px">Company own worker</span>
+            <input class="form-control" id="ops-worker-${escHtml(String(bookingId))}" style="max-width:200px" placeholder="Worker name (optional)" value="${escHtml(companyWorker)}">
+            <button class="btn btn-sm btn-primary" onclick="simulateOpsAction('${escHtml(String(bookingId))}','assign_company')">Assign to company team</button>
+            <span style="font-size:9px;color:var(--text-muted)">no vendor · 100% company margin</span>
+          </div>
+          <div class="filter-bar" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+            <span style="font-size:11px;color:var(--text-secondary);min-width:130px">Final amount (₹)</span>
+            <input class="form-control" type="number" min="0" step="1" id="ops-amount-${escHtml(String(bookingId))}" style="max-width:160px" placeholder="e.g. 11000" value="${amountValue}">
+            <button class="btn btn-sm btn-success" onclick="simulateOpsAction('${escHtml(String(bookingId))}','set_amount')">Set amount</button>
+            <span style="font-size:9px;color:var(--text-muted)">required before completing</span>
+          </div>
+          <div class="filter-bar" style="gap:8px;flex-wrap:wrap;align-items:center">
+            <span style="font-size:11px;color:var(--text-secondary);min-width:130px">COD payment</span>
+            <select class="form-control" id="ops-paystate-${escHtml(String(bookingId))}" style="max-width:150px"><option value="collected">Collected</option><option value="pending">Pending</option></select>
+            <input class="form-control" id="ops-collectedby-${escHtml(String(bookingId))}" style="max-width:170px" placeholder="Collected by (company/vendor)" value="${escHtml(collectedBy)}">
+            <button class="btn btn-sm btn-ghost" onclick="simulateOpsAction('${escHtml(String(bookingId))}','record_payment')">Record payment</button>
+          </div>
+        </div></div>
         <div class="card"><div class="card-body" style="border-top:2px solid var(--red-dim)"><b style="color:var(--red)">⚠ Force Status Override</b><div class="filter-bar" style="gap:8px;flex-wrap:wrap;margin-top:8px"><select class="form-control" id="ops-force-status-${escHtml(String(bookingId))}" style="max-width:180px"><option value="">Select status…</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="escalated">Escalated</option></select><button class="btn btn-sm btn-danger" onclick="var s=document.getElementById('ops-force-status-${escHtml(String(bookingId))}').value;if(!s){Toast.warn('Select a status first.');return;}adminSetJobStatus('${escHtml(String(bookingId))}',s)">Override Status</button></div></div></div>
         <div class="card"><div class="card-body"><b>Timeline</b>${timeline.map(t => `<div style="border-left:2px solid var(--border);padding:6px 0 6px 10px"><b>${escHtml(t.event || 'update')}</b> <span style="color:var(--text-muted)">${escHtml(t.actor || 'system')} · ${escHtml(t.state || '')} · ${escHtml(t.at || '')}</span><div style="font-size:11px;color:var(--text-muted)">${escHtml(t.notes || '')}</div></div>`).join('') || '<div style="color:var(--text-muted)">No timeline entries.</div>'}</div></div>
       </div>
@@ -821,6 +860,19 @@ async function simulateOpsAction(bookingId, action) {
     payload.vendor_id = Number(vendorEl.value);
     const overrideEl = document.getElementById('override-payment-' + bookingId);
     if (overrideEl?.checked) payload.admin_override_payment = true;
+  }
+  if (action === 'assign_company') {
+    payload.worker_name = (document.getElementById('ops-worker-' + bookingId)?.value || '').trim();
+  }
+  if (action === 'set_amount') {
+    const aEl = document.getElementById('ops-amount-' + bookingId);
+    const amt = Number(aEl?.value);
+    if (aEl?.value === '' || aEl?.value == null || !(amt >= 0)) { Toast.warn('Enter a valid amount first.'); return; }
+    payload.amount = amt;
+  }
+  if (action === 'record_payment') {
+    payload.payment_state = document.getElementById('ops-paystate-' + bookingId)?.value || 'collected';
+    payload.collected_by  = (document.getElementById('ops-collectedby-' + bookingId)?.value || '').trim();
   }
   if (action === 'mark_escalated') payload.escalation_reason = 'Manual admin escalation';
   if (!await confirmAction(`Run ${action.replaceAll('_',' ')} for request #${bookingId}?`)) return;
