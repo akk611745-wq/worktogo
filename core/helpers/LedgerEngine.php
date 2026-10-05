@@ -95,6 +95,20 @@ class LedgerEngine {
     }
 
     /**
+     * Did the COMPANY fulfil this job with its own worker (no registered
+     * vendor), so the whole amount is company margin and there is NO vendor
+     * commission to split? True when fulfilment_type='company' (the admin
+     * assigned the company's own team), or — defensively — when a completing
+     * non-visit job carries no vendor_id at all (there is simply no vendor to
+     * pay). Checked AFTER isExpertVisitFee so visit fees still route to their
+     * own 100%-company row first. Schema-defensive: fulfilment_type is optional.
+     */
+    private static function isCompanyFulfilled(array $booking): bool {
+        if (($booking['fulfilment_type'] ?? null) === 'company') return true;
+        return empty($booking['vendor_id']);
+    }
+
+    /**
      * Insert one wallet_transactions row. Always populates order_id (backward
      * compat) and, when present, reference_type + reference_id (the canonical,
      * collision-proof source key). Amounts / entities are unchanged — this is
@@ -249,17 +263,20 @@ class LedgerEngine {
             // inspection markers (only those the schema has) so we can route the
             // fee to 100% company below without a second query.
             $evCols = [];
-            foreach (['booking_mode', 'visit_type', 'expert_visit_fee'] as $c) {
+            foreach (['booking_mode', 'visit_type', 'expert_visit_fee', 'fulfilment_type'] as $c) {
                 $evCols[] = self::bookingsHasColumn($pdo, $c) ? "b.{$c}" : "NULL AS {$c}";
             }
             $evColsSql = implode(', ', $evCols);
+            // LEFT JOIN vendors so a COMPANY-fulfilled booking (vendor_id NULL —
+            // the company did the job itself) is still read and booked below; an
+            // inner join would drop it and silently record no revenue at all.
             $stmt = $pdo->prepare("
                 SELECT b.total, b.vendor_id, b.payment_status,
                        {$evColsSql},
                        v.commission_rate AS vendor_commission_rate,
                        c.commission_rate AS category_commission_rate
                 FROM bookings b
-                JOIN vendors v ON v.id = b.vendor_id
+                LEFT JOIN vendors v ON v.id = b.vendor_id
                 LEFT JOIN services s ON s.id = b.service_id
                 LEFT JOIN categories c ON c.id = s.category_id
                 WHERE b.id = ?
@@ -295,6 +312,18 @@ class LedgerEngine {
             // revenue is untouched and still splits below.
             if (self::isExpertVisitFee($booking)) {
                 self::insertWalletTx($pdo, 'platform', null, 'booking', (int)$booking_id, 'credit', $total, 'Expert visit / inspection fee (company)', 'settled');
+                $pdo->commit();
+                return true;
+            }
+
+            // 2a-bis. Company self-fulfilled job → 100% COMPANY margin.
+            // The company did the job with its own worker, so there is no
+            // registered vendor and no commission to carve out — the entire
+            // amount is company revenue. Record ONLY a platform revenue row (no
+            // vendor wallet credit, no pending payout), mirroring the expert-visit
+            // path. Normal vendor jobs are untouched and still split in 2b.
+            if (self::isCompanyFulfilled($booking)) {
+                self::insertWalletTx($pdo, 'platform', null, 'booking', (int)$booking_id, 'credit', $total, 'Company-fulfilled job (full margin)', 'settled');
                 $pdo->commit();
                 return true;
             }

@@ -651,6 +651,37 @@ try {
            ->execute([$name, $slug, $type, $status]);
         $newId = (int)$db->lastInsertId();
         Logger::info('Admin created category', ['admin_id' => $auth['user_id'], 'category_id' => $newId, 'name' => $name]);
+
+        // R-1 reusability (zero-code next category): a category-routed Company
+        // request resolves "the first active service in the category" — with no
+        // such row, every new category's Company requests 404 ("Service not
+        // found") until a developer inserts one. Auto-create a COMPANY-OWNED
+        // anchor service (vendor_id NULL — stable, no vendor to delete-cascade)
+        // so a new service category is bookable immediately with zero code.
+        // Idempotent + schema-defensive: skipped if the category already has an
+        // active service, or if services.vendor_id is still NOT NULL (the
+        // 2026_10_05_001 migration makes it nullable). Never blocks the create.
+        if ($type === 'service') {
+            try {
+                $vendorNullable = (int)$db->query(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'services'
+                        AND COLUMN_NAME = 'vendor_id' AND IS_NULLABLE = 'YES'"
+                )->fetchColumn() > 0;
+                $existsStmt = $db->prepare("SELECT id FROM services WHERE category_id = ? AND status = 'active' LIMIT 1");
+                $existsStmt->execute([$newId]);
+                if ($vendorNullable && !$existsStmt->fetchColumn()) {
+                    $db->prepare(
+                        "INSERT INTO services (vendor_id, category_id, name, base_price, status, created_at)
+                         VALUES (NULL, ?, ?, 0, 'active', NOW())"
+                    )->execute([$newId, $name . ' — Company Service']);
+                    Logger::info('Admin auto-created company anchor service', ['admin_id' => $auth['user_id'], 'category_id' => $newId]);
+                }
+            } catch (PDOException $anchorEx) {
+                Logger::error('Anchor service auto-create failed (non-fatal)', ['category_id' => $newId, 'error' => $anchorEx->getMessage()]);
+            }
+        }
+
         Response::success(['id' => $newId, 'name' => $name, 'slug' => $slug, 'status' => $status], 201, 'Category created');
     }
 
@@ -2604,6 +2635,16 @@ try {
         $colStmt = $db->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'");
         $bc = array_flip($colStmt->fetchAll(PDO::FETCH_COLUMN));
 
+        // PB-3 fix: does jobs.booking_id exist, so we can return the booking's
+        // REAL job id below (see the job_id select)?
+        $hasJobsBookingId = false;
+        try {
+            $hasJobsBookingId = (int)$db->query(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'booking_id'"
+            )->fetchColumn() > 0;
+        } catch (PDOException $ignored) {}
+
         $optSel  = '';
         $optSel .= isset($bc['lifecycle_state'])   ? ', b.lifecycle_state'   : ', b.status AS lifecycle_state';
         $optSel .= isset($bc['assignment_state'])  ? ', b.assignment_state'  : ", IF(b.vendor_id IS NOT NULL, 'worker_assigned', 'unassigned_searching') AS assignment_state";
@@ -2618,7 +2659,16 @@ try {
         $optSel .= isset($bc['priority'])          ? ', b.priority'          : ", 'normal_priority' AS priority";
         $optSel .= isset($bc['request_id'])        ? ', b.request_id'        : ", CONCAT('REQ-', LPAD(b.id, 6, '0')) AS request_id";
         $optSel .= isset($bc['booking_number'])    ? ', b.booking_number'    : ', NULL AS booking_number';
-        $optSel .= isset($bc['job_id'])            ? ', b.job_id'            : ', b.id AS job_id';
+        // PB-3: return the booking's REAL job id (jobs.id), not the booking id.
+        // The old `b.id AS job_id` fallback made /api/admin/jobs/{id}/status +
+        // Kanban complete target whichever job happened to share the booking id,
+        // completing/cancelling the WRONG booking and firing the ledger on it
+        // once id sequences diverge. Correlated subquery => no row fan-out.
+        $optSel .= isset($bc['job_id'])
+            ? ', b.job_id'
+            : ($hasJobsBookingId
+                ? ', (SELECT j.id FROM jobs j WHERE j.booking_id = b.id ORDER BY j.id DESC LIMIT 1) AS job_id'
+                : ', b.id AS job_id');
         $optSel .= isset($bc['city'])              ? ', b.city'              : ', NULL AS city';
         $optSel .= isset($bc['locality'])          ? ', b.locality'          : (isset($bc['customer_locality']) ? ', b.customer_locality AS locality' : ', NULL AS locality');
         $optSel .= isset($bc['address'])           ? ', b.address AS full_address' : (isset($bc['customer_address']) ? ', b.customer_address AS full_address' : ', NULL AS full_address');
@@ -2640,6 +2690,11 @@ try {
         $optSel .= isset($bc['expert_visit_fee'])   ? ', b.expert_visit_fee'   : ', NULL AS expert_visit_fee';
         $optSel .= isset($bc['expert_visit_free'])  ? ', b.expert_visit_free'  : ', NULL AS expert_visit_free';
         $optSel .= isset($bc['final_quote_amount']) ? ', b.final_quote_amount' : ', NULL AS final_quote_amount';
+        // Launch unit: company self-fulfilment + COD money record (nullable)
+        $optSel .= isset($bc['fulfilment_type'])      ? ', b.fulfilment_type'      : ', NULL AS fulfilment_type';
+        $optSel .= isset($bc['company_worker_name'])  ? ', b.company_worker_name'  : ', NULL AS company_worker_name';
+        $optSel .= isset($bc['payment_collected_by']) ? ', b.payment_collected_by' : ', NULL AS payment_collected_by';
+        $optSel .= isset($bc['payment_collected_at']) ? ', b.payment_collected_at' : ', NULL AS payment_collected_at';
 
         $svcJoin = isset($bc['service_id'])
             ? 'LEFT JOIN services s ON s.id = b.service_id'
@@ -2830,13 +2885,17 @@ try {
         $vendorId = (int) ($input['vendor_id'] ?? 0);
         if (!$vendorId) Response::validation('vendor_id is required');
 
-        $colStmt = $db->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME IN ('assignment_state','lifecycle_state')");
+        $colStmt = $db->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME IN ('assignment_state','lifecycle_state','fulfilment_type')");
         $bc = array_flip($colStmt->fetchAll(PDO::FETCH_COLUMN));
 
-        $sets = ['vendor_id = :vid', 'updated_at = NOW()'];
+        // Confirm the booking on assign so the customer's tracking advances past
+        // "Requested" and record this as a VENDOR-fulfilled job (normal commission
+        // split at completion). Company self-fulfilment uses the /ops action.
+        $sets = ['vendor_id = :vid', "status = 'confirmed'", 'updated_at = NOW()'];
         $bind = [':vid' => $vendorId, ':id' => $bookingId];
         if (isset($bc['assignment_state'])) { $sets[] = 'assignment_state = :as'; $bind[':as'] = 'worker_assigned'; }
         if (isset($bc['lifecycle_state']))  { $sets[] = 'lifecycle_state = :ls';  $bind[':ls'] = 'worker_assigned'; }
+        if (isset($bc['fulfilment_type']))  { $sets[] = 'fulfilment_type = :ft'; $bind[':ft'] = 'vendor'; }
 
         $db->prepare('UPDATE bookings SET ' . implode(', ', $sets) . ' WHERE id = :id')->execute($bind);
         $syncBookingJobVendor($bookingId, $vendorId);
@@ -2865,7 +2924,7 @@ try {
         $action = trim($input['action'] ?? '');
         if (!$action) Response::validation('action is required');
 
-        $colStmt = $db->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME IN ('assignment_state','lifecycle_state','booking_mode')");
+        $colStmt = $db->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME IN ('assignment_state','lifecycle_state','booking_mode','fulfilment_type','company_worker_name','final_quote_amount','payment_collected_by','payment_collected_at')");
         $bc = array_flip($colStmt->fetchAll(PDO::FETCH_COLUMN));
 
         $sets = ['updated_at = NOW()'];
@@ -2886,9 +2945,49 @@ try {
                 $vid = (int) ($input['vendor_id'] ?? 0);
                 if (!$vid) Response::validation('vendor_id required for ' . $action);
                 $sets[] = 'vendor_id = :vid'; $bind[':vid'] = $vid;
+                // Confirm on assign so customer tracking advances; record as a
+                // VENDOR-fulfilled job (normal commission split at completion).
+                $sets[] = 'status = :st'; $bind[':st'] = 'confirmed';
                 if (isset($bc['assignment_state'])) { $sets[] = 'assignment_state = :as'; $bind[':as'] = 'worker_assigned'; }
                 if (isset($bc['lifecycle_state']))  { $sets[] = 'lifecycle_state = :ls';  $bind[':ls'] = 'worker_assigned'; }
+                if (isset($bc['fulfilment_type']))  { $sets[] = 'fulfilment_type = :ft'; $bind[':ft'] = 'vendor'; }
                 $doJobVendorSync = true; $jobVendorTarget = $vid;
+                break;
+            case 'assign_company':
+                // COMPANY self-fulfilment (key for the day-1 no-vendor case): the
+                // company does the job with its OWN worker. No registered vendor
+                // (vendor_id NULL => the ledger books 100% company margin, no
+                // commission). company_worker_name is a plain record of who did it.
+                $sets[] = 'vendor_id = NULL';
+                $sets[] = 'status = :st'; $bind[':st'] = 'confirmed';
+                if (isset($bc['fulfilment_type']))     { $sets[] = 'fulfilment_type = :ft'; $bind[':ft'] = 'company'; }
+                if (isset($bc['company_worker_name'])) { $sets[] = 'company_worker_name = :cwn'; $bind[':cwn'] = (trim((string)($input['worker_name'] ?? '')) ?: null); }
+                if (isset($bc['assignment_state'])) { $sets[] = 'assignment_state = :as'; $bind[':as'] = 'worker_assigned'; }
+                if (isset($bc['lifecycle_state']))  { $sets[] = 'lifecycle_state = :ls';  $bind[':ls'] = 'worker_assigned'; }
+                $doJobVendorSync = true; $jobVendorTarget = null;   // clear any vendor on the linked job
+                break;
+            case 'set_amount':
+                // PB-1: record the job's real price. Writes bookings.total (the
+                // ledger splits on this at completion) and final_quote_amount (the
+                // customer/vendor-facing quote). Required before completing a job.
+                $amt = $input['amount'] ?? $input['final_amount'] ?? null;
+                if ($amt === null || $amt === '' || !is_numeric($amt) || (float)$amt < 0) {
+                    Response::validation('amount (a number >= 0) is required for set_amount');
+                }
+                $amt = round((float)$amt, 2);
+                $sets[] = 'total = :amt'; $bind[':amt'] = $amt;
+                if (isset($bc['final_quote_amount'])) { $sets[] = 'final_quote_amount = :fqa'; $bind[':fqa'] = $amt; }
+                break;
+            case 'record_payment':
+                // COD / manual payment record (launch has no online job gateway).
+                // collected => cash received (payment_status 'paid'); pending =>
+                // not yet. Records who collected and when — the audit trail.
+                $payState    = strtolower(trim((string)($input['payment_state'] ?? $input['state'] ?? '')));
+                $isCollected = in_array($payState, ['collected', 'paid', 'received', 'done'], true);
+                $sets[] = 'payment_status = :ps'; $bind[':ps'] = $isCollected ? 'paid' : 'unpaid';
+                $sets[] = 'payment_method = :pm'; $bind[':pm'] = 'cod';
+                if (isset($bc['payment_collected_by'])) { $sets[] = 'payment_collected_by = :pcb'; $bind[':pcb'] = (trim((string)($input['collected_by'] ?? '')) ?: null); }
+                if (isset($bc['payment_collected_at'])) { $sets[] = 'payment_collected_at = ' . ($isCollected ? 'NOW()' : 'NULL'); }
                 break;
             case 'unassign_vendor':
                 $sets[] = 'vendor_id = NULL';
