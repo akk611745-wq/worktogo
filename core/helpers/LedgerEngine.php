@@ -580,8 +580,9 @@ class LedgerEngine {
             $itemsSubtotal = 0.0; $platformCommission = 0.0;
 
             // Per-vendor sub-orders → vendor earning + platform commission.
+            // S1 (margin model): read the seller base alongside the customer subtotal.
             $subs = $pdo->prepare("
-                SELECT o.id, o.vendor_id, o.subtotal,
+                SELECT o.id, o.vendor_id, o.subtotal, o.seller_subtotal,
                        v.commission_rate AS vendor_rate, s.commission_rate AS store_rate
                   FROM orders o
                   LEFT JOIN vendors v ON v.id = o.vendor_id
@@ -591,19 +592,40 @@ class LedgerEngine {
             $subs->execute([$parentId]);
             $subOrders = $subs->fetchAll(PDO::FETCH_ASSOC);
 
+            // $platformCommission accumulates WorkToGo's margin across sub-orders
+            // (margin model) and the delivery platform fee is added later.
             foreach ($subOrders as $sub) {
-                $subtotal = (float)$sub['subtotal'];
+                $subtotal = (float)$sub['subtotal'];   // customer price (margin already included)
                 $itemsSubtotal += $subtotal;
-                if (empty($sub['vendor_id'])) continue;
-                $rate = $sub['store_rate'] !== null ? (float)$sub['store_rate']
-                      : ($sub['vendor_rate'] !== null ? (float)$sub['vendor_rate'] : 10.0);
-                $commission  = round($subtotal * $rate / 100, 2);
-                $vendorShare = round($subtotal - $commission, 2);
+
+                // Company store (ownership='company' → no external seller): the whole
+                // customer amount is WorkToGo margin; there is no vendor to pay.
+                if (empty($sub['vendor_id'])) {
+                    $platformCommission += $subtotal;
+                    continue;
+                }
+
+                $sellerBase = $sub['seller_subtotal'] !== null ? (float)$sub['seller_subtotal'] : null;
+                if ($sellerBase !== null) {
+                    // MARGIN model: the seller is paid their base IN FULL; WorkToGo
+                    // keeps only the spread it added on top.
+                    $vendorShare = round($sellerBase, 2);
+                    $margin      = round($subtotal - $sellerBase, 2);
+                } else {
+                    // Back-compat: an order placed before seller-base capture has no
+                    // base recorded → fall back to the legacy COMMISSION split so
+                    // in-flight/legacy orders still settle correctly.
+                    $rate = $sub['store_rate'] !== null ? (float)$sub['store_rate']
+                          : ($sub['vendor_rate'] !== null ? (float)$sub['vendor_rate'] : 10.0);
+                    $margin      = round($subtotal * $rate / 100, 2);
+                    $vendorShare = round($subtotal - $margin, 2);
+                }
+
                 self::ensureVendorWallet($pdo, (int)$sub['vendor_id']);
                 $pdo->prepare("UPDATE vendor_wallets SET pending_balance = pending_balance + ? WHERE vendor_id = ?")
                     ->execute([$vendorShare, (int)$sub['vendor_id']]);
                 self::insertWalletTx($pdo, 'vendor', (int)$sub['vendor_id'], 'order', $parentId, 'credit', $vendorShare, 'Order earnings', 'pending');
-                $platformCommission += $commission;
+                $platformCommission += $margin;
             }
             // Fallback for a flat order (no sub-orders): the parent's own subtotal.
             if (empty($subOrders)) { $itemsSubtotal = (float)$order['subtotal']; }
@@ -633,7 +655,7 @@ class LedgerEngine {
 
             $platformTotal = round($platformCommission + $platformDelivery, 2);
             if ($platformTotal != 0.0) {
-                self::insertWalletTx($pdo, 'platform', null, 'order', $parentId, 'credit', $platformTotal, 'Platform commission + delivery margin (order)', 'settled');
+                self::insertWalletTx($pdo, 'platform', null, 'order', $parentId, 'credit', $platformTotal, 'Platform margin + delivery (order)', 'settled');
             }
 
             $pdo->prepare("UPDATE orders SET ledger_status = 'processed' WHERE id = ?")->execute([$parentId]);
