@@ -40,6 +40,7 @@ require_once SYSTEM_ROOT . '/lib/commerce/OrderabilityResolver.php'; // S2: 4-la
 require_once SYSTEM_ROOT . '/lib/commerce/RoutingEngine.php';        // S3: deterministic routing + signal capture
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceEventBus.php';     // S4: event bus / timeline / flags / notifications
 require_once SYSTEM_ROOT . '/lib/commerce/CommercePayment.php';      // S5: configurable payment methods (online primary + COD) over the gateway abstraction
+require_once SYSTEM_ROOT . '/lib/commerce/CommerceDelivery.php';     // S6: delivery handoff contract (weight/vehicle/prepaid-COD) + OTP
 
 // M5 (audit §4): per-user spam/brute guard. Reject with 429 when tripped.
 $shopRateLimit = function (string $action, int $max, int $windowSec) {
@@ -265,6 +266,10 @@ try {
                 $dLat = isset($b['drop_lat']) && $b['drop_lat'] !== '' ? (float)$b['drop_lat'] : null;
                 $dLng = isset($b['drop_lng']) && $b['drop_lng'] !== '' ? (float)$b['drop_lng'] : null;
                 $result['delivery'] = DeliveryEngine::createForOrder($db, (int)$result['order_id'], $dLat, $dLng, (float)($result['subtotal'] ?? 0));
+                // S6: enrich the handoff contract (weight → vehicle, prepaid vs COD) + issue a
+                // delivery OTP the customer gives the rider at hand-over.
+                $result['delivery']['handoff'] = CommerceDelivery::enrichHandoff($db, (int)$result['order_id']);
+                $result['delivery']['otp'] = CommerceDelivery::issueOtp($db, (int)$result['order_id']);
             } catch (\Throwable $de) { error_log('[shop/checkout] delivery handoff: ' . $de->getMessage()); }
             // S3: mark sub-orders OFFERED + capture routing signals (deterministic
             // routing lifecycle; non-fatal — a routing hiccup never fails a placed order).

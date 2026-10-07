@@ -4,6 +4,12 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>WorkToGo Rider</title>
 <link rel="icon" href="/app/assets/favicon.png"/>
+<!-- S6: installable PWA (browser "install"; native app later) -->
+<link rel="manifest" href="manifest.webmanifest"/>
+<meta name="theme-color" content="#12b886"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('service-worker.js').catch(function(){});});}</script>
 <style>
 /* ── Rider panel — own scope, mobile-first ───────────────────────────────── */
 :root{--r-bg:#0f1720;--r-surface:#17222e;--r-line:#243343;--r-ink:#eaf2f8;--r-muted:#8fa3b5;--r-brand:#12b886;--r-brand-ink:#0b7a5a;--r-accent:#ff6b35;--r-danger:#e5484d;}
