@@ -33,6 +33,20 @@ class OrderabilityResolver
         }
     }
 
+    /** Admin kill-switch sets (app_settings.commerce_paused). Lightweight; decoupled from AdminControlRoom. */
+    public static function pausedScopes(PDO $db): array
+    {
+        $out = ['categories' => [], 'cities' => [], 'stores' => []];
+        try {
+            $s = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key='commerce_paused' LIMIT 1");
+            $s->execute();
+            $v = $s->fetchColumn();
+            $j = $v ? json_decode($v, true) : null;
+            if (is_array($j)) foreach (['categories', 'cities', 'stores'] as $k) if (!empty($j[$k])) $out[$k] = array_map('intval', $j[$k]);
+        } catch (\Throwable $e) {}
+        return $out;
+    }
+
     /**
      * Seller-availability gate as a SQL predicate (for the browse list query).
      * $s = stores alias, $v = vendors alias (joined on the store's owner vendor,
@@ -55,7 +69,7 @@ class OrderabilityResolver
             return ['orderable' => false, 'reason' => 'commerce_paused', 'layer' => 0];
         }
 
-        $sql = "SELECT p.id,
+        $sql = "SELECT p.id, p.category_id AS p_cat,
                        p.status  AS p_status, p.deleted_at AS p_deleted,
                        s.id      AS store_id, s.status AS s_status, s.deleted_at AS s_deleted,
                        s.city_id AS s_city,   s.ownership,
@@ -78,6 +92,15 @@ class OrderabilityResolver
 
         // Layer 2 — seller / store active + city + ON/OFF/BUSY
         if (empty($r['store_id']))                              return ['orderable' => false, 'reason' => 'no_store',         'layer' => 2];
+        // Admin kill-switches (unit / zone / seller) — checked BEFORE store status so a
+        // kill-switch reports as such (AdminControlRoom::pause writes these).
+        $paused = self::pausedScopes($db);
+        if ($r['p_cat'] !== null && in_array((int)$r['p_cat'], $paused['categories'], true))
+                                                                return ['orderable' => false, 'reason' => 'unit_paused',    'layer' => 2];
+        if ($r['s_city'] !== null && in_array((int)$r['s_city'], $paused['cities'], true))
+                                                                return ['orderable' => false, 'reason' => 'zone_paused',    'layer' => 2];
+        if (in_array((int)$r['store_id'], $paused['stores'], true))
+                                                                return ['orderable' => false, 'reason' => 'seller_paused',  'layer' => 2];
         if ($r['s_status'] !== 'active' || $r['s_deleted'] !== null)
                                                                 return ['orderable' => false, 'reason' => 'store_inactive',  'layer' => 2];
         if ($r['s_city'] !== null && $cityId !== null && (int)$r['s_city'] !== (int)$cityId)
