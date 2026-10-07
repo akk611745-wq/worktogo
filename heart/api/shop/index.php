@@ -36,6 +36,7 @@ require_once SYSTEM_ROOT . '/body/shopping-engine/api/cart/CartService.php';
 require_once SYSTEM_ROOT . '/body/shopping-engine/api/orders/OrderService.php';
 require_once SYSTEM_ROOT . '/core/helpers/CityResolver.php';
 require_once SYSTEM_ROOT . '/core/helpers/RateLimiter.php';
+require_once SYSTEM_ROOT . '/lib/commerce/OrderabilityResolver.php'; // S2: 4-layer orderability + ON/OFF/BUSY gate
 
 // M5 (audit §4): per-user spam/brute guard. Reject with 429 when tripped.
 $shopRateLimit = function (string $action, int $max, int $windowSec) {
@@ -87,7 +88,9 @@ try {
 
     // ── GET /api/shop/stores — city-scoped, company-first (public) ───────────
     if ($method === 'GET' && $uri === '/api/shop/stores') {
-        $where = ["s.status = 'active'", 's.deleted_at IS NULL', 's.city_id = :city'];
+        if (!OrderabilityResolver::commerceEnabled($db)) { Response::success(['stores' => [], 'city_id' => (int)$shopCityId]); exit; }
+        // S2: only show stores whose seller is available (ON + not BUSY); company stores always.
+        $where = ["s.status = 'active'", 's.deleted_at IS NULL', 's.city_id = :city', OrderabilityResolver::sellerAvailableSql('s', 'vo')];
         $bind = [':city' => $shopCityId];
         if (isset($_GET['store_type_id']) && $_GET['store_type_id'] !== '') { $where[] = 's.store_type_id = :t'; $bind[':t'] = (int)$_GET['store_type_id']; }
         $sql = "SELECT s.id, s.name, s.slug, s.ownership, s.locality, s.store_type_id, s.priority,
@@ -98,6 +101,7 @@ try {
                             AND ((i.quantity - i.reserved) > 0 OR i.allow_backorder = 1)) AS product_count
                   FROM stores s
                   LEFT JOIN store_types t ON t.id = s.store_type_id
+                  LEFT JOIN vendors vo ON vo.id = s.owner_vendor_id
                  WHERE " . implode(' AND ', $where) . "
                  ORDER BY (s.ownership='company') DESC, s.priority DESC, s.is_featured DESC, s.name ASC";
         $stmt = $db->prepare($sql); $stmt->execute($bind);
@@ -109,9 +113,11 @@ try {
 
     // ── GET /api/shop/products — city-scoped, dual-store, company-first ──────
     if ($method === 'GET' && $uri === '/api/shop/products') {
+        if (!OrderabilityResolver::commerceEnabled($db)) { Response::success(['products' => [], 'page' => 1, 'city_id' => (int)$shopCityId]); exit; }
         $productService = new ProductService($db);
+        // S2: seller-availability gate (ON + not BUSY; company always) added to the browse predicate.
         $where = ["p.status = 'active'", 'p.deleted_at IS NULL', "s.status = 'active'", 's.deleted_at IS NULL', 's.city_id = :city',
-                  '((i.quantity - i.reserved) > 0 OR i.allow_backorder = 1)'];
+                  '((i.quantity - i.reserved) > 0 OR i.allow_backorder = 1)', OrderabilityResolver::sellerAvailableSql('s', 'v')];
         $bind = [':city' => $shopCityId];
         if (isset($_GET['store_id']) && $_GET['store_id'] !== '')     { $where[]='p.store_id = :store';  $bind[':store']=(int)$_GET['store_id']; }
         if (isset($_GET['category_id']) && $_GET['category_id'] !== ''){ $where[]='p.category_id = :cat'; $bind[':cat']=(int)$_GET['category_id']; }
@@ -198,7 +204,9 @@ try {
         $pid = (int)($b['product_id'] ?? 0); $qty = (int)($b['quantity'] ?? 1);
         $op  = $b['op'] ?? 'add';
         if ($pid <= 0) { Response::validation('product_id is required'); exit; }
-        if (!$shopAssertCity($pid, (int)$shopCityId)) { Response::error('This item isn’t available in your area.', 422); exit; }
+        // S2: full 4-layer orderability gate (catalogue / seller ON-OFF-BUSY+city / stock / kill-switch).
+        $ord = OrderabilityResolver::check($db, $pid, (int)$shopCityId);
+        if (!$ord['orderable']) { Response::error(OrderabilityResolver::message($ord['reason']), 422); exit; }
         $cart = new CartService($db);
         try {
             $result = ($op === 'set') ? $cart->update($uid, $pid, $qty) : $cart->add($uid, $pid, max(1, $qty));
@@ -231,8 +239,11 @@ try {
         // outside the customer's city (defence against crafted cross-city carts).
         $cartNow = $cart->get($uid);
         foreach (($cartNow['items'] ?? []) as $it) {
-            if (!$shopAssertCity((int)$it['product_id'], (int)$shopCityId)) {
-                Response::error('Your cart has items not available in your area. Remove them to continue.', 422);
+            // S2: re-run the full orderability gate at checkout (seller may have gone OFF/BUSY,
+            // stock may be gone, commerce may be paused — not just a cross-city guard).
+            $ord = OrderabilityResolver::check($db, (int)$it['product_id'], (int)$shopCityId);
+            if (!$ord['orderable']) {
+                Response::error('An item in your cart is no longer available (' . $ord['reason'] . '). Remove it to continue.', 422);
                 exit;
             }
         }
