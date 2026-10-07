@@ -38,6 +38,7 @@ require_once SYSTEM_ROOT . '/core/helpers/CityResolver.php';
 require_once SYSTEM_ROOT . '/core/helpers/RateLimiter.php';
 require_once SYSTEM_ROOT . '/lib/commerce/OrderabilityResolver.php'; // S2: 4-layer orderability + ON/OFF/BUSY gate
 require_once SYSTEM_ROOT . '/lib/commerce/RoutingEngine.php';        // S3: deterministic routing + signal capture
+require_once SYSTEM_ROOT . '/lib/commerce/CommerceEventBus.php';     // S4: event bus / timeline / flags / notifications
 
 // M5 (audit §4): per-user spam/brute guard. Reject with 429 when tripped.
 $shopRateLimit = function (string $action, int $max, int $windowSec) {
@@ -265,8 +266,10 @@ try {
             try {
                 $dLat = isset($b['drop_lat']) && $b['drop_lat'] !== '' ? (float)$b['drop_lat'] : null;
                 $dLng = isset($b['drop_lng']) && $b['drop_lng'] !== '' ? (float)$b['drop_lng'] : null;
+                // S4: open the order timeline (+ high-value hold flag + notifications) then route.
+                CommerceEventBus::emit($db, 'order_created', ['order_id' => (int)$result['order_id'], 'actor_type' => 'customer', 'actor_id' => $uid, 'to_state' => 'pending']);
                 RoutingEngine::onOrderPlaced($db, (int)$result['order_id'], $dLat, $dLng);
-            } catch (\Throwable $re) { error_log('[shop/checkout] routing: ' . $re->getMessage()); }
+            } catch (\Throwable $re) { error_log('[shop/checkout] routing/events: ' . $re->getMessage()); }
             Response::success($result, 201, 'Order placed');
         } catch (\InvalidArgumentException $e) { Response::error($e->getMessage(), 422); }
         catch (\Throwable $e) { Response::error($e->getMessage(), 400); }

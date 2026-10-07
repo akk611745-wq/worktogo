@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 require_once __DIR__ . '/OrderabilityResolver.php';
+require_once __DIR__ . '/CommerceEventBus.php';
 
 class RoutingEngine
 {
@@ -172,6 +173,7 @@ class RoutingEngine
         foreach ($subs->fetchAll(PDO::FETCH_ASSOC) as $s) {
             $db->prepare("UPDATE orders SET delivery_status='offered', updated_at=NOW() WHERE id=?")->execute([(int)$s['id']]);
             self::recordSignal($db, $parentOrderId, (int)$s['id'], $s['store_id'] !== null ? (int)$s['store_id'] : null, $s['vendor_id'] !== null ? (int)$s['vendor_id'] : null, 'offered');
+            CommerceEventBus::emit($db, 'order_offered', ['order_id' => $parentOrderId, 'sub_order_id' => (int)$s['id'], 'to_state' => 'offered']);
             $n++;
         }
         return $n;
@@ -210,10 +212,12 @@ class RoutingEngine
             $db->prepare("UPDATE orders SET store_id=?, vendor_id=?, delivery_status='offered', updated_at=NOW() WHERE id=?")
                ->execute([$cand['store_id'], $cand['vendor_id'], $subOrderId]);
             self::recordSignal($db, (int)$sub['parent_order_id'], $subOrderId, $cand['store_id'], $cand['vendor_id'], 'rerouted');
+            CommerceEventBus::emit($db, 'order_rerouted', ['order_id' => (int)$sub['parent_order_id'], 'sub_order_id' => $subOrderId, 'to_state' => 'offered', 'payload' => ['store_id' => $cand['store_id']]]);
             return ['rerouted' => true, 'store_id' => $cand['store_id'], 'reason' => 'ok'];
         }
         $db->prepare("UPDATE orders SET delivery_status='needs_ops', updated_at=NOW() WHERE id=?")->execute([$subOrderId]);
         self::recordSignal($db, (int)$sub['parent_order_id'], $subOrderId, $sub['store_id'] !== null ? (int)$sub['store_id'] : null, null, 'reroute_failed');
+        CommerceEventBus::emit($db, 'reroute_failed', ['order_id' => (int)$sub['parent_order_id'], 'sub_order_id' => $subOrderId, 'to_state' => 'needs_ops', 'reason' => 'no alternative store']);
         return ['rerouted' => false, 'reason' => 'no_alternative'];
     }
 
@@ -240,6 +244,7 @@ class RoutingEngine
         $n = 0;
         foreach ($stale as $s) {
             self::recordSignal($db, (int)$s['parent_order_id'], (int)$s['id'], $s['store_id'] !== null ? (int)$s['store_id'] : null, $s['vendor_id'] !== null ? (int)$s['vendor_id'] : null, 'timeout');
+            CommerceEventBus::emit($db, 'order_timeout', ['order_id' => (int)$s['parent_order_id'], 'sub_order_id' => (int)$s['id'], 'reason' => 'seller did not accept in time']);
             self::rerouteOnFailure($db, (int)$s['id']);
             $n++;
         }
