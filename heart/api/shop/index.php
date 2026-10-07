@@ -39,6 +39,7 @@ require_once SYSTEM_ROOT . '/core/helpers/RateLimiter.php';
 require_once SYSTEM_ROOT . '/lib/commerce/OrderabilityResolver.php'; // S2: 4-layer orderability + ON/OFF/BUSY gate
 require_once SYSTEM_ROOT . '/lib/commerce/RoutingEngine.php';        // S3: deterministic routing + signal capture
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceEventBus.php';     // S4: event bus / timeline / flags / notifications
+require_once SYSTEM_ROOT . '/lib/commerce/CommercePayment.php';      // S5: configurable payment methods (online primary + COD) over the gateway abstraction
 
 // M5 (audit §4): per-user spam/brute guard. Reject with 429 when tripped.
 $shopRateLimit = function (string $action, int $max, int $windowSec) {
@@ -231,10 +232,14 @@ try {
     if ($method === 'POST' && $uri === '/api/shop/checkout') {
         $uid = $shopRequireUser(); $b = $shopBody();
         $shopRateLimit('shop_checkout_' . $uid, 10, 60);
-        // Force COD here (the engine COD-locks online; enabling online is a
-        // surfaced engine decision — see commerce-06 §5). Everything else — the
-        // multi-vendor split, inventory locking, alignment, ledger safety — is
-        // the engine's, unchanged.
+        // S5: payment method is configurable (online primary + COD fallback). The
+        // never-touch OrderService only accepts 'cod', so the order is CREATED as
+        // COD and, when the customer chose online, switched to an online gateway
+        // session right after (via PaymentService — webhook stays the sole paid
+        // authority). OrderService is never edited.
+        $chosenMethod = strtolower(trim($b['payment_method'] ?? ''));
+        if ($chosenMethod === '') $chosenMethod = CommercePayment::defaultMethod($db);
+        if (!CommercePayment::isAllowed($db, $chosenMethod)) { Response::error('Unsupported payment method.', 422); exit; }
         $b['payment_method'] = 'cod';
         $cart  = new CartService($db);
         // M2 (audit §4): reject checkout if the cart holds an item from a store
@@ -270,6 +275,24 @@ try {
                 CommerceEventBus::emit($db, 'order_created', ['order_id' => (int)$result['order_id'], 'actor_type' => 'customer', 'actor_id' => $uid, 'to_state' => 'pending']);
                 RoutingEngine::onOrderPlaced($db, (int)$result['order_id'], $dLat, $dLng);
             } catch (\Throwable $re) { error_log('[shop/checkout] routing/events: ' . $re->getMessage()); }
+            // S5: if the customer chose ONLINE, open a gateway session now (gateway-
+            // agnostic, with failover). The order exists; the webhook will mark it paid.
+            if ($chosenMethod === 'online') {
+                try {
+                    $uStmt = $db->prepare("SELECT id, name, email, phone FROM users WHERE id = ? LIMIT 1");
+                    $uStmt->execute([$uid]);
+                    $uRow = $uStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+                    $payUser = ['id' => $uid, 'name' => $uRow['name'] ?? 'Customer', 'email' => $uRow['email'] ?? '', 'phone' => $uRow['phone'] ?? ''];
+                    $pay = CommercePayment::initOnline($db, (int)$result['order_id'], $payUser);
+                    $result['payment'] = $pay;
+                    if (!empty($pay['success'])) {
+                        CommerceEventBus::emit($db, 'payment_initiated', ['order_id' => (int)$result['order_id'], 'payload' => ['gateway' => $pay['gateway'] ?? null]]);
+                    } else {
+                        // Online init failed — the order stands as COD-unpaid; the client can retry or pay on delivery.
+                        $result['payment_error'] = $pay['error'] ?? 'Could not start online payment.';
+                    }
+                } catch (\Throwable $pe) { error_log('[shop/checkout] online pay: ' . $pe->getMessage()); $result['payment_error'] = 'Could not start online payment.'; }
+            }
             Response::success($result, 201, 'Order placed');
         } catch (\InvalidArgumentException $e) { Response::error($e->getMessage(), 422); }
         catch (\Throwable $e) { Response::error($e->getMessage(), 400); }
