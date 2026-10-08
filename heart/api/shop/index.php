@@ -41,6 +41,7 @@ require_once SYSTEM_ROOT . '/lib/commerce/RoutingEngine.php';        // S3: dete
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceEventBus.php';     // S4: event bus / timeline / flags / notifications
 require_once SYSTEM_ROOT . '/lib/commerce/CommercePayment.php';      // S5: configurable payment methods (online primary + COD) over the gateway abstraction
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceDelivery.php';     // S6: delivery handoff contract (weight/vehicle/prepaid-COD) + OTP
+require_once SYSTEM_ROOT . '/lib/commerce/StorefrontComposer.php';   // S10: customer-app composer (seller-hidden / unit-UI / related)
 
 // M5 (audit §4): per-user spam/brute guard. Reject with 429 when tripped.
 $shopRateLimit = function (string $action, int $max, int $windowSec) {
@@ -86,7 +87,20 @@ try {
         $city = $cst->fetch(PDO::FETCH_ASSOC) ?: null;
         $types = $db->query("SELECT id, name, slug FROM store_types WHERE is_active = 1 ORDER BY sort_order, name")->fetchAll(PDO::FETCH_ASSOC);
         $cats  = $db->query("SELECT id, name FROM categories WHERE (type='product' OR type='both') AND (is_active = 1 OR is_active IS NULL) ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
-        Response::success(['city' => $city, 'store_types' => $types, 'categories' => $cats]);
+        // S10: the customer app is Unit-driven + founder-free. Expose the configurable
+        // payment methods (online + COD) and the per-Unit UI / seller-visibility config
+        // so the app renders from DB, never from hardcoded assumptions.
+        $unitUi = StorefrontComposer::unitUi($db);
+        Response::success([
+            'city'            => $city,
+            'store_types'     => $types,
+            'categories'      => $cats,
+            'payment_methods' => CommercePayment::enabledMethods($db),
+            'default_method'  => CommercePayment::defaultMethod($db),
+            'platform_label'  => $unitUi['platform_label'],
+            'unit_ui'         => $unitUi['ui'],
+            'seller_visibility' => $unitUi['seller_visibility'],
+        ]);
         exit;
     }
 
@@ -140,12 +154,14 @@ try {
         $stmt = $db->prepare($sql);
         foreach ($bind as $k=>$v) $stmt->bindValue($k, $v);
         $stmt->execute();
-        $products = array_map(function($row) use ($productService) {
+        $products = array_map(function($row) use ($productService, $db) {
             $p = $productService->formatProduct($row);          // REUSE engine formatting
             $p['store_id']   = (int)$row['store_id'];
             $p['store_name'] = $row['store_name'];
             $p['is_company'] = ($row['ownership'] === 'company');
-            return $p;
+            if (!isset($p['category_id'])) $p['category_id'] = $row['category_id'] !== null ? (int)$row['category_id'] : null;
+            // S10: seller-hidden composer — strip seller identity where the Unit config hides it.
+            return StorefrontComposer::composeProduct($db, $p);
         }, $stmt->fetchAll(PDO::FETCH_ASSOC));
         Response::success(['products' => $products, 'page' => $page, 'city_id' => (int)$shopCityId]);
         exit;
@@ -166,7 +182,13 @@ try {
         $store = $sst->fetch(PDO::FETCH_ASSOC) ?: null;
         if ($store) { $store['id']=(int)$store['id']; $store['is_company']=($store['ownership']==='company'); }
         $product['store'] = $store;
-        Response::success(['product' => $product]);
+        // S10: mirror seller fields at top level so the composer can hide them
+        // consistently with browse, then seller-compose + attach related products.
+        if ($store) { $product['store_name'] = $store['name']; $product['is_company'] = $store['is_company']; }
+        $catForVis = isset($product['category_id']) && $product['category_id'] !== null ? (int)$product['category_id'] : null;
+        $product = StorefrontComposer::composeProduct($db, $product, $catForVis);
+        $related = StorefrontComposer::related($db, (int)$m[1], (int)$shopCityId, null, [$productService, 'formatProduct']);
+        Response::success(['product' => $product, 'related' => $related]);
         exit;
     }
 
@@ -335,6 +357,35 @@ try {
             DeliveryEngine::cancelForOrder($db, (int)$m[1]);
             Response::success($res);
         } catch (\Throwable $e) { Response::error($e->getMessage(), 400); }
+        exit;
+    }
+
+    // ── POST /api/shop/orders/{id}/reorder — re-add a past order's items to cart ─
+    //  S10: one-tap reorder. Ownership comes from OrderService::detail (the
+    //  never-touch engine), each line is re-run through the full orderability gate
+    //  (a product/seller may no longer be available), and only orderable lines are
+    //  added back. Returns the updated cart + a per-line added/skipped summary.
+    if ($method === 'POST' && preg_match('#^/api/shop/orders/(\d+)/reorder$#', $uri, $m)) {
+        $uid = $shopRequireUser();
+        $shopRateLimit('shop_reorder_' . $uid, 20, 60);
+        $cart = new CartService($db);
+        $order = (new OrderService($db, $cart))->detail($uid, (int)$m[1]);
+        if (!$order) { Response::notFound('Order'); exit; }
+        $items = [];
+        foreach (($order['vendor_orders'] ?? []) as $vo) {
+            foreach (($vo['items'] ?? []) as $it) { $items[] = $it; }
+        }
+        if (!$items) { Response::error('This order has no items to reorder.', 422); exit; }
+        $added = []; $skipped = [];
+        foreach ($items as $it) {
+            $pid = (int)($it['product_id'] ?? 0); $qty = max(1, (int)($it['quantity'] ?? 1));
+            if ($pid <= 0) continue;
+            $ord = OrderabilityResolver::check($db, $pid, (int)$shopCityId);
+            if (!$ord['orderable']) { $skipped[] = ['product_id' => $pid, 'name' => $it['name'] ?? null, 'reason' => $ord['reason']]; continue; }
+            try { $cart->add($uid, $pid, $qty); $added[] = ['product_id' => $pid, 'name' => $it['name'] ?? null, 'quantity' => $qty]; }
+            catch (\Throwable $e) { $skipped[] = ['product_id' => $pid, 'name' => $it['name'] ?? null, 'reason' => 'unavailable']; }
+        }
+        Response::success(['cart' => $cart->get($uid), 'added' => $added, 'skipped' => $skipped]);
         exit;
     }
 

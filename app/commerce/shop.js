@@ -9,17 +9,29 @@
 import { ShopAPI } from "./api.js";
 
 let _root = null, _view = "browse";
-let _meta = { city: null, store_types: [], categories: [] };
+let _meta = { city: null, store_types: [], categories: [], payment_methods: ["cod"], default_method: "cod", platform_label: "WorkToGo", unit_ui: { default: {}, categories: {} }, seller_visibility: { default: "shown" } };
 let _products = [], _stores = [], _activeType = "", _search = "";
 let _cartMap = {}, _cartCount = 0;
-let _product = null, _orderId = null;
+let _product = null, _related = [], _orderId = null;
 let _drop = { lat: null, lng: null }, _deliveryFee = null;
+let _payMethod = null; // chosen at checkout (falls back to _meta.default_method)
 
 /* ── utils ─────────────────────────────────────────────────────────────── */
 const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const money = n => (window.UI && UI.formatCurrency) ? UI.formatCurrency(Number(n || 0)) : "₹" + Number(n || 0).toLocaleString("en-IN");
 const toast = (m, t = "info") => { if (window.UI && UI.toast) UI.toast(m, t); };
 const loggedIn = () => (window.AUTH && AUTH.isLoggedIn && AUTH.isLoggedIn());
+const platformLabel = () => _meta.platform_label || "WorkToGo";
+// S10: seller-hidden composer (server decides; client just renders what it's told).
+// When the Unit hides the seller the product carries seller_hidden=true + fulfilled_by.
+const sellerLine = p => p && p.seller_hidden
+  ? `⚡ ${esc(p.fulfilled_by || platformLabel())}`
+  : `${p && p.is_company ? "🏬 " : "🏪 "}${esc((p && p.store_name) || "")}`;
+const payLabel = m => m === "online" ? "Pay online (UPI/Card)" : m === "cod" ? "Cash on Delivery" : esc(m);
+// Cart items aren't server-composed; honour the global seller-visibility default
+// so a "hide seller" Unit stays founder-free in the cart too.
+const cartSeller = it => ((_meta.seller_visibility && _meta.seller_visibility.default === "hidden") || !it.vendor_name)
+  ? `⚡ ${esc(platformLabel())}` : esc(it.vendor_name);
 
 function ensureCss() {
   if (document.getElementById("commerce-css")) return;
@@ -144,7 +156,7 @@ function prodCard(p) {
     ${photo}
     <div class="prod-info">
       <div class="prod-nm" onclick="ShopUI.open(${p.id})">${esc(p.name)}</div>
-      <div class="prod-store">${p.is_company ? "🏬 " : "🏪 "}${esc(p.store_name || "")}</div>
+      <div class="prod-store">${sellerLine(p)}</div>
       <div class="prod-price">${price}</div>
       <div class="prod-cta" id="cta-${p.id}">${ctaHtml(p)}</div>
     </div></div>`;
@@ -183,21 +195,28 @@ async function renderProduct(id) {
   const r = await ShopAPI.product(id);
   if (!r.ok) { view().innerHTML = shellWithBack("Product", errState(r.error, `ShopUI.open(${id})`)); return; }
   _product = r.data.product;
+  _related = Array.isArray(r.data.related) ? r.data.related : [];
   const p = _product;
   const img = (p.images && p.images.length) ? (typeof p.images[0] === "string" ? p.images[0] : p.images[0].url) : (p.image || null);
   const hero = img ? `<img class="pd-hero" src="${esc(img)}">` : `<div class="pd-hero">🛍️</div>`;
   const off = (p.sale_price && p.price > p.sale_price) ? Math.round((1 - p.sale_price / p.price) * 100) : 0;
   const priceNow = p.sale_price || p.price;
   const store = p.store;
+  const hidden = !!p.seller_hidden;
+  const titleName = hidden ? platformLabel() : (store ? store.name : "Product");
+  const storeLine = hidden
+    ? `<div class="pd-store"><span class="badge-fulfil">⚡ Fulfilled by ${esc(p.fulfilled_by || platformLabel())}</span></div>`
+    : (store ? `<div class="pd-store">${store.is_company ? '<span class="badge-dark">Dark-store</span>' : '<span class="badge-local">Local</span>'} ${esc(store.name)}${store.locality ? " · " + esc(store.locality) : ""}</div>` : "");
   view().innerHTML = `
-    <div class="shop-header"><div class="shop-header-row"><button class="shop-back" onclick="ShopUI.back()">←</button><div class="shop-title">${esc(store ? store.name : "Product")}</div></div></div>
+    <div class="shop-header"><div class="shop-header-row"><button class="shop-back" onclick="ShopUI.back()">←</button><div class="shop-title">${esc(titleName)}</div></div></div>
     ${hero}
     <div class="pd-body">
       <div class="pd-nm">${esc(p.name)}</div>
-      ${store ? `<div class="pd-store">${store.is_company ? '<span class="badge-dark">Dark-store</span>' : '<span class="badge-local">Local</span>'} ${esc(store.name)}${store.locality ? " · " + esc(store.locality) : ""}</div>` : ""}
+      ${storeLine}
       <div class="pd-price"><span class="now">${money(priceNow)}</span>${off ? `<span class="was">${money(p.price)}</span><span class="off">${off}% OFF</span>` : ""}</div>
       ${p.unit ? `<div class="prod-store">Unit: ${esc(p.unit)}</div>` : ""}
       ${p.description ? `<div class="pd-desc">${esc(p.description)}</div>` : (p.short_desc ? `<div class="pd-desc">${esc(p.short_desc)}</div>` : "")}
+      ${relatedStrip()}
     </div>
     <div class="sticky-bar">
       <div class="info"><div class="a">${(p.available_qty > 0 || p.allow_backorder) ? "In stock" : "Out of stock"}</div><div class="b">${money(priceNow)}</div></div>
@@ -209,6 +228,20 @@ function pdCta(id) {
   return q > 0 ? stepperHtml(id, q) : `<button class="btn-primary-shop" onclick="ShopUI.add(${id})">Add to cart</button>`;
 }
 function refreshPdCta(id) { const el = document.getElementById("pd-cta"); if (el && _product && _product.id === id) el.innerHTML = pdCta(id); }
+/* S10: rule-based related products (same category, in-range, orderable). */
+function relatedStrip() {
+  if (!_related || !_related.length) return "";
+  const card = p => {
+    const img = p.image ? `<img src="${esc(p.image)}">` : `<div class="rel-ph">🛍️</div>`;
+    const price = p.sale_price ? money(p.sale_price) : money(p.price);
+    return `<div class="rel-card" onclick="ShopUI.open(${p.id})">${img}
+      <div class="rel-nm">${esc(p.name)}</div>
+      <div class="rel-sub">${sellerLine(p)}</div>
+      <div class="rel-price">${price}</div></div>`;
+  };
+  return `<div class="shop-section-title" style="margin-top:18px">You may also like</div>
+    <div class="rel-strip">${_related.map(card).join("")}</div>`;
+}
 
 /* ── CART ──────────────────────────────────────────────────────────────── */
 async function renderCart() {
@@ -242,7 +275,7 @@ function cartRow(it) {
   const img = it.image ? `<img src="${esc(it.image)}">` : `<div class="ph">🛍️</div>`;
   return `<div class="cart-row">${img}
     <div class="mid"><div class="nm">${esc(it.name)}</div>
-      <div class="sub">${esc(it.vendor_name || "")}</div>
+      <div class="sub">${cartSeller(it)}</div>
       <div style="margin-top:7px">${stepperHtml(it.product_id, it.quantity, true)}</div>
     </div>
     <div class="rt"><button class="shop-back" style="font-size:15px" onclick="ShopUI.removeItem(${it.product_id})">🗑️</button>
@@ -258,6 +291,8 @@ async function cartRemove(id) {
 /* ── CHECKOUT ──────────────────────────────────────────────────────────── */
 function renderCheckout() {
   const u = (window.AUTH && AUTH.getUser && AUTH.getUser()) || {};
+  const methods = (_meta.payment_methods && _meta.payment_methods.length) ? _meta.payment_methods : ["cod"];
+  if (!_payMethod || !methods.includes(_payMethod)) _payMethod = _meta.default_method && methods.includes(_meta.default_method) ? _meta.default_method : methods[0];
   view().innerHTML = shellWithBack("Checkout", `<div class="shop-body">
     <div class="shop-section-title" style="margin-top:4px">Delivery address</div>
     <div class="shop-field"><label>Full name</label><input id="ck-name" value="${esc(u.name || "")}"></div>
@@ -271,14 +306,29 @@ function renderCheckout() {
     <div class="shop-field"><label>Order notes (optional)</label><input id="ck-notes" placeholder="Any instructions for delivery"></div>
     <div class="summary" id="ck-fee"><div class="ln"><span>Delivery fee</span><span id="ck-fee-val">Locating you…</span></div>
       <div class="ln" style="font-size:11px;color:var(--shop-muted)"><span id="ck-fee-note">Calculated by distance to the store.</span></div></div>
-    <div class="pay-note">💵 Cash on Delivery — pay when your order arrives</div>
+    <div class="shop-section-title" style="margin-top:4px">Payment</div>
+    <div class="pay-opts" id="pay-opts">${methods.map(payOption).join("")}</div>
     <div style="height:8px"></div>
   </div>`);
   const bar = document.createElement("div");
   bar.className = "sticky-bar";
-  bar.innerHTML = `<button class="btn-primary-shop btn-block" onclick="ShopUI.placeOrder()">Place order (COD)</button>`;
+  bar.innerHTML = `<button class="btn-primary-shop btn-block" id="place-btn" onclick="ShopUI.placeOrder()">${placeBtnLabel()}</button>`;
   document.getElementById("shop-app").appendChild(bar);
   quoteDelivery();
+}
+function payOption(m) {
+  const on = m === _payMethod;
+  const icon = m === "online" ? "💳" : "💵";
+  const sub = m === "online" ? "UPI, cards & wallets — pay now" : "Pay when your order arrives";
+  return `<div class="pay-opt ${on ? "on" : ""}" onclick="ShopUI.setPay('${esc(m)}')">
+    <div class="radio">${on ? "●" : ""}</div>
+    <div class="pay-mid"><div class="pay-nm">${icon} ${payLabel(m)}</div><div class="pay-sub">${sub}</div></div></div>`;
+}
+function placeBtnLabel() { return _payMethod === "online" ? "Pay & place order" : "Place order (COD)"; }
+function refreshPay() {
+  const host = document.getElementById("pay-opts");
+  if (host) host.innerHTML = ((_meta.payment_methods && _meta.payment_methods.length) ? _meta.payment_methods : ["cod"]).map(payOption).join("");
+  const btn = document.getElementById("place-btn"); if (btn) btn.textContent = placeBtnLabel();
 }
 function quoteDelivery() {
   const setFee = (txt, note) => { const v = document.getElementById("ck-fee-val"), n = document.getElementById("ck-fee-note"); if (v) v.textContent = txt; if (n && note) n.textContent = note; };
@@ -304,12 +354,24 @@ async function placeOrder() {
   const missing = ["name", "phone", "line1", "city", "state", "pincode"].filter(k => !addr[k]);
   if (missing.length) { toast("Please fill: " + missing.join(", "), "error"); return; }
   const btn = document.querySelector(".sticky-bar .btn-primary-shop");
-  if (btn) { btn.disabled = true; btn.textContent = "Placing order…"; }
-  const r = await ShopAPI.checkout({ shipping_address: addr, notes: g("ck-notes"), drop_lat: _drop.lat, drop_lng: _drop.lng });
-  if (!r.ok) { toast(r.error, "error"); if (btn) { btn.disabled = false; btn.textContent = "Place order (COD)"; } return; }
+  if (btn) { btn.disabled = true; btn.textContent = _payMethod === "online" ? "Starting payment…" : "Placing order…"; }
+  const r = await ShopAPI.checkout({ shipping_address: addr, notes: g("ck-notes"), drop_lat: _drop.lat, drop_lng: _drop.lng, payment_method: _payMethod });
+  if (!r.ok) { toast(r.error, "error"); if (btn) { btn.disabled = false; btn.textContent = placeBtnLabel(); } return; }
   await refreshCartState();
+  const d = r.data || {};
+  // S10: online path — the order exists; open the gateway session (webhook finalises).
+  if (_payMethod === "online" && d.payment && d.payment.success) {
+    const redirect = d.payment.payment_link || d.payment.payment_url || d.payment.redirect_url || null;
+    if (redirect) { toast("Redirecting to payment…", "info"); window.location.href = redirect; return; }
+    toast("Payment started — complete it to confirm your order.", "info");
+    nav("order", { id: d.order_id }); return;
+  }
+  if (_payMethod === "online" && d.payment_error) {
+    toast("Couldn’t start online payment — order saved as Cash on Delivery.", "info");
+    nav("order", { id: d.order_id }); return;
+  }
   toast("Order placed! 🎉", "success");
-  nav("order", { id: r.data.order_id });
+  nav("order", { id: d.order_id });
 }
 
 /* ── ORDERS + TRACKING ─────────────────────────────────────────────────── */
@@ -324,7 +386,10 @@ async function renderOrders() {
     <div class="ord-card" onclick="ShopUI.openOrder(${o.id})">
       <div class="ord-top"><div class="ord-no">#${esc(o.order_number)}</div>
         <span class="pill-status ps-${esc(o.status)}">${esc(o.status)}</span></div>
-      <div class="ord-when">${esc((o.created_at || "").replace("T", " ").slice(0, 16))} · ${money(o.total)}</div>
+      <div class="ord-row">
+        <div class="ord-when">${esc((o.created_at || "").replace("T", " ").slice(0, 16))} · ${money(o.total)}</div>
+        <button class="btn-reorder" onclick="event.stopPropagation();ShopUI.reorder(${o.id})">🔁 Reorder</button>
+      </div>
     </div>`).join("");
 }
 const TRACK_STEPS = [
@@ -356,14 +421,17 @@ async function renderOrder(id) {
       <div class="sub">Qty ${it.quantity} · ${money(it.unit_price)}</div></div>
       <div class="rt"><div class="lt">${money(it.line_total)}</div></div></div>`).join("")}` : "";
   const canCancel = ["pending", "confirmed"].includes(o.status);
+  const payTag = (o.payment_method ? String(o.payment_method) : "cod").toUpperCase();
   body.innerHTML = `
     <div class="ord-top" style="margin-bottom:12px"><div><div class="ord-no">#${esc(o.order_number)}</div>
-      <div class="ord-when">${money(o.total)} · COD</div></div>
+      <div class="ord-when">${money(o.total)} · ${esc(payTag)}</div></div>
       <span class="pill-status ps-${esc(o.status)}">${esc(o.status)}</span></div>
     <div id="od-delivery"></div>
     ${timeline}
     ${itemsHtml}
     <div class="summary"><div class="ln total"><span>Total</span><span>${money(o.total)}</span></div></div>
+    <div style="height:10px"></div>
+    <button class="btn-primary-shop btn-block" onclick="ShopUI.reorder(${o.id})">🔁 Reorder</button>
     ${canCancel ? `<div style="height:10px"></div><button class="btn-add" style="border-color:#eab;color:#b91c1c;background:#fff" onclick="ShopUI.cancelOrder(${o.id})">Cancel order</button>` : ""}
     <div style="height:8px"></div>`;
   loadDeliveryTrack(id);
@@ -388,6 +456,16 @@ async function cancelOrder(id) {
   const r = await ShopAPI.cancelOrder(id);
   if (!r.ok) { toast(r.error, "error"); return; }
   toast("Order cancelled", "info"); renderOrder(id);
+}
+/* S10: one-tap reorder — re-adds the past order's still-orderable items to cart. */
+async function reorder(id) {
+  const r = await ShopAPI.reorder(id);
+  if (!r.ok) { toast(r.error, "error"); return; }
+  applyCart(r.data.cart);
+  const added = (r.data.added || []).length, skipped = (r.data.skipped || []).length;
+  if (!added) { toast("Those items aren’t available right now.", "info"); return; }
+  toast(skipped ? `${added} item(s) added · ${skipped} unavailable` : `${added} item(s) added to cart`, "success");
+  nav("cart");
 }
 
 /* ── shared view chrome + states ───────────────────────────────────────── */
@@ -437,4 +515,6 @@ window.ShopUI = {
   removeItem: id => cartRemove(id),
   placeOrder: () => placeOrder(),
   cancelOrder: id => cancelOrder(id),
+  reorder: id => reorder(id),
+  setPay: m => { _payMethod = m; refreshPay(); },
 };

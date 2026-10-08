@@ -103,6 +103,29 @@
 .shop-field input:focus,.shop-field textarea:focus{border-color:var(--shop-brand);}
 .pay-note{display:flex;align-items:center;gap:9px;background:#eafaf1;border:1px solid #bfead1;border-radius:11px;padding:11px 12px;font-size:13px;color:var(--shop-brand-ink);font-weight:600;}
 
+/* S10: seller-hidden fulfiller badge */
+.badge-fulfil{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.3px;color:#fff;background:var(--shop-brand);border-radius:6px;padding:2px 8px;}
+
+/* S10: payment method chooser */
+.pay-opts{display:flex;flex-direction:column;gap:9px;}
+.pay-opt{display:flex;align-items:center;gap:11px;border:1px solid var(--shop-line);border-radius:12px;padding:11px 12px;background:var(--shop-surface);cursor:pointer;}
+.pay-opt.on{border-color:var(--shop-brand);box-shadow:0 0 0 2px rgba(15,157,88,.12);}
+.pay-opt .radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--shop-line);flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--shop-brand);}
+.pay-opt.on .radio{border-color:var(--shop-brand);}
+.pay-nm{font-size:13.5px;font-weight:700;} .pay-sub{font-size:11px;color:var(--shop-muted);}
+
+/* S10: related products strip */
+.rel-strip{display:flex;gap:10px;overflow-x:auto;padding:2px 0 6px;-webkit-overflow-scrolling:touch;}
+.rel-card{flex:0 0 118px;width:118px;background:var(--shop-surface);border:1px solid var(--shop-line);border-radius:12px;padding:8px;cursor:pointer;box-shadow:var(--shop-shadow);}
+.rel-card img,.rel-card .rel-ph{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:9px;background:#f0f2f5;display:flex;align-items:center;justify-content:center;font-size:26px;}
+.rel-nm{font-size:12px;font-weight:600;margin-top:6px;line-height:1.25;max-height:30px;overflow:hidden;}
+.rel-sub{font-size:10px;color:var(--shop-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.rel-price{font-size:12.5px;font-weight:800;margin-top:3px;}
+
+/* S10: reorder */
+.ord-row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:2px;}
+.btn-reorder{flex:0 0 auto;border:1px solid var(--shop-brand);background:#fff;color:var(--shop-brand-ink);font-size:11.5px;font-weight:800;border-radius:9px;padding:6px 11px;cursor:pointer;}
+
 /* Order tracking timeline */
 .track{background:var(--shop-surface);border:1px solid var(--shop-line);border-radius:var(--shop-radius);padding:14px;box-shadow:var(--shop-shadow);}
 .track-step{display:flex;gap:11px;position:relative;padding-bottom:18px;}

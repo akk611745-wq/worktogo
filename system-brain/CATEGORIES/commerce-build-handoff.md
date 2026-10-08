@@ -1,7 +1,7 @@
 # WorkToGo Commerce — Build Handoff / Resume Note
 
 **Purpose:** single "resume here" doc so any session (post-compaction / fresh) can continue without re-deriving. **Updated:** 2026-10-08.
-**Status:** **core backend S1–S9 COMPLETE + proven** (198 local tests PASS). Remaining: S10 (customer app), S11 (RBAC + seats + audit API), then the staging DONE gate.
+**Status:** **S1–S10 COMPLETE + proven** (226 local tests PASS). Remaining: S11 (RBAC + seats + audit API), then the staging DONE gate.
 **Reads with:** [commerce-system-blueprint.md](commerce-system-blueprint.md) (design SoT) · [commerce-v1-build-spec.md](commerce-v1-build-spec.md) (step order) · CHANGELOG.
 
 ## Git / branch
@@ -42,7 +42,7 @@ margin override (product??category??platform), online primary + COD fallback, pa
 6. **Ledger namespace** — `LedgerEngine::processRefund`/`processOrderCompletion` use namespaced `Core\Helpers\Database`/`Logger` (classes are GLOBAL) → latent runtime fatal. Commerce refund path mitigates with a `class_alias` shim; prod should alias in bootstrap or add a `$db` param.
 
 ## REMAINING
-- **S10 — Customer app (`app/commerce`)**: standalone responsive *WorkToGo Commerce* — location/range discovery (nearest-first + expandable), **dynamic Unit-config UI** (not hardcoded per category), **seller-hidden composer** (strip vendor_name/store per `seller_visibility` config), cart (single-shop + soft-split), online+COD, **live tracking** (reuse `DeliveryEngine::track` + `/api/delivery/track`), order history/reorder, related products (rule-based: same category/brand/also-near-you). Mostly front-end on `/api/shop/*` (adapter mostly there; may add read endpoints). Prove with a focused test where logic is backend.
+- **S10 — Customer app** ✅ DONE (`fd61a4f`→S10 commit): `lib/commerce/StorefrontComposer.php` (seller-hidden / Unit-UI / related) + adapter `/meta`·`/products`·`/products/{id}` compose + `POST /orders/{id}/reorder` + front-end (`app/commerce/shop.js`,`api.js`,`css/commerce.css`): payment chooser (online+COD), seller-hidden rendering, related strip, reorder. Migration `2026_10_06_010`. Live tracking already present (S6 `deliveryTrack`). Config keys: `commerce_seller_visibility` / `commerce_platform_label` / `commerce_unit_ui` / `commerce_related_limit` (all in AdminControlRoom allowlist). 28/28 PASS. Limitation: cart-line seller text uses the GLOBAL visibility default (cart items not category-composed; browse/detail are exact).
 - **S11 — RBAC + seats + audit API**: activate RBAC enforcement (roles/permissions seeded but `Permission::enforce` DORMANT — only legacy `role='admin'` gates) + ops/finance/seller-ops/delivery-ops/unit-operator seats; thin HTTP endpoints exposing OpsConsole + AdminControlRoom (currently backends only); uniform audit trail.
 - **DONE gate:** ~20 real orders run **founder-free on staging** (needs MariaDB ≥10.5), every exception handled by system/ops. Then freeze core → grow by Units (config).
 - **STILL-NOT-NOW (don't build):** Brain/ML, multi-seller optimization, advanced dark-store, service↔commerce project link, multi-city, native apps, full support UI.

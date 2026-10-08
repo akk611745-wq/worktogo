@@ -24,6 +24,8 @@ class AdminControlRoom
             'commerce_payment_methods', 'commerce_vehicle_thresholds',
             'commerce_delivery_accept_timeout_sec', 'commerce_delivery_max_reassign',
             'commerce_high_value_threshold', 'commerce_ticket_sla_sec', 'commerce_paused',
+            // S10 customer-app config (Unit-driven storefront)
+            'commerce_seller_visibility', 'commerce_platform_label', 'commerce_unit_ui', 'commerce_related_limit',
         ];
     }
 
