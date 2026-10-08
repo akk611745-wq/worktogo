@@ -191,6 +191,13 @@ if (str_starts_with($uri, '/api/auth')) {
     exit;
 }
 
+// Commerce Ops + Admin API (S11): RBAC-gated HTTP surface over OpsConsole /
+// AdminControlRoom / settlement / returns. Distinct prefix from /api/admin.
+if (str_starts_with($uri, '/api/commerce-admin')) {
+    require_once HEART_ROOT . '/api/commerce-admin/index.php';
+    exit;
+}
+
 // Admin API
 if (str_starts_with($uri, '/api/admin')) {
     require_once HEART_ROOT . '/api/admin/index.php';

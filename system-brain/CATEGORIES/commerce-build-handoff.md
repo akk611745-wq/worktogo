@@ -1,7 +1,7 @@
 # WorkToGo Commerce — Build Handoff / Resume Note
 
 **Purpose:** single "resume here" doc so any session (post-compaction / fresh) can continue without re-deriving. **Updated:** 2026-10-08.
-**Status:** **S1–S10 COMPLETE + proven** (226 local tests PASS). Remaining: S11 (RBAC + seats + audit API), then the staging DONE gate.
+**Status:** **S1–S11 COMPLETE + proven — commerce core BUILD DONE** (261 local tests PASS). Remaining: only the staging DONE gate (no more building).
 **Reads with:** [commerce-system-blueprint.md](commerce-system-blueprint.md) (design SoT) · [commerce-v1-build-spec.md](commerce-v1-build-spec.md) (step order) · CHANGELOG.
 
 ## Git / branch
@@ -43,6 +43,6 @@ margin override (product??category??platform), online primary + COD fallback, pa
 
 ## REMAINING
 - **S10 — Customer app** ✅ DONE (`fd61a4f`→S10 commit): `lib/commerce/StorefrontComposer.php` (seller-hidden / Unit-UI / related) + adapter `/meta`·`/products`·`/products/{id}` compose + `POST /orders/{id}/reorder` + front-end (`app/commerce/shop.js`,`api.js`,`css/commerce.css`): payment chooser (online+COD), seller-hidden rendering, related strip, reorder. Migration `2026_10_06_010`. Live tracking already present (S6 `deliveryTrack`). Config keys: `commerce_seller_visibility` / `commerce_platform_label` / `commerce_unit_ui` / `commerce_related_limit` (all in AdminControlRoom allowlist). 28/28 PASS. Limitation: cart-line seller text uses the GLOBAL visibility default (cart items not category-composed; browse/detail are exact).
-- **S11 — RBAC + seats + audit API**: activate RBAC enforcement (roles/permissions seeded but `Permission::enforce` DORMANT — only legacy `role='admin'` gates) + ops/finance/seller-ops/delivery-ops/unit-operator seats; thin HTTP endpoints exposing OpsConsole + AdminControlRoom (currently backends only); uniform audit trail.
+- **S11 — RBAC + seats + audit API** ✅ DONE: migration `2026_10_06_011` (11 `commerce.*` perms + 5 seats `commerce_ops/finance/seller_ops/delivery_ops/unit_operator` + super_admin links + `commerce_admin_audit`). HTTP layer `heart/api/commerce-admin/index.php` (dispatched in `heart/index.php` on `/api/commerce-admin`) exposes OpsConsole + AdminControlRoom + CommerceSettlement + CommerceReturns, each gated by `AuthMiddleware::requirePermission` (legacy admin/super_admin bypass; pause scope `unit`=category-scoped; `seller` needs `commerce.seller.manage`); `GET /me` = seat window. `lib/commerce/CommerceAdminAudit.php` = uniform scrubbed trail. 35/35 PASS. RBAC activation point = `requirePermission` calls in that adapter; grant users seats via `user_roles`.
 - **DONE gate:** ~20 real orders run **founder-free on staging** (needs MariaDB ≥10.5), every exception handled by system/ops. Then freeze core → grow by Units (config).
 - **STILL-NOT-NOW (don't build):** Brain/ML, multi-seller optimization, advanced dark-store, service↔commerce project link, multi-city, native apps, full support UI.
