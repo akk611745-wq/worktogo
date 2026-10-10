@@ -4,6 +4,9 @@
 **Branch:** `feat/commerce-core` (v2 untouched). **Reads with:** [paint-unit-complete-pack.md](paint-unit-complete-pack.md) (the brief), [commerce-build-handoff.md](commerce-build-handoff.md) (core state), CHANGELOG.
 **Core state:** S1–S11 complete + proven, **261 local tests, 0 fail**. Service/OrderService/DeliveryEngine/LedgerEngine never edited.
 
+> ⚠️ **UPDATE 2026-10-10 (CEO correction) — this Unit is DEFERRED; build the CORE first.**
+> The model has **no own/company stock** — WorkToGo is seller-based from day one (external shops only; founder connects sellers, never stocks). So **any "company-stock auto-fulfil" idea in this doc is void**, and the **seller app is a CORE foundation**, not a Unit step. The active plan is now **[core-completion-plan.md](core-completion-plan.md)** (S12–S17: pricing tweaks + Customer-ID + seller app → staging founder-free proof). Paint Unit (P1…) begins only after the core is complete. The simulations, architecture test (PASS), reuse/gap maps and confirmed answers below remain valid; **§6's build order is superseded** by core-completion-plan.md, and the first seller is an **external shop**, not own stock.
+
 ## 0. HEADLINE VERDICT (the architecture test — the most valuable thing to know)
 
 **PASS — the Paint Unit needs NO paint-specific code inside any `body/` engine or the core.** Verified against the actual schema + code, not assumed:
@@ -30,7 +33,7 @@ So a Unit = **additive migrations + `lib/commerce` rules + config + new UI surfa
 | 5 | Price | seller base → **slab margin** (P1) → **delivery-absorb** (P2) → ONE final server price, "FREE delivery" if high-margin; **loss-proof floor** enforced | MarginEngine ext (P1/P2) + S1/S8 | ext |
 | 6 | Payment | Ready product → COD or online (S5 multi-gateway, webhook sole authority) | S5 | reuse |
 | 7 | Routing | `onOrderPlaced` → **company-first** → nearest → offer | S3 | reuse |
-| 8 | Accept / stock-out | **Company/own stock → auto-fulfil (no seller app).** External seller → taps *accept* or *stock not available* → reroute | S3 reroute + **seller app gap** | ⚠️ (Section 7.1) |
+| 8 | Accept / stock-out | External seller taps *accept* or *stock not available* → reroute (no own stock in the model → the **seller app is required**, built in core S15–S17) | S3 reroute + **seller app (core S15)** | ⚠️ (Section 7.1) |
 | 9 | Delivery quote + handoff | `DeliveryEngine::quoteServerSide` (before cart, P2) → `createForOrder` → **S6 enrichHandoff** (4L≈5kg → bike) + **issueOtp** | S6 (DeliveryEngine called, not edited) | reuse |
 | 10 | Deliver (OTP) | Rider PWA → OTP verified → `riderDeliver` → ledger settlement | S6 + S1 | reuse |
 | 11 | Settlement | Seller base paid in full; WorkToGo keeps the margin spread; own-vs-facilitated split | S9 settle/payout | reuse |
@@ -93,7 +96,8 @@ So a Unit = **additive migrations + `lib/commerce` rules + config + new UI surfa
 - **C.4 Customer ID** → opaque ID per user; seller APIs return only `customer_ref` + that seller's own orders for it; builds on S10 seller-hidden + S3 signals + S9 per-seller settlement. **No PII ever leaves to the seller.**
 - **C.5 Learning-now vs Brain-later** → keep counters/signals (S3) flowing; **do not** build prediction on zero data. Interfaces stay stable for a later Brain.
 
-## 6. RECOMMENDED BUILD ORDER (my sequence — one change vs the pack)
+## 6. BUILD ORDER — ⚠️ SUPERSEDED by core-completion-plan.md
+> **Correction (2026-10-10):** slab margin, delivery-absorb, Customer-ID and the seller app are now **CORE steps S12–S17** (not Unit steps), and there is **no company/own-stock path**. The real Unit-only order after core is proven: **P1** paint attributes+unit_config+verify → **P2** coverage calculator+guide → **P3** ready-products flow via an **external seller** (core seller app) → **P4** custom-tint structure (advance 50%/full, confirm-call custom+₹5000+, no-return) → **P5** Prisma import. The block below is the *original* draft, kept for history only — ignore its P1/P2/P5/P6a/P6b (those moved to core).
 ```
 P1  Slab margin + growth knob + loss-proof            [C.1,C.2]  core-config ext      ~1 step / M
 P2  Delivery quote+absorb + no-flicker + rate cache   [C.3]      adapter+app+cfg      ~1 step / M
