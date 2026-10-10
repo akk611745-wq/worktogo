@@ -40,6 +40,7 @@ foreach (['commerce_margin_slabs','commerce_margin_multiplier','commerce_margin_
 }
 
 $SLAB = '{"enabled":true,"bands":[{"up_to":500,"flat":20},{"up_to":5000,"pct":8},{"up_to":20000,"pct":5},{"up_to":100000,"pct":3},{"pct":2}],"by_category":{"777":{"bands":[{"pct":12}]}}}';
+register_shutdown_function(function() use ($pdo,$snap){ foreach($snap as $k=>$v){ if($v!==false && $v!==null){ try{ $pdo->prepare("UPDATE app_settings SET setting_value=? WHERE setting_key=?")->execute([$v,$k]); }catch(\Throwable $e){} } } });
 setcfg($pdo, 'commerce_margin_slabs', $SLAB, 'json');
 setcfg($pdo, 'commerce_margin_multiplier', '1.0', 'number');
 setcfg($pdo, 'commerce_margin_policy', '{"platform_margin_pct":10,"platform_margin_flat":0,"min_margin_flat":0,"rounding":"none"}', 'json');

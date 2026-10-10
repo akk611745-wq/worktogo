@@ -80,6 +80,7 @@ $snap = [];
 foreach (['commerce_margin_slabs','commerce_margin_multiplier','commerce_margin_policy','commerce_delivery_absorb','commerce_loss_proof_floor'] as $k) {
     $s = $pdo->prepare("SELECT setting_value FROM app_settings WHERE setting_key=? LIMIT 1"); $s->execute([$k]); $snap[$k] = $s->fetchColumn();
 }
+register_shutdown_function(function() use ($pdo,$snap){ foreach($snap as $k=>$v){ if($v!==false && $v!==null){ try{ $pdo->prepare("UPDATE app_settings SET setting_value=? WHERE setting_key=?")->execute([$v,$k]); }catch(\Throwable $e){} } } });
 setcfg($pdo,'commerce_margin_slabs','{"enabled":true,"bands":[{"up_to":500,"flat":20},{"up_to":5000,"pct":8},{"pct":2}],"by_category":{}}','json');
 setcfg($pdo,'commerce_margin_multiplier','1.0','number');
 setcfg($pdo,'commerce_margin_policy','{"platform_margin_pct":0,"platform_margin_flat":0,"min_margin_flat":0,"rounding":"none"}','json');

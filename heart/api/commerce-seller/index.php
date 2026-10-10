@@ -19,6 +19,7 @@
 // ============================================================================
 
 require_once SYSTEM_ROOT . '/lib/commerce/SellerConsole.php';
+require_once SYSTEM_ROOT . '/lib/commerce/SellerCatalogue.php';
 
 $auth = AuthMiddleware::requireRole(ROLE_VENDOR_SHOPPING, ROLE_ADMIN);
 $sellerVendorId = SellerConsole::resolveVendorId($db, (int)($auth['user_id'] ?? 0));
@@ -58,6 +59,26 @@ try {
         if (empty($res['ok'])) { Response::error('Could not flag stock-out: ' . ($res['reason'] ?? 'error'), 422); exit; }
         Response::success($res); exit;
     }
+    // ── catalogue (S16): list / add offer / edit offer / restock ────────────────
+    if ($method === 'GET' && $uri === '/api/commerce-seller/catalogue') {
+        Response::success(['offers' => SellerCatalogue::listMine($db, $sellerVendorId)]); exit;
+    }
+    if ($method === 'POST' && $uri === '/api/commerce-seller/catalogue') {
+        $res = SellerCatalogue::createOffer($db, $sellerVendorId, $B);
+        if (empty($res['ok'])) { Response::error('Could not add offer: ' . ($res['reason'] ?? 'error'), 422); exit; }
+        Response::success($res, 201, 'Offer submitted for verification'); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-seller/catalogue/(\d+)$#', $uri, $m)) {
+        $res = SellerCatalogue::updateOffer($db, $sellerVendorId, (int)$m[1], $B);
+        if (empty($res['ok'])) { Response::error('Could not update: ' . ($res['reason'] ?? 'error'), 422); exit; }
+        Response::success($res); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-seller/catalogue/(\d+)/stock$#', $uri, $m)) {
+        $res = SellerCatalogue::setStock($db, $sellerVendorId, (int)$m[1], (int)($B['stock'] ?? 0));
+        if (empty($res['ok'])) { Response::error('Could not set stock: ' . ($res['reason'] ?? 'error'), 422); exit; }
+        Response::success($res); exit;
+    }
+
     if ($method === 'GET' && $uri === '/api/commerce-seller/earnings') {
         Response::success(SellerConsole::earnings($db, $sellerVendorId)); exit;
     }

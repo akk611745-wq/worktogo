@@ -44,6 +44,7 @@ require_once SYSTEM_ROOT . '/lib/commerce/CommerceDelivery.php';     // S6: deli
 require_once SYSTEM_ROOT . '/lib/commerce/StorefrontComposer.php';   // S10: customer-app composer (seller-hidden / unit-UI / related)
 require_once SYSTEM_ROOT . '/lib/commerce/DeliveryPricing.php';      // S13: delivery absorb + no-flicker price + area rate cache
 require_once SYSTEM_ROOT . '/lib/commerce/SellerConsole.php';        // S15: seller backend (accept-gates-dispatch flag)
+require_once SYSTEM_ROOT . '/lib/commerce/SellerCatalogue.php';      // S16: seller base → seller_subtotal (margin earns end-to-end)
 
 // M5 (audit §4): per-user spam/brute guard. Reject with 429 when tripped.
 $shopRateLimit = function (string $action, int $max, int $windowSec) {
@@ -291,6 +292,11 @@ try {
         $order = new OrderService($db, $cart);
         try {
             $result = $order->create($uid, $b);                  // REUSE engine checkout
+            // S16: record the seller base per line + per (sub-)order so LedgerEngine
+            // splits the margin (platform = subtotal − seller_subtotal) — margin now
+            // EARNS end-to-end. Non-fatal: a pricing hiccup never fails a placed order.
+            try { SellerCatalogue::persistSellerBase($db, (int)$result['order_id']); }
+            catch (\Throwable $se) { error_log('[shop/checkout] seller base: ' . $se->getMessage()); }
             // S15: (A) ACCEPT-GATES-DISPATCH — with external sellers the rider is
             // dispatched only AFTER the seller accepts (SellerConsole), so no wasted
             // trip to a shop that rejects. When the flag is ON (default) checkout only
