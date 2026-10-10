@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WorkToGo Seller</title>
+<link rel="icon" href="/app/assets/favicon.png"/>
+<!-- S17: installable PWA (browser "install"; native app later). Reuses the S6 rider pattern. -->
+<link rel="manifest" href="manifest.webmanifest"/>
+<meta name="theme-color" content="#0f9d58"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('service-worker.js').catch(function(){});});}</script>
+<style>
+/* ── Seller app — own scope, mobile-first, glance-and-act ─────────────────── */
+:root{--s-bg:#0f1720;--s-surface:#17222e;--s-line:#243343;--s-ink:#eaf2f8;--s-muted:#8fa3b5;--s-brand:#0f9d58;--s-brand-ink:#0b7a43;--s-accent:#ff6b35;--s-busy:#eab308;--s-danger:#e5484d;}
+*{box-sizing:border-box;} html,body{margin:0;background:var(--s-bg);color:var(--s-ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+.wrap{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;}
+.topbar{position:sticky;top:0;background:var(--s-surface);border-bottom:1px solid var(--s-line);padding:12px 16px;z-index:10;}
+.topbar .row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.brand{font-weight:800;font-size:16px;} .brand span{color:var(--s-brand);}
+/* availability segmented control (one-tap ON / BUSY / OFF) */
+.avail{display:flex;gap:6px;margin-top:10px;background:var(--s-bg);border:1px solid var(--s-line);border-radius:12px;padding:4px;}
+.avail button{flex:1;border:none;background:transparent;color:var(--s-muted);font-weight:800;font-size:13px;padding:9px 0;border-radius:9px;cursor:pointer;}
+.avail button.on.s-online{background:var(--s-brand);color:#04211a;}
+.avail button.on.s-busy{background:var(--s-busy);color:#2a2102;}
+.avail button.on.s-offline{background:var(--s-danger);color:#2a0405;}
+.body{flex:1;padding:16px;padding-bottom:78px;}
+.card{background:var(--s-surface);border:1px solid var(--s-line);border-radius:14px;padding:14px;margin-bottom:12px;}
+.muted{color:var(--s-muted);font-size:12px;}
+label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--s-muted);margin-bottom:6px;}
+input{width:100%;background:var(--s-bg);border:1px solid var(--s-line);border-radius:11px;padding:12px;color:var(--s-ink);font-size:15px;outline:none;margin-bottom:12px;}
+input:focus{border-color:var(--s-brand);}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;border-radius:12px;padding:12px 16px;font-size:14px;font-weight:800;cursor:pointer;}
+.btn-primary{background:var(--s-brand);color:#04211a;} .btn-block{width:100%;}
+.btn-ghost{background:transparent;border:1px solid var(--s-line);color:var(--s-ink);}
+.btn-accent{background:var(--s-accent);color:#2a0f04;} .btn-danger{background:transparent;border:1px solid var(--s-danger);color:#ffb4b6;}
+.ord{background:var(--s-surface);border:1px solid var(--s-line);border-radius:14px;padding:14px;margin-bottom:12px;}
+.ord .top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
+.ord .nm{font-weight:800;font-size:15px;} .ord .sub{font-size:12px;color:var(--s-muted);margin-top:3px;}
+.cref{font-size:11px;font-weight:800;color:var(--s-brand);background:#0b2a1e;border-radius:6px;padding:2px 8px;cursor:pointer;}
+.ord-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;} .ord-actions .btn{flex:1;}
+.pill{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:3px 9px;border-radius:99px;background:var(--s-line);color:var(--s-ink);}
+.pill.draft{background:#3a2f12;color:#ffcf6b;} .pill.active{background:#0b2a1e;color:#6ee7b7;}
+.empty{text-align:center;padding:40px 16px;color:var(--s-muted);} .empty .ic{font-size:42px;}
+.stat{display:flex;gap:12px;flex-wrap:wrap;} .stat>div{flex:1;min-width:120px;background:var(--s-bg);border:1px solid var(--s-line);border-radius:11px;padding:12px;} .stat .v{font-size:20px;font-weight:800;} .stat .l{font-size:11px;color:var(--s-muted);}
+.hidden{display:none!important;} .spin{width:26px;height:26px;border:3px solid var(--s-line);border-top-color:var(--s-brand);border-radius:50%;animation:sp .8s linear infinite;margin:24px auto;} @keyframes sp{to{transform:rotate(360deg)}}
+.toast{position:fixed;left:50%;bottom:86px;transform:translateX(-50%);background:#000c;color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;opacity:0;transition:.2s;z-index:50;} .toast.show{opacity:1;}
+/* bottom tab bar */
+.tabs{position:fixed;left:0;right:0;bottom:0;height:62px;max-width:520px;margin:0 auto;background:var(--s-surface);border-top:1px solid var(--s-line);display:flex;z-index:30;}
+.tabs button{flex:1;border:none;background:none;color:var(--s-muted);font-size:11px;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;}
+.tabs button .ic{font-size:19px;line-height:1;} .tabs button.on{color:var(--s-brand);}
+.tabs button .badge{position:absolute;margin-left:22px;margin-top:-16px;background:var(--s-accent);color:#fff;font-size:9px;font-weight:800;min-width:15px;height:15px;border-radius:99px;display:flex;align-items:center;justify-content:center;padding:0 3px;}
+/* customer-history sheet */
+.sheet-bg{position:fixed;inset:0;background:#0009;z-index:60;display:flex;align-items:flex-end;justify-content:center;}
+.sheet{background:var(--s-surface);border-top-left-radius:16px;border-top-right-radius:16px;width:100%;max-width:520px;max-height:76vh;overflow:auto;padding:16px;}
+.hrow{display:flex;justify-content:space-between;border-bottom:1px solid var(--s-line);padding:9px 0;font-size:13px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="row">
+      <div class="brand">Work<span>ToGo</span> Seller</div>
+      <button class="btn btn-ghost hidden" id="logout-btn" style="padding:7px 12px;font-size:12px" onclick="Seller.logout()">Log out</button>
+    </div>
+    <div class="avail hidden" id="avail">
+      <button class="s-online"  onclick="Seller.setAvail('online')">● Online</button>
+      <button class="s-busy"    onclick="Seller.setAvail('busy')">◐ Busy</button>
+      <button class="s-offline" onclick="Seller.setAvail('offline')">○ Offline</button>
+    </div>
+  </div>
+  <div class="body" id="app"><div class="spin"></div></div>
+  <div class="tabs hidden" id="tabs">
+    <button id="tab-orders"    class="on" onclick="Seller.go('orders')"><span class="ic">🧾</span>Orders<span class="badge hidden" id="orders-badge">0</span></button>
+    <button id="tab-catalogue" onclick="Seller.go('catalogue')"><span class="ic">📦</span>Catalogue</button>
+    <button id="tab-earnings"  onclick="Seller.go('earnings')"><span class="ic">₹</span>Earnings</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<div id="sheet-root"></div>
+<script src="seller.js"></script>
+</body>
+</html>
