@@ -1,7 +1,7 @@
 # WorkToGo Commerce — Build Handoff / Resume Note
 
 **Purpose:** single "resume here" doc so any session (post-compaction / fresh) can continue without re-deriving. **Updated:** 2026-10-08.
-**Status:** **S1–S11 done + CORE-COMPLETION in progress** (S12 done; 291 local tests PASS). Core-completion plan = [core-completion-plan.md](core-completion-plan.md) (S12 slab margin ✅ · S13 delivery absorb · S14 Customer-ID · S15–S16 seller API · S17 seller PWA → staging gate). Model locked: **no own stock, seller-based from day one**; Paint Unit deferred until core complete. Rider dispatch = **(A) accept-gates-dispatch** (decided, for S15).
+**Status:** **S1–S11 done + CORE-COMPLETION in progress** (S12 done; 291 local tests PASS). Core-completion plan = [core-completion-plan.md](core-completion-plan.md) (S12 slab margin ✅ · S13 delivery absorb ✅ · S14 Customer-ID · S15–S16 seller API · S17 seller PWA → staging gate). **331 local tests PASS.** Model locked: **no own stock, seller-based from day one**; Paint Unit deferred until core complete. Rider dispatch = **(A) accept-gates-dispatch** (decided, for S15).
 **Reads with:** [commerce-system-blueprint.md](commerce-system-blueprint.md) (design SoT) · [commerce-v1-build-spec.md](commerce-v1-build-spec.md) (step order) · CHANGELOG.
 
 ## Git / branch

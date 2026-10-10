@@ -42,6 +42,7 @@ require_once SYSTEM_ROOT . '/lib/commerce/CommerceEventBus.php';     // S4: even
 require_once SYSTEM_ROOT . '/lib/commerce/CommercePayment.php';      // S5: configurable payment methods (online primary + COD) over the gateway abstraction
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceDelivery.php';     // S6: delivery handoff contract (weight/vehicle/prepaid-COD) + OTP
 require_once SYSTEM_ROOT . '/lib/commerce/StorefrontComposer.php';   // S10: customer-app composer (seller-hidden / unit-UI / related)
+require_once SYSTEM_ROOT . '/lib/commerce/DeliveryPricing.php';      // S13: delivery absorb + no-flicker price + area rate cache
 
 // M5 (audit §4): per-user spam/brute guard. Reject with 429 when tripped.
 $shopRateLimit = function (string $action, int $max, int $windowSec) {
@@ -209,17 +210,26 @@ try {
         require_once SYSTEM_ROOT . '/core/delivery/DeliveryEngine.php';
         $cart = (new CartService($db))->get($uid);
         $subtotal = (float)($cart['subtotal'] ?? 0);
-        $pLat = null; $pLng = null; $cityId = (int)$shopCityId;
+        $pLat = null; $pLng = null; $cityId = (int)$shopCityId; $storeId = 0;
         if (!empty($cart['items'])) {
-            $s = $db->prepare("SELECT st.lat, st.lng, st.city_id FROM products p JOIN stores st ON st.id = p.store_id WHERE p.id = ? LIMIT 1");
+            $s = $db->prepare("SELECT st.id AS store_id, st.lat, st.lng, st.city_id FROM products p JOIN stores st ON st.id = p.store_id WHERE p.id = ? LIMIT 1");
             $s->execute([(int)$cart['items'][0]['product_id']]);
             if ($row = $s->fetch(PDO::FETCH_ASSOC)) {
                 $pLat = $row['lat'] !== null ? (float)$row['lat'] : null;
                 $pLng = $row['lng'] !== null ? (float)$row['lng'] : null;
                 $cityId = $row['city_id'] ? (int)$row['city_id'] : (int)$shopCityId;
+                $storeId = (int)$row['store_id'];
             }
         }
-        Response::success(DeliveryEngine::quoteServerSide($db, $pLat, $pLng, $cityId, $subtotal));
+        // S13: serve the fee from the area-rate cache (no-flicker speed); live-quote
+        // only on a miss / edge. Keyed by city+store+subtotal-band so free-above-
+        // threshold stays correct. DeliveryEngine is called, never edited.
+        $areaKey = "q:{$cityId}:{$storeId}:" . (int)floor($subtotal / 100);
+        $quote = DeliveryPricing::cachedAreaFee($db, $areaKey,
+            function () use ($db, $pLat, $pLng, $cityId, $subtotal) {
+                return DeliveryEngine::quoteServerSide($db, $pLat, $pLng, $cityId, $subtotal);
+            });
+        Response::success($quote);
         exit;
     }
 
