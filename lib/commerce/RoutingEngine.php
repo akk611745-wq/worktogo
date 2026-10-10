@@ -250,4 +250,62 @@ class RoutingEngine
         }
         return $n;
     }
+
+    // ── S15: seller-side close of the offer loop (accept / reject) ──────────────
+
+    /** Seconds since this sub-order was last OFFERED (for the acceptance signal). */
+    private static function offeredAgeSec(PDO $db, int $subOrderId): ?int
+    {
+        try {
+            $s = $db->prepare("SELECT TIMESTAMPDIFF(SECOND, MAX(created_at), NOW())
+                                 FROM commerce_routing_signals WHERE sub_order_id=? AND event='offered'");
+            $s->execute([$subOrderId]);
+            $v = $s->fetchColumn();
+            return ($v === false || $v === null) ? null : (int)$v;
+        } catch (\Throwable $e) { return null; }
+    }
+
+    /**
+     * Seller ACCEPTS an offered sub-order → it becomes accepted + the order is
+     * confirmed; logs the 'accepted' signal (with response time) + emits the event.
+     * Dispatch (rider) is NOT done here — it is gated to accept and performed by the
+     * caller (SellerConsole) so no rider is sent to a shop that rejects. Ownership +
+     * state are enforced (only the offered vendor, only while still offered).
+     */
+    public static function sellerAccept(PDO $db, int $subOrderId, int $vendorId): array
+    {
+        $so = $db->prepare("SELECT id, parent_order_id, store_id, vendor_id, delivery_status, subtotal FROM orders WHERE id=? LIMIT 1");
+        $so->execute([$subOrderId]);
+        $sub = $so->fetch(PDO::FETCH_ASSOC);
+        if (!$sub) return ['ok' => false, 'reason' => 'not_found'];
+        if ((int)$sub['vendor_id'] !== $vendorId) return ['ok' => false, 'reason' => 'not_yours'];
+        if ($sub['delivery_status'] !== 'offered') return ['ok' => false, 'reason' => 'not_offered', 'state' => $sub['delivery_status']];
+
+        $age = self::offeredAgeSec($db, $subOrderId);
+        $db->prepare("UPDATE orders SET delivery_status='accepted', status='confirmed', updated_at=NOW() WHERE id=?")->execute([$subOrderId]);
+        self::recordSignal($db, (int)$sub['parent_order_id'], $subOrderId, $sub['store_id'] !== null ? (int)$sub['store_id'] : null, $vendorId, 'accepted', $age);
+        CommerceEventBus::emit($db, 'order_accepted', ['order_id' => (int)($sub['parent_order_id'] ?? $subOrderId), 'sub_order_id' => $subOrderId, 'actor_type' => 'seller', 'actor_id' => $vendorId, 'to_state' => 'accepted']);
+        return ['ok' => true, 'parent_order_id' => $sub['parent_order_id'] !== null ? (int)$sub['parent_order_id'] : null, 'sub_order_id' => $subOrderId, 'subtotal' => (float)$sub['subtotal'], 'response_sec' => $age];
+    }
+
+    /**
+     * Seller REJECTS (or flags stock-out on) an offered sub-order → log the signal
+     * (event 'stockout' when out of stock, else 'rejected') + reroute to the next
+     * eligible seller (company fallback last; → needs_ops if none). Ownership + state
+     * enforced. $reason is recorded as signal meta.
+     */
+    public static function sellerReject(PDO $db, int $subOrderId, int $vendorId, string $reason = '', bool $stockOut = false): array
+    {
+        $so = $db->prepare("SELECT id, parent_order_id, store_id, vendor_id, delivery_status FROM orders WHERE id=? LIMIT 1");
+        $so->execute([$subOrderId]);
+        $sub = $so->fetch(PDO::FETCH_ASSOC);
+        if (!$sub) return ['ok' => false, 'reason' => 'not_found'];
+        if ((int)$sub['vendor_id'] !== $vendorId) return ['ok' => false, 'reason' => 'not_yours'];
+        if ($sub['delivery_status'] !== 'offered') return ['ok' => false, 'reason' => 'not_offered', 'state' => $sub['delivery_status']];
+
+        self::recordSignal($db, (int)$sub['parent_order_id'], $subOrderId, $sub['store_id'] !== null ? (int)$sub['store_id'] : null, $vendorId, $stockOut ? 'stockout' : 'rejected', null, ['reason' => mb_substr($reason, 0, 120)]);
+        CommerceEventBus::emit($db, $stockOut ? 'order_stockout' : 'order_rejected', ['order_id' => (int)($sub['parent_order_id'] ?? $subOrderId), 'sub_order_id' => $subOrderId, 'actor_type' => 'seller', 'actor_id' => $vendorId, 'payload' => ['reason' => $reason]]);
+        $reroute = self::rerouteOnFailure($db, $subOrderId);
+        return ['ok' => true, 'stock_out' => $stockOut, 'reroute' => $reroute];
+    }
 }

@@ -22,6 +22,7 @@ class AdminControlRoom
             'commerce_enabled', 'commerce_margin_policy', 'commerce_loss_proof_floor', 'commerce_loss_proof_enabled',
             'commerce_margin_slabs', 'commerce_margin_multiplier', // S12 slab margin + growth knob
             'commerce_delivery_absorb', 'commerce_delivery_rate_ttl_sec', // S13 delivery absorb + rate cache
+            'commerce_accept_gates_dispatch', // S15 rider dispatch gated to seller-accept
             'commerce_offer_timeout_sec', 'commerce_offer_max_retries', 'commerce_default_radius_km',
             'commerce_payment_methods', 'commerce_vehicle_thresholds',
             'commerce_delivery_accept_timeout_sec', 'commerce_delivery_max_reassign',

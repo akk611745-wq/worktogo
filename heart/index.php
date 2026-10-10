@@ -198,6 +198,13 @@ if (str_starts_with($uri, '/api/commerce-admin')) {
     exit;
 }
 
+// Commerce Seller API (S15): external shop — availability, order inbox, accept/
+// reject (accept-gates-dispatch), earnings, Customer-ID history. vendor_shopping-scoped.
+if (str_starts_with($uri, '/api/commerce-seller')) {
+    require_once HEART_ROOT . '/api/commerce-seller/index.php';
+    exit;
+}
+
 // Admin API
 if (str_starts_with($uri, '/api/admin')) {
     require_once HEART_ROOT . '/api/admin/index.php';

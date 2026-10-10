@@ -43,6 +43,7 @@ require_once SYSTEM_ROOT . '/lib/commerce/CommercePayment.php';      // S5: conf
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceDelivery.php';     // S6: delivery handoff contract (weight/vehicle/prepaid-COD) + OTP
 require_once SYSTEM_ROOT . '/lib/commerce/StorefrontComposer.php';   // S10: customer-app composer (seller-hidden / unit-UI / related)
 require_once SYSTEM_ROOT . '/lib/commerce/DeliveryPricing.php';      // S13: delivery absorb + no-flicker price + area rate cache
+require_once SYSTEM_ROOT . '/lib/commerce/SellerConsole.php';        // S15: seller backend (accept-gates-dispatch flag)
 
 // M5 (audit §4): per-user spam/brute guard. Reject with 429 when tripped.
 $shopRateLimit = function (string $action, int $max, int $windowSec) {
@@ -290,19 +291,23 @@ try {
         $order = new OrderService($db, $cart);
         try {
             $result = $order->create($uid, $b);                  // REUSE engine checkout
-            // Order placed → hand to the NATIVE delivery engine (create + price by
-            // distance + auto-assign the nearest rider). Non-fatal: a delivery
-            // hiccup never fails a placed order.
-            try {
-                require_once SYSTEM_ROOT . '/core/delivery/DeliveryEngine.php';
-                $dLat = isset($b['drop_lat']) && $b['drop_lat'] !== '' ? (float)$b['drop_lat'] : null;
-                $dLng = isset($b['drop_lng']) && $b['drop_lng'] !== '' ? (float)$b['drop_lng'] : null;
-                $result['delivery'] = DeliveryEngine::createForOrder($db, (int)$result['order_id'], $dLat, $dLng, (float)($result['subtotal'] ?? 0));
-                // S6: enrich the handoff contract (weight → vehicle, prepaid vs COD) + issue a
-                // delivery OTP the customer gives the rider at hand-over.
-                $result['delivery']['handoff'] = CommerceDelivery::enrichHandoff($db, (int)$result['order_id']);
-                $result['delivery']['otp'] = CommerceDelivery::issueOtp($db, (int)$result['order_id']);
-            } catch (\Throwable $de) { error_log('[shop/checkout] delivery handoff: ' . $de->getMessage()); }
+            // S15: (A) ACCEPT-GATES-DISPATCH — with external sellers the rider is
+            // dispatched only AFTER the seller accepts (SellerConsole), so no wasted
+            // trip to a shop that rejects. When the flag is ON (default) checkout only
+            // marks the sub-order OFFERED (below); when OFF, legacy dispatch-at-checkout
+            // runs here. Non-fatal either way: a delivery hiccup never fails the order.
+            if (!SellerConsole::acceptGatesDispatch($db)) {
+                try {
+                    require_once SYSTEM_ROOT . '/core/delivery/DeliveryEngine.php';
+                    $dLat = isset($b['drop_lat']) && $b['drop_lat'] !== '' ? (float)$b['drop_lat'] : null;
+                    $dLng = isset($b['drop_lng']) && $b['drop_lng'] !== '' ? (float)$b['drop_lng'] : null;
+                    $result['delivery'] = DeliveryEngine::createForOrder($db, (int)$result['order_id'], $dLat, $dLng, (float)($result['subtotal'] ?? 0));
+                    // S6: enrich the handoff contract (weight → vehicle, prepaid vs COD) + issue a
+                    // delivery OTP the customer gives the rider at hand-over.
+                    $result['delivery']['handoff'] = CommerceDelivery::enrichHandoff($db, (int)$result['order_id']);
+                    $result['delivery']['otp'] = CommerceDelivery::issueOtp($db, (int)$result['order_id']);
+                } catch (\Throwable $de) { error_log('[shop/checkout] delivery handoff: ' . $de->getMessage()); }
+            }
             // S3: mark sub-orders OFFERED + capture routing signals (deterministic
             // routing lifecycle; non-fatal — a routing hiccup never fails a placed order).
             try {
