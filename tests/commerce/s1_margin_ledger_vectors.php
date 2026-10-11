@@ -89,7 +89,7 @@ ok('loss-proof ok (margin40 >= exposure30)',    MarginEngine::lossProofOk(40,30,
 echo "\n== B. Settlement vectors ==\n";
 // Vector A — vendor, prepaid
 $vuA = mkUser($pdo,'S1 Vendor A','s1t-vA@wtg.test','vendor_shopping'); $vA = mkVendor($pdo,$vuA,'S1T Store A','s1t-store-a',10);
-$drA = mkUser($pdo,'S1 Driver A','s1t-drA@wtg.test','driver');
+$drA = mkUser($pdo,'S1 Driver A','s1t-drA@wtg.test','delivery');
 $pA = mkOrder($pdo,'S1T-A-P',$cust,null,null,240,200,30,'online');
 mkOrder($pdo,'S1T-A-S1',$cust,$pA,$vA,240,200,0,'online');
 mkDelivery($pdo,$pA,$drA,30,24,6);
@@ -100,7 +100,7 @@ ok('A rider credit', txSum($pdo,$pA,'driver'),24.00);
 ok('A driver cash (prepaid=0)', driverCash($pdo,$drA),0.00);
 
 // Vector B — company store, COD
-$drB = mkUser($pdo,'S1 Driver B','s1t-drB@wtg.test','driver');
+$drB = mkUser($pdo,'S1 Driver B','s1t-drB@wtg.test','delivery');
 $pB = mkOrder($pdo,'S1T-B-P',$cust,null,null,150,null,40,'cod');
 mkOrder($pdo,'S1T-B-S1',$cust,$pB,null,150,null,0,'cod'); // company sub: vendor_id NULL
 mkDelivery($pdo,$pB,$drB,40,32,8);
@@ -113,7 +113,7 @@ ok('B driver cash (COD owed)', driverCash($pdo,$drB),158.00);
 // Vector C — multi-vendor, prepaid
 $vuC1=mkUser($pdo,'S1 Vendor C1','s1t-vC1@wtg.test','vendor_shopping'); $vC1=mkVendor($pdo,$vuC1,'S1T Store C1','s1t-store-c1',10);
 $vuC2=mkUser($pdo,'S1 Vendor C2','s1t-vC2@wtg.test','vendor_shopping'); $vC2=mkVendor($pdo,$vuC2,'S1T Store C2','s1t-store-c2',10);
-$drC = mkUser($pdo,'S1 Driver C','s1t-drC@wtg.test','driver');
+$drC = mkUser($pdo,'S1 Driver C','s1t-drC@wtg.test','delivery');
 $pC = mkOrder($pdo,'S1T-C-P',$cust,null,null,185,150,30,'online');
 mkOrder($pdo,'S1T-C-S1',$cust,$pC,$vC1,120,100,0,'online');
 mkOrder($pdo,'S1T-C-S2',$cust,$pC,$vC2,65,50,0,'online');

@@ -52,7 +52,7 @@ function vbal(PDO $p,$vid,$c){ $s=$p->prepare("SELECT $c FROM vendor_wallets WHE
 function ocol(PDO $p,$oid,$c){ $s=$p->prepare("SELECT $c FROM orders WHERE id=?"); $s->execute([$oid]); return $s->fetchColumn(); }
 
 cleanup($pdo);
-$cust=mkUser($pdo,'s9t-c@wtg.test'); $ops=mkUser($pdo,'s9t-ops@wtg.test','admin'); $rider=mkUser($pdo,'s9t-rider@wtg.test','driver');
+$cust=mkUser($pdo,'s9t-c@wtg.test'); $ops=mkUser($pdo,'s9t-ops@wtg.test','admin'); $rider=mkUser($pdo,'s9t-rider@wtg.test','delivery');
 
 echo "\n== settlement: return-hold + payout record ==\n";
 $svu=mkUser($pdo,'s9t-sv@wtg.test','vendor_shopping'); $sv=mkVendor($pdo,$svu,'s9t-sv');

@@ -72,7 +72,7 @@ AdminControlRoom::resume($pdo,'zone',$cityId,$admin); ok('A4 zone resume → ok'
 AdminControlRoom::pause($pdo,'seller',$store,$admin,'s8t'); ok('A5 seller pause → seller_paused', reason($pdo,$prod,$cityId), 'seller_paused');
 ok('A5 store status suspended', (string)$pdo->query("SELECT status FROM stores WHERE id=$store")->fetchColumn(), 'suspended');
 AdminControlRoom::resume($pdo,'seller',$store,$admin); ok('A5 seller resume → ok', reason($pdo,$prod,$cityId), 'ok');
-$rider=mkUser($pdo,'s8t-rider@wtg.test','driver');
+$rider=mkUser($pdo,'s8t-rider@wtg.test','delivery');
 AdminControlRoom::pause($pdo,'rider',$rider,$admin,'s8t');
 ok('A6 rider pause → is_online 0', (string)$pdo->query("SELECT is_online FROM delivery_riders WHERE rider_id=$rider")->fetchColumn(), '0');
 AdminControlRoom::resume($pdo,'rider',$rider,$admin);

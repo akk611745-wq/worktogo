@@ -50,18 +50,24 @@ On 10.11 the migrations `005` + `009` apply **without any perl patch** → **B2 
 
 ---
 
-## II. ≥10.5 VERIFY SEQUENCE (I run these once you say "10.5 is up")
-```bash
-# B3 collation + whole engine on prod-parity collation:
-for t in tests/commerce/s*_vectors.php; do php "$t"; done      # expect 449 PASS, 0 FAIL, no "illegal mix of collations"
-php tests/commerce/verify_engine_e2e.php                        # 22/22; check the [4] step shows NO "SKIP LOCKED" line  (= B1)
-php tests/commerce/verify_scale_stress.php                      # bulk 50/500, routing, stock-gate, reroute
-```
-| Item | What confirms it | PASS criterion |
+## II. ≥10.5 LOCAL RUN — RESULTS (RAN 2026-10-11 on MariaDB **10.11.19**, port 3307) ✅
+Server installed + running; DB built; **449 regression PASS / 0 FAIL / 0 errored**, **e2e 22/22 (no SKIP LOCKED line)**, **stress 10/10**.
+
+| Item | Result | Detail |
 |---|---|---|
-| **B1** SKIP LOCKED / rider re-pick | e2e `[4]` + stress `[4]` on 10.11 | no `1064 … SKIP LOCKED` line; gated accept dispatches a rider; reroute re-picks |
-| **B2** COMMENT-after-CHECK migrations | `migrate.php` on raw files | 005 + 009 apply unpatched, migrate completes |
-| **B3** collation | 449 regression + e2e on `utf8mb4_unicode_ci` DB | all green, zero "illegal mix of collations" |
+| **B1** SKIP LOCKED / rider re-pick | ✅ **PASS** | the `[DeliveryEngine::assignNearest] … SKIP LOCKED` error that appears on 10.4 is **gone** on 10.11; gated accept dispatches; reroute 10/10. |
+| **B2** COMMENT-after-CHECK migrations | ⚠️ **NOT fixed by ≥10.5 — reclassified CRITICAL** | `2026_07_04_005` + `2026_07_04_009` put `COMMENT` **after** `CHECK(json_valid())`; **10.11 rejects it too** (it's malformed clause-order, not a version gap). Needs a 1-line-each migration fix (move COMMENT before CHECK). For this run I transiently stripped + `git`-reverted to prove the rest. |
+| **B3** collation | ⚠️ **runs clean only when standardized** | base schema = `unicode_ci`, commerce migrations default to `general_ci` (`DEFAULT CHARSET=utf8mb4`) → they clash on 10.11. Verified **449 green once the DB is one collation** (I standardized to `general_ci`). Prod needs a single documented collation standard (and ideally fixing the migration `CHARSET` clauses). |
+| **B4** fresh-DB seed | ✅ handled | `2026_06_14_001_seed_initial_services` still FK-fails on a fresh DB (vendor 11) → mark-skip, as documented. |
+| **STRICT mode** (new) | ✅ engine strict-safe | 10.11 runs `STRICT_TRANS_TABLES`; it caught invalid `role='driver'` (enum is `'delivery'`) in 5 **old test fixtures** (10.4 silently truncated) — fixed (test-only). The **engine** passed all 449/22/10 under strict, so product code is strict-safe. |
+
+**Re-run sequence (anytime):**
+```bash
+for t in tests/commerce/s*_vectors.php; do php "$t"; done   # 449 PASS, 0 FAIL
+php tests/commerce/verify_engine_e2e.php                     # 22/22, no SKIP LOCKED  (B1)
+php tests/commerce/verify_scale_stress.php                   # 10/10
+```
+> **Two required code fixes surfaced (deferred to CEO approval — not product/engine code):** (1) **B2** — fix the COMMENT/CHECK order in migrations `2026_07_04_005` + `_009` so a fresh DB migrates cleanly anywhere (incl. prod); (2) **B3** — standardize one collation across the schema (recommend `utf8mb4_unicode_ci`; drop the `DEFAULT CHARSET=utf8mb4` from commerce migration `CREATE TABLE`s so they inherit the DB default). Both are tiny + additive.
 
 ---
 
@@ -122,4 +128,4 @@ This is **additive** (new columns/tables + endpoints + admin review UI); no engi
 ## V. WHAT'S LEFT ONLY ON HOSTING (after all the above)
 - **B6** real Cashfree **sandbox ₹1** round-trip (needs creds) · **B7** ledger-namespace alias in the live bootstrap · **B8** advance/partial payment in sandbox · **B9** **~20 real orders founder-free on staging** with a real external seller — the DONE gate.
 
-**This turn's status:** setup guide ready (yours to run) · KYC gap audited (S18 scoped) · scale/stress harness ready + 10.4 preview PASS + F1 finding raised. ≥10.5 verify (B1/B2/B3) runs the moment your new server is up.
+**Status (2026-10-11):** MariaDB **10.11.19** installed + system runs on it (port 3307). **≥10.5 verification DONE:** B1 ✅ (SKIP LOCKED gone) · B3 ✅ once single-collation · B4 ✅ (seed skip) · STRICT-mode engine-safe ✅ · **B2 ⚠️ reclassified CRITICAL** (COMMENT-after-CHECK not a version gap — needs a migration fix) · regression **449/0**, e2e **22/0**, stress **10/10** on 10.11. KYC gap audited (S18) · F1 routing-not-price-aware raised. **Two tiny deferred fixes surfaced (B2 + B3) — awaiting CEO go.** Left for hosting: Cashfree ₹1 (B6), ledger shim (B7), advance (B8), ~20 founder-free orders (B9).

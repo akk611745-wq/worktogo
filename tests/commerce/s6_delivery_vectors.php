@@ -73,7 +73,7 @@ ok('D1b light → bike (5kg)', $h2['required_vehicle'], 'bike');
 ok('D1b prepaid=1, cod=0', $h2['is_prepaid'].'/'.$h2['cod_amount'], '1/0');
 
 echo "\n== pickup proof + delivery OTP ==\n";
-$riderA=mkUser($pdo,'s6t-rA@wtg.test','driver'); mkRider($pdo,$riderA,$cityId,29.211,79.511);
+$riderA=mkUser($pdo,'s6t-rA@wtg.test','delivery'); mkRider($pdo,$riderA,$cityId,29.211,79.511);
 $oP=mkOrder($pdo,'S6T-OTP-P',$cu,null,null,$cityId,500,'cod'); $oS=mkOrder($pdo,'S6T-OTP-S',$cu,$oP,$vend,$cityId,500,'cod',400);
 $dO=mkDelivery($pdo,$oP,$riderA,'assigned',$cityId);
 $pk=CommerceDelivery::pickup($pdo,$dO,$riderA,'photo:pickup.jpg');
@@ -93,7 +93,7 @@ echo "\n== auto-reassign on accept-timeout (detect + free + attempt) ==\n";
 // which uses `FOR UPDATE SKIP LOCKED` — MariaDB >= 10.5 only (S-b finding #1). On this local
 // 10.4 the re-pick can't execute, so here we prove the detect/free/attempt orchestration;
 // the A->B hop is a staging (>=10.5) verification.
-$riderB=mkUser($pdo,'s6t-rB@wtg.test','driver'); mkRider($pdo,$riderB,$cityId,29.212,79.512);
+$riderB=mkUser($pdo,'s6t-rB@wtg.test','delivery'); mkRider($pdo,$riderB,$cityId,29.212,79.512);
 $rP=mkOrder($pdo,'S6T-RA-P',$cu,null,null,$cityId,300,'cod');
 $dR=mkDelivery($pdo,$rP,$riderA,'assigned',$cityId);
 $pdo->prepare("UPDATE deliveries SET assigned_at = NOW() - INTERVAL 10 MINUTE, accepted_at = NULL WHERE id=?")->execute([$dR]);

@@ -91,7 +91,7 @@ ok('T7 reserved released to 0', (string)$pdo->query("SELECT reserved FROM invent
 ok('T7 cancelled event', evCount($pdo,$co,'cancelled'), 1);
 
 echo "\n== override: reassign rider (detach on 10.4; re-pick ≥10.5) ==\n";
-$rA=mkUser($pdo,'s7t-rA@wtg.test','driver'); mkRider($pdo,$rA,$cityId,29.211,79.511);
+$rA=mkUser($pdo,'s7t-rA@wtg.test','delivery'); mkRider($pdo,$rA,$cityId,29.211,79.511);
 $ro=mkOrder($pdo,'S7T-RA',$cust,null,null,null,$cityId,300,'confirmed'); mkDelivery($pdo,$ro,$rA,$cityId);
 $rr=OpsConsole::reassignRider($pdo,$ro,null);
 ok('T6 reassign invoked (freed/attempted)', (int)$pdo->query("SELECT COALESCE(driver_id,0) FROM deliveries WHERE order_id=$ro")->fetchColumn() !== $rA, true);
