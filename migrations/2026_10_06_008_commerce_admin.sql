@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS `commerce_config_audit` (
   PRIMARY KEY (`id`),
   KEY `idx_cca_created` (`created_at`),
   KEY `idx_cca_key` (`setting_key`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB;
 
 INSERT IGNORE INTO `app_settings` (`setting_key`, `setting_value`, `value_type`, `label`, `is_public`) VALUES
   ('commerce_paused', '{"categories":[],"cities":[],"stores":[]}', 'json',

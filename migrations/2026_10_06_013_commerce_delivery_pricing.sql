@@ -34,4 +34,4 @@ CREATE TABLE IF NOT EXISTS `commerce_delivery_rate_cache` (
   `cached_at`  datetime      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`area_key`),
   KEY `idx_cdrc_cached` (`cached_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB;

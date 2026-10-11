@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS `commerce_routing_signals` (
   KEY `idx_crs_sub` (`sub_order_id`),
   KEY `idx_crs_store_event` (`store_id`, `event`),
   KEY `idx_crs_event_created` (`event`, `created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB;
 
 INSERT IGNORE INTO `app_settings` (`setting_key`, `setting_value`, `value_type`, `label`, `is_public`) VALUES
   ('commerce_offer_timeout_sec', '120', 'number', 'Seconds a seller has to accept before auto-reroute',        0),

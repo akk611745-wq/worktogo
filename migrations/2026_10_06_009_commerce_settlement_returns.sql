@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS `commerce_payouts` (
   PRIMARY KEY (`id`),
   KEY `idx_cp_payee` (`payee_type`, `payee_id`, `status`),
   KEY `idx_cp_created` (`created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS `commerce_returns` (
   `id`                 bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS `commerce_returns` (
   PRIMARY KEY (`id`),
   KEY `idx_cr_order` (`order_id`),
   KEY `idx_cr_status` (`status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB;
 
 INSERT IGNORE INTO `app_settings` (`setting_key`, `setting_value`, `value_type`, `label`, `is_public`) VALUES
   ('commerce_return_window_hours', '48', 'number', 'Hours after delivery a return may be requested (0 = none)', 0),

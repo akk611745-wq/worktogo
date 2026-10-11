@@ -7,5 +7,8 @@ return [
     'username' => getenv('DB_USER') ?: $_ENV['DB_USER'] ?? '',
     'password' => getenv('DB_PASS') ?: $_ENV['DB_PASS'] ?? '',
     'charset'  => 'utf8mb4',
+    // B3: pin ONE collation standard so connection + literals + new tables are consistent
+    // (utf8mb4 defaults to general_ci otherwise → "illegal mix of collations" clashes).
+    'collation' => 'utf8mb4_unicode_ci',
     'timezone' => getenv('DB_TIMEZONE') ?: $_ENV['DB_TIMEZONE'] ?? '+05:30',
 ];

@@ -40,6 +40,9 @@ try {
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
     ]);
+    // B3: pin the connection to the one collation standard so migrations + literals
+    // never clash with the unicode_ci schema.
+    $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
 
     // 4. Create migrations_log table if not exists
     $pdo->exec("
@@ -47,7 +50,7 @@ try {
             id INT AUTO_INCREMENT PRIMARY KEY,
             migration_file VARCHAR(255) NOT NULL UNIQUE,
             applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ) ENGINE=InnoDB;
     ");
 
     // 5. Get already applied migrations

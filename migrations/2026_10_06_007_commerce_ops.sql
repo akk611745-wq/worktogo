@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS `commerce_messages` (
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `idx_cm_order` (`order_id`, `created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB;
 
 INSERT IGNORE INTO `app_settings` (`setting_key`, `setting_value`, `value_type`, `label`, `is_public`) VALUES
   ('commerce_ticket_sla_sec', '900', 'number', 'Exception-ticket SLA seconds (breached when older and unresolved)', 0);

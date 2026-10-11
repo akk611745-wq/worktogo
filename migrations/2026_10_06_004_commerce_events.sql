@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS `commerce_events` (
   PRIMARY KEY (`id`),
   KEY `idx_ce_order` (`order_id`, `created_at`),
   KEY `idx_ce_type` (`event_type`, `created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS `commerce_order_flags` (
   `id`         bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS `commerce_order_flags` (
   PRIMARY KEY (`id`),
   KEY `idx_cof_order_active` (`order_id`, `active`),
   KEY `idx_cof_flag_active` (`flag`, `active`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB;
 
 INSERT IGNORE INTO `app_settings` (`setting_key`, `setting_value`, `value_type`, `label`, `is_public`) VALUES
   ('commerce_high_value_threshold', '5000', 'number', 'Order total at/above which it is flagged for human approval (0 = off)', 0);

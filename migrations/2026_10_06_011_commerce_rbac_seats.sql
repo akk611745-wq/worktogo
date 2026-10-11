@@ -104,4 +104,4 @@ CREATE TABLE IF NOT EXISTS `commerce_admin_audit` (
   KEY `idx_caa_actor` (`actor_user_id`),
   KEY `idx_caa_action` (`action`),
   KEY `idx_caa_created` (`created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB;

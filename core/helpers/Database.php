@@ -23,7 +23,13 @@ class Database
 
             try {
                 self::$instance = new PDO($dsn, $config['username'], $config['password'], $options);
-                
+
+                // B3: pin the connection collation to the one standard so string
+                // literals and new tables never clash with the schema (utf8mb4 alone
+                // yields a general_ci connection → "illegal mix of collations").
+                $coll = $config['collation'] ?? 'utf8mb4_unicode_ci';
+                self::$instance->exec("SET NAMES {$config['charset']} COLLATE {$coll}");
+
                 // Set timezone if provided
                 $tz = getenv('DB_TIMEZONE') ?: '+00:00';
                 self::$instance->exec("SET time_zone = '{$tz}'");

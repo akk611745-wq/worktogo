@@ -24,4 +24,4 @@ CREATE TABLE IF NOT EXISTS `commerce_customer_ids` (
   `created_at`  datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`user_id`),
   UNIQUE KEY `uniq_customer_ref` (`customer_ref`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB;
