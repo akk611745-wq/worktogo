@@ -24,6 +24,7 @@ class AdminControlRoom
             'commerce_delivery_absorb', 'commerce_delivery_rate_ttl_sec', // S13 delivery absorb + rate cache
             'commerce_accept_gates_dispatch', // S15 rider dispatch gated to seller-accept
             'commerce_routing_source_preference', // F1 routing: nearest|cheapest|reliable
+            'commerce_unit_config', // Paint P1 unit hook: per-unit enable + custom_tint_enabled + category map
             'commerce_offer_timeout_sec', 'commerce_offer_max_retries', 'commerce_default_radius_km',
             'commerce_payment_methods', 'commerce_vehicle_thresholds',
             'commerce_delivery_accept_timeout_sec', 'commerce_delivery_max_reassign',

@@ -17,6 +17,8 @@
 //  shopping engine. All thresholds/switches are configurable (DB), never hardcoded.
 // ─────────────────────────────────────────────────────────────────────────────
 
+require_once __DIR__ . '/UnitConfig.php'; // layer-4 unit-rule hook (P1)
+
 class OrderabilityResolver
 {
     /** Global kill-switch (app_settings.commerce_enabled). Absent/unreadable ⇒ enabled. */
@@ -69,7 +71,7 @@ class OrderabilityResolver
             return ['orderable' => false, 'reason' => 'commerce_paused', 'layer' => 0];
         }
 
-        $sql = "SELECT p.id, p.category_id AS p_cat,
+        $sql = "SELECT p.id, p.category_id AS p_cat, p.attributes AS p_attrs,
                        p.status  AS p_status, p.deleted_at AS p_deleted,
                        s.id      AS store_id, s.status AS s_status, s.deleted_at AS s_deleted,
                        s.city_id AS s_city,   s.ownership,
@@ -115,7 +117,13 @@ class OrderabilityResolver
         if ($available <= 0 && (int)$r['allow_backorder'] !== 1)
                                                                 return ['orderable' => false, 'reason' => 'out_of_stock',    'layer' => 3];
 
-        // Layer 4 — unit rule (unit_config hook; passes until §M is built)
+        // Layer 4 — unit rule (unit_config hook, P1). Default-safe: non-unit
+        // products and unconfigured DBs pass. Paint: a unit switched off, or a
+        // custom-tint row while custom tint is disabled, is not orderable.
+        $attrs = [];
+        if (!empty($r['p_attrs'])) { $j = json_decode((string)$r['p_attrs'], true); if (is_array($j)) $attrs = $j; }
+        $rule = UnitConfig::orderabilityRule($db, $r['p_cat'] !== null ? (int)$r['p_cat'] : null, $attrs);
+        if (empty($rule['ok'])) return ['orderable' => false, 'reason' => $rule['reason'], 'layer' => 4];
         return ['orderable' => true, 'reason' => 'ok', 'layer' => 4];
     }
 
@@ -128,8 +136,10 @@ class OrderabilityResolver
             case 'out_of_stock':    return 'This item is out of stock.';
             case 'seller_off':
             case 'seller_busy':
-            case 'store_inactive':  return 'This item isn’t available right now.';
-            default:                return 'This item isn’t available.';
+            case 'store_inactive':
+            case 'unit_unavailable': return 'This item isn’t available right now.';
+            case 'custom_tint_off':  return 'Custom-tinted shades aren’t available yet — ready shades only for now.';
+            default:                 return 'This item isn’t available.';
         }
     }
 }
