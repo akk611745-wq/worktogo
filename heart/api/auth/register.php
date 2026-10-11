@@ -17,7 +17,7 @@ $v = Validator::make($input, [
     'phone'    => 'required|phone',
     'email'    => 'nullable|email|max:191',
     'password' => 'required|min:8|max:128',
-    'role'     => 'nullable|in:customer,vendor_service,vendor_shopping',
+    'role'     => 'nullable|in:customer,vendor_service,vendor_shopping,delivery',
     'business_name' => 'required_if:role,vendor_service,vendor_shopping|string|max:200',
 ]);
 

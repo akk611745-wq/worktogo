@@ -205,6 +205,12 @@ if (str_starts_with($uri, '/api/commerce-seller')) {
     exit;
 }
 
+// Commerce Rider API (S18): rider onboarding/KYC (self-register + submit→review). delivery-scoped.
+if (str_starts_with($uri, '/api/commerce-rider')) {
+    require_once HEART_ROOT . '/api/commerce-rider/index.php';
+    exit;
+}
+
 // Admin API
 if (str_starts_with($uri, '/api/admin')) {
     require_once HEART_ROOT . '/api/admin/index.php';

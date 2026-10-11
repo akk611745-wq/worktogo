@@ -20,6 +20,7 @@
 
 require_once SYSTEM_ROOT . '/lib/commerce/SellerConsole.php';
 require_once SYSTEM_ROOT . '/lib/commerce/SellerCatalogue.php';
+require_once SYSTEM_ROOT . '/lib/commerce/KycService.php';
 
 $auth = AuthMiddleware::requireRole(ROLE_VENDOR_SHOPPING, ROLE_ADMIN);
 $sellerVendorId = SellerConsole::resolveVendorId($db, (int)($auth['user_id'] ?? 0));
@@ -59,6 +60,21 @@ try {
         if (empty($res['ok'])) { Response::error('Could not flag stock-out: ' . ($res['reason'] ?? 'error'), 422); exit; }
         Response::success($res); exit;
     }
+    // ── KYC (S18): the seller's own onboarding application ──────────────────────
+    if ($method === 'GET' && $uri === '/api/commerce-seller/kyc') {
+        Response::success(['kyc' => KycService::sellerGet($db, $sellerVendorId)]); exit;
+    }
+    if ($method === 'POST' && $uri === '/api/commerce-seller/kyc') {
+        $res = KycService::sellerUpsert($db, $sellerVendorId, $B);
+        if (empty($res['ok'])) { Response::error('Cannot edit: ' . ($res['reason'] ?? 'error'), 422); exit; }
+        Response::success($res); exit;
+    }
+    if ($method === 'POST' && $uri === '/api/commerce-seller/kyc/submit') {
+        $res = KycService::sellerSubmit($db, $sellerVendorId);
+        if (empty($res['ok'])) { Response::error('Cannot submit (' . ($res['reason'] ?? 'error') . '): ' . implode(', ', $res['missing'] ?? []), 422); exit; }
+        Response::success($res); exit;
+    }
+
     // ── catalogue (S16): list / add offer / edit offer / restock ────────────────
     if ($method === 'GET' && $uri === '/api/commerce-seller/catalogue') {
         Response::success(['offers' => SellerCatalogue::listMine($db, $sellerVendorId)]); exit;

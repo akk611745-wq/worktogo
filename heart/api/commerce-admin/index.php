@@ -26,6 +26,7 @@ require_once SYSTEM_ROOT . '/lib/commerce/AdminControlRoom.php';
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceSettlement.php';
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceReturns.php';
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceAdminAudit.php';
+require_once SYSTEM_ROOT . '/lib/commerce/KycService.php';
 
 $B   = json_decode(file_get_contents('php://input'), true);
 if (!is_array($B)) $B = [];
@@ -213,6 +214,28 @@ try {
         $ok = isset($out['ok']) ? !empty($out['ok']) : !empty($out['done']);
         $audit($auth, 'commerce.returns.manage', 'returns.' . $act, ['target_type' => 'return', 'target_id' => $rid, 'outcome' => $ok ? 'ok' : 'error']);
         Response::success($out); exit;
+    }
+
+    // ────────────────────────── KYC REVIEW (S18) ───────────────────────────
+    if ($method === 'GET' && $uri === '/api/commerce-admin/kyc/pending') {
+        $gate('commerce.kyc.review');
+        Response::success(KycService::pending($db)); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-admin/kyc/seller/(\d+)/review$#', $uri, $m)) {
+        $auth = $gate('commerce.kyc.review'); $uid = (int)$auth['user_id'];
+        $approve = !empty($B['approve']); $note = $ps('note');
+        $res = KycService::sellerReview($db, (int)$m[1], $approve, $note !== '' ? $note : null, $uid);
+        $audit($auth, 'commerce.kyc.review', 'kyc.seller.' . ($approve ? 'approve' : 'reject'), ['target_type' => 'vendor', 'target_id' => (int)$m[1], 'summary' => ['note' => $note], 'outcome' => !empty($res['ok']) ? 'ok' : 'error']);
+        if (empty($res['ok'])) { Response::error($res['reason'] ?? 'error', 422); exit; }
+        Response::success($res); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-admin/kyc/rider/(\d+)/review$#', $uri, $m)) {
+        $auth = $gate('commerce.kyc.review'); $uid = (int)$auth['user_id'];
+        $approve = !empty($B['approve']); $note = $ps('note'); $cityId = isset($B['city_id']) ? (int)$B['city_id'] : null;
+        $res = KycService::riderReview($db, (int)$m[1], $approve, $note !== '' ? $note : null, $uid, $cityId);
+        $audit($auth, 'commerce.kyc.review', 'kyc.rider.' . ($approve ? 'approve' : 'reject'), ['target_type' => 'rider_user', 'target_id' => (int)$m[1], 'summary' => ['note' => $note], 'outcome' => !empty($res['ok']) ? 'ok' : 'error']);
+        if (empty($res['ok'])) { Response::error($res['reason'] ?? 'error', 422); exit; }
+        Response::success($res); exit;
     }
 
 } catch (\Throwable $e) {
