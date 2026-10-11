@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS `packages` (
   `city_id`        bigint(20) UNSIGNED DEFAULT NULL COMMENT 'NULL = global; set to scope to one city',
   `name`           varchar(100) NOT NULL COMMENT 'free text — Standard/Premium/Luxury or anything',
   `description`    varchar(500) DEFAULT NULL,
-  `features`       longtext DEFAULT NULL CHECK (json_valid(`features`)) COMMENT 'JSON array of feature strings',
+  `features`       longtext DEFAULT NULL COMMENT 'JSON array of feature strings' CHECK (json_valid(`features`)),
   `rate_per_sqft`  decimal(10,2) DEFAULT NULL COMMENT 'for live sqft estimate (nullable)',
   `base_price`     decimal(12,2) DEFAULT NULL COMMENT 'optional flat price for non-sqft packages',
   `min_sqft`       int(10) UNSIGNED DEFAULT NULL COMMENT 'optional minimum billable area for the estimate',

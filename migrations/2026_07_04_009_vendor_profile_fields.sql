@@ -44,8 +44,8 @@
 -- ── 1. Languages the vendor speaks (JSON array; e.g. ["hi","en"]) ───────────
 ALTER TABLE `vendors`
   ADD COLUMN IF NOT EXISTS `languages` longtext NULL DEFAULT NULL
-    CHECK (json_valid(`languages`))
-    COMMENT 'JSON array of language codes the vendor speaks';
+    COMMENT 'JSON array of language codes the vendor speaks'
+    CHECK (json_valid(`languages`));
 
 -- ── 2. Structured, city-scoped service areas (1:many, indexed for matching) ──
 CREATE TABLE IF NOT EXISTS `vendor_service_areas` (
