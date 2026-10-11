@@ -26,21 +26,13 @@ if ($method === 'GET' && $uri === '/api/coverage/guide') {
 if ($method === 'POST' && $uri === '/api/coverage/estimate') {
     $in = json_decode(file_get_contents('php://input'), true) ?? [];
 
-    // Optional: pull coverage/pack attributes straight from a catalogue product.
+    // product_id → read the product's paint coverage/pack attributes (shared
+    // path with the tests, so the estimate never drifts); else estimate raw.
     if (!empty($in['product_id'])) {
-        try {
-            $s = $db->prepare("SELECT attributes FROM products WHERE id=? LIMIT 1");
-            $s->execute([(int)$in['product_id']]);
-            $a = $s->fetchColumn();
-            $attrs = $a ? (json_decode((string)$a, true) ?: []) : [];
-            if (isset($attrs['coverage_value']) && !isset($in['coverage_per_l'])) $in['coverage_per_l'] = (float)$attrs['coverage_value'];
-            if (isset($attrs['coverage_basis_coats']) && !isset($in['basis_coats'])) $in['basis_coats'] = (int)$attrs['coverage_basis_coats'];
-            if (isset($attrs['recommended_coats']) && !isset($in['recommended_coats'])) $in['recommended_coats'] = (int)$attrs['recommended_coats'];
-            if (isset($attrs['pack_size']) && empty($in['pack_sizes'])) $in['pack_sizes'] = [(float)$attrs['pack_size']];
-        } catch (\Throwable $e) { error_log('[api/coverage] product read: ' . $e->getMessage()); }
+        $est = CoverageCalculator::estimateForProduct($db, (int)$in['product_id'], $in);
+    } else {
+        $est = CoverageCalculator::estimate($in, $db);
     }
-
-    $est = CoverageCalculator::estimate($in, $db);
     Response::success($est, 200, 'Estimated');
     exit;
 }

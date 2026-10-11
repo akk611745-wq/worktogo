@@ -142,6 +142,28 @@ class CoverageCalculator
         ];
     }
 
+    /**
+     * Estimate for a catalogue product: read its paint coverage/pack attributes
+     * and estimate. $extra supplies the area (net_area_sqft / area_value / room
+     * dims) and may override any field. ONE shared path for the adapter + tests
+     * so the number never drifts.
+     */
+    public static function estimateForProduct(PDO $db, int $productId, array $extra = []): array
+    {
+        $in = $extra;
+        try {
+            $s = $db->prepare("SELECT attributes FROM products WHERE id=? LIMIT 1");
+            $s->execute([$productId]);
+            $a = $s->fetchColumn();
+            $attrs = $a ? (json_decode((string)$a, true) ?: []) : [];
+            if (isset($attrs['coverage_value'])      && !isset($in['coverage_per_l']))     $in['coverage_per_l'] = (float)$attrs['coverage_value'];
+            if (isset($attrs['coverage_basis_coats']) && !isset($in['basis_coats']))        $in['basis_coats'] = (int)$attrs['coverage_basis_coats'];
+            if (isset($attrs['recommended_coats'])   && !isset($in['recommended_coats']))   $in['recommended_coats'] = (int)$attrs['recommended_coats'];
+            if (isset($attrs['pack_size'])           && empty($in['pack_sizes']))           $in['pack_sizes'] = [(float)$attrs['pack_size']];
+        } catch (\Throwable $e) { error_log('[CoverageCalculator] product read: ' . $e->getMessage()); }
+        return self::estimate($in, $db);
+    }
+
     /** Prep + situation guide (D.3 / F.3). Advisory content, labelled. */
     public static function guide(): array
     {
