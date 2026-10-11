@@ -7,7 +7,7 @@
   "use strict";
   var TOKEN_KEY = (window.CONFIG && window.CONFIG.TOKEN_KEY) || "wtg_token";
   var BASE = (window.CONFIG && window.CONFIG.BASE_URL) || "";
-  var state = { tab: "orders", avail: "offline", timer: null };
+  var state = { tab: "orders", avail: "offline", timer: null, kyc: {} };
 
   function token() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (e) { return ""; } }
   function el(id) { return document.getElementById(id); }
@@ -70,10 +70,73 @@
   /* ── tabs ──────────────────────────────────────────────────────────────── */
   function go(tab) {
     state.tab = tab;
-    ["orders", "catalogue", "earnings"].forEach(function (t) { var b = el("tab-" + t); if (b) b.classList.toggle("on", t === tab); });
+    ["orders", "catalogue", "earnings", "kyc"].forEach(function (t) { var b = el("tab-" + t); if (b) b.classList.toggle("on", t === tab); });
     if (tab === "orders") renderOrders();
     else if (tab === "catalogue") renderCatalogue();
     else if (tab === "earnings") renderEarnings();
+    else if (tab === "kyc") renderKyc();
+  }
+
+  /* ── KYC (S18): the seller's own onboarding application ────────────────────── */
+  async function uploadDoc(inputId, field, btnId) {
+    var inp = el(inputId); if (!inp || !inp.files || !inp.files[0]) { toast("Choose a file first"); return; }
+    var fd = new FormData(); fd.append("file", inp.files[0]); fd.append("purpose", "kyc");
+    var btn = el(btnId); if (btn) { btn.disabled = true; btn.textContent = "Uploading…"; }
+    var res;
+    try {
+      res = await fetch(BASE + "/api/media/upload", { method: "POST", headers: token() ? { Authorization: "Bearer " + token() } : {}, body: fd });
+    } catch (e) { toast("Offline"); if (btn) { btn.disabled = false; btn.textContent = "Upload"; } return; }
+    var j = {}; try { j = await res.json(); } catch (e) {}
+    if (!res.ok || j.success === false) { toast((j.message || j.error || "Upload failed")); if (btn) { btn.disabled = false; btn.textContent = "Upload"; } return; }
+    state.kyc[field] = (j.data && j.data.media_id) || j.media_id;
+    if (btn) { btn.disabled = false; btn.textContent = "Uploaded ✓"; btn.classList.add("btn-primary"); }
+    toast("Uploaded");
+  }
+  async function renderKyc() {
+    el("app").innerHTML = '<div class="spin"></div>';
+    var r = await API("GET", "/kyc");
+    var k = (r.ok && r.data && r.data.kyc) || {};
+    state.kyc = { shop_photo_media_id: k.shop_photo_media_id, id_proof_media_id: k.id_proof_media_id, address_proof_media_id: k.address_proof_media_id };
+    var st = k.status || "draft";
+    var badge = '<span class="pill ' + (st === "approved" ? "active" : st === "submitted" ? "draft" : "") + '">' + esc(st) + '</span>';
+    var locked = (st === "submitted" || st === "approved");
+    var fld = function (id, label, val, extra) { return '<label>' + esc(label) + '</label><input id="' + id + '" value="' + esc(val || "") + '" ' + (locked ? "disabled" : "") + ' ' + (extra || "") + '>'; };
+    var doc = function (id, label, has) { return '<label>' + esc(label) + (has ? ' ✓' : '') + '</label><div class="ord-actions" style="margin-bottom:10px"><input type="file" id="f-' + id + '" accept="image/*,application/pdf" style="margin:0" ' + (locked ? "disabled" : "") + '><button class="btn btn-ghost" id="b-' + id + '" onclick="Seller.uploadDoc(\'f-' + id + '\',\'' + id + '\',\'b-' + id + '\')" ' + (locked ? "disabled" : "") + '>Upload</button></div>'; };
+    el("app").innerHTML =
+      '<div class="card"><div class="top" style="display:flex;justify-content:space-between"><div class="nm">Shop KYC</div>' + badge + '</div>' +
+      '<p class="muted">Fill this so WorkToGo can verify your shop and pay you. ' + (st === "rejected" && k.review_note ? 'Rejected: ' + esc(k.review_note) : '') + '</p>' +
+      fld("k-owner_name", "Owner name", k.owner_name) +
+      fld("k-shop_address", "Shop address", k.shop_address) +
+      fld("k-pincode", "Pincode", k.pincode, 'inputmode="numeric"') +
+      fld("k-gst_number", "GST no. (or leave blank)", k.gst_number) +
+      fld("k-enrolment_no", "Enrolment no. (if no GST)", k.enrolment_no) +
+      fld("k-pan", "PAN", k.pan) +
+      '<div class="muted" style="margin:6px 0">Payout (bank OR UPI):</div>' +
+      fld("k-bank_account_name", "Account holder", k.bank_account_name) +
+      fld("k-bank_account_number", "Account number", k.bank_account_number, 'inputmode="numeric"') +
+      fld("k-bank_ifsc", "IFSC", k.bank_ifsc) +
+      fld("k-upi_id", "UPI id", k.upi_id) +
+      fld("k-operating_hours", "Operating hours", k.operating_hours) +
+      fld("k-service_area", "Service area", k.service_area) +
+      doc("shop_photo_media_id", "Shop photo", k.shop_photo_media_id) +
+      doc("id_proof_media_id", "ID proof", k.id_proof_media_id) +
+      doc("address_proof_media_id", "Address proof", k.address_proof_media_id) +
+      (locked ? '<p class="muted">' + (st === "approved" ? "Approved ✓ — you're live." : "Submitted — under review.") + '</p>'
+              : '<button class="btn btn-ghost btn-block" onclick="Seller.saveKyc()">Save draft</button>' +
+                '<div style="height:8px"></div><button class="btn btn-primary btn-block" onclick="Seller.submitKyc()">Submit for verification</button>') +
+      '</div>';
+  }
+  function kycFields() {
+    var o = {}; ["owner_name","shop_address","pincode","gst_number","enrolment_no","pan","bank_account_name","bank_account_number","bank_ifsc","upi_id","operating_hours","service_area"].forEach(function (f) { var e2 = el("k-" + f); if (e2) o[f] = e2.value.trim(); });
+    ["shop_photo_media_id","id_proof_media_id","address_proof_media_id"].forEach(function (f) { if (state.kyc[f]) o[f] = state.kyc[f]; });
+    return o;
+  }
+  async function saveKyc() { var r = await API("POST", "/kyc", kycFields()); toast(r.ok ? "Saved" : r.error); }
+  async function submitKyc() {
+    await API("POST", "/kyc", kycFields());
+    var r = await API("POST", "/kyc/submit");
+    if (!r.ok) { toast(r.error || "Incomplete"); return; }
+    toast("Submitted for verification ✓"); renderKyc();
   }
 
   /* ── orders inbox (accept / reject / stock-out) ────────────────────────── */
@@ -168,6 +231,6 @@
   }
   function logout() { try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} renderLogin(); }
 
-  window.Seller = { boot: boot, go: go, setAvail: setAvail, accept: accept, reject: reject, stockOut: stockOut, addOffer: addOffer, restock: restock, history: history, closeSheet: closeSheet, logout: logout };
+  window.Seller = { boot: boot, go: go, setAvail: setAvail, accept: accept, reject: reject, stockOut: stockOut, addOffer: addOffer, restock: restock, history: history, closeSheet: closeSheet, logout: logout, uploadDoc: uploadDoc, saveKyc: saveKyc, submitKyc: submitKyc };
   if (document.readyState !== "loading") boot(); else document.addEventListener("DOMContentLoaded", boot);
 })();

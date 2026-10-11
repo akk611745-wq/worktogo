@@ -211,6 +211,12 @@ if (str_starts_with($uri, '/api/commerce-rider')) {
     exit;
 }
 
+// Media upload (S18/Step5): KYC document uploads → media row. Any authed user.
+if (str_starts_with($uri, '/api/media')) {
+    require_once HEART_ROOT . '/api/media/index.php';
+    exit;
+}
+
 // Admin API
 if (str_starts_with($uri, '/api/admin')) {
     require_once HEART_ROOT . '/api/admin/index.php';

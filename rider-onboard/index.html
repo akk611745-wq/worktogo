@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WorkToGo Rider — Join</title>
+<link rel="icon" href="/app/assets/favicon.png"/>
+<meta name="theme-color" content="#12b886"/>
+<style>
+:root{--bg:#0f1720;--surface:#17222e;--line:#243343;--ink:#eaf2f8;--muted:#8fa3b5;--brand:#12b886;--danger:#e5484d;}
+*{box-sizing:border-box;} html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+.wrap{max-width:520px;margin:0 auto;min-height:100vh;padding:16px;}
+.brand{font-weight:800;font-size:18px;margin:6px 0 14px;} .brand span{color:var(--brand);}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px;}
+.step{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px;}
+label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:8px 0 5px;}
+input{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:12px;color:var(--ink);font-size:15px;outline:none;}
+input:focus{border-color:var(--brand);}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;border-radius:12px;padding:12px 16px;font-size:14px;font-weight:800;cursor:pointer;}
+.btn-primary{background:var(--brand);color:#04211a;} .btn-block{width:100%;} .btn-ghost{background:transparent;border:1px solid var(--line);color:var(--ink);}
+.row{display:flex;gap:8px;} .row>*{flex:1;}
+.hidden{display:none!important;} .muted{color:var(--muted);font-size:12px;}
+.pill{font-size:10px;font-weight:800;text-transform:uppercase;padding:3px 9px;border-radius:99px;background:var(--line);}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;opacity:0;transition:.2s;z-index:50;} .toast.show{opacity:1;}
+.done{color:var(--brand);font-weight:800;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">Work<span>ToGo</span> Rider — Join</div>
+
+  <!-- Step 1: register -->
+  <div class="card" id="s-register">
+    <div class="step">Step 1 — Create account</div>
+    <label>Full name</label><input id="r-name" placeholder="Your name">
+    <label>Phone</label><input id="r-phone" inputmode="tel" placeholder="10-digit mobile">
+    <label>Password</label><input id="r-pass" type="password" placeholder="min 8 characters">
+    <div style="height:10px"></div>
+    <button class="btn btn-primary btn-block" onclick="Onboard.register()">Create account</button>
+  </div>
+
+  <!-- Step 2: OTP verify -->
+  <div class="card hidden" id="s-otp">
+    <div class="step">Step 2 — Verify phone (OTP)</div>
+    <p class="muted">We sent an OTP to your phone.</p>
+    <label>OTP</label><input id="r-otp" inputmode="numeric" placeholder="6-digit code">
+    <div class="row" style="margin-top:10px"><button class="btn btn-ghost" onclick="Onboard.sendOtp()">Resend</button><button class="btn btn-primary" onclick="Onboard.verifyOtp()">Verify</button></div>
+  </div>
+
+  <!-- Step 3: KYC -->
+  <div class="card hidden" id="s-kyc">
+    <div class="step">Step 3 — KYC <span class="pill" id="kyc-status">draft</span></div>
+    <label>Full name</label><input id="k-full_name">
+    <label>Phone</label><input id="k-phone" inputmode="tel">
+    <label>Address</label><input id="k-address">
+    <label>Driving licence no.</label><input id="k-licence_number">
+    <div class="row"><div><label>Vehicle type</label><input id="k-vehicle_type" placeholder="bike"></div><div><label>Vehicle no.</label><input id="k-vehicle_number"></div></div>
+    <label>RC number</label><input id="k-rc_number">
+    <div class="muted" style="margin:8px 0">Payout (bank OR UPI):</div>
+    <label>Account holder</label><input id="k-bank_account_name">
+    <label>Account number</label><input id="k-bank_account_number" inputmode="numeric">
+    <label>IFSC</label><input id="k-bank_ifsc">
+    <label>UPI id</label><input id="k-upi_id">
+    <label>Profile photo <span id="d-photo_media_id" class="done hidden">✓</span></label>
+    <div class="row"><input type="file" id="f-photo" accept="image/*"><button class="btn btn-ghost" onclick="Onboard.upload('f-photo','photo_media_id','d-photo_media_id')">Upload</button></div>
+    <label style="margin-top:8px">Licence photo <span id="d-licence_media_id" class="done hidden">✓</span></label>
+    <div class="row"><input type="file" id="f-licence" accept="image/*,application/pdf"><button class="btn btn-ghost" onclick="Onboard.upload('f-licence','licence_media_id','d-licence_media_id')">Upload</button></div>
+    <label style="margin-top:8px">Vehicle RC <span id="d-rc_media_id" class="done hidden">✓</span></label>
+    <div class="row"><input type="file" id="f-rc" accept="image/*,application/pdf"><button class="btn btn-ghost" onclick="Onboard.upload('f-rc','rc_media_id','d-rc_media_id')">Upload</button></div>
+    <div style="height:12px"></div>
+    <button class="btn btn-ghost btn-block" onclick="Onboard.saveKyc()">Save draft</button>
+    <div style="height:8px"></div>
+    <button class="btn btn-primary btn-block" onclick="Onboard.submitKyc()">Submit for review</button>
+    <p class="muted" id="kyc-msg" style="margin-top:10px"></p>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+(function(){
+  "use strict";
+  var TOKEN_KEY="wtg_token", BASE="";
+  var docs={};
+  function el(i){return document.getElementById(i);}
+  function tok(){try{return localStorage.getItem(TOKEN_KEY)||"";}catch(e){return "";}}
+  function setTok(t){try{localStorage.setItem(TOKEN_KEY,t);}catch(e){}}
+  function toast(m){var t=el("toast");t.textContent=m;t.classList.add("show");setTimeout(function(){t.classList.remove("show");},2500);}
+  function show(id){el(id).classList.remove("hidden");}
+  async function api(method,path,body){
+    var res; try{res=await fetch(BASE+path,{method:method,headers:Object.assign({"Content-Type":"application/json"},tok()?{Authorization:"Bearer "+tok()}:{}),body:body?JSON.stringify(body):undefined});}catch(e){return {ok:false,error:"offline"};}
+    var j={};try{j=await res.json();}catch(e){}
+    if(!res.ok||j.success===false)return {ok:false,status:res.status,error:j.message||j.error||"error"};
+    return {ok:true,data:j.data!=null?j.data:j};
+  }
+  async function register(){
+    var name=el("r-name").value.trim(),phone=el("r-phone").value.trim(),pass=el("r-pass").value;
+    if(!name||!phone||pass.length<8){toast("Fill name, phone, 8+ char password");return;}
+    var r=await api("POST","/api/auth/register",{name:name,phone:phone,password:pass,role:"delivery"});
+    if(!r.ok){toast(r.error);return;}
+    if(r.data&&r.data.token)setTok(r.data.token);
+    el("k-full_name").value=name; el("k-phone").value=phone;
+    show("s-otp"); sendOtp(); toast("Account created — verify your phone");
+  }
+  async function sendOtp(){ var phone=el("r-phone").value.trim(); await api("POST","/api/auth/send-otp",{phone:phone}); toast("OTP sent"); }
+  async function verifyOtp(){
+    var phone=el("r-phone").value.trim(), otp=el("r-otp").value.trim();
+    var r=await api("POST","/api/auth/verify-otp",{phone:phone,otp:otp,code:otp});
+    if(!r.ok){toast(r.error||"Wrong OTP");return;}
+    if(r.data&&r.data.token)setTok(r.data.token);
+    show("s-kyc"); toast("Phone verified ✓");
+  }
+  async function upload(inputId,field,doneId){
+    var inp=el(inputId); if(!inp||!inp.files||!inp.files[0]){toast("Choose a file");return;}
+    var fd=new FormData(); fd.append("file",inp.files[0]); fd.append("purpose","kyc");
+    var res; try{res=await fetch(BASE+"/api/media/upload",{method:"POST",headers:tok()?{Authorization:"Bearer "+tok()}:{},body:fd});}catch(e){toast("offline");return;}
+    var j={};try{j=await res.json();}catch(e){}
+    if(!res.ok||j.success===false){toast(j.message||j.error||"upload failed");return;}
+    docs[field]=(j.data&&j.data.media_id)||j.media_id; var d=el(doneId); if(d)d.classList.remove("hidden"); toast("Uploaded");
+  }
+  function fields(){
+    var o={}; ["full_name","phone","address","licence_number","vehicle_type","vehicle_number","rc_number","bank_account_name","bank_account_number","bank_ifsc","upi_id"].forEach(function(f){var e=el("k-"+f); if(e)o[f]=e.value.trim();});
+    ["photo_media_id","licence_media_id","rc_media_id"].forEach(function(f){if(docs[f])o[f]=docs[f];});
+    return o;
+  }
+  async function saveKyc(){ var r=await api("POST","/api/commerce-rider/kyc",fields()); toast(r.ok?"Saved":r.error); }
+  async function submitKyc(){
+    await api("POST","/api/commerce-rider/kyc",fields());
+    var r=await api("POST","/api/commerce-rider/kyc/submit");
+    if(!r.ok){el("kyc-msg").textContent=r.error||"Incomplete"; toast("Incomplete"); return;}
+    el("kyc-status").textContent="submitted"; el("kyc-msg").textContent="Submitted — WorkToGo will review and approve.";
+    toast("Submitted for review ✓");
+  }
+  window.Onboard={register:register,sendOtp:sendOtp,verifyOtp:verifyOtp,upload:upload,saveKyc:saveKyc,submitKyc:submitKyc};
+})();
+</script>
+</body>
+</html>
