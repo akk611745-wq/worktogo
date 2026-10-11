@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WorkToGo — Paint Calculator</title>
+<link rel="icon" href="/app/assets/favicon.png"/>
+<meta name="theme-color" content="#ff6b35"/>
+<style>
+:root{--bg:#0f1720;--surface:#17222e;--line:#243343;--ink:#eaf2f8;--muted:#8fa3b5;--brand:#ff6b35;--ok:#12b886;}
+*{box-sizing:border-box;} html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+.wrap{max-width:560px;margin:0 auto;min-height:100vh;padding:16px;}
+.brand{font-weight:800;font-size:18px;margin:6px 0 4px;} .brand span{color:var(--brand);}
+.sub{color:var(--muted);font-size:13px;margin-bottom:14px;}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px;}
+.seg{display:flex;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:12px;}
+.seg button{flex:1;border:none;background:transparent;color:var(--muted);font-weight:800;font-size:13px;padding:9px 0;border-radius:9px;cursor:pointer;}
+.seg button.on{background:var(--brand);color:#2a0f04;}
+label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:8px 0 5px;}
+input,select{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:12px;color:var(--ink);font-size:15px;outline:none;}
+input:focus,select:focus{border-color:var(--brand);}
+.row{display:flex;gap:8px;} .row>*{flex:1;}
+.chk{display:flex;align-items:center;gap:8px;margin:10px 0;} .chk input{width:auto;}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;border-radius:12px;padding:13px 16px;font-size:15px;font-weight:800;cursor:pointer;width:100%;background:var(--brand);color:#2a0f04;}
+.result{display:none;} .result.show{display:block;}
+.big{font-size:30px;font-weight:800;color:var(--ok);} .big small{font-size:14px;color:var(--muted);font-weight:600;}
+.pill{display:inline-block;font-size:12px;font-weight:800;background:#0b2a1e;color:#6ee7b7;border-radius:99px;padding:4px 11px;margin:4px 6px 0 0;}
+.est{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;background:#3a2f12;color:#ffcf6b;border-radius:6px;padding:3px 8px;}
+.disc{color:var(--muted);font-size:12px;margin-top:10px;line-height:1.5;border-left:3px solid var(--brand);padding-left:10px;}
+ul{margin:8px 0;padding-left:18px;} li{font-size:13px;margin:3px 0;color:var(--ink);}
+.gtitle{font-weight:800;font-size:13px;margin-top:10px;} .muted{color:var(--muted);font-size:12px;}
+.err{color:#ffb4b6;font-size:13px;margin-top:8px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">Work<span>ToGo</span> Paint Calculator</div>
+  <div class="sub">Tell us the area — we’ll estimate how much paint you need.</div>
+
+  <div class="card">
+    <div class="seg">
+      <button id="m-room" class="on" onclick="Calc.mode('room')">By room</button>
+      <button id="m-area" onclick="Calc.mode('area')">By area</button>
+    </div>
+
+    <div id="pane-room">
+      <div class="row">
+        <div><label>Length (ft)</label><input id="len" inputmode="decimal" value="12"></div>
+        <div><label>Width (ft)</label><input id="wid" inputmode="decimal" value="10"></div>
+        <div><label>Height (ft)</label><input id="hgt" inputmode="decimal" value="10"></div>
+      </div>
+      <label>Doors/windows to subtract (sq.ft, optional)</label><input id="open" inputmode="decimal" value="40">
+      <div class="chk"><input type="checkbox" id="ceil"><label style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)">Also paint the ceiling</label></div>
+    </div>
+
+    <div id="pane-area" style="display:none">
+      <div class="row">
+        <div><label>Area</label><input id="area" inputmode="decimal" value="400"></div>
+        <div><label>Unit</label><select id="unit"><option value="sqft">sq.ft</option><option value="sqm">sq.m</option></select></div>
+      </div>
+    </div>
+
+    <label>Coverage (sq.ft per litre, from the product)</label><input id="cov" inputmode="decimal" value="125">
+    <div class="row">
+      <div><label>Coverage is for … coats</label><select id="basis"><option value="2" selected>2 coats</option><option value="1">1 coat (per-coat)</option></select></div>
+      <div><label>Coats you’ll apply</label><select id="coats"><option value="2" selected>2</option><option value="1">1</option><option value="3">3</option></select></div>
+    </div>
+    <label>Pack sizes available (L, comma-separated)</label><input id="packs" value="1,4,10,20">
+    <div style="height:12px"></div>
+    <button class="btn" onclick="Calc.run()">Estimate paint</button>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="card result" id="result">
+    <span class="est">Estimated requirement</span>
+    <div style="height:8px"></div>
+    <div class="big" id="litres">— <small>litres</small></div>
+    <div id="packsOut"></div>
+    <div class="disc" id="disc"></div>
+    <ul id="assume"></ul>
+  </div>
+
+  <div class="card">
+    <div class="gtitle">Quick guide</div>
+    <div id="guide" class="muted">Loading guide…</div>
+  </div>
+</div>
+<script>
+(function(){
+  "use strict";
+  var BASE="", mode="room";
+  function el(i){return document.getElementById(i);}
+  function num(v){var n=parseFloat(v);return isNaN(n)?0:n;}
+  function setMode(m){mode=m; el("m-room").classList.toggle("on",m==="room"); el("m-area").classList.toggle("on",m==="area"); el("pane-room").style.display=m==="room"?"block":"none"; el("pane-area").style.display=m==="area"?"block":"none";}
+  async function run(){
+    el("err").textContent="";
+    var body={ coverage_per_l:num(el("cov").value), basis_coats:parseInt(el("basis").value,10), recommended_coats:parseInt(el("coats").value,10),
+               pack_sizes: el("packs").value.split(",").map(function(s){return num(s);}).filter(function(n){return n>0;}) };
+    if(mode==="room"){ body.length_ft=num(el("len").value); body.width_ft=num(el("wid").value); body.height_ft=num(el("hgt").value); body.openings_sqft=num(el("open").value); body.include_ceiling=el("ceil").checked; }
+    else { body.area_value=num(el("area").value); body.area_unit=el("unit").value; }
+    if(body.coverage_per_l<=0){ el("err").textContent="Enter the product coverage (sq.ft per litre)."; return; }
+    var r; try{ r=await fetch(BASE+"/api/coverage/estimate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); }catch(e){ el("err").textContent="Offline — try again."; return; }
+    var j={}; try{ j=await r.json(); }catch(e){}
+    var d=(j&&j.data)||j; if(!d||d.estimated_litres==null){ el("err").textContent=(j&&(j.message||j.error))||"Could not estimate."; return; }
+    render(d);
+  }
+  function render(d){
+    el("litres").innerHTML = d.estimated_litres + ' <small>litres (estimated)</small>';
+    var out="";
+    if(d.pack_plan && d.pack_plan.packs){ Object.keys(d.pack_plan.packs).forEach(function(sz){ out+='<span class="pill">'+d.pack_plan.packs[sz]+' × '+sz+'L</span>'; }); out+='<div class="muted" style="margin-top:6px">≈ '+d.pack_plan.purchased_litres+'L to buy ('+d.net_area_sqft+' sq.ft, '+d.recommended_coats+' coat(s))</div>'; }
+    el("packsOut").innerHTML=out;
+    el("disc").textContent=d.disclaimer||"";
+    el("assume").innerHTML=(d.assumptions||[]).map(function(a){return '<li>'+a+'</li>';}).join("");
+    el("result").classList.add("show");
+  }
+  async function loadGuide(){
+    try{ var r=await fetch(BASE+"/api/coverage/guide"); var j=await r.json(); var g=((j&&j.data)||j).guide; if(!g)return;
+      var h='<div class="gtitle">New wall</div><ul>'+g.prep.new_wall.map(function(s){return '<li>'+s+'</li>';}).join("")+'</ul>';
+      h+='<div class="gtitle">Repaint</div><ul>'+g.prep.repaint.map(function(s){return '<li>'+s+'</li>';}).join("")+'</ul>';
+      h+='<div class="gtitle">Situations</div><ul>'+Object.keys(g.situations).map(function(k){return '<li><b>'+k.replace("_","/")+':</b> '+g.situations[k]+'</li>';}).join("")+'</ul>';
+      el("guide").innerHTML=h;
+    }catch(e){ el("guide").textContent="Guide unavailable right now."; }
+  }
+  window.Calc={ mode:setMode, run:run };
+  loadGuide();
+})();
+</script>
+</body>
+</html>

@@ -217,6 +217,12 @@ if (str_starts_with($uri, '/api/media')) {
     exit;
 }
 
+// Coverage calculator (Paint P2): public "how much paint?" estimator + guide.
+if (str_starts_with($uri, '/api/coverage')) {
+    require_once HEART_ROOT . '/api/coverage/index.php';
+    exit;
+}
+
 // Admin API
 if (str_starts_with($uri, '/api/admin')) {
     require_once HEART_ROOT . '/api/admin/index.php';
