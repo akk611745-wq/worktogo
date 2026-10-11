@@ -23,7 +23,10 @@ class RoutingEngine
     /** Admin-tunable routing config (app_settings) with safe defaults. */
     public static function config(PDO $db): array
     {
-        $def = ['offer_timeout_sec' => 120, 'max_retries' => 3, 'default_radius_km' => 8.0];
+        // F1: source_preference picks the PRIMARY ranking key — 'nearest' (default,
+        // the original behaviour), 'cheapest' (lowest offer price), or 'reliable'
+        // (highest accept ratio). company-first stays the invariant above it.
+        $def = ['offer_timeout_sec' => 120, 'max_retries' => 3, 'default_radius_km' => 8.0, 'source_preference' => 'nearest'];
         $map = [
             'commerce_offer_timeout_sec' => 'offer_timeout_sec',
             'commerce_offer_max_retries' => 'max_retries',
@@ -37,6 +40,11 @@ class RoutingEngine
                     $def[$prop] = $prop === 'default_radius_km' ? (float)$rows[$key] : (int)$rows[$key];
                 }
             }
+            // string enum — kept out of the int/float cast loop above
+            $sp = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key='commerce_routing_source_preference' LIMIT 1");
+            $sp->execute();
+            $v = strtolower(trim((string)$sp->fetchColumn()));
+            if (in_array($v, ['nearest', 'cheapest', 'reliable'], true)) $def['source_preference'] = $v;
         } catch (\Throwable $e) { /* defaults */ }
         return $def;
     }
@@ -51,12 +59,24 @@ class RoutingEngine
         return round($R * 2 * atan2(sqrt($x), sqrt(1 - $x)), 3);
     }
 
-    /** Deterministic order: company-first → nearest (nulls last) → priority desc → id asc. */
-    private static function rank(array $a, array $b): int
+    /**
+     * Deterministic order. company-first is the invariant top key; then the F1
+     * source-preference primary key ('cheapest' = lowest price, 'reliable' =
+     * highest accept ratio, else 'nearest'); then the original tie-breaks
+     * nearest → priority desc → id asc (so 'nearest' is byte-for-byte the old order).
+     */
+    private static function rankBy(array $a, array $b, string $pref): int
     {
         $ac = $a['ownership'] === 'company' ? 0 : 1;
         $bc = $b['ownership'] === 'company' ? 0 : 1;
         if ($ac !== $bc) return $ac <=> $bc;
+        if ($pref === 'cheapest') {
+            $ap = $a['price'] ?? INF; $bp = $b['price'] ?? INF;
+            if ($ap != $bp) return $ap <=> $bp;
+        } elseif ($pref === 'reliable') {
+            $ar = $a['reliability'] ?? 0.5; $br = $b['reliability'] ?? 0.5; // no history = neutral
+            if ($ar != $br) return $br <=> $ar; // higher ratio first
+        }
         $ad = $a['distance_km'] ?? INF; $bd = $b['distance_km'] ?? INF;
         if ($ad != $bd) return $ad <=> $bd;
         if ((int)$a['priority'] !== (int)$b['priority']) return (int)$b['priority'] <=> (int)$a['priority'];
@@ -73,8 +93,10 @@ class RoutingEngine
         $cfg = self::config($db);
         // Match equivalent offers across stores by match_key (sku is unique per offer).
         $sql = "SELECT s.id AS store_id, s.owner_vendor_id AS vendor_id, s.ownership, s.priority,
-                       s.lat, s.lng, s.service_radius_km, p.id AS product_id,
-                       (i.quantity - i.reserved) AS avail, i.allow_backorder
+                       s.lat, s.lng, s.service_radius_km, p.id AS product_id, p.price AS price,
+                       (i.quantity - i.reserved) AS avail, i.allow_backorder,
+                       (SELECT SUM(crs.event='accepted') / NULLIF(SUM(crs.event IN ('accepted','rejected','timeout','stockout')),0)
+                          FROM commerce_routing_signals crs WHERE crs.vendor_id = s.owner_vendor_id) AS reliability
                   FROM products p
                   JOIN stores s    ON s.id = p.store_id
                   LEFT JOIN vendors v ON v.id = s.owner_vendor_id
@@ -104,9 +126,12 @@ class RoutingEngine
                 'priority'    => (int)$r['priority'],
                 'distance_km' => $dist,
                 'avail'       => (int)$r['avail'],
+                'price'       => $r['price'] !== null ? (float)$r['price'] : null,
+                'reliability' => $r['reliability'] !== null ? (float)$r['reliability'] : null,
             ];
         }
-        usort($out, [self::class, 'rank']);
+        $pref = $cfg['source_preference'];
+        usort($out, fn($a, $b) => self::rankBy($a, $b, $pref));
         return $out;
     }
 
@@ -139,7 +164,8 @@ class RoutingEngine
             if ($covers) $full[] = $s;
         }
         if (!empty($full) && !empty($skus)) {
-            usort($full, [self::class, 'rank']);
+            $pref = self::config($db)['source_preference'];
+            usort($full, fn($a, $b) => self::rankBy($a, $b, $pref));
             $sid = $full[0]['store_id'];
             return ['mode' => 'single', 'assignments' => [$sid => $items], 'unfulfilled' => []];
         }
