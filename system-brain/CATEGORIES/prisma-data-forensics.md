@@ -122,4 +122,20 @@ The 500,878 rows are **shade × base-product** combos (one shade repeats across 
 - Confirm the **import grain** (recommend distinct ~21K).
 - The 39 MB CSV lives in ephemeral scratchpad; regenerate from the saved read-only scripts (or move to a persistent path) at import time. **Not committed to the repo** (proprietary data).
 
-**Next (awaiting CEO):** review the sample/counts → pick the import grain + approve finish-mapping → then P6 importer (`import_paint_shades.php`) → verify → enable custom tint. No engine change.
+## Phase F — LIVE IMPORT + ARCHIVE (2026-10-11, CEO-directed) — custom tint still OFF
+CEO approved: (1) load the distinct shades live now, (2) archive everything to safe files, (3) drop the rest. Done; **custom tint NOT enabled yet — awaiting CEO after reviewing the sample.** No engine/commerce code change.
+
+**1) LIVE IMPORT (commerce_paint_shades on 10.11) — DONE + VERIFIED**
+- Built the import CSV = **DISTINCT shades deduped on (brand, shade_code)** → 21,117 rows (17,598 with a finish, 3,519 blank). Columns: brand, product_line(=collection), shade_code, shade_name, base_type(blank), finish.
+- Ran the real P6 importer (`scripts/import_paint_shades.php`, no `--enable`): **inserted 21,115, updated 2, invalid 0**. `commerce_paint_shades` now holds **21,115 rows**.
+- Verified live: per-brand — Berger 6,376 · Asian 3,282 · Dulux 2,920 · Birla Opus 2,522 · Sherwin 1,670 · Nerolac 1,589 · Nippon 1,205 · RAL 445 · + house lines. Brand-code guard `CustomTint::brandHasCode`: Berger `7P2452`→FOUND (LILY BUD, emulsion), Asian `8532`→FOUND, Nerolac `2359P`→FOUND, RAL `RAL 8002`→FOUND, bogus→not found. `custom_tint_enabled = false` (still OFF). base_type blank (not in source).
+
+**2) ARCHIVE (one-time, OFFLINE — NOT in repo, NOT live)** at `…\mastar wtg live\PRISMA_ARCHIVE\` (outside the git repo):
+- `catalogue/` collections 36 · products 72 (+finish map) · components 444 · color_codes 20,634 · color_names 15,301 · distinct_shades_21k 21,117.
+- `formulas/` **formulas_standard 500,878** · **formula_standard_lines 2,249,410** (the tinting recipe: component + dose per formula).
+- `prisma_catalogue.zip` (0.48 MB) + `prisma_formulas.zip` (12.5 MB) + `README.txt` (manifest + **IP note**).
+- **IP note:** the formula recipes are the paint manufacturers' IP — archive only, NOT for live use/publishing/commercial dispensing without legal advice (e.g. a future WorkToGo tinting machine). The shade catalogue (brand+code+name) is reference metadata; recipes are the sensitive part.
+
+**3) DROPPED (not useful):** 32-band reflectance curves, LAB (empty), SUBSTRATES (empty), dispenser settings, cache, logs.
+
+**Still awaiting CEO:** review the live sample + archive → **approve ENABLE** → I flip `custom_tint_enabled` on (`import --enable` / AdminControlRoom). Nothing else pending. Original PrismaPro untouched; the FB engine + copies live only in the ephemeral scratchpad.
