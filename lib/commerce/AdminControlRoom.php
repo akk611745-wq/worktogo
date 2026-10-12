@@ -27,6 +27,7 @@ class AdminControlRoom
             'commerce_unit_config', // Paint P1 unit hook: per-unit enable + custom_tint_enabled + category map
             'commerce_coverage_config', // Paint P2 coverage calculator: buffer_pct + disclaimer
             'commerce_advance_default_pct', // Paint P4 advance/partial payment: default advance %
+            'commerce_confirm_call', 'commerce_custom_tint_consent_required', // Paint P5 custom-tint ops flags
             'commerce_offer_timeout_sec', 'commerce_offer_max_retries', 'commerce_default_radius_km',
             'commerce_payment_methods', 'commerce_vehicle_thresholds',
             'commerce_delivery_accept_timeout_sec', 'commerce_delivery_max_reassign',

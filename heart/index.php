@@ -223,6 +223,12 @@ if (str_starts_with($uri, '/api/coverage')) {
     exit;
 }
 
+// Custom-tint flow (Paint P5): config + brand-code guard + order-intent validate.
+if (str_starts_with($uri, '/api/tint')) {
+    require_once HEART_ROOT . '/api/tint/index.php';
+    exit;
+}
+
 // Admin API
 if (str_starts_with($uri, '/api/admin')) {
     require_once HEART_ROOT . '/api/admin/index.php';

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WorkToGo — Custom Tint</title>
+<link rel="icon" href="/app/assets/favicon.png"/>
+<meta name="theme-color" content="#6d5dfc"/>
+<style>
+:root{--bg:#0f1720;--surface:#17222e;--line:#243343;--ink:#eaf2f8;--muted:#8fa3b5;--brand:#6d5dfc;--ok:#12b886;--warn:#eab308;}
+*{box-sizing:border-box;} html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+.wrap{max-width:520px;margin:0 auto;min-height:100vh;padding:16px;}
+.brand{font-weight:800;font-size:18px;margin:6px 0 4px;} .brand span{color:var(--brand);}
+.sub{color:var(--muted);font-size:13px;margin-bottom:14px;}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px;}
+label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:10px 0 5px;}
+input,select{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:12px;color:var(--ink);font-size:15px;outline:none;}
+input:focus,select:focus{border-color:var(--brand);}
+.seg{display:flex;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:4px;margin-top:6px;}
+.seg button{flex:1;border:none;background:transparent;color:var(--muted);font-weight:800;font-size:13px;padding:9px 0;border-radius:9px;cursor:pointer;}
+.seg button.on{background:var(--brand);color:#0b0720;}
+.chk{display:flex;align-items:flex-start;gap:8px;margin:12px 0;} .chk input{width:auto;margin-top:3px;}
+.chk label{margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;border-radius:12px;padding:13px 16px;font-size:15px;font-weight:800;cursor:pointer;width:100%;background:var(--brand);color:#0b0720;}
+.btn[disabled]{opacity:.5;cursor:not-allowed;}
+.muted{color:var(--muted);font-size:12px;} .ok{color:var(--ok);} .warn{color:var(--warn);}
+.banner{border-radius:12px;padding:12px 14px;font-size:13px;font-weight:700;margin-bottom:12px;}
+.banner.off{background:#3a2f12;color:#ffcf6b;} .banner.on{background:#0b2a1e;color:#6ee7b7;}
+.note{font-size:12px;margin-top:6px;}
+.hide{display:none!important;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">Work<span>ToGo</span> Custom Tint</div>
+  <div class="sub">Pick your brand and shade code — we make it to order.</div>
+
+  <div class="banner off" id="banner">Checking availability…</div>
+
+  <div class="card">
+    <label>Brand</label>
+    <select id="brand"><option value="">Select brand</option><option>Berger</option><option>Indigo</option><option>Nerolac</option><option>Asian Paints</option></select>
+
+    <label>Pack size</label>
+    <select id="pack"><option>1L</option><option selected>4L</option><option>10L</option><option>20L</option></select>
+    <div class="muted">You’ll receive a sealed bucket — the base is handled for you.</div>
+
+    <label>Shade code (from the brand’s fandeck)</label>
+    <div style="display:flex;gap:8px"><input id="code" placeholder="e.g. 2003" style="flex:1"><button class="btn" style="width:auto;padding:12px 16px" onclick="Tint.checkCode()">Check</button></div>
+    <div class="note" id="codeMsg"></div>
+
+    <label>Is this a new job or a repaint/match?</label>
+    <div class="seg">
+      <button id="m-new" class="on" onclick="Tint.mode('new')">New job</button>
+      <button id="m-repaint" onclick="Tint.mode('repaint')">Repaint / match</button>
+    </div>
+    <div class="note muted" id="modeNote">New job — a minor shade adjustment is allowed.</div>
+
+    <div class="chk"><input type="checkbox" id="consent"><label>I understand this is a <b>custom shade</b>, made to order and <b>non-returnable</b>.</label></div>
+    <div class="note muted" id="advNote">An advance is required before the order is placed; the balance is paid on delivery.</div>
+
+    <div style="height:10px"></div>
+    <button class="btn" id="submit" onclick="Tint.submit()" disabled>Continue to advance payment</button>
+    <div class="note" id="result"></div>
+  </div>
+
+  <div class="card muted">
+    <b>Why a code, not a colour name?</b> Screen colours are only indicative — the code is the exact match. Wrong code shipped is on us; “looks different on screen” isn’t a defect.
+  </div>
+</div>
+<script>
+(function(){
+  "use strict";
+  var BASE="", cfg={enabled:false}, mode="new", codeOk=false;
+  function el(i){return document.getElementById(i);}
+  async function api(method,path,body){ try{ var r=await fetch(BASE+path,{method:method,headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined}); var j=await r.json(); return (j&&j.data!=null)?j.data:j; }catch(e){ return null; } }
+  function refreshSubmit(){ el("submit").disabled = !(cfg.enabled && codeOk && el("consent").checked); }
+  async function loadConfig(){
+    cfg = (await api("GET","/api/tint/config")) || {enabled:false};
+    var b=el("banner");
+    if(cfg.enabled){ b.className="banner on"; b.textContent="Custom tinting is available."; }
+    else { b.className="banner off"; b.textContent="Custom tinting isn’t available yet — ready shades only for now. (Shade data is being prepared.)"; }
+    if(cfg.consent_required===false){ el("consent").checked=true; }
+    refreshSubmit();
+  }
+  function setMode(m){ mode=m; el("m-new").classList.toggle("on",m==="new"); el("m-repaint").classList.toggle("on",m==="repaint");
+    el("modeNote").textContent = m==="repaint" ? "Repaint/match — EXACT only, same base, and (if you’ve ordered before) the same maker, so it matches the wall." : "New job — a minor shade adjustment is allowed."; }
+  async function checkCode(){
+    var brand=el("brand").value, code=el("code").value.trim();
+    if(!brand){ el("codeMsg").innerHTML='<span class="warn">Pick a brand first.</span>'; return; }
+    if(!code){ el("codeMsg").textContent=""; return; }
+    var r=await api("POST","/api/tint/check-code",{brand:brand,code:code});
+    if(r && r.found){ codeOk=true; el("codeMsg").innerHTML='<span class="ok">✓ '+(r.shade_name?r.shade_name+' ':'')+'found in '+brand+(r.base_type?' · base '+r.base_type:'')+'</span>'; }
+    else { codeOk=false; el("codeMsg").innerHTML='<span class="warn">'+((r&&r.message)||"This code isn’t in this brand.")+'</span>'; }
+    refreshSubmit();
+  }
+  async function submit(){
+    var r=await api("POST","/api/tint/validate",{brand:el("brand").value, shade_code:el("code").value.trim(), mode:mode, consent:el("consent").checked, advance_started:false});
+    if(r && r.ok){ el("result").innerHTML='<span class="ok">Ready — proceeding to advance payment.</span>'; }
+    else { var b=(r&&r.blockers)||["unavailable"]; el("result").innerHTML='<span class="warn">Can’t proceed yet: '+b.join(", ")+'</span>'; }
+  }
+  el("consent").addEventListener("change",refreshSubmit);
+  window.Tint={ mode:setMode, checkCode:checkCode, submit:submit };
+  loadConfig();
+})();
+</script>
+</body>
+</html>

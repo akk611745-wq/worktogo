@@ -12,9 +12,32 @@
 
 require_once __DIR__ . '/../../core/helpers/LedgerEngine.php';
 require_once __DIR__ . '/CommerceEventBus.php';
+require_once __DIR__ . '/PaintUnit.php'; // P5: custom-tint = non-returnable (attribute-driven)
 
 class CommerceReturns
 {
+    /** Custom-tinted (made-to-order) items are non-returnable regardless of category (P5). */
+    private static function hasCustomTintItem(PDO $db, int $orderId, ?int $orderItemId): bool
+    {
+        try {
+            if ($orderItemId) {
+                $q = $db->prepare("SELECT p.attributes FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.id=? LIMIT 1");
+                $q->execute([$orderItemId]);
+                $rows = [$q->fetchColumn()];
+            } else {
+                $q = $db->prepare("SELECT p.attributes FROM order_items oi JOIN products p ON p.id=oi.product_id JOIN orders o ON o.id=oi.order_id WHERE o.parent_order_id=? OR oi.order_id=?");
+                $q->execute([$orderId, $orderId]);
+                $rows = $q->fetchAll(PDO::FETCH_COLUMN);
+            }
+            foreach ($rows as $a) {
+                if (!$a) continue;
+                $attrs = json_decode((string)$a, true);
+                if (is_array($attrs) && PaintUnit::isCustomTint($attrs)) return true;
+            }
+        } catch (\Throwable $e) { /* default: not custom-tint */ }
+        return false;
+    }
+
     private static function setting(PDO $db, string $key, $def)
     {
         try { $s = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key=? LIMIT 1"); $s->execute([$key]); $v = $s->fetchColumn(); return $v === false ? $def : $v; }
@@ -67,6 +90,9 @@ class CommerceReturns
         }
 
         $risk = self::riskClass($db, $catId !== null ? (int)$catId : null);
+        if (self::hasCustomTintItem($db, $orderId, $orderItemId)) {
+            return ['ok' => false, 'reason' => 'not_returnable', 'risk_class' => 'no_return'];
+        }
         if ($risk === 'no_return' || $risk === 'perishable') {
             return ['ok' => false, 'reason' => 'not_returnable', 'risk_class' => $risk];
         }
