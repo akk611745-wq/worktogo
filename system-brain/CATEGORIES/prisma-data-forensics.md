@@ -81,3 +81,19 @@ Collection names found in the data: **Berger** ("BERGER COLOR PALETTE"), **Asian
 - The working **copy lives in the session scratchpad (ephemeral)**; the source in Downloads is untouched. Re-copy before the extraction phase if the session has rotated.
 
 **Next (awaiting CEO):** approve Phase F — build the read-only extraction+mapping script → CSV → run the P6 importer → verify → enable custom tint.
+
+---
+
+## Phase F — extraction status (2026-10-11): BLOCKED on a Firebird client (no force)
+Approved Phase F. Established the exact engine needed and the blocker — **no data extracted yet, nothing downloaded/installed, original untouched.**
+- **DB version decoded (read-only):** `page_size=4096`, `ods_raw=0x800B` → **Firebird ODS 11 = Firebird 2.5 family**. FB 3/4/5 cannot open ODS 11 without an upgrade (that writes) → a **Firebird 2.5 engine** is required.
+- **On this machine:** XAMPP PHP 8.2 x64 has `php_pdo_firebird.dll` (the PDO driver) ✅, but the **Firebird client engine (`fbclient.dll`/`fbembed.dll`) is absent** (not next to PHP, not in System32, no Firebird install, PrismaPro program not installed — only the data folder was downloaded). Without that library, **no SQL connection is possible.**
+- **Not done (by design):** did not download or install any engine, did not try the DB password, did not touch the original. (`SYSDBA`/`masterkey` will be tried only once a client exists; never forced.)
+
+**Options to unblock (CEO picks):**
+- **A — fetch FB 2.5 x64 embedded into a scratchpad folder** (official firebirdsql release; NOT a system install): drop `fbembed→fbclient.dll` + icu + `firebird.msg` beside a throwaway PHP, enable `pdo_firebird`, attach the **copy** read-only, run the join → CSV. Reversible; original untouched. (Needs OK to download a native lib.)
+- **B — run my extraction script on the CEO's PC** where PrismaPro/Firebird 2.5 already lives (zero download here); it outputs the CSV, which I then verify + import.
+- **C — CEO provides a dump** from PrismaPro's own "Export standard formulas" (`.sdf`) / a gbak `.fbk` of MAIN.FDB → I parse that instead.
+- **D — (not recommended)** hand-rolled ODS-11 binary parser — fragile (RLE records, blob text, charsets); not trustworthy for data we'll import.
+
+Recommendation: **A** (fastest, isolated, reversible) or **B** (nothing fetched here). Awaiting the choice before any extraction.
