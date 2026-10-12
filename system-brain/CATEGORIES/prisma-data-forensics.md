@@ -97,3 +97,29 @@ Approved Phase F. Established the exact engine needed and the blocker — **no d
 - **D — (not recommended)** hand-rolled ODS-11 binary parser — fragile (RLE records, blob text, charsets); not trustworthy for data we'll import.
 
 Recommendation: **A** (fastest, isolated, reversible) or **B** (nothing fetched here). Awaiting the choice before any extraction.
+
+---
+
+## Phase F — RESULT (2026-10-11): extracted read-only, CSV built, **NOT imported**
+CEO chose **A**. Fetched the official **Firebird 2.5.9 x64 embedded** engine into an isolated scratchpad folder (no system install), aliased `fbembed.dll`→`fbclient.dll`, enabled `pdo_firebird`, and attached the **COPY** read-only (read-only transaction). Original untouched; nothing written to the repo; importer NOT run.
+- **Login:** the tables are owned by DB user **`PRISMAPRO`**; there is a ROLE named `SYSDBA` (that's why the `SYSDBA` login clashed). Embedded FB ignores the password, so connecting as the owner `PRISMAPRO` gives read access — no password was guessed or forced.
+- **Counts (exact, live):** COLLECTIONS 36 · PRODUCTS 72 · COLOR_CODES 20,634 · COLOR_NAMES 15,301 · **FORMULAS_STANDARD 500,878** · FORMULA_STANDARD_LINES 2,249,410 · COMPONENTS 444 · **SUBSTRATES 0** · **SPECTRO_LAB 0** · FORMULAS_OWN 0.
+- **Join built → CSV** (`brand, collection, shade_code, shade_name, base_product, finish`): **500,878 rows at formula grain; 100% have a code + a name; DISTINCT (brand|shade_code) = 21,117.** CSV is `…\scratchpad\prisma_export\prisma_shades.csv` (~39 MB, ephemeral scratchpad — NOT committed; it is the user's proprietary data).
+- **Rows per brand (formula grain):** Berger 132,840 · Asian Paints 82,456 · Dulux/ICI 75,840 · Birla Opus 61,128 · Sherwin Williams 52,165 · Nerolac 50,454 · Nippon 36,792 · RAL 4,876 · IS Shade Card 2,189 · + house lines (Bison, Luxol, Silk Glamart, Pantone 303, Jotun 82, Indigo 4, …).
+- **Sample (proves the join):** `Berger | 7P2452 | LILY BUD`, `Asian | 8532 | EASTER LILY`, `Nerolac | 2359P | SPARKLING DEW`, `Nippon | NP PB 1498A | MARABELLE`, `Dulux | 80YR 57/070 | AU NATURAL`, `RAL 8002 | SIGNAL BROWN`, `Jotun | 1135 | SANDY CORAL`, `Butterfly | 2P8644 | B'FLY JASMINE WISP N`.
+
+### Mapping to `commerce_paint_shades` — status
+- **shade_code** ✅ (`COLOR_CODES.COLOR_CODE`) · **shade_name** ✅ (`COLOR_NAMES.COLOR_NAME`) · **brand** ✅ (derived from `COLLECTION_NAME`) · **collection** ✅.
+- **finish** ◑ derived from `PRODUCT_NAME` — populated only when the base-product name carries a finish word (enamel/emulsion/…); many base names (e.g. "NEO SHAKTI EXTERIOR") don't, so a small **72-product → finish** map is needed to fill it well.
+- **base_type** ⚠️ **not in this data** — `SUBSTRATES` and `SPECTRO_LAB` are empty; "base" here = the base-paint **product**, not a white/medium/deep tint base. So our `base_type` (white/medium/deep) can't be filled from this export; store `base_product` instead, or leave base_type blank.
+
+### Grain decision needed before import
+The 500,878 rows are **shade × base-product** combos (one shade repeats across many products). For the customer shade catalogue + brand-code guard we want **DISTINCT shades** (`brand, shade_code, shade_name`) ≈ **~21,000 rows**, not all 500K. Options for the CEO: (1) import the **distinct-shade** set (~21K, recommended), (2) import distinct per **collection** (keeps per-brand duplicates of shared codes), or (3) the full formula grain (500K — overkill for the guard).
+
+### Phase F open items
+- **finish** needs the 72-product→finish mapping (one-time).
+- **base_type** (white/medium/deep) is absent — decide to omit or source elsewhere.
+- Confirm the **import grain** (recommend distinct ~21K).
+- The 39 MB CSV lives in ephemeral scratchpad; regenerate from the saved read-only scripts (or move to a persistent path) at import time. **Not committed to the repo** (proprietary data).
+
+**Next (awaiting CEO):** review the sample/counts → pick the import grain + approve finish-mapping → then P6 importer (`import_paint_shades.php`) → verify → enable custom tint. No engine change.
