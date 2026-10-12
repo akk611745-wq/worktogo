@@ -90,12 +90,37 @@ class UnitConfig
         if (!self::unitEnabled($db, $unit)) return ['ok' => false, 'reason' => 'unit_unavailable'];
 
         if ($unit === 'paint' && PaintUnit::isCustomTint($attrs)) {
-            // Custom tint stays OFF until the Prisma shade/base/code data lands.
-            if (!self::unitFlag($db, 'paint', 'custom_tint_enabled', false)) {
+            // Custom tint is PER-BRAND: orderable only if the product's brand is in
+            // the admin "enabled brands" list (commerce_custom_tint_brands). Empty
+            // list = no brand live yet (the default). Brands are switched on one at
+            // a time as each manufacturer is onboarded.
+            $brand = isset($attrs['brand']) && is_string($attrs['brand']) ? $attrs['brand'] : null;
+            if (!self::customTintBrandEnabled($db, $brand)) {
                 return ['ok' => false, 'reason' => 'custom_tint_off'];
             }
         }
         return ['ok' => true, 'reason' => 'ok'];
+    }
+
+    /** The admin "enabled brands" list for custom tint (commerce_custom_tint_brands). Read fresh. */
+    public static function customTintBrands(PDO $db): array
+    {
+        try {
+            $s = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key='commerce_custom_tint_brands' LIMIT 1");
+            $s->execute();
+            $v = $s->fetchColumn();
+            if ($v) { $j = json_decode((string)$v, true); if (is_array($j)) return array_values(array_filter(array_map(fn($b) => trim((string)$b), $j), fn($b) => $b !== '')); }
+        } catch (\Throwable $e) { /* default-safe: none enabled */ }
+        return [];
+    }
+
+    /** Is a brand's custom tint switched on? (case-insensitive) */
+    public static function customTintBrandEnabled(PDO $db, ?string $brand): bool
+    {
+        if ($brand === null || trim($brand) === '') return false;
+        $want = strtolower(trim($brand));
+        foreach (self::customTintBrands($db) as $b) if (strtolower($b) === $want) return true;
+        return false;
     }
 
     /** Test/long-process hook: drop the static caches after a config change. */

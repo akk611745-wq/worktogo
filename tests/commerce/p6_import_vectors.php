@@ -53,10 +53,11 @@ ok('valid row → no errors', PaintShadeImporter::validateRow(['brand'=>'P6T-Bra
 ok('missing brand → brand_required', PaintShadeImporter::validateRow(['shade_code'=>'C1']), ['brand_required']);
 ok('missing code → shade_code_required', PaintShadeImporter::validateRow(['brand'=>'P6T-Brand']), ['shade_code_required']);
 
-echo "\n== [D] enable is readiness-gated — refuses while fandeck empty ==\n";
-ok('empty fandeck → shadeCount(P6T) 0', PaintShadeImporter::shadeCount($pdo,'P6T-Brand'), 0);
+echo "\n== [D] readiness reflects data presence (go-live is per-brand) ==\n";
+ok('shadeCount(P6T-Brand) starts 0', PaintShadeImporter::shadeCount($pdo,'P6T-Brand'), 0);
 $rd0 = PaintShadeImporter::enableReadiness($pdo);
-ok('enable() refused when not ready', (PaintShadeImporter::enable($pdo)['ok'] ?? null), false);
+ok('readiness.ready matches shade_count>0', $rd0['ready'], ($rd0['shade_count'] > 0));
+ok('readiness reports enabled_brands list', is_array($rd0['enabled_brands']), true);
 
 echo "\n== [E] import (idempotent, validated) ==\n";
 $res1 = PaintShadeImporter::import($pdo, PaintShadeImporter::parseCsv($csv));
@@ -86,16 +87,10 @@ $resDry = PaintShadeImporter::import($pdo, PaintShadeImporter::parseJson('[{"bra
 ok('dry-run reports 1 insert', $resDry['inserted'], 1);
 ok('dry-run wrote nothing',    PaintShadeImporter::shadeCount($pdo,'P6T-Brand'), $before);
 
-echo "\n== [I] enable() flips config ONLY with data (restored after) ==\n";
+echo "\n== [I] readiness after import (data present) ==\n";
 $rd = PaintShadeImporter::enableReadiness($pdo);
 ok('readiness ready with data', $rd['ready'], true);
-ok('readiness shade_count > 0', $rd['shade_count'] > 0, true);
-$en = PaintShadeImporter::enable($pdo);
-ok('enable() ok with data',     $en['ok'] ?? null, true);
-ok('custom_tint now ON',        UnitConfig::unitFlag($pdo,'paint','custom_tint_enabled',false), true);
-// restore OFF immediately (the live enable is the CEO's post-export step)
-if ($cfgSnap !== false && $cfgSnap !== null) { $pdo->prepare("UPDATE app_settings SET setting_value=? WHERE setting_key='commerce_unit_config'")->execute([$cfgSnap]); UnitConfig::resetCache(); }
-ok('restored → custom_tint OFF', UnitConfig::unitFlag($pdo,'paint','custom_tint_enabled',false), false);
+ok('shade_count > 0',           $rd['shade_count'] > 0, true);
 
 echo "\n== [J] structural ==\n";
 ok('importer lib exists', get(SYSTEM_ROOT.'/lib/commerce/PaintShadeImporter.php') !== '', true);

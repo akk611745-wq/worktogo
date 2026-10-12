@@ -92,37 +92,17 @@ class PaintShadeImporter
         return (int)$db->query("SELECT COUNT(*) FROM commerce_paint_shades")->fetchColumn();
     }
 
-    /** Is custom tint safe to switch on? Needs fandeck data. */
+    /**
+     * Is there shade data to switch brands on against? Custom tint go-live is
+     * PER-BRAND (commerce_custom_tint_brands, via AdminControlRoom /
+     * CustomTint::enableBrand) — this just reports data readiness + which brands
+     * are already live.
+     */
     public static function enableReadiness(PDO $db): array
     {
         $count = self::shadeCount($db);
-        $enabled = UnitConfig::unitFlag($db, 'paint', 'custom_tint_enabled', false);
         $reasons = [];
-        if ($count === 0) $reasons[] = 'no_shade_data (import the Prisma export first)';
-        if ($enabled)     $reasons[] = 'already_enabled';
-        return ['ready' => $count > 0, 'shade_count' => $count, 'enabled' => $enabled, 'reasons' => $reasons];
-    }
-
-    /**
-     * Turn custom tint ON — ONLY when readiness passes (fandeck has data).
-     * The CEO runs this (import --enable) after the Prisma export lands.
-     */
-    public static function enable(PDO $db): array
-    {
-        $r = self::enableReadiness($db);
-        if (!$r['ready']) return ['ok' => false, 'reason' => 'not_ready', 'readiness' => $r];
-
-        $cur = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key='commerce_unit_config' LIMIT 1");
-        $cur->execute();
-        $cfg = json_decode((string)($cur->fetchColumn() ?: '{}'), true);
-        if (!is_array($cfg)) $cfg = [];
-        $cfg['units'] = is_array($cfg['units'] ?? null) ? $cfg['units'] : [];
-        $cfg['units']['paint'] = is_array($cfg['units']['paint'] ?? null) ? $cfg['units']['paint'] : [];
-        $cfg['units']['paint']['enabled'] = true;
-        $cfg['units']['paint']['custom_tint_enabled'] = true;
-        $db->prepare("INSERT INTO app_settings (setting_key,setting_value,value_type,is_public) VALUES ('commerce_unit_config',?, 'text',0) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)")
-           ->execute([json_encode($cfg)]);
-        UnitConfig::resetCache();
-        return ['ok' => true, 'enabled' => true, 'shade_count' => $r['shade_count']];
+        if ($count === 0) $reasons[] = 'no_shade_data (import the fandeck first)';
+        return ['ready' => $count > 0, 'shade_count' => $count, 'enabled_brands' => UnitConfig::customTintBrands($db), 'reasons' => $reasons];
     }
 }

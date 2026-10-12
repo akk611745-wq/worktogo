@@ -16,7 +16,8 @@ require_once SYSTEM_ROOT . '/lib/commerce/CommercePayment.php';
 
 if ($method === 'GET' && $uri === '/api/tint/config') {
     Response::success([
-        'enabled'          => CustomTint::enabled($db),
+        'enabled'          => CustomTint::enabled($db),           // any brand live?
+        'enabled_brands'   => CustomTint::enabledBrands($db),     // per-brand go-live list
         'advance_pct'      => CommercePayment::advancePct($db),
         'consent_required' => CustomTint::consentRequired($db),
     ], 200, 'OK');

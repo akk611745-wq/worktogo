@@ -63,12 +63,16 @@ function mkItem(PDO $p,$oid,$pid,$v){ $p->prepare("INSERT INTO order_items (orde
 cleanup($pdo);
 $cfgSnap = $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key='commerce_unit_config'")->fetchColumn();
 $ccSnap  = $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key='commerce_confirm_call'")->fetchColumn();
-register_shutdown_function(function() use($pdo,$cfgSnap,$ccSnap){ try{
+$brSnap  = $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key='commerce_custom_tint_brands'")->fetchColumn();
+register_shutdown_function(function() use($pdo,$cfgSnap,$ccSnap,$brSnap){ try{
     if($cfgSnap!==false&&$cfgSnap!==null) $pdo->prepare("UPDATE app_settings SET setting_value=? WHERE setting_key='commerce_unit_config'")->execute([$cfgSnap]);
     if($ccSnap!==false&&$ccSnap!==null)   $pdo->prepare("UPDATE app_settings SET setting_value=? WHERE setting_key='commerce_confirm_call'")->execute([$ccSnap]);
+    if($brSnap!==false&&$brSnap!==null)    $pdo->prepare("UPDATE app_settings SET setting_value=? WHERE setting_key='commerce_custom_tint_brands'")->execute([$brSnap]);
 }catch(\Throwable $e){} });
-$PAINT_OFF = '{"units":{"paint":{"enabled":true,"custom_tint_enabled":false}},"paint_category_slugs":["paint-interior-emulsion","paint-exterior-emulsion","paint-enamel","paint-distemper","paint-primer","paint-putty","paint-waterproofing"]}';
-$PAINT_ON  = '{"units":{"paint":{"enabled":true,"custom_tint_enabled":true}},"paint_category_slugs":["paint-interior-emulsion","paint-exterior-emulsion","paint-enamel","paint-distemper","paint-primer","paint-putty","paint-waterproofing"]}';
+// paint unit ON; per-brand custom-tint go-live is driven by commerce_custom_tint_brands
+$PAINT_UNIT = '{"units":{"paint":{"enabled":true}},"paint_category_slugs":["paint-interior-emulsion","paint-exterior-emulsion","paint-enamel","paint-distemper","paint-primer","paint-putty","paint-waterproofing"]}';
+setcfg($pdo,'commerce_unit_config',$PAINT_UNIT);
+function brands(PDO $p, array $arr){ $p->prepare("INSERT INTO app_settings (setting_key,setting_value,value_type,is_public) VALUES ('commerce_custom_tint_brands',?, 'text',0) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)")->execute([json_encode(array_values($arr))]); UnitConfig::resetCache(); }
 
 $custAttrs  = ['brand'=>'P5T-Berger','product_name'=>'Tintable Base','shade_mode'=>'tintable','custom_tintable'=>'yes','base_type'=>'white','returnable'=>'no'];
 $readyAttrs = ['brand'=>'P5T-Berger','product_name'=>'Easy Clean','shade_mode'=>'ready','finish'=>'sheen','returnable'=>'yes'];
@@ -77,10 +81,10 @@ echo "\n== [A] P5 tables exist ==\n";
 ok('commerce_paint_shades exists',    (int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='commerce_paint_shades'")->fetchColumn(), 1);
 ok('commerce_tint_order_log exists',  (int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='commerce_tint_order_log'")->fetchColumn(), 1);
 
-echo "\n== [B] custom tint OFF by config (until Prisma) ==\n";
-setcfg($pdo,'commerce_unit_config',$PAINT_OFF);
-ok('CustomTint::enabled() false',            CustomTint::enabled($pdo), false);
-ok('order intent refused (disabled)',        in_array('custom_tint_disabled', CustomTint::validateOrderIntent($pdo,$custAttrs,['brand'=>'P5T-Berger','shade_code'=>'2003','consent'=>true,'advance_started'=>true]), true), true);
+echo "\n== [B] custom tint PER-BRAND: no brand enabled → refused ==\n";
+brands($pdo,[]);
+ok('CustomTint::enabled() false (no brands live)', CustomTint::enabled($pdo), false);
+ok('order intent refused (brand_not_enabled)',     in_array('brand_not_enabled', CustomTint::validateOrderIntent($pdo,$custAttrs,['brand'=>'P5T-Berger','shade_code'=>'2003','consent'=>true,'advance_started'=>true]), true), true);
 
 echo "\n== [C] brand-code guard (data-empty → with a seeded shade) ==\n";
 ok('empty fandeck: Berger 2003 → not found', CustomTint::brandHasCode($pdo,'P5T-Berger','2003'), false);
@@ -110,8 +114,9 @@ ok('preferredSeller(A,Berger,9999) = null',    CustomTint::preferredSeller($pdo,
 ok('routeFirst repaint → VX (pin same seller)', CustomTint::routeFirstSeller($pdo,$uA,'P5T-Berger','2003','repaint'), $VX);
 ok('routeFirst new → null (any seller ok)',     CustomTint::routeFirstSeller($pdo,$uA,'P5T-Berger','2003','new'), null);
 
-echo "\n== [G] consent + advance gate (custom tint ON) ==\n";
-setcfg($pdo,'commerce_unit_config',$PAINT_ON);
+echo "\n== [G] consent + advance gate (brand ENABLED) ==\n";
+brands($pdo,['P5T-Berger']);
+ok('brand enabled now', CustomTint::brandEnabled($pdo,'P5T-Berger'), true);
 $blk=CustomTint::validateOrderIntent($pdo,$custAttrs,['brand'=>'P5T-Berger','shade_code'=>'2003','consent'=>false,'advance_started'=>false]);
 ok('no consent → consent_required',   in_array('consent_required',$blk,true), true);
 ok('no advance → advance_required',    in_array('advance_required',$blk,true), true);
@@ -119,7 +124,7 @@ $blk2=CustomTint::validateOrderIntent($pdo,$custAttrs,['brand'=>'P5T-Berger','sh
 ok('consent + advance + valid code → OK (no blockers)', empty($blk2), true);
 $blk3=CustomTint::validateOrderIntent($pdo,$custAttrs,['brand'=>'P5T-Berger','shade_code'=>'9999','consent'=>true,'advance_started'=>true]);
 ok('bad code → shade_code_not_in_brand', in_array('shade_code_not_in_brand',$blk3,true), true);
-setcfg($pdo,'commerce_unit_config',$PAINT_OFF);
+brands($pdo,[]);
 
 echo "\n== [H] ops confirm-call flag ==\n";
 setcfg($pdo,'commerce_confirm_call','{"enabled":false,"min_value":5000,"custom_always":true}');
@@ -142,12 +147,16 @@ ok('refusal risk_class = no_return', $rc['risk_class'] ?? null, 'no_return');
 $rr = CommerceReturns::requestReturn($pdo,$oReady,$uA,'sealed, unopened');
 ok('ready paint return allowed', ($rr['ok'] ?? false), true);
 
-echo "\n== [J] regression: custom-tint product still blocked while OFF (P1) ==\n";
+echo "\n== [J] orderability gate is PER-BRAND ==\n";
 require_once SYSTEM_ROOT . '/lib/commerce/OrderabilityResolver.php';
 $catId=(int)$pdo->query("SELECT id FROM categories WHERE slug='paint-interior-emulsion' LIMIT 1")->fetchColumn();
 $pdo->prepare("UPDATE products SET category_id=? WHERE id=?")->execute([$catId,$pCust]);
-UnitConfig::resetCache();
-ok('custom-tint product → custom_tint_off', OrderabilityResolver::check($pdo,$pCust,$cityId)['reason'], 'custom_tint_off');
+brands($pdo,[]);
+ok('no brand → custom-tint product blocked (custom_tint_off)', OrderabilityResolver::check($pdo,$pCust,$cityId)['reason'], 'custom_tint_off');
+brands($pdo,['P5T-Berger']);
+ok('brand ON → same custom-tint product orderable', OrderabilityResolver::check($pdo,$pCust,$cityId)['reason'], 'ok');
+brands($pdo,[]);
+ok('brand OFF again → blocked', OrderabilityResolver::check($pdo,$pCust,$cityId)['reason'], 'custom_tint_off');
 
 echo "\n== [K] structural wiring ==\n";
 $adapter=get(SYSTEM_ROOT.'/heart/api/tint/index.php'); $heart=get(SYSTEM_ROOT.'/heart/index.php'); $ui=get(SYSTEM_ROOT.'/paint-tint/index.html');

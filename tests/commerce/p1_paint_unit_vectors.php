@@ -97,9 +97,10 @@ ok('paint CUSTOM-TINT (tint off) → custom_tint_off', chk_reason($pdo,$pTint,$c
 ok('  …blocked at layer 4', OrderabilityResolver::check($pdo,$pTint,$cityId)['layer'], 4);
 ok('NON-paint product → orderable (layer-4 pass)', chk_reason($pdo,$pOther,$cityId), 'ok');
 
-// flip custom tint ON
-setcfg($pdo,'commerce_unit_config','{"units":{"paint":{"enabled":true,"custom_tint_enabled":true}},"paint_category_slugs":["paint-interior-emulsion","paint-exterior-emulsion","paint-enamel","paint-distemper","paint-primer","paint-putty","paint-waterproofing"]}');
-ok('custom tint ON → custom-tint now orderable', chk_reason($pdo,$pTint,$cityId), 'ok');
+// enable this brand (per-brand go-live) — the tint product's brand is Indigo
+$pdo->prepare("INSERT INTO app_settings (setting_key,setting_value,value_type,is_public) VALUES ('commerce_custom_tint_brands','[\"Indigo\"]','text',0) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)")->execute(); UnitConfig::resetCache();
+ok('brand enabled → custom-tint now orderable', chk_reason($pdo,$pTint,$cityId), 'ok');
+$pdo->prepare("UPDATE app_settings SET setting_value='[]' WHERE setting_key='commerce_custom_tint_brands'")->execute(); UnitConfig::resetCache();
 
 // disable the whole paint unit
 setcfg($pdo,'commerce_unit_config','{"units":{"paint":{"enabled":false}},"paint_category_slugs":["paint-interior-emulsion"]}');

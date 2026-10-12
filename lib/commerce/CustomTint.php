@@ -14,10 +14,35 @@ require_once __DIR__ . '/UnitConfig.php';
 
 class CustomTint
 {
-    /** Live only when config enables it (default OFF until Prisma data lands). */
+    /** True if ANY brand has custom tint switched on (for the global UI banner). */
     public static function enabled(PDO $db): bool
     {
-        return UnitConfig::unitFlag($db, 'paint', 'custom_tint_enabled', false);
+        return count(UnitConfig::customTintBrands($db)) > 0;
+    }
+
+    /** The admin "enabled brands" list (as stored). */
+    public static function enabledBrands(PDO $db): array { return UnitConfig::customTintBrands($db); }
+
+    /** Is this brand's custom tint live? (case-insensitive) */
+    public static function brandEnabled(PDO $db, ?string $brand): bool { return UnitConfig::customTintBrandEnabled($db, $brand); }
+
+    /** Admin: switch a brand ON (add to commerce_custom_tint_brands). Returns the new list. */
+    public static function enableBrand(PDO $db, string $brand): array
+    {
+        $brand = trim($brand);
+        $list = self::enabledBrands($db);
+        $exists = false; foreach ($list as $b) if (strtolower($b) === strtolower($brand)) { $exists = true; break; }
+        if (!$exists && $brand !== '') $list[] = $brand;
+        $db->prepare("INSERT INTO app_settings (setting_key,setting_value,value_type,is_public) VALUES ('commerce_custom_tint_brands',?, 'text',0) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)")->execute([json_encode(array_values($list))]);
+        return $list;
+    }
+
+    /** Admin: switch a brand OFF. Returns the new list. */
+    public static function disableBrand(PDO $db, string $brand): array
+    {
+        $list = array_values(array_filter(self::enabledBrands($db), fn($b) => strtolower($b) !== strtolower(trim($brand))));
+        $db->prepare("INSERT INTO app_settings (setting_key,setting_value,value_type,is_public) VALUES ('commerce_custom_tint_brands',?, 'text',0) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)")->execute([json_encode($list)]);
+        return $list;
     }
 
     /** Attribute test (delegates to the PaintUnit convention). */
@@ -128,9 +153,8 @@ class CustomTint
     {
         $blockers = [];
         if (!self::isCustomTint($attrs)) return $blockers; // ready paint: nothing to gate here
-        if (!self::enabled($db)) { $blockers[] = 'custom_tint_disabled'; return $blockers; }
-
         $brand = (string)($flags['brand'] ?? ($attrs['brand'] ?? ''));
+        if (!self::brandEnabled($db, $brand)) { $blockers[] = 'brand_not_enabled'; return $blockers; }
         $code  = (string)($flags['shade_code'] ?? '');
         if ($code === '' || !self::brandHasCode($db, $brand, $code)) $blockers[] = 'shade_code_not_in_brand';
         if (self::consentRequired($db) && empty($flags['consent'])) $blockers[] = 'consent_required';

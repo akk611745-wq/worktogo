@@ -31,6 +31,7 @@ $flags = array_values(array_filter($args, fn($a) => str_starts_with($a, '--')));
 $files = array_values(array_filter($args, fn($a) => !str_starts_with($a, '--')));
 $dryRun   = in_array('--dry-run', $flags, true);
 $doEnable = in_array('--enable', $flags, true);
+$enableNote = "NOTE: custom tint go-live is PER-BRAND — enable each brand via AdminControlRoom (commerce_custom_tint_brands) or CustomTint::enableBrand(\$db,'Berger'). The importer only loads data.";
 $format   = null;
 foreach ($flags as $f) { if (str_starts_with($f, '--format=')) $format = substr($f, 9); }
 
@@ -39,7 +40,7 @@ function out($label, $data) { echo $label . ': ' . json_encode($data, JSON_UNESC
 // No file → readiness report only.
 if (empty($files) || in_array('--readiness', $flags, true)) {
     out('readiness', PaintShadeImporter::enableReadiness($db));
-    if ($doEnable) out('enable', PaintShadeImporter::enable($db));
+    if ($doEnable) echo $enableNote . "\n";
     exit(0);
 }
 
@@ -55,6 +56,6 @@ out('import', ['inserted' => $res['inserted'], 'updated' => $res['updated'], 'in
 if ($res['invalid'] > 0) out('invalid_rows', array_slice($res['errors'], 0, 20));
 
 out('readiness', PaintShadeImporter::enableReadiness($db));
-if ($doEnable && !$dryRun) out('enable', PaintShadeImporter::enable($db));
+if ($doEnable) echo $enableNote . "\n";
 
 exit($res['invalid'] > 0 ? 1 : 0);
