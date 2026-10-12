@@ -257,6 +257,45 @@ class PaymentService
                 return ['success' => true, 'message' => 'Already processed. Skipped.', 'error' => null];
             }
 
+            // ── Commerce ADVANCE (part-capture) — P4 ──────────────────────────────
+            //  SCOPED: only a commerce ORDER that has a commerce_order_payments
+            //  'advance' row takes this path. Bookings never create one, and a
+            //  full-payment order has none, so both keep the exact-amount check
+            //  below unchanged. The lookup is wrapped so an un-migrated DB (no
+            //  table) silently falls through to the original behaviour.
+            $advance = null;
+            if ($referenceType === 'order' && $newStatus === 'paid') {
+                try {
+                    $advStmt = $this->db->prepare("SELECT id, expected_amount, status FROM commerce_order_payments WHERE order_id = ? AND kind = 'advance' ORDER BY id DESC LIMIT 1");
+                    $advStmt->execute([$internalOrderId]);
+                    $advance = $advStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+                } catch (\Throwable $e) { $advance = null; }
+            }
+            if ($advance) {
+                if ($advance['status'] !== 'pending') {
+                    // already captured/settled → idempotent skip (keeps partially_paid)
+                    $this->db->rollBack();
+                    return ['success' => true, 'message' => 'Advance already processed. Skipped.', 'error' => null];
+                }
+                $expectedAdv = round((float)$advance['expected_amount'], 2);
+                if ($cfAmount !== null && round((float)$cfAmount, 2) !== $expectedAdv) {
+                    $this->db->prepare("UPDATE commerce_order_payments SET status='failed', updated_at=NOW() WHERE id=?")->execute([(int)$advance['id']]);
+                    $this->updatePaymentTargetMeta('order', $internalOrderId, ['payment_status' => 'failed']);
+                    $this->db->commit();
+                    return $this->fail("Advance amount mismatch. Flagged for review.");
+                }
+                $captured = $cfAmount !== null ? round((float)$cfAmount, 2) : $expectedAdv;
+                $balance  = round((float)$target['total'] - $captured, 2);
+                $this->db->prepare("UPDATE commerce_order_payments SET captured_amount=?, balance_amount=?, status='captured', gateway_txn_id=?, updated_at=NOW() WHERE id=?")
+                         ->execute([$captured, $balance, $txnId, (int)$advance['id']]);
+                $advMeta = ['payment_status' => 'partially_paid', 'status' => 'confirmed'];
+                if ($txnId) $advMeta['payment_id'] = $orderRef . '|txn:' . $txnId;
+                if ($storedGateway === '') $advMeta['payment_gateway'] = $effectiveGateway;
+                $this->updatePaymentTargetMeta('order', $internalOrderId, $advMeta);
+                $this->db->commit();
+                return ['success' => true, 'message' => "Advance captured ({$captured}). Balance {$balance} due on delivery.", 'error' => null];
+            }
+
             // ── Server-side amount verification ───────────────────────────────────
             $dbAmount = round((float)$target['total'], 2);
             if ($cfAmount !== null && round((float)$cfAmount, 2) !== $dbAmount) {
