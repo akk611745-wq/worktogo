@@ -136,4 +136,55 @@ class CommercePayment
         if (!$a) return 0.0;
         return $a['status'] === 'captured' ? round((float)$a['balance_amount'], 2) : 0.0;
     }
+
+    /**
+     * What the RIDER collects at the door — computed server-side (never in JS):
+     *   prepaid → 0 · COD → the handoff cod_amount (fallback order total) · advance
+     *   → the tracked balance. The prepaid/COD contract is the one CommerceDelivery
+     *   ::enrichHandoff wrote onto the `deliveries` row (is_prepaid / cod_amount);
+     *   the order's payment_status/total are the fallback.
+     * @return array{type:string, amount:float}
+     */
+    public static function collectAtDoor(PDO $db, int $orderId): array
+    {
+        // 1) A captured ADVANCE wins — the balance is collected at the door.
+        $adv = self::advanceStatus($db, $orderId);
+        if ($adv && $adv['status'] === 'captured') return ['type' => 'advance', 'amount' => round((float)$adv['balance_amount'], 2)];
+
+        // 2) The delivery handoff contract (prepaid vs COD at the door).
+        $d = $db->prepare("SELECT is_prepaid, cod_amount FROM deliveries WHERE order_id=? ORDER BY id DESC LIMIT 1");
+        $d->execute([$orderId]);
+        $h = $d->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        // 3) Order payment state + total as the fallback.
+        $s = $db->prepare("SELECT payment_method, payment_status, total FROM orders WHERE id=? LIMIT 1");
+        $s->execute([$orderId]);
+        $o = $s->fetch(PDO::FETCH_ASSOC);
+        if (!$o) return ['type' => 'unknown', 'amount' => 0.0];
+
+        if ($o['payment_status'] === 'paid' || ($h && (int)$h['is_prepaid'] === 1)) {
+            return ['type' => 'prepaid', 'amount' => 0.0];
+        }
+        if (strtolower((string)$o['payment_method']) === 'cod' || $o['payment_status'] === 'unpaid') {
+            $amt = ($h && $h['cod_amount'] !== null && (float)$h['cod_amount'] > 0) ? (float)$h['cod_amount'] : (float)$o['total'];
+            return ['type' => 'cod', 'amount' => round($amt, 2)];
+        }
+        return ['type' => 'prepaid', 'amount' => 0.0];
+    }
+
+    /**
+     * Record the cash the rider says they collected; flag a mismatch vs expected
+     * (logged now; the PB9 ops queue surfaces it). Best-effort audit row.
+     * @return array{ok:bool, expected:float, collected:float, mismatch:bool}
+     */
+    public static function recordCashCollected(PDO $db, int $orderId, int $deliveryId, int $riderId, float $collected): array
+    {
+        $exp = self::collectAtDoor($db, $orderId)['amount'];
+        $mismatch = abs(round($collected, 2) - round($exp, 2)) > 0.01;
+        try {
+            $db->prepare("INSERT INTO commerce_cash_collections (order_id, delivery_id, rider_id, expected, collected, mismatch, created_at) VALUES (?,?,?,?,?,?,NOW())")
+               ->execute([$orderId, $deliveryId, $riderId, round($exp, 2), round($collected, 2), $mismatch ? 1 : 0]);
+        } catch (\Throwable $e) { error_log('[recordCashCollected] ' . $e->getMessage()); }
+        return ['ok' => true, 'expected' => round($exp, 2), 'collected' => round($collected, 2), 'mismatch' => $mismatch];
+    }
 }

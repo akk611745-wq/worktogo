@@ -15,11 +15,13 @@
 //    POST /api/rider/deliveries/{id}/reject   decline → auto-reassign to next
 //    POST /api/rider/deliveries/{id}/pickup   picked up from the store
 //    POST /api/rider/deliveries/{id}/deliver  delivered to the customer
+//    POST /api/rider/deliveries/{id}/collected {amount}  record cash collected
 // ============================================================================
 
 require_once SYSTEM_ROOT . '/core/delivery/DeliveryEngine.php';
 
 require_once SYSTEM_ROOT . '/core/helpers/RateLimiter.php';
+require_once SYSTEM_ROOT . '/lib/commerce/CommercePayment.php';
 
 $auth   = AuthMiddleware::requireRole(ROLE_DELIVERY);
 $riderId = (int)$auth['user_id'];
@@ -73,10 +75,15 @@ try {
 
     // GET /api/rider/deliveries — active jobs for this rider
     if ($method === 'GET' && $uri === '/api/rider/deliveries') {
+        // NOTE: the rider payload deliberately carries NO seller base price and no
+        // internal cut — only d.price (what we pay/charge for the trip), the money
+        // line the rider collects (server-computed, below), and the load flags.
         $st = $db->prepare(
             "SELECT d.id, d.order_id, d.status, d.price, d.rider_payout, d.distance_km,
                     d.pickup_lat, d.pickup_lng, d.drop_lat, d.drop_lng, d.assigned_at, d.picked_at,
-                    o.order_number, o.shipping_address, s.name AS store_name, s.locality AS store_locality
+                    d.total_weight_kg, d.required_vehicle,
+                    o.order_number, o.shipping_address,
+                    s.name AS store_name, s.locality AS store_locality
                FROM deliveries d
                LEFT JOIN orders o ON o.id = d.order_id
                LEFT JOIN stores s ON s.id = d.store_id
@@ -91,7 +98,21 @@ try {
             $r['customer_name'] = is_array($addr) ? ($addr['name'] ?? null) : null;
             $r['customer_phone'] = is_array($addr) ? ($addr['phone'] ?? null) : null;
             unset($r['shipping_address']);
+            // Money line — ALWAYS computed on the server, never in the rider's JS.
+            $collect = CommercePayment::collectAtDoor($db, (int)$r['order_id']);
+            $r['collect_type']   = $collect['type'];                 // prepaid | cod | advance
+            $r['collect_amount'] = $collect['amount'];               // ₹ to take, 0 for prepaid
+            $r['collect_label']  = match ($collect['type']) {        // the big line, server-authored
+                'prepaid' => 'Paid online. Collect nothing.',
+                'cod'     => 'Collect ₹' . number_format($collect['amount'], 0) . ' cash',
+                'advance' => 'Collect balance ₹' . number_format($collect['amount'], 0),
+                default   => 'Collect nothing.',
+            };
+            // Heavy-order flag for the job card.
+            $r['total_weight_kg']  = $r['total_weight_kg'] !== null ? (float)$r['total_weight_kg'] : null;
+            $r['required_vehicle'] = $r['required_vehicle'] ?: null;
         }
+        unset($r);
         Response::success(['deliveries' => $rows]);
         exit;
     }
@@ -111,6 +132,26 @@ try {
         } catch (\RuntimeException $e) {
             Response::error($e->getMessage(), 400);
         }
+        exit;
+    }
+
+    // POST /api/rider/deliveries/{id}/collected {amount}
+    //   Rider records the cash they took. Expected is server-computed; a mismatch
+    //   is flagged for admin (logged now; PB9 ops queue surfaces it).
+    if ($method === 'POST' && preg_match('#^/api/rider/deliveries/(\d+)/collected$#', $uri, $m)) {
+        $riderLimit('rider_write_' . $riderId, 90, 60);
+        $did = (int)$m[1];
+        // The delivery must belong to THIS rider.
+        $own = $db->prepare("SELECT order_id FROM deliveries WHERE id = ? AND driver_id = ? LIMIT 1");
+        $own->execute([$did, $riderId]);
+        $orderId = (int)($own->fetchColumn() ?: 0);
+        if (!$orderId) { Response::error('Delivery not found', 404); exit; }
+        $b = $body();
+        if (!isset($b['amount']) || !is_numeric($b['amount']) || (float)$b['amount'] < 0) {
+            Response::validation('amount required'); exit;
+        }
+        $res = CommercePayment::recordCashCollected($db, $orderId, $did, $riderId, (float)$b['amount']);
+        Response::success($res, 200, $res['mismatch'] ? 'Recorded — amount differs from expected, flagged for admin.' : 'Recorded');
         exit;
     }
 

@@ -53,4 +53,5 @@ margin override (product??category??platform), online primary + COD fallback, pa
 ## PAINT UNIT BUILD LOG (plan: system-brain/CATEGORIES/paint-unit-final-build-plan.md; one line per step)
 - PB1 `a2fcb91` — Product→Variant→Pack-SKU model (PaintCatalogue, weight+photo). Suite 808/0. Next: PB2.
 - PB2 `7582c3d` — Seller add-product screen (brand/category/variant/packs/photo + edit + change-log). Suite 832/0. Next: PB3a.
-- PB3a+PB17 `<this commit>` — Admin commerce screens (seller KYC queue, product verification + dedup merge, price-jump review ≥30%, change-log; nav visible in service-only). Suite 852/0. Next: PB5 (rider cash-to-collect + vehicle flag).
+- PB3a+PB17 `2eab939` — Admin commerce screens (seller KYC queue, product verification + dedup merge, price-jump review ≥30%, change-log; nav visible in service-only). Suite 852/0. Next: PB5 (rider cash-to-collect + vehicle flag).
+- PB5 `<this commit>` — Rider screen: server-computed money line (PREPAID/COD/ADVANCE via CommercePayment::collectAtDoor), "Collected ₹__" with mismatch flag (commerce_cash_collections, PB9 queue later), heavy-order vehicle+weight flag; rider never sees seller base/margin. Suite 873/0. Next: PB6 (cron: expireStaleOffers + quote-timeout hook).

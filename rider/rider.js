@@ -117,13 +117,34 @@ const Rider = (() => {
          <button class="btn btn-primary" onclick="Rider.act(${j.id},'accept')">Accept</button>
          <button class="btn btn-accent" onclick="Rider.act(${j.id},'pickup')">Picked up</button>`
       : `<button class="btn btn-primary btn-block" onclick="Rider.act(${j.id},'deliver')">Mark delivered</button>`;
+    // Big money line — text comes straight from the server (collect_label); the
+    // rider's JS never computes the amount. Green when nothing to collect.
+    const prepaid = j.collect_type === "prepaid";
+    const moneyLine = `<div class="collect ${prepaid ? "paid" : "due"}">${esc(j.collect_label || "Collect nothing.")}</div>`;
+    // Heavy-order flag: vehicle + total weight, when the server sent them.
+    const veh = { bike: "🏍️ Bike", e_rickshaw: "🛺 E-rickshaw", loader: "🚚 Loader" };
+    const loadLine = (j.required_vehicle || j.total_weight_kg != null)
+      ? `<div class="leg">${esc(veh[j.required_vehicle] || j.required_vehicle || "Vehicle")}${j.total_weight_kg != null ? " · " + esc(j.total_weight_kg) + " kg" : ""}</div>`
+      : "";
+    // "Collected ₹__" confirm — only when there's cash to take. Prefilled with the
+    // server's expected amount; a different number is flagged server-side.
+    const collectBox = (!prepaid && Number(j.collect_amount) > 0)
+      ? `<div class="job-actions" style="align-items:center">
+           <span class="muted" style="white-space:nowrap">Collected ₹</span>
+           <input id="cc-${j.id}" type="number" inputmode="numeric" min="0" step="1" value="${Number(j.collect_amount) || 0}" style="width:110px">
+           <button class="btn btn-accent" onclick="Rider.collected(${j.id})">Mark collected</button>
+         </div>`
+      : "";
     return `<div class="job">
       <div class="row"><div><div class="nm">#${esc(j.order_number || j.order_id)}</div>
         <div class="sub">Pickup: ${esc(j.store_name || "Store")}${j.store_locality ? " · " + esc(j.store_locality) : ""}</div>
         <div class="sub">Drop: ${esc(j.drop_address || j.customer_name || "Customer")}</div></div>
         <div style="text-align:right"><div class="payout">${money(j.rider_payout)}</div><span class="pill ${j.status}">${esc(j.status)}</span></div></div>
+      ${moneyLine}
       <div class="leg">📍 ${j.distance_km ? j.distance_km + " km" : "—"} ${j.customer_phone ? `· <a href="tel:${esc(j.customer_phone)}" style="color:var(--r-brand)">Call customer</a>` : ""}</div>
+      ${loadLine}
       <div class="job-actions">${nav(j.pickup_lat, j.pickup_lng, "Nav to store")}${nav(j.drop_lat, j.drop_lng, "Nav to drop")}</div>
+      ${collectBox}
       <div class="job-actions">${actions}</div>
     </div>`;
   }
@@ -133,6 +154,15 @@ const Rider = (() => {
     if (!r.ok) { toast(r.error); return; }
     toast(action === "deliver" ? "Delivered 🎉" : action === "pickup" ? "Marked picked up" : action === "accept" ? "Accepted" : "Rejected");
     renderDashboard();
+  }
+  async function collected(id) {
+    const el = document.getElementById(`cc-${id}`);
+    if (!el || el.value === "") { toast("Enter the amount collected"); return; }
+    const amount = Number(el.value);
+    if (!Number.isFinite(amount) || amount < 0) { toast("Enter a valid amount"); return; }
+    const r = await api("POST", `/rider/deliveries/${id}/collected`, { amount });
+    if (!r.ok) { toast(r.error); return; }
+    toast(r.data && r.data.mismatch ? "Recorded — flagged for admin" : "Cash recorded");
   }
 
   /* ── boot ──────────────────────────────────────────────────────────────── */
@@ -144,5 +174,5 @@ const Rider = (() => {
   }
 
   document.addEventListener("DOMContentLoaded", boot);
-  return { login, logout, toggleOnline, act };
+  return { login, logout, toggleOnline, act, collected };
 })();
