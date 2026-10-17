@@ -20,6 +20,7 @@
 
 require_once SYSTEM_ROOT . '/lib/commerce/SellerConsole.php';
 require_once SYSTEM_ROOT . '/lib/commerce/SellerCatalogue.php';
+require_once SYSTEM_ROOT . '/lib/commerce/PaintCatalogue.php';
 require_once SYSTEM_ROOT . '/lib/commerce/KycService.php';
 
 $auth = AuthMiddleware::requireRole(ROLE_VENDOR_SHOPPING, ROLE_ADMIN);
@@ -92,6 +93,42 @@ try {
     if ($method === 'POST' && preg_match('#^/api/commerce-seller/catalogue/(\d+)/stock$#', $uri, $m)) {
         $res = SellerCatalogue::setStock($db, $sellerVendorId, (int)$m[1], (int)($B['stock'] ?? 0));
         if (empty($res['ok'])) { Response::error('Could not set stock: ' . ($res['reason'] ?? 'error'), 422); exit; }
+        Response::success($res); exit;
+    }
+
+    // ── paint catalogue (PB2): product → variant → pack SKU + my-products + edits ──
+    if ($method === 'GET' && $uri === '/api/commerce-seller/paint-meta') {
+        Response::success(['brands' => PaintCatalogue::brands($db), 'categories' => PaintCatalogue::paintCategories($db), 'density' => PaintCatalogue::DENSITY_KG_PER_L]); exit;
+    }
+    if ($method === 'GET' && $uri === '/api/commerce-seller/products') {
+        Response::success(['products' => PaintCatalogue::myProducts($db, $sellerVendorId)]); exit;
+    }
+    if ($method === 'POST' && $uri === '/api/commerce-seller/products') {
+        $res = PaintCatalogue::createProduct($db, $sellerVendorId, $B);
+        if (empty($res['ok'])) { Response::error('Could not create product: ' . ($res['reason'] ?? 'error'), 422); exit; }
+        Response::success($res, 201, 'Product created (draft)'); exit;
+    }
+    if ($method === 'GET' && preg_match('#^/api/commerce-seller/products/(\d+)$#', $uri, $m)) {
+        Response::success(PaintCatalogue::productTree($db, $sellerVendorId, (int)$m[1])); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-seller/products/(\d+)/variants$#', $uri, $m)) {
+        $res = PaintCatalogue::addVariant($db, $sellerVendorId, (int)$m[1], $B);
+        if (empty($res['ok'])) { Response::error('Could not add variant: ' . ($res['reason'] ?? 'error'), 422); exit; }
+        Response::success($res, 201); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-seller/products/(\d+)/variants/(\d+)/packs$#', $uri, $m)) {
+        $res = PaintCatalogue::addPackSku($db, $sellerVendorId, (int)$m[1], (int)$m[2], $B);
+        if (empty($res['ok'])) { Response::error('Could not add pack: ' . ($res['reason'] ?? 'error'), 422); exit; }
+        Response::success($res, 201, 'Pack submitted for verification'); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-seller/packs/(\d+)/price$#', $uri, $m)) {
+        $res = PaintCatalogue::updatePackPrice($db, $sellerVendorId, (int)$m[1], (float)($B['base_price'] ?? 0));
+        if (empty($res['ok'])) { Response::error('Could not update price: ' . ($res['reason'] ?? 'error'), 422); exit; }
+        Response::success($res); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-seller/packs/(\d+)/stock$#', $uri, $m)) {
+        $res = PaintCatalogue::updatePackStock($db, $sellerVendorId, (int)$m[1], (int)($B['stock'] ?? 0));
+        if (empty($res['ok'])) { Response::error('Could not update stock: ' . ($res['reason'] ?? 'error'), 422); exit; }
         Response::success($res); exit;
     }
 

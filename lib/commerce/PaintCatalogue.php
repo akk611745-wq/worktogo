@@ -50,7 +50,7 @@ class PaintCatalogue
         $photo = isset($data['photo']) && $data['photo'] !== '' ? (string)$data['photo'] : null;
         $images = $photo ? json_encode([$photo]) : null;
         $attrs = is_array($data['attributes'] ?? null) ? $data['attributes'] : [];
-        $attrs = array_merge($attrs, ['is_parent' => true, 'brand' => $brand, 'product_line' => $line, 'product_group' => $group]);
+        $attrs = array_merge($attrs, ['is_parent' => 1, 'brand' => $brand, 'product_line' => $line, 'product_group' => $group]);
 
         $db->prepare(
             "INSERT INTO products (vendor_id, store_id, city_id, category_id, name, slug, match_key, unit, price, images, weight, attributes, status, created_at, updated_at)
@@ -154,5 +154,85 @@ class PaintCatalogue
                              WHERE JSON_VALUE(p.attributes,'$.parent_id') = ? AND p.deleted_at IS NULL ORDER BY p.id");
         $sk->execute([(string)$parentProductId]);
         return ['ok' => true, 'product' => $parent, 'variants' => $vs->fetchAll(PDO::FETCH_ASSOC), 'skus' => $sk->fetchAll(PDO::FETCH_ASSOC)];
+    }
+
+    /** Default per-litre density for the weight auto-suggest (paint ≈ 1.25 kg/L). */
+    public const DENSITY_KG_PER_L = 1.25;
+
+    /** Brand picker list (admin-editable commerce_paint_brands; sellers may also type a custom brand). */
+    public static function brands(PDO $db): array
+    {
+        $default = ['Berger','Asian Paints','Nerolac','Dulux','Indigo','Nippon','Birla Opus','Jotun','Sherwin Williams','Kansai Nerolac','JSW Paints','Shalimar','Acro','Sheenlac'];
+        try {
+            $s = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key='commerce_paint_brands' LIMIT 1");
+            $s->execute(); $v = $s->fetchColumn();
+            if ($v) { $j = json_decode((string)$v, true); if (is_array($j) && $j) return array_values(array_filter(array_map(fn($b)=>trim((string)$b),$j),fn($b)=>$b!=='')); }
+        } catch (\Throwable $e) {}
+        return $default;
+    }
+
+    /** The paint family categories (the 7). */
+    public static function paintCategories(PDO $db): array
+    {
+        try {
+            $q = $db->query("SELECT id, name, slug FROM categories WHERE slug LIKE 'paint-%' AND status='active' ORDER BY id");
+            return $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable $e) { return []; }
+    }
+
+    /** Record a post-live price/stock change (audit; admin can review later). Best-effort. */
+    public static function logChange(PDO $db, int $vendorId, int $productId, string $field, $old, $new): void
+    {
+        try {
+            $db->prepare("INSERT INTO commerce_offer_changes (vendor_id, product_id, field, old_value, new_value, changed_at) VALUES (?,?,?,?,?,NOW())")
+               ->execute([$vendorId, $productId, $field, (string)$old, (string)$new]);
+        } catch (\Throwable $e) { /* audit is best-effort; never block the edit */ }
+    }
+
+    /** Edit a live/draft pack's STOCK any time (no re-approval); logs the change. */
+    public static function updatePackStock(PDO $db, int $vendorId, int $skuId, int $qty): array
+    {
+        $cur = $db->prepare("SELECT i.quantity FROM inventory i JOIN products p ON p.id=i.product_id WHERE p.id=? AND p.vendor_id=? LIMIT 1");
+        $cur->execute([$skuId, $vendorId]);
+        $old = $cur->fetchColumn();
+        if ($old === false) return ['ok' => false, 'reason' => 'not_found_or_not_yours'];
+        $res = SellerCatalogue::setStock($db, $vendorId, $skuId, $qty);
+        if (!empty($res['ok'])) self::logChange($db, $vendorId, $skuId, 'stock', (int)$old, max(0, $qty));
+        return $res;
+    }
+
+    /** Edit a pack's seller PRICE any time (recomputes customer price; no re-approval); logs it. */
+    public static function updatePackPrice(PDO $db, int $vendorId, int $skuId, float $newBase): array
+    {
+        $old = SellerCatalogue::sellerBaseOf($db, $skuId);
+        $res = SellerCatalogue::updateOffer($db, $vendorId, $skuId, ['base_price' => $newBase]);
+        if (!empty($res['ok'])) self::logChange($db, $vendorId, $skuId, 'price', $old, round($newBase, 2));
+        return $res;
+    }
+
+    /** "My products" — parents grouped with their pack SKUs (seller-scoped). */
+    public static function myProducts(PDO $db, int $vendorId): array
+    {
+        $pp = $db->prepare("SELECT id, name, images, attributes, status FROM products WHERE vendor_id=? AND deleted_at IS NULL AND JSON_VALUE(attributes,'$.is_parent')='1' ORDER BY updated_at DESC");
+        $pp->execute([$vendorId]);
+        $out = [];
+        foreach ($pp->fetchAll(PDO::FETCH_ASSOC) as $p) {
+            $attrs = $p['attributes'] ? (json_decode((string)$p['attributes'], true) ?: []) : [];
+            $imgs = $p['images'] ? (json_decode((string)$p['images'], true) ?: []) : [];
+            $sk = $db->prepare("SELECT p.id, p.name, p.price, p.status, p.attributes, (i.quantity - i.reserved) AS available_qty
+                                  FROM products p LEFT JOIN inventory i ON i.product_id=p.id
+                                 WHERE JSON_VALUE(p.attributes,'$.parent_id') = ? AND p.deleted_at IS NULL ORDER BY p.id");
+            $sk->execute([(string)$p['id']]);
+            $skus = [];
+            foreach ($sk->fetchAll(PDO::FETCH_ASSOC) as $s) {
+                $sa = $s['attributes'] ? (json_decode((string)$s['attributes'], true) ?: []) : [];
+                $skus[] = ['product_id' => (int)$s['id'], 'pack' => ($sa['pack_size'] ?? '') . ($sa['pack_unit'] ?? ''),
+                           'seller_base' => $sa['seller_base'] ?? null, 'customer_price' => (float)$s['price'],
+                           'stock' => (int)$s['available_qty'], 'status' => $s['status'], 'reject_reason' => $sa['reject_reason'] ?? null];
+            }
+            $out[] = ['product_id' => (int)$p['id'], 'name' => $p['name'], 'brand' => $attrs['brand'] ?? null,
+                      'line' => $attrs['product_line'] ?? null, 'photo' => $imgs[0] ?? null, 'status' => $p['status'], 'skus' => $skus];
+        }
+        return $out;
     }
 }

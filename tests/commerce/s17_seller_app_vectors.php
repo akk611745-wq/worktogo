@@ -66,7 +66,7 @@ ok('GET /orders',                  has($js, '"/orders"'));
 ok('accept endpoint',              has($js, "/accept"));
 ok('reject endpoint',              has($js, "/reject"));
 ok('stock-out endpoint',           has($js, "/stock-out"));
-ok('catalogue endpoint',           has($js, '"/catalogue"'));
+ok('catalogue endpoint',           has($js, '"/products"'));
 ok('restock /stock endpoint',      has($js, "/stock\""));
 ok('earnings endpoint',            has($js, '"/earnings"'));
 ok('customer history endpoint',    has($js, '/customers/'));

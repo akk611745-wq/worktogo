@@ -166,35 +166,92 @@
   async function reject(id) { if (!confirm("Reject this order?")) return; var r = await API("POST", "/orders/" + id + "/reject", { reason: "declined" }); toast(r.ok ? "Order declined" : r.error); renderOrders(); }
   async function stockOut(id) { var r = await API("POST", "/orders/" + id + "/stock-out", { reason: "out of stock" }); toast(r.ok ? "Marked out of stock — rerouting" : r.error); renderOrders(); }
 
-  /* ── catalogue (add / edit base / restock) ─────────────────────────────── */
+  /* ── catalogue: add product (brand → ready shade → packs) + my products ───── */
+  var _pm = null;
+  async function paintMeta() { if (_pm) return _pm; var r = await API("GET", "/paint-meta"); _pm = (r.ok && r.data) || { brands: [], categories: [], density: 1.25 }; return _pm; }
+
   async function renderCatalogue() {
     el("app").innerHTML = '<div class="spin"></div>';
-    var r = await API("GET", "/catalogue");
-    var offers = (r.ok && r.data && r.data.offers) || [];
-    var form = '<div class="card"><label>Add a product offer</label>' +
-      '<input id="of-name" placeholder="Product name (e.g. Berger Easy Clean 4L)">' +
-      '<input id="of-base" inputmode="numeric" placeholder="Your base price (₹)">' +
-      '<input id="of-stock" inputmode="numeric" placeholder="Stock quantity">' +
-      '<button class="btn btn-primary btn-block" onclick="Seller.addOffer()">Submit for verification</button></div>';
-    var list = offers.length ? offers.map(offerCard).join("") : '<div class="empty"><div class="ic">📦</div><h3>No offers yet</h3><p class="muted">Add your first product above.</p></div>';
-    el("app").innerHTML = form + list;
+    var meta = await paintMeta();
+    var r = await API("GET", "/products");
+    var products = (r.ok && r.data && r.data.products) || [];
+    state.newPhoto = null;
+    var brandOpts = (meta.brands || []).map(function (b) { return '<option value="' + esc(b) + '">'; }).join("");
+    var catOpts = (meta.categories || []).map(function (c) { return '<option value="' + c.id + '">' + esc(c.name) + '</option>'; }).join("");
+    var dens = meta.density || 1.25;
+    var packRows = [1, 4, 10, 20].map(function (s) {
+      var w = Math.round((s * dens + 0.3) * 10) / 10;
+      return '<div class="row" style="gap:6px;align-items:center;margin-bottom:6px">' +
+        '<div style="width:44px;font-weight:800">' + s + 'L</div>' +
+        '<input id="pk-price-' + s + '" inputmode="numeric" placeholder="price ₹" style="margin:0">' +
+        '<input id="pk-stock-' + s + '" inputmode="numeric" placeholder="stock" style="margin:0;max-width:74px">' +
+        '<input id="pk-wt-' + s + '" inputmode="decimal" value="' + w + '" title="weight kg" style="margin:0;max-width:60px">' +
+        '</div>';
+    }).join("");
+    var form = '<div class="card"><div class="nm" style="margin-bottom:8px">Add a product</div>' +
+      '<label>Brand</label><input id="cp-brand" list="cp-brands" placeholder="Type or pick a brand"><datalist id="cp-brands">' + brandOpts + '</datalist>' +
+      '<label>Category</label><select id="cp-cat">' + catOpts + '</select>' +
+      '<label>Product line</label><input id="cp-line" placeholder="e.g. Easy Clean">' +
+      '<label>Photo (one per product)</label><div class="ord-actions"><input type="file" id="cp-file" accept="image/*" style="margin:0"><button class="btn btn-ghost" id="cp-upbtn" onclick="Seller.catPhoto()">Upload</button></div><div id="cp-preview" class="muted" style="margin:6px 0"></div>' +
+      '<label>Ready shade</label><input id="cp-shade" value="White" placeholder="e.g. White / Ivory">' +
+      '<label>Packs (fill the sizes you stock — weight auto-suggested, editable)</label>' + packRows +
+      '<div style="height:8px"></div><button class="btn btn-primary btn-block" onclick="Seller.catAdd()">Submit for verification</button></div>';
+    var list = products.length ? products.map(productCard).join("") : '<div class="empty"><div class="ic">📦</div><h3>No products yet</h3><p class="muted">Add your first product above.</p></div>';
+    el("app").innerHTML = form + '<div class="nm" style="margin:12px 2px 6px">My products</div>' + list;
   }
-  function offerCard(o) {
-    var base = o.seller_base != null ? "base " + money(o.seller_base) : "";
-    return '<div class="card"><div class="top" style="display:flex;justify-content:space-between;gap:10px">' +
-      '<div><div class="nm">' + esc(o.name) + '</div><div class="sub">' + base + ' · sells at ' + money(o.customer_price) + ' · stock ' + o.available_qty + '</div></div>' +
-      '<span class="pill ' + esc(o.status) + '">' + esc(o.status) + '</span></div>' +
-      '<div class="ord-actions"><input id="rs-' + o.product_id + '" inputmode="numeric" placeholder="New stock" style="margin:0">' +
-      '<button class="btn btn-ghost" onclick="Seller.restock(' + o.product_id + ')">Update stock</button></div></div>';
+
+  function chip(st, reason) {
+    var map = { draft: ['⏳ Waiting for verification', 'draft'], active: ['● Live', 'active'], inactive: ['✖ Rejected' + (reason ? ' · ' + esc(reason) : ''), 'draft'], archived: ['Archived', ''] };
+    var c = map[st] || [esc(st), '']; return '<span class="pill ' + c[1] + '">' + c[0] + '</span>';
   }
-  async function addOffer() {
-    var name = (el("of-name").value || "").trim(), base = parseFloat(el("of-base").value || "0"), stock = parseInt(el("of-stock").value || "0", 10);
-    if (!name || !(base > 0)) { toast("Enter a name and base price"); return; }
-    var r = await API("POST", "/catalogue", { name: name, base_price: base, stock: stock });
-    toast(r.ok ? "Offer submitted — pending verification" : r.error);
-    if (r.ok) renderCatalogue();
+  function productCard(p) {
+    var ph = p.photo ? '<img src="' + esc(p.photo) + '" style="width:44px;height:44px;border-radius:9px;object-fit:cover">' : '<div style="width:44px;height:44px;border-radius:9px;background:var(--s-line);display:flex;align-items:center;justify-content:center">🪣</div>';
+    var head = '<div class="top" style="display:flex;justify-content:space-between;gap:10px"><div style="display:flex;gap:10px;align-items:center">' + ph +
+      '<div><div class="nm">' + esc((p.brand || '') + ' ' + (p.line || '')) + '</div></div></div>' + chip(p.status, null) + '</div>';
+    var skus = (p.skus || []).map(function (s) {
+      return '<div class="row" style="gap:6px;align-items:center;margin-top:8px">' +
+        '<div style="width:44px;font-weight:800">' + esc(s.pack) + '</div>' +
+        '<input id="ep-' + s.product_id + '" inputmode="numeric" value="' + (s.seller_base != null ? s.seller_base : '') + '" placeholder="base ₹" style="margin:0">' +
+        '<input id="es-' + s.product_id + '" inputmode="numeric" value="' + s.stock + '" style="margin:0;max-width:66px">' +
+        '<button class="btn btn-ghost" style="padding:8px 10px;margin:0" onclick="Seller.catSave(' + s.product_id + ')">Save</button>' +
+        chip(s.status, s.reject_reason) + '</div>' +
+        '<div class="muted" style="font-size:11px;margin-left:50px">sells at ' + money(s.customer_price) + '</div>';
+    }).join("");
+    return '<div class="card">' + head + skus + '</div>';
   }
-  async function restock(id) { var v = parseInt((el("rs-" + id) || {}).value || "0", 10); var r = await API("POST", "/catalogue/" + id + "/stock", { stock: v }); toast(r.ok ? "Stock updated" : r.error); if (r.ok) renderCatalogue(); }
+
+  async function catPhoto() {
+    var inp = el("cp-file"); if (!inp || !inp.files || !inp.files[0]) { toast("Choose a photo first"); return; }
+    var fd = new FormData(); fd.append("file", inp.files[0]); fd.append("purpose", "product");
+    var btn = el("cp-upbtn"); if (btn) { btn.disabled = true; btn.textContent = "Uploading…"; }
+    var res; try { res = await fetch(BASE + "/api/media/upload", { method: "POST", headers: token() ? { Authorization: "Bearer " + token() } : {}, body: fd }); }
+    catch (e) { toast("Offline"); if (btn) { btn.disabled = false; btn.textContent = "Upload"; } return; }
+    var j = {}; try { j = await res.json(); } catch (e) {}
+    if (!res.ok || j.success === false) { toast(j.message || j.error || "Upload failed"); if (btn) { btn.disabled = false; btn.textContent = "Upload"; } return; }
+    state.newPhoto = (j.data && j.data.public_url) || j.public_url;
+    el("cp-preview").innerHTML = '<img src="' + esc(state.newPhoto) + '" style="width:72px;height:72px;border-radius:9px;object-fit:cover"> uploaded ✓';
+    if (btn) { btn.disabled = false; btn.textContent = "Change"; }
+  }
+  async function catAdd() {
+    var brand = (el("cp-brand").value || "").trim(), cat = el("cp-cat").value, line = (el("cp-line").value || "").trim(), shade = (el("cp-shade").value || "White").trim();
+    if (!brand || !line) { toast("Enter brand and product line"); return; }
+    var packs = [1, 4, 10, 20].map(function (s) { return { size: s, base: parseFloat((el("pk-price-" + s) || {}).value || "0"), stock: parseInt((el("pk-stock-" + s) || {}).value || "0", 10), weight: parseFloat((el("pk-wt-" + s) || {}).value || "0") }; }).filter(function (p) { return p.base > 0; });
+    if (!packs.length) { toast("Enter a price for at least one pack"); return; }
+    var pr = await API("POST", "/products", { brand: brand, line: line, category_id: cat, photo: state.newPhoto });
+    if (!pr.ok) { toast(pr.error); return; }
+    var pid = pr.data.product_id;
+    var vr = await API("POST", "/products/" + pid + "/variants", { variant_type: "ready_shade", label: shade, shade_mode: "ready" });
+    if (!vr.ok) { toast(vr.error); return; }
+    var vid = vr.data.variation_id;
+    for (var i = 0; i < packs.length; i++) { var p = packs[i]; await API("POST", "/products/" + pid + "/variants/" + vid + "/packs", { pack_size: String(p.size), pack_unit: "L", base_price: p.base, stock: p.stock, weight: p.weight }); }
+    toast("Submitted — waiting for verification"); renderCatalogue();
+  }
+  async function catSave(id) {
+    var base = parseFloat((el("ep-" + id) || {}).value || "0"), stock = parseInt((el("es-" + id) || {}).value || "0", 10);
+    if (base > 0) { await API("POST", "/packs/" + id + "/price", { base_price: base }); }
+    await API("POST", "/packs/" + id + "/stock", { stock: stock });
+    toast("Saved"); renderCatalogue();
+  }
 
   /* ── earnings ──────────────────────────────────────────────────────────── */
   async function renderEarnings() {
@@ -231,6 +288,6 @@
   }
   function logout() { try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} renderLogin(); }
 
-  window.Seller = { boot: boot, go: go, setAvail: setAvail, accept: accept, reject: reject, stockOut: stockOut, addOffer: addOffer, restock: restock, history: history, closeSheet: closeSheet, logout: logout, uploadDoc: uploadDoc, saveKyc: saveKyc, submitKyc: submitKyc };
+  window.Seller = { boot: boot, go: go, setAvail: setAvail, accept: accept, reject: reject, stockOut: stockOut, catPhoto: catPhoto, catAdd: catAdd, catSave: catSave, history: history, closeSheet: closeSheet, logout: logout, uploadDoc: uploadDoc, saveKyc: saveKyc, submitKyc: submitKyc };
   if (document.readyState !== "loading") boot(); else document.addEventListener("DOMContentLoaded", boot);
 })();
