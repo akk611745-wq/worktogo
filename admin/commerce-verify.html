@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Product Verification</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="admin-main">
+    <div id="shell-topbar"></div>
+    <div class="admin-content">
+      <h1>Product Verification</h1>
+      <p class="page-subtitle">Approve / reject new pack SKUs. Duplicates (same product, two sellers) are flagged to merge. Big price jumps wait below.</p>
+      <h2>Pending products</h2>
+      <div id="verify-list"><div class="muted">Loading…</div></div>
+      <h2 style="margin-top:22px">Price-jump reviews</h2>
+      <div id="price-list"><div class="muted">Loading…</div></div>
+    </div>
+  </div>
+</div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/push.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Product Verification', active: 'commerce-verify.html' });
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const money = n => '₹' + Number(n||0).toLocaleString('en-IN');
+async function load() { loadProducts(); loadPriceReviews(); }
+async function loadProducts() {
+  const r = await API.get('/commerce-admin/products/pending');
+  const list = ((r && r.data) || r || {}).products || [];
+  const host = document.getElementById('verify-list');
+  if (!list.length) { host.innerHTML = '<div class="muted">Nothing waiting.</div>'; return; }
+  host.innerHTML = list.map(p => `
+    <div class="card" style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px">
+      ${p.photo ? `<img src="${esc(p.photo)}" style="width:56px;height:56px;border-radius:8px;object-fit:cover">` : '<div style="width:56px;height:56px;border-radius:8px;background:#eee;display:flex;align-items:center;justify-content:center">🪣</div>'}
+      <div style="flex:1">
+        <div style="font-weight:700">${esc((p.brand||'')+' '+(p.line||''))} · ${esc(p.pack)} ${p.duplicate ? '<span style="color:#b45309">⚠ possible duplicate</span>' : ''}</div>
+        <div class="muted" style="font-size:12px">${esc(p.vendor||'')} · base ${money(p.seller_base)} → sells ${money(p.customer_price)} · stock ${p.stock} · ${p.weight!=null?esc(p.weight)+'kg':'no weight'}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="btn btn-primary" onclick="approve(${p.product_id})">Approve</button>
+        <button class="btn btn-danger" onclick="reject(${p.product_id})">Reject</button>
+        ${p.duplicate ? `<button class="btn" onclick="merge(${p.product_id})">Merge…</button>` : ''}
+        <button class="btn" onclick="changes(${p.product_id})">Changes</button>
+      </div>
+    </div>`).join('');
+}
+async function loadPriceReviews() {
+  const r = await API.get('/commerce-admin/price-reviews');
+  const list = ((r && r.data) || r || {}).reviews || [];
+  const host = document.getElementById('price-list');
+  if (!list.length) { host.innerHTML = '<div class="muted">No price jumps waiting.</div>'; return; }
+  host.innerHTML = list.map(x => `
+    <div class="card" style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px">
+      <div><div style="font-weight:700">${esc(x.name||('#'+x.product_id))}</div>
+        <div class="muted" style="font-size:12px">base ${money(x.old_base)} → ${money(x.new_base)} · ${esc(x.created_at||'')}</div></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="reviewPrice(${x.id},true)">Approve</button>
+        <button class="btn btn-danger" onclick="reviewPrice(${x.id},false)">Reject</button></div>
+    </div>`).join('');
+}
+async function approve(id){ const r=await API.post(`/commerce-admin/products/${id}/approve`,{}); done(r,'Approved'); }
+async function reject(id){ const reason=prompt('Reason (shown to the seller):',''); if(reason===null)return; const r=await API.post(`/commerce-admin/products/${id}/reject`,{reason}); done(r,'Rejected'); }
+async function merge(id){ const c=prompt('Canonical product id to link this to:',''); if(!c)return; const r=await API.post(`/commerce-admin/products/${id}/merge`,{canonical_id:parseInt(c,10)}); done(r,'Merged'); }
+async function changes(id){ const r=await API.get(`/commerce-admin/products/${id}/changes`); const d=(r&&r.data)||r||{}; alert('Changes:\n'+JSON.stringify(d.changes||[],null,1)+'\n\nPrice reviews:\n'+JSON.stringify(d.price_reviews||[],null,1)); }
+async function reviewPrice(id,approve){ let reason=''; if(!approve){reason=prompt('Reason:','')||'';} const r=await API.post(`/commerce-admin/price-reviews/${id}/review`,{approve,reason}); done(r, approve?'Price applied':'Rejected'); }
+function done(r,msg){ if(r && r.success!==false){ alert(msg); load(); } else { alert((r&&(r.message||r.error))||'Failed'); } }
+load();
+</script>
+</body>
+</html>

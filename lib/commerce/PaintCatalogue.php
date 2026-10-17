@@ -201,13 +201,41 @@ class PaintCatalogue
         return $res;
     }
 
-    /** Edit a pack's seller PRICE any time (recomputes customer price; no re-approval); logs it. */
+    /** The admin price-jump threshold % (commerce_price_jump_pct; default 30). */
+    public static function priceJumpPct(PDO $db): float
+    {
+        try { $s=$db->prepare("SELECT setting_value FROM app_settings WHERE setting_key='commerce_price_jump_pct' LIMIT 1"); $s->execute(); $v=$s->fetchColumn();
+              if ($v!==false && is_numeric($v)) return max(0.0,(float)$v); } catch (\Throwable $e) {}
+        return 30.0;
+    }
+
+    /**
+     * Edit a pack's seller PRICE. A SMALL change (≤ threshold %, up or down) goes
+     * live instantly (no re-approval) and is logged. A BIG jump beyond the
+     * threshold does NOT go live — it is queued in commerce_price_reviews for
+     * admin review (PB3a item 4). Stock edits are always instant (see updatePackStock).
+     */
     public static function updatePackPrice(PDO $db, int $vendorId, int $skuId, float $newBase): array
     {
+        $own = $db->prepare("SELECT 1 FROM products WHERE id=? AND vendor_id=? LIMIT 1");
+        $own->execute([$skuId, $vendorId]);
+        if (!$own->fetchColumn()) return ['ok' => false, 'reason' => 'not_found_or_not_yours'];
         $old = SellerCatalogue::sellerBaseOf($db, $skuId);
+        $newBase = round($newBase, 2);
+        if ($old !== null && $old > 0) {
+            $jump = abs($newBase - $old) / $old * 100.0;
+            if ($jump > self::priceJumpPct($db)) {
+                try {
+                    $db->prepare("INSERT INTO commerce_price_reviews (product_id, vendor_id, old_base, new_base, status, created_at) VALUES (?,?,?,?, 'pending', NOW())")
+                       ->execute([$skuId, $vendorId, $old, $newBase]);
+                } catch (\Throwable $e) {}
+                self::logChange($db, $vendorId, $skuId, 'price_pending', $old, $newBase);
+                return ['ok' => true, 'queued' => true, 'reason' => 'price_jump_review', 'old_base' => $old, 'new_base' => $newBase, 'threshold_pct' => self::priceJumpPct($db)];
+            }
+        }
         $res = SellerCatalogue::updateOffer($db, $vendorId, $skuId, ['base_price' => $newBase]);
-        if (!empty($res['ok'])) self::logChange($db, $vendorId, $skuId, 'price', $old, round($newBase, 2));
-        return $res;
+        if (!empty($res['ok'])) self::logChange($db, $vendorId, $skuId, 'price', $old, $newBase);
+        return $res + ['queued' => false];
     }
 
     /** "My products" — parents grouped with their pack SKUs (seller-scoped). */
@@ -234,5 +262,115 @@ class PaintCatalogue
                       'line' => $attrs['product_line'] ?? null, 'photo' => $imgs[0] ?? null, 'status' => $p['status'], 'skus' => $skus];
         }
         return $out;
+    }
+
+    // ── ADMIN verification (PB3a) ────────────────────────────────────────────
+    /** Cross-vendor pending pack SKUs for the verification queue (+ dup flag). */
+    public static function pendingProducts(PDO $db): array
+    {
+        $q = $db->query("SELECT p.id, p.vendor_id, p.name, p.price, p.weight, p.match_key, p.images, p.attributes, v.business_name,
+                                (i.quantity - i.reserved) AS available_qty
+                           FROM products p LEFT JOIN inventory i ON i.product_id=p.id LEFT JOIN vendors v ON v.id=p.vendor_id
+                          WHERE p.status='draft' AND p.deleted_at IS NULL
+                            AND JSON_VALUE(p.attributes,'$.parent_id') IS NOT NULL
+                          ORDER BY p.created_at ASC");
+        $dups = self::duplicateMatchKeys($db);
+        $out = [];
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $a = $r['attributes'] ? (json_decode((string)$r['attributes'], true) ?: []) : [];
+            $imgs = $r['images'] ? (json_decode((string)$r['images'], true) ?: []) : [];
+            $out[] = ['product_id' => (int)$r['id'], 'vendor_id' => (int)$r['vendor_id'], 'vendor' => $r['business_name'],
+                      'brand' => $a['brand'] ?? null, 'line' => $a['product_line'] ?? null, 'category_id' => null,
+                      'pack' => ($a['pack_size'] ?? '') . ($a['pack_unit'] ?? ''), 'shade' => $a['label'] ?? ($a['shade_mode'] ?? null),
+                      'seller_base' => $a['seller_base'] ?? null, 'customer_price' => (float)$r['price'], 'weight' => $r['weight'],
+                      'stock' => (int)$r['available_qty'], 'photo' => $imgs[0] ?? null, 'match_key' => $r['match_key'],
+                      'duplicate' => in_array($r['match_key'], $dups, true)];
+        }
+        return $out;
+    }
+
+    /** match_keys that appear for more than one vendor (PB17 duplicate candidates). */
+    public static function duplicateMatchKeys(PDO $db): array
+    {
+        try {
+            $q = $db->query("SELECT match_key FROM products WHERE match_key IS NOT NULL AND deleted_at IS NULL AND JSON_VALUE(attributes,'$.parent_id') IS NOT NULL GROUP BY match_key HAVING COUNT(DISTINCT vendor_id) > 1");
+            return array_map('strval', $q->fetchAll(PDO::FETCH_COLUMN)) ?: [];
+        } catch (\Throwable $e) { return []; }
+    }
+
+    /** Full duplicate-candidate groups for the admin (same match_key, >1 vendor). */
+    public static function duplicateCandidates(PDO $db): array
+    {
+        $out = [];
+        foreach (self::duplicateMatchKeys($db) as $mk) {
+            $q = $db->prepare("SELECT id, vendor_id, name, price, status FROM products WHERE match_key=? AND deleted_at IS NULL ORDER BY id");
+            $q->execute([$mk]);
+            $out[] = ['match_key' => $mk, 'members' => $q->fetchAll(PDO::FETCH_ASSOC)];
+        }
+        return $out;
+    }
+
+    /** Approve a pending pack SKU → live (parent stays non-orderable). */
+    public static function approveProduct(PDO $db, int $skuId): array
+    {
+        $db->prepare("UPDATE products SET status='active', updated_at=NOW() WHERE id=? AND status='draft' AND JSON_VALUE(attributes,'$.parent_id') IS NOT NULL")->execute([$skuId]);
+        return ['ok' => true, 'product_id' => $skuId, 'status' => 'active'];
+    }
+
+    /** Reject a pending pack SKU with a reason the seller will see (status chip). */
+    public static function rejectProduct(PDO $db, int $skuId, string $reason): array
+    {
+        $s = $db->prepare("SELECT attributes FROM products WHERE id=? LIMIT 1"); $s->execute([$skuId]);
+        $raw = $s->fetchColumn(); if ($raw === false) return ['ok' => false, 'reason' => 'not_found'];
+        $a = $raw ? (json_decode((string)$raw, true) ?: []) : []; $a['reject_reason'] = mb_substr($reason, 0, 240);
+        $db->prepare("UPDATE products SET status='inactive', attributes=?, updated_at=NOW() WHERE id=?")->execute([json_encode($a), $skuId]);
+        return ['ok' => true, 'product_id' => $skuId, 'status' => 'inactive', 'reason' => $a['reject_reason']];
+    }
+
+    /** PB17 merge: point a product's match_key at the canonical product's → one listing. */
+    public static function mergeMatchKey(PDO $db, int $productId, int $canonicalProductId): array
+    {
+        $c = $db->prepare("SELECT match_key FROM products WHERE id=? LIMIT 1"); $c->execute([$canonicalProductId]);
+        $mk = $c->fetchColumn(); if ($mk === false || $mk === null) return ['ok' => false, 'reason' => 'canonical_not_found'];
+        $db->prepare("UPDATE products SET match_key=?, updated_at=NOW() WHERE id=?")->execute([$mk, $productId]);
+        return ['ok' => true, 'product_id' => $productId, 'match_key' => $mk];
+    }
+
+    /** Change-log for a product (edits + any price reviews). */
+    public static function productChanges(PDO $db, int $productId): array
+    {
+        $out = ['changes' => [], 'price_reviews' => []];
+        try { $q=$db->prepare("SELECT field, old_value, new_value, changed_at FROM commerce_offer_changes WHERE product_id=? ORDER BY id DESC LIMIT 100"); $q->execute([$productId]); $out['changes']=$q->fetchAll(PDO::FETCH_ASSOC); } catch (\Throwable $e) {}
+        try { $q=$db->prepare("SELECT old_base, new_base, status, reason, created_at, reviewed_at FROM commerce_price_reviews WHERE product_id=? ORDER BY id DESC LIMIT 50"); $q->execute([$productId]); $out['price_reviews']=$q->fetchAll(PDO::FETCH_ASSOC); } catch (\Throwable $e) {}
+        return $out;
+    }
+
+    /** Pending price-jump reviews (admin queue). */
+    public static function priceReviews(PDO $db): array
+    {
+        try {
+            $q = $db->query("SELECT r.id, r.product_id, r.vendor_id, r.old_base, r.new_base, r.created_at, p.name
+                               FROM commerce_price_reviews r LEFT JOIN products p ON p.id=r.product_id
+                              WHERE r.status='pending' ORDER BY r.created_at ASC");
+            return $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable $e) { return []; }
+    }
+
+    /** Approve/reject a queued price jump. Approve → applies the new price live. */
+    public static function reviewPrice(PDO $db, int $reviewId, bool $approve, ?string $reason, int $reviewerId): array
+    {
+        $s = $db->prepare("SELECT product_id, vendor_id, old_base, new_base, status FROM commerce_price_reviews WHERE id=? LIMIT 1");
+        $s->execute([$reviewId]); $r = $s->fetch(PDO::FETCH_ASSOC);
+        if (!$r) return ['ok' => false, 'reason' => 'not_found'];
+        if ($r['status'] !== 'pending') return ['ok' => false, 'reason' => 'already_reviewed'];
+        if ($approve) {
+            $res = SellerCatalogue::updateOffer($db, (int)$r['vendor_id'], (int)$r['product_id'], ['base_price' => (float)$r['new_base']]);
+            if (empty($res['ok'])) return $res;
+            self::logChange($db, (int)$r['vendor_id'], (int)$r['product_id'], 'price', $r['old_base'], $r['new_base']);
+            $db->prepare("UPDATE commerce_price_reviews SET status='approved', reason=?, reviewed_at=NOW(), reviewed_by=? WHERE id=?")->execute([$reason, $reviewerId, $reviewId]);
+            return ['ok' => true, 'applied' => true, 'customer_price' => $res['customer_price'] ?? null];
+        }
+        $db->prepare("UPDATE commerce_price_reviews SET status='rejected', reason=?, reviewed_at=NOW(), reviewed_by=? WHERE id=?")->execute([$reason, $reviewerId, $reviewId]);
+        return ['ok' => true, 'applied' => false];
     }
 }

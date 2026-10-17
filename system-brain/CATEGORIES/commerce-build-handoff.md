@@ -49,3 +49,8 @@ margin override (product??category??platform), online primary + COD fallback, pa
 - **S11 — RBAC + seats + audit API** ✅ DONE: migration `2026_10_06_011` (11 `commerce.*` perms + 5 seats `commerce_ops/finance/seller_ops/delivery_ops/unit_operator` + super_admin links + `commerce_admin_audit`). HTTP layer `heart/api/commerce-admin/index.php` (dispatched in `heart/index.php` on `/api/commerce-admin`) exposes OpsConsole + AdminControlRoom + CommerceSettlement + CommerceReturns, each gated by `AuthMiddleware::requirePermission` (legacy admin/super_admin bypass; pause scope `unit`=category-scoped; `seller` needs `commerce.seller.manage`); `GET /me` = seat window. `lib/commerce/CommerceAdminAudit.php` = uniform scrubbed trail. 35/35 PASS. RBAC activation point = `requirePermission` calls in that adapter; grant users seats via `user_roles`.
 - **DONE gate:** ~20 real orders run **founder-free on staging** (needs MariaDB ≥10.5), every exception handled by system/ops. Then freeze core → grow by Units (config).
 - **STILL-NOT-NOW (don't build):** Brain/ML, multi-seller optimization, advanced dark-store, service↔commerce project link, multi-city, native apps, full support UI.
+
+## PAINT UNIT BUILD LOG (plan: system-brain/CATEGORIES/paint-unit-final-build-plan.md; one line per step)
+- PB1 `a2fcb91` — Product→Variant→Pack-SKU model (PaintCatalogue, weight+photo). Suite 808/0. Next: PB2.
+- PB2 `7582c3d` — Seller add-product screen (brand/category/variant/packs/photo + edit + change-log). Suite 832/0. Next: PB3a.
+- PB3a+PB17 `<this commit>` — Admin commerce screens (seller KYC queue, product verification + dedup merge, price-jump review ≥30%, change-log; nav visible in service-only). Suite 852/0. Next: PB5 (rider cash-to-collect + vehicle flag).

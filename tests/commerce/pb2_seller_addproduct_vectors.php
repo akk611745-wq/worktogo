@@ -88,9 +88,9 @@ $before = (int)$pdo->query("SELECT COUNT(*) FROM commerce_offer_changes WHERE pr
 $rs = PaintCatalogue::updatePackStock($pdo,$V,$sku,99);
 ok('stock updated', $rs['ok'] ?? false, true);
 ok('status still active (no re-approval)', pcol($pdo,$sku,'status'), 'active');
-$rp = PaintCatalogue::updatePackPrice($pdo,$V,$sku,1500);
-ok('price updated (recomputed)', $rp['ok'] ?? false, true);
-ok('new seller_base = 1500', SellerCatalogue::sellerBaseOf($pdo,$sku), 1500.0);
+$rp = PaintCatalogue::updatePackPrice($pdo,$V,$sku,1150); // +15% ≤ threshold → applies instantly
+ok('small price edit applied (recomputed)', ($rp['ok'] ?? false) && empty($rp['queued']), true);
+ok('new seller_base = 1150', SellerCatalogue::sellerBaseOf($pdo,$sku), 1150.0);
 ok('status STILL active after price change', pcol($pdo,$sku,'status'), 'active');
 $after = (int)$pdo->query("SELECT COUNT(*) FROM commerce_offer_changes WHERE product_id=$sku")->fetchColumn();
 ok('2 changes logged (stock + price)', $after - $before, 2);

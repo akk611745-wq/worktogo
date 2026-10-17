@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Seller KYC</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="admin-main">
+    <div id="shell-topbar"></div>
+    <div class="admin-content">
+      <h1>Seller &amp; Rider KYC</h1>
+      <p class="page-subtitle">Approve or reject onboarding. Rejections show the reason to the applicant.</p>
+      <div id="kyc-sellers"><div class="muted">Loading…</div></div>
+      <h2 style="margin-top:22px">Riders</h2>
+      <div id="kyc-riders"><div class="muted">Loading…</div></div>
+    </div>
+  </div>
+</div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/push.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Seller KYC', active: 'commerce-kyc.html' });
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function load() {
+  const r = await API.get('/commerce-admin/kyc/pending');
+  const d = (r && r.data) || r || {};
+  renderSellers(d.sellers || []);
+  renderRiders(d.riders || []);
+}
+function row(title, sub, btns) {
+  return `<div class="card" style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px">
+    <div><div style="font-weight:700">${esc(title)}</div><div class="muted" style="font-size:12px">${esc(sub)}</div></div>
+    <div style="display:flex;gap:8px">${btns}</div></div>`;
+}
+function renderSellers(list) {
+  const host = document.getElementById('kyc-sellers');
+  if (!list.length) { host.innerHTML = '<div class="muted">No sellers waiting.</div>'; return; }
+  host.innerHTML = list.map(s => row(
+    s.owner_name || ('Vendor #' + s.vendor_id), 'vendor ' + s.vendor_id + ' · submitted ' + (s.submitted_at || '—'),
+    `<button class="btn btn-primary" onclick="reviewSeller(${s.vendor_id},true)">Approve</button>
+     <button class="btn btn-danger" onclick="reviewSeller(${s.vendor_id},false)">Reject</button>`)).join('');
+}
+function renderRiders(list) {
+  const host = document.getElementById('kyc-riders');
+  if (!list.length) { host.innerHTML = '<div class="muted">No riders waiting.</div>'; return; }
+  host.innerHTML = list.map(s => row(
+    s.full_name || ('Rider #' + s.rider_user_id), 'user ' + s.rider_user_id + ' · submitted ' + (s.submitted_at || '—'),
+    `<button class="btn btn-primary" onclick="reviewRider(${s.rider_user_id},true)">Approve</button>
+     <button class="btn btn-danger" onclick="reviewRider(${s.rider_user_id},false)">Reject</button>`)).join('');
+}
+async function reviewSeller(id, approve) {
+  let note = '';
+  if (!approve) { note = prompt('Reason (shown to the seller):', ''); if (note === null) return; }
+  const r = await API.post(`/commerce-admin/kyc/seller/${id}/review`, { approve, note });
+  if (r && r.success !== false) { alert(approve ? 'Seller approved' : 'Seller rejected'); load(); } else { alert((r && (r.message||r.error)) || 'Failed'); }
+}
+async function reviewRider(id, approve) {
+  let note = '';
+  if (!approve) { note = prompt('Reason (shown to the rider):', ''); if (note === null) return; }
+  const r = await API.post(`/commerce-admin/kyc/rider/${id}/review`, { approve, note });
+  if (r && r.success !== false) { alert(approve ? 'Rider approved' : 'Rider rejected'); load(); } else { alert((r && (r.message||r.error)) || 'Failed'); }
+}
+load();
+</script>
+</body>
+</html>

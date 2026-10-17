@@ -27,6 +27,7 @@ require_once SYSTEM_ROOT . '/lib/commerce/CommerceSettlement.php';
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceReturns.php';
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceAdminAudit.php';
 require_once SYSTEM_ROOT . '/lib/commerce/KycService.php';
+require_once SYSTEM_ROOT . '/lib/commerce/PaintCatalogue.php';
 
 $B   = json_decode(file_get_contents('php://input'), true);
 if (!is_array($B)) $B = [];
@@ -234,6 +235,52 @@ try {
         $approve = !empty($B['approve']); $note = $ps('note'); $cityId = isset($B['city_id']) ? (int)$B['city_id'] : null;
         $res = KycService::riderReview($db, (int)$m[1], $approve, $note !== '' ? $note : null, $uid, $cityId);
         $audit($auth, 'commerce.kyc.review', 'kyc.rider.' . ($approve ? 'approve' : 'reject'), ['target_type' => 'rider_user', 'target_id' => (int)$m[1], 'summary' => ['note' => $note], 'outcome' => !empty($res['ok']) ? 'ok' : 'error']);
+        if (empty($res['ok'])) { Response::error($res['reason'] ?? 'error', 422); exit; }
+        Response::success($res); exit;
+    }
+
+    // ───────────── PRODUCT VERIFICATION + DEDUP + PRICE REVIEW (PB3a/PB17) ──────
+    if ($method === 'GET' && $uri === '/api/commerce-admin/products/pending') {
+        $gate('commerce.seller.manage');
+        Response::success(['products' => PaintCatalogue::pendingProducts($db)]); exit;
+    }
+    if ($method === 'GET' && $uri === '/api/commerce-admin/products/duplicates') {
+        $gate('commerce.seller.manage');
+        Response::success(['duplicates' => PaintCatalogue::duplicateCandidates($db)]); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-admin/products/(\d+)/approve$#', $uri, $m)) {
+        $auth = $gate('commerce.seller.manage');
+        $res = PaintCatalogue::approveProduct($db, (int)$m[1]);
+        $audit($auth, 'commerce.seller.manage', 'product.approve', ['target_type' => 'product', 'target_id' => (int)$m[1], 'outcome' => !empty($res['ok']) ? 'ok' : 'error']);
+        Response::success($res); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-admin/products/(\d+)/reject$#', $uri, $m)) {
+        $auth = $gate('commerce.seller.manage'); $reason = $ps('reason', 'Not approved');
+        $res = PaintCatalogue::rejectProduct($db, (int)$m[1], $reason);
+        $audit($auth, 'commerce.seller.manage', 'product.reject', ['target_type' => 'product', 'target_id' => (int)$m[1], 'summary' => ['reason' => $reason], 'outcome' => !empty($res['ok']) ? 'ok' : 'error']);
+        if (empty($res['ok'])) { Response::error($res['reason'] ?? 'error', 422); exit; }
+        Response::success($res); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-admin/products/(\d+)/merge$#', $uri, $m)) {
+        $auth = $gate('commerce.seller.manage'); $canonical = $pi('canonical_id');
+        $res = PaintCatalogue::mergeMatchKey($db, (int)$m[1], $canonical);
+        $audit($auth, 'commerce.seller.manage', 'product.merge', ['target_type' => 'product', 'target_id' => (int)$m[1], 'summary' => ['canonical_id' => $canonical], 'outcome' => !empty($res['ok']) ? 'ok' : 'error']);
+        if (empty($res['ok'])) { Response::error($res['reason'] ?? 'error', 422); exit; }
+        Response::success($res); exit;
+    }
+    if ($method === 'GET' && preg_match('#^/api/commerce-admin/products/(\d+)/changes$#', $uri, $m)) {
+        $gate('commerce.seller.manage');
+        Response::success(PaintCatalogue::productChanges($db, (int)$m[1])); exit;
+    }
+    if ($method === 'GET' && $uri === '/api/commerce-admin/price-reviews') {
+        $gate('commerce.seller.manage');
+        Response::success(['reviews' => PaintCatalogue::priceReviews($db)]); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-admin/price-reviews/(\d+)/review$#', $uri, $m)) {
+        $auth = $gate('commerce.seller.manage'); $uid = (int)$auth['user_id'];
+        $approve = !empty($B['approve']); $reason = $ps('reason');
+        $res = PaintCatalogue::reviewPrice($db, (int)$m[1], $approve, $reason !== '' ? $reason : null, $uid);
+        $audit($auth, 'commerce.seller.manage', 'price_review.' . ($approve ? 'approve' : 'reject'), ['target_type' => 'price_review', 'target_id' => (int)$m[1], 'outcome' => !empty($res['ok']) ? 'ok' : 'error']);
         if (empty($res['ok'])) { Response::error($res['reason'] ?? 'error', 422); exit; }
         Response::success($res); exit;
     }
