@@ -97,10 +97,14 @@ Add to the server's scheduler (cron/systemd). If triggering over HTTP, append `?
 
 ```bash
 * * * * *  php /var/www/worktogo/cron/auto_assign.php          # vendor assignment + its alerts
+* * * * *  php /var/www/worktogo/cron/commerce_lifecycle.php   # PB6: offer + quote timeouts → reroute (idempotent, flock-locked)
 */2 * * * * php /var/www/worktogo/cron/delivery_lifecycle.php  # dormant at launch, harmless
 */5 * * * * php /var/www/worktogo/cron/agent_reminders.php     # agent reminders → notifications
 */15 * * * * php /var/www/worktogo/cron/agent_demand_detect.php# admin demand alerts
 ```
+- **Local (Windows) dev:** schedule `cron/commerce_lifecycle.bat` every 1 min via Task Scheduler —
+  `schtasks /Create /TN "WTG Commerce Lifecycle" /SC MINUTE /MO 1 /TR "\"<repo>\cron\commerce_lifecycle.bat\"" /F`.
+  Toggle the whole sweep with app_setting `commerce_lifecycle_enabled` (1/0).
 - Add **missed-run alerting** (a dead cron = no vendor assignment, silently).
 - **GREEN =** after placing a test booking, `auto_assign` logs "Assigned job #… to Vendor #…" within a minute and an `alerts` row appears for that vendor. *(See `alert-notification-flow.md` — this is the primary assignment path.)*
 

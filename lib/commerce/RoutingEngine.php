@@ -277,6 +277,61 @@ class RoutingEngine
         return $n;
     }
 
+    /** Quote accept window in seconds (app_settings.commerce_quote_timeout_sec; default 180 = 3 min). */
+    public static function quoteTimeoutSec(PDO $db): int
+    {
+        try {
+            $s = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key='commerce_quote_timeout_sec' LIMIT 1");
+            $s->execute();
+            $v = $s->fetchColumn();
+            if ($v !== false && is_numeric($v) && (int)$v > 0) return (int)$v;
+        } catch (\Throwable $e) { /* default */ }
+        return 180;
+    }
+
+    /**
+     * Cron entry (PB6 seam for PB10 custom-tint): any sub-order whose latest
+     * 'quote_offered' signal is older than the quote timeout — i.e. the seller
+     * didn't price the custom tint in time — is rerouted to the next seller
+     * (then company fallback), reusing the SAME offer-reroute machinery as
+     * expireStaleOffers. Keyed off the 'quote_offered' routing signal that the
+     * PB10 quote flow will emit; until that flow lands this safely matches nothing.
+     * Fully defensive (never throws from the cron). @return int quotes expired.
+     */
+    public static function expireStaleQuotes(PDO $db, ?int $timeoutSec = null): int
+    {
+        $timeout = $timeoutSec ?? self::quoteTimeoutSec($db);
+        try {
+            $q = $db->prepare("
+                SELECT o.id, o.parent_order_id, o.store_id, o.vendor_id
+                  FROM orders o
+                 WHERE o.parent_order_id IS NOT NULL
+                   AND o.status = 'pending'
+                   AND o.delivery_status = 'offered'
+                   AND (SELECT MAX(crs.created_at) FROM commerce_routing_signals crs
+                         WHERE crs.sub_order_id = o.id AND crs.event = 'quote_offered')
+                       < (NOW() - INTERVAL ? SECOND)
+                   AND NOT EXISTS (SELECT 1 FROM commerce_routing_signals q2
+                         WHERE q2.sub_order_id = o.id AND q2.event IN ('accepted','quote_accepted','quote_timeout')
+                           AND q2.created_at > (SELECT MAX(crs2.created_at) FROM commerce_routing_signals crs2
+                                                 WHERE crs2.sub_order_id = o.id AND crs2.event = 'quote_offered'))
+            ");
+            $q->execute([$timeout]);
+            $stale = $q->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {
+            error_log('[expireStaleQuotes] ' . $e->getMessage());
+            return 0;
+        }
+        $n = 0;
+        foreach ($stale as $s) {
+            self::recordSignal($db, (int)$s['parent_order_id'], (int)$s['id'], $s['store_id'] !== null ? (int)$s['store_id'] : null, $s['vendor_id'] !== null ? (int)$s['vendor_id'] : null, 'quote_timeout');
+            CommerceEventBus::emit($db, 'quote_timeout', ['order_id' => (int)$s['parent_order_id'], 'sub_order_id' => (int)$s['id'], 'reason' => 'seller did not price the custom tint in time']);
+            self::rerouteOnFailure($db, (int)$s['id']);
+            $n++;
+        }
+        return $n;
+    }
+
     // ── S15: seller-side close of the offer loop (accept / reject) ──────────────
 
     /** Seconds since this sub-order was last OFFERED (for the acceptance signal). */
