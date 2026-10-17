@@ -61,6 +61,7 @@ Format per step: **goal · screens · files · reuses · tests · acceptance (wh
 - **Screens:** new `admin/commerce-kyc.html` + `admin/commerce-verify.html` on the admin shell. **Files:** admin pages + `admin/shared/*`; **Reuses:** `/api/commerce-admin/kyc/*` (s18), product approve API, `Permission` gate.
 - **Tests:** structural + an API smoke (pending→approve round-trip against 10.11).
 - **Acceptance:** you see a KYC queue → Approve → vendor active; a product queue → Approve → product live.
+- **Includes PB17 (match_key dedup governance):** at verification, the reviewer attaches a new product to the correct canonical `match_key` (two sellers → ONE customer listing with multiple sources), not a duplicate listing — see PB17.
 - **Money:** none. **Severity:** BLOCKER. **Size:** M.
 
 ### PB5 — Rider cash-to-collect + heavy-order vehicle flag  *(walkthrough #2)*
@@ -118,7 +119,7 @@ Format per step: **goal · screens · files · reuses · tests · acceptance (wh
 - **PB10c — lock-per-litre:** once a customer's shade is priced, repeat (any pack size) priced instantly from the locked per-litre, same seller, no re-ask. **Files:** `commerce_shade_price_lock` (or reuse tint log) + `CustomTint` price-from-lock. Base chosen by seller from his shade book (base_type stays blank — don't fake, decision #5g).
 - **Screens:** customer tint flow (paint-tint/ exists), seller quote box, admin outlier review. **Tests:** `p9_custom_tint_pricing_vectors.php` — estimate, quote→margin→ceiling, band record+outlier hide, lock-per-litre repeat, advance capture, timeout reroute.
 - **Acceptance:** a tint order gets an estimate instantly, seller quotes, you see one final price, pay 50% advance; a repeat of the same shade is priced instantly.
-- **Money:** advance → `partially_paid` + balance COD (p4); margin on the quoted total (recorded on order branch). **Severity:** PRE-SCALE→LATER (after READY live; per brand). **Size:** L.
+- **Money:** advance → `partially_paid` + balance COD (p4); margin on the quoted total (recorded on order branch). **Severity:** **BLOCKER** — the paint unit is NOT complete without custom tint (built after PB12, before PB13; goes live per brand via the enable list). **Size:** L.
 
 ### PB11 — Seller bill/report download + customer invoice/GST view
 - **Goal:** seller earnings/orders export; customer order invoice with GST + the two-entity (own vs facilitated) split. Walkthrough gap.
@@ -135,24 +136,56 @@ Format per step: **goal · screens · files · reuses · tests · acceptance (wh
 - **Money:** protects revenue. **Severity:** PRE-SCALE. **Size:** M.
 
 ### PB13 — Hosting steps (LAST)
-- **Goal:** Cashfree live creds + a **₹1 online round-trip**; **ledger namespace alias** in prod bootstrap (finding #6); **MariaDB ≥10.5** on host; **cron on host** for PB6/PB12; media → object storage/CDN + backup runbook (NEW).
+- **Goal:** Cashfree live creds + a **₹1 online round-trip**; **ledger namespace alias** in prod bootstrap (finding #6); **MariaDB ≥10.5** on host; **cron on host** for PB6/PB12; **media → object storage/CDN + DB & media backup/restore runbook (PB18, folded in here).**
+- **Prereq:** **PB3b must be done before PB13** (admin margin/slab, routing, brand-enable, payouts/money screens live before go-live).
 - **Files:** prod `.env`/bootstrap + ops; no engine edit. **Tests:** ₹1 round-trip succeeds; cron fires.
 - **Acceptance:** a real ₹1 payment settles; crons run on schedule.
 - **Money:** enables real online capture. **Severity:** BLOCKER (real money, hosting). **Size:** S-M.
 
 ---
-## PART E — Additional items I predict (NEW, not in the brief)
-- **NEW-1 Pre-delivery cancellation + cost-bearer rule** (customer/seller cancel before dispatch; who bears cost) — currently only post-delivery returns exist (s9). PRE-SCALE.
-- **NEW-2 Pincode serviceability precision** — delivery gate is radius-based ([OrderabilityResolver] out_of_area); add a pincode-serviceability table so out-of-area is caught at checkout, not dispatch. PRE-SCALE.
-- **NEW-3 Media → object storage/CDN + DB & media backup/restore runbook** — media on local disk today; define before scale. PRE-SCALE (folded into PB13).
-- **NEW-4 Customer saved-address book** — checkout takes a single address; multiple saved addresses. LATER.
-- **NEW-5 Catalogue dedup / match_key governance** — two sellers, same product: ensure they attach to one canonical product (match_key) so the customer sees one listing with multiple sources. PRE-SCALE (surfaces in PB1/PB2).
+## PART E — Additional NUMBERED steps (PB14–PB18)
+Each is a real step with the same fields; positions given per decision.
+
+### PB14 — Pincode / area serviceability (what a customer sees by address)   [position: BEFORE PB4]
+- **Goal:** a customer sees/orders only products deliverable to THEIR address; out-of-area caught at browse/checkout, not at dispatch. Today only a radius gate exists ([OrderabilityResolver.php] `out_of_area`).
+- **Screens:** admin serviceability (per-city/pincode); customer browse/checkout honor it. **Files:** new `commerce_serviceability` (city/pincode/radius) + `OrderabilityResolver` consult (our lib) + admin screen. **Reuses:** orderability layer-2, stores.city_id/service_radius_km.
+- **Tests:** in-area pincode → orderable; out-of-area → blocked at browse+checkout.
+- **Acceptance:** a Haldwani pincode sees paint; a non-served pincode sees "not available in your area".
+- **Money:** none. **Severity:** PRE-SCALE (radius covers a single-city launch; precision before multi-area). **Size:** M.
+
+### PB15 — Customer saved-address book   [position: WITH / right after PB4]
+- **Goal:** customer saves multiple addresses and picks one at checkout (today checkout takes a single typed address, shop.js:353).
+- **Screens:** my-account addresses + checkout picker. **Files:** `user_addresses` table (or reuse an existing one if present) + shop.js checkout; **Reuses:** checkout address form, account page.
+- **Tests:** add/select/default address; checkout uses the selected one.
+- **Acceptance:** customer saves Home/Work and chooses at checkout.
+- **Money:** none. **Severity:** PRE-SCALE. **Size:** M.
+
+### PB16 — Pre-delivery cancellation + cost-bearer rule   [position: BEFORE PB7]
+- **Goal:** customer/seller can cancel BEFORE dispatch with a clear cost-bearer rule per stage (placed / accepted / picked); today only post-delivery returns exist (s9). Decision #9 (no unrecorded money).
+- **Screens:** customer order (cancel), seller order (cancel), admin override. **Files:** new `CommerceCancellation` lib (stage→who-bears-cost, admin config) + events/flags; **Reuses:** CommerceEventBus, LedgerEngine refund (order-branch read/reverse only), CommerceReturns patterns.
+- **Tests:** cancel at each stage → correct status + correct refund/charge; advance orders handled.
+- **Acceptance:** customer cancels a not-yet-accepted order → auto-refund; a picked-up order → rule-based.
+- **Money:** refund/again recorded on the order branch (no new unrecorded path). **Severity:** PRE-SCALE. **Size:** M.
+
+### PB17 — match_key dedup governance   [position: WITH PB3a]
+- **Goal:** two sellers listing the same product attach to ONE canonical `match_key` → customer sees one listing with multiple sources; prevents duplicate listings. Built into the verification queue (PB3a).
+- **Screens:** product-verification queue (match / create-canonical). **Files:** `SellerCatalogue`/PaintCatalogue match_key resolve + admin merge control; **Reuses:** `products.match_key` ([SellerCatalogue.php:63]), RoutingEngine multi-source.
+- **Tests:** two sellers, same match_key → one listing, two sources (reuse scale multi-seller).
+- **Acceptance:** reviewer merges a new product into the existing listing; customer sees one card.
+- **Money:** none. **Severity:** PRE-SCALE. **Size:** M.
+
+### PB18 — Media → object storage/CDN + DB & media backup/restore runbook   [position: INSIDE PB13]
+- **Goal:** move product/KYC media off local disk to object storage/CDN; a documented DB + media backup/restore runbook before scale. Today media is local disk ([heart/api/media/index.php:35]).
+- **Screens:** none (ops). **Files:** media `storage_provider` already a column — add an S3/CDN provider + config; backup scripts/runbook doc. **Reuses:** media table `storage_provider`/`public_url`.
+- **Tests:** upload lands in object storage, URL serves; restore drill documented.
+- **Acceptance:** a product photo serves from CDN; a restore runbook exists.
+- **Money:** none. **Severity:** PRE-SCALE (hosting; folded into PB13). **Size:** M.
 
 ---
 ## PART D — Build order (each testable alone; nothing waits on a later step)
-**READY paint to fully live first, then alerts, then custom-tint, then hosting:**
-PB1 → PB2 → PB3a → PB5 → PB6 → PB4 → PB7 → PB8 → PB9 → PB3b → PB11 → PB12 → PB10(a→b→c) → PB13.
-Rationale: PB1 is the data spine; PB2/PB3a/PB5/PB6 make a READY order fully operable + approvable + rideable before the customer shop (PB4) is switched on; PB7 alerts; PB8/PB9 ops; PB3b/PB11/PB12 hardening; PB10 custom-tint last (dormant until a brand enabled); PB13 hosting at the very end. PB5 and PB6 are small independent blockers that can also be slotted earliest for quick wins.
+**READY paint fully live first, then alerts, then custom-tint, then hosting (NEW steps woven in per decision):**
+PB1 → PB2 → **PB3a (incl PB17)** → PB5 → PB6 → **PB14** → PB4 → **PB15** → **PB16** → PB7 → PB8 → PB9 → **PB3b** → PB11 → PB12 → **PB10(a→b→c)** → **PB13 (incl PB18)**.
+Rationale: PB1 is the data spine; PB2/PB3a(+PB17 dedup)/PB5/PB6 make a READY order operable + approvable + rideable; **PB14 serviceability before PB4** so the storefront shows address-correct products; **PB15 saved-address with PB4**; **PB16 pre-delivery cancellation before PB7**; PB7 alerts; PB8/PB9 ops; **PB3b config screens (required before PB13)**; PB11/PB12 hardening; **PB10 custom-tint is a BLOCKER** (paint unit incomplete without it) built after PB12; **PB13 hosting last, with PB18 media/CDN+backup folded in**. PB5/PB6 are small independent blockers and can be slotted earliest for quick wins.
 
 ## PART F — End-to-end test plan (after the last step) + separate live phase
 1. **One full READY order, all roles, all alerts:** founder-seller adds a paint product+photo+packs → admin approves → admin switches the city shop ON → customer browses paint, picks 10L, checks out (run once COD, once prepaid) → seller gets loud alert, accepts within timeout → rider gets job, sees Collect ₹X, OTP-delivers → settle founder-free (margin+delivery recorded) → customer invoice; verify every alert fired on the right channel.
@@ -162,8 +195,8 @@ Rationale: PB1 is the data spine; PB2/PB3a/PB5/PB6 make a READY order fully oper
 
 ---
 ## Severity roll-up
-- **BLOCKER (ready-paint go-live):** PB1, PB2, PB3a, PB4, PB5, PB6, PB7(min), PB13(hosting).
-- **PRE-SCALE:** PB3b, PB8, PB9, PB11, PB12, NEW-1/2/3/5.
-- **LATER:** PB10 (custom-tint, per enabled brand), NEW-4.
+- **BLOCKER (paint unit not complete without these):** PB1, PB2, PB3a (incl PB17), PB4, PB5, PB6, PB7(min), **PB10 (custom-tint, per enabled brand)**, PB13 (hosting).
+- **PRE-SCALE:** **PB3b (must precede PB13)**, PB8, PB9, PB11, PB12, PB14, PB15, PB16, PB18.
+- **LATER:** none standalone — residual nice-to-haves (full per-event tone set, multi-address polish) live inside their parent steps.
 
 **Protocol for each build step (from now):** read first → build only that step → add its tests → run FULL suite on MariaDB 10.11 → report STATUS / CHANGED(file+lines) / COMMIT / BLOCKED / PASS-FAIL + what you'll see → push → STOP for approval.
