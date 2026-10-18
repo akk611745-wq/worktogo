@@ -37,6 +37,11 @@ class AdminControlRoom
             'commerce_high_value_threshold', 'commerce_ticket_sla_sec', 'commerce_paused',
             // S10 customer-app config (Unit-driven storefront)
             'commerce_seller_visibility', 'commerce_platform_label', 'commerce_unit_ui', 'commerce_related_limit',
+            // PB11 billing: GST-ready invoice config
+            'commerce_gstin', 'commerce_tax_rate_pct', 'commerce_invoice_business', 'commerce_shop_enabled',
+            'commerce_coverage_sqft_per_litre', 'commerce_cancel_fee_after_accept', 'commerce_cancel_fee_pct',
+            'commerce_quote_timeout_sec', 'commerce_lifecycle_enabled', 'commerce_notify_channels',
+            'commerce_vehicle_doubt_near_pct', 'commerce_vehicle_doubt_min_items', 'commerce_ops_auto_escalate',
         ];
     }
 

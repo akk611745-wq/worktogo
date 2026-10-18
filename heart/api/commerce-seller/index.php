@@ -66,6 +66,19 @@ try {
         if (empty($res['ok'])) { Response::error('Could not flag stock-out: ' . ($res['reason'] ?? 'error'), 422); exit; }
         Response::success($res); exit;
     }
+    // PB11: seller report — sales, stock movement, payouts (JSON, or CSV download).
+    if ($method === 'GET' && $uri === '/api/commerce-seller/report') {
+        require_once SYSTEM_ROOT . '/lib/commerce/CommerceReports.php';
+        $days = isset($_GET['days']) ? max(1, min(365, (int)$_GET['days'])) : 30;
+        $rep = CommerceReports::sellerReport($db, (int)$sellerVendorId, $days);
+        if (($_GET['format'] ?? '') === 'csv') {
+            $csv = CommerceReports::sellerReportCsv($rep);
+            header('Content-Type: text/csv; charset=utf-8');
+            header('Content-Disposition: attachment; filename="worktogo-seller-report.csv"');
+            echo $csv; exit;
+        }
+        Response::success($rep); exit;
+    }
     // PB8: the vehicle-confirm prompt for an accepted order (options + the open doubt).
     if ($method === 'GET' && preg_match('#^/api/commerce-seller/orders/(\d+)/vehicle$#', $uri, $m)) {
         require_once SYSTEM_ROOT . '/lib/commerce/CommerceVehicle.php';

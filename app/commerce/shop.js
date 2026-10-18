@@ -672,6 +672,7 @@ async function renderOrder(id) {
     <div class="summary"><div class="ln total"><span>Total</span><span>${money(o.total)}</span></div></div>
     <div style="height:10px"></div>
     <button class="btn-primary-shop btn-block" onclick="ShopUI.reorder(${o.id})">🔁 Reorder</button>
+    <div style="height:10px"></div><button class="btn-add" style="width:100%" onclick="ShopUI.invoice(${o.id})">🧾 Invoice / bill</button>
     ${canCancel ? `<div style="height:10px"></div><button class="btn-add" style="border-color:#eab;color:#b91c1c;background:#fff" onclick="ShopUI.cancelOrder(${o.id})">Cancel order</button>` : ""}
     <div style="height:8px"></div>`;
   loadDeliveryTrack(id);
@@ -701,6 +702,46 @@ async function cancelOrder(id) {
   else if (c.fee > 0) msg = `Cancelled · ₹${Math.round(c.fee)} cancellation fee applied`;
   toast(msg, "info"); renderOrder(id);
 }
+/* PB11: GST-ready invoice — a printable bill the customer can view + download (print → PDF). */
+async function showInvoice(id) {
+  const r = await ShopAPI.invoice(id);
+  if (!r.ok) { toast(r.error, "error"); return; }
+  const v = r.data.invoice || {};
+  const biz = v.business || {};
+  const addr = v.bill_to || {};
+  const rows = (v.lines || []).map(l => `<tr><td>${esc(l.name)}</td><td style="text-align:center">${l.quantity}</td><td style="text-align:right">${money(l.unit_price)}</td><td style="text-align:right">${money(l.line_total)}</td></tr>`).join("");
+  const taxLine = (v.tax_rate > 0)
+    ? `<tr><td colspan="3" style="text-align:right">Taxable value</td><td style="text-align:right">${money(v.taxable_value)}</td></tr>
+       <tr><td colspan="3" style="text-align:right">GST @ ${esc(v.tax_rate)}%</td><td style="text-align:right">${money(v.tax)}</td></tr>` : "";
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Invoice ${esc(v.invoice_no)}</title>
+    <style>body{font-family:system-ui,Arial,sans-serif;color:#1a1d24;max-width:720px;margin:24px auto;padding:0 16px}
+    h1{font-size:20px;margin:0} .muted{color:#667} table{width:100%;border-collapse:collapse;margin-top:14px}
+    th,td{padding:7px 6px;border-bottom:1px solid #e6e8ee;font-size:13px} th{text-align:left;background:#f7f8fa}
+    .tot{font-weight:800;font-size:15px} .no-print{margin:16px 0}
+    @media print{.no-print{display:none}}</style></head><body>
+    <div class="no-print"><button onclick="window.print()" style="padding:9px 16px;font-weight:700">Print / Save as PDF</button></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div><h1>${esc(biz.name || "WorkToGo")}</h1><div class="muted">${esc(biz.address || "")}</div>
+        ${v.gstin ? `<div class="muted">GSTIN: ${esc(v.gstin)}</div>` : ""}</div>
+      <div style="text-align:right"><div style="font-weight:800">TAX INVOICE</div>
+        <div class="muted">No: ${esc(v.invoice_no)}</div><div class="muted">${esc((v.date || "").replace("T", " ").slice(0, 16))}</div></div>
+    </div>
+    <div style="margin-top:12px"><b>Bill to:</b> ${esc(addr.name || "")} ${addr.phone ? "· " + esc(addr.phone) : ""}<br>
+      <span class="muted">${esc(addr.line1 || addr.address || "")}${addr.landmark ? ", " + esc(addr.landmark) : ""}${addr.city ? ", " + esc(addr.city) : ""} ${esc(addr.pincode || "")}</span></div>
+    <table><thead><tr><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount</th></tr></thead>
+      <tbody>${rows}
+        <tr><td colspan="3" style="text-align:right">Items</td><td style="text-align:right">${money(v.items_total)}</td></tr>
+        ${v.delivery_fee ? `<tr><td colspan="3" style="text-align:right">Delivery</td><td style="text-align:right">${money(v.delivery_fee)}</td></tr>` : ""}
+        ${taxLine}
+        <tr class="tot"><td colspan="3" style="text-align:right">Grand total</td><td style="text-align:right">${money(v.grand_total)}</td></tr>
+      </tbody></table>
+    <p class="muted" style="margin-top:14px">Payment: ${esc((v.payment_method || "cod").toUpperCase())}${v.tax_rate > 0 ? "" : " · Tax not applicable"}.</p>
+    </body></html>`;
+  const w = window.open("", "_blank");
+  if (!w) { toast("Allow pop-ups to view the invoice", "info"); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
+
 /* S10: one-tap reorder — re-adds the past order's still-orderable items to cart. */
 async function reorder(id) {
   const r = await ShopAPI.reorder(id);
@@ -781,5 +822,6 @@ window.ShopUI = {
   placeOrder: () => placeOrder(),
   cancelOrder: id => cancelOrder(id),
   reorder: id => reorder(id),
+  invoice: id => showInvoice(id),
   setPay: m => { _payMethod = m; refreshPay(); },
 };

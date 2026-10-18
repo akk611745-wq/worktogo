@@ -40,6 +40,7 @@ require_once SYSTEM_ROOT . '/lib/commerce/OrderabilityResolver.php'; // S2: 4-la
 require_once SYSTEM_ROOT . '/lib/commerce/Serviceability.php';       // PB14: pincode/area serviceability
 require_once SYSTEM_ROOT . '/lib/commerce/PaintStorefront.php';      // PB4: paint customer read-model (home/product/switch)
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceAddress.php';      // PB15: saved-address book
+require_once SYSTEM_ROOT . '/lib/commerce/CommerceReports.php';      // PB11: GST-ready invoice
 require_once SYSTEM_ROOT . '/lib/commerce/RoutingEngine.php';        // S3: deterministic routing + signal capture
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceEventBus.php';     // S4: event bus / timeline / flags / notifications
 require_once SYSTEM_ROOT . '/lib/commerce/CommercePayment.php';      // S5: configurable payment methods (online primary + COD) over the gateway abstraction
@@ -482,6 +483,15 @@ try {
         $order = (new OrderService($db, $cart))->detail($uid, (int)$m[1]);
         if (!$order) { Response::notFound('Order'); exit; }
         Response::success(['order' => $order]);
+        exit;
+    }
+
+    // ── GET /api/shop/orders/{id}/invoice — PB11 GST-ready invoice (own order) ─
+    if ($method === 'GET' && preg_match('#^/api/shop/orders/(\d+)/invoice$#', $uri, $m)) {
+        $uid = $shopRequireUser();
+        $order = (new OrderService($db, new CartService($db)))->detail($uid, (int)$m[1]); // ownership enforced by the engine
+        if (!$order) { Response::notFound('Order'); exit; }
+        Response::success(['invoice' => CommerceReports::customerInvoice($db, $order)]);
         exit;
     }
 

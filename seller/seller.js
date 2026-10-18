@@ -319,7 +319,20 @@
       tile(e.delivered_count || 0, "Delivered orders") +
       tile(e.in_progress || 0, "In progress") +
       tile(money(e.gross_delivered), "Gross delivered") +
-      '</div></div><p class="muted">Payouts are settled to your account by WorkToGo (weekly).</p>';
+      '</div></div><p class="muted">Payouts are settled to your account by WorkToGo (weekly).</p>' +
+      '<button class="btn btn-ghost" onclick="Seller.downloadReport()">⬇ Download report (CSV)</button>';
+  }
+  /* PB11: seller report CSV — fetched with the token, saved client-side. */
+  async function downloadReport() {
+    toast("Preparing report…");
+    try {
+      var res = await fetch(BASE + "/api/commerce-seller/report?format=csv&days=90", { headers: token() ? { Authorization: "Bearer " + token() } : {} });
+      if (!res.ok) { toast("Couldn't build the report"); return; }
+      var blob = await res.blob();
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a"); a.href = url; a.download = "worktogo-seller-report.csv";
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    } catch (e) { toast("Download failed"); }
   }
   function tile(v, l) { return '<div><div class="v">' + v + '</div><div class="l">' + esc(l) + '</div></div>'; }
 
@@ -343,6 +356,6 @@
   }
   function logout() { stopAlarm(); try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} renderLogin(); }
 
-  window.Seller = { boot: boot, go: go, setAvail: setAvail, accept: accept, reject: reject, stockOut: stockOut, suggestVehicle: suggestVehicle, catPhoto: catPhoto, catAdd: catAdd, catSave: catSave, history: history, closeSheet: closeSheet, logout: logout, uploadDoc: uploadDoc, saveKyc: saveKyc, submitKyc: submitKyc };
+  window.Seller = { boot: boot, go: go, setAvail: setAvail, accept: accept, reject: reject, stockOut: stockOut, suggestVehicle: suggestVehicle, downloadReport: downloadReport, catPhoto: catPhoto, catAdd: catAdd, catSave: catSave, history: history, closeSheet: closeSheet, logout: logout, uploadDoc: uploadDoc, saveKyc: saveKyc, submitKyc: submitKyc };
   if (document.readyState !== "loading") boot(); else document.addEventListener("DOMContentLoaded", boot);
 })();
