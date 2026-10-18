@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Alert Channels</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="admin-main">
+    <div id="shell-topbar"></div>
+    <div class="admin-content">
+      <h1>Alert Channels</h1>
+      <p class="page-subtitle">Turn each order-alert channel on or off. Every order event still reaches the right person on the channels left on; a channel that is off is skipped and logged. Turning a channel off never blocks an order.</p>
+      <div id="chan-list" class="card"><div class="muted">Loading…</div></div>
+      <h2 style="margin-top:22px">Recent alerts</h2>
+      <div id="log-list" class="card"><div class="muted">Loading…</div></div>
+    </div>
+  </div>
+</div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/push.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Alert Channels', active: 'commerce-alerts.html' });
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const CH = [['inapp','In-app'],['push','Push (FCM)'],['sms','SMS (MSG91)'],['whatsapp','WhatsApp']];
+let _ch = {};
+async function load() {
+  const r = await API.get('/commerce-admin/notify-channels');
+  _ch = ((r && r.data) || r || {}).channels || {};
+  document.getElementById('chan-list').innerHTML = CH.map(([k,label]) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line,#eee)">
+      <div style="font-weight:600">${esc(label)}</div>
+      <button class="btn ${_ch[k] ? 'btn-primary' : ''}" onclick="toggle('${k}')">${_ch[k] ? 'ON' : 'OFF'}</button>
+    </div>`).join('');
+  loadLog();
+}
+async function toggle(k) {
+  const r = await API.post('/commerce-admin/notify-channels', { channel: k, enabled: !_ch[k] });
+  if (r && r.success !== false) load(); else alert((r && (r.message||r.error)) || 'Failed');
+}
+async function loadLog() {
+  const r = await API.get('/commerce-admin/notify-log?limit=40');
+  const list = ((r && r.data) || r || {}).log || [];
+  const host = document.getElementById('log-list');
+  if (!list.length) { host.innerHTML = '<div class="muted">No alerts yet.</div>'; return; }
+  host.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="text-align:left"><th>When</th><th>Event</th><th>To</th><th>Channel</th><th>Tone</th><th>Status</th></tr>' +
+    list.map(x => `<tr><td class="muted">${esc((x.created_at||'').replace('T',' ').slice(0,16))}</td><td>${esc(x.event_type)}</td><td>${esc(x.audience||'')}</td><td>${esc(x.channel)}</td><td>${esc(x.tone||'')}</td>
+      <td><span style="color:${x.status==='failed'?'#b91c1c':(x.status==='skipped'?'#9a6b3f':'#15803d')}">${esc(x.status)}</span></td></tr>`).join('') + '</table>';
+}
+load();
+</script>
+</body>
+</html>

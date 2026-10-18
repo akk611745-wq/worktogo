@@ -99,11 +99,33 @@ const Rider = (() => {
     if (_online) startWatch(); else stopWatch();
     loadJobs();
   }
+  // PB7: a short "new job" chime + buzz when a delivery is freshly assigned.
+  let _knownJobs = null, _rac = null;
+  function jobChime() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+      if (!_rac) _rac = new AC(); if (_rac.state === "suspended") _rac.resume();
+      const t = _rac.currentTime;
+      [0, 0.18].forEach((off, i) => {
+        const o = _rac.createOscillator(), g = _rac.createGain();
+        o.type = "sine"; o.frequency.value = i ? 1175 : 784;
+        g.gain.setValueAtTime(0.0001, t + off);
+        g.gain.exponentialRampToValueAtTime(0.4, t + off + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + off + 0.15);
+        o.connect(g); g.connect(_rac.destination); o.start(t + off); o.stop(t + off + 0.16);
+      });
+    } catch (e) {}
+    if (navigator.vibrate) { try { navigator.vibrate([150, 80, 150]); } catch (e) {} }
+  }
   async function loadJobs() {
     const host = document.getElementById("jobs"); if (!host) return;
     const r = await api("GET", "/rider/deliveries");
     if (!r.ok) { host.innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
     const jobs = r.data.deliveries || [];
+    // chime when a delivery id appears that we didn't have last poll
+    const ids = jobs.map(j => j.id);
+    if (_knownJobs !== null && ids.some(id => !_knownJobs.includes(id))) jobChime();
+    _knownJobs = ids;
     if (!jobs.length) {
       host.innerHTML = `<div class="empty"><div class="ic">📭</div><div style="margin-top:8px">${_online ? "No deliveries assigned yet." : "Go online to receive deliveries."}</div></div>`;
       return;

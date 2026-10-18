@@ -70,6 +70,7 @@
   /* ── tabs ──────────────────────────────────────────────────────────────── */
   function go(tab) {
     state.tab = tab;
+    if (tab !== "orders") stopAlarm(); // PB7: only ring on the orders tab
     ["orders", "catalogue", "earnings", "kyc"].forEach(function (t) { var b = el("tab-" + t); if (b) b.classList.toggle("on", t === tab); });
     if (tab === "orders") renderOrders();
     else if (tab === "catalogue") renderCatalogue();
@@ -139,15 +140,45 @@
     toast("Submitted for verification ✓"); renderKyc();
   }
 
+  /* ── PB7: loud new-order alarm — own tone + vibration, repeats until the
+     inbox is empty (i.e. every new order is accepted / rejected). ─────────── */
+  var _ac = null, _alarmTimer = null, _alarmOn = false;
+  function _beep() {
+    try {
+      if (!_ac) { var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; _ac = new AC(); }
+      if (_ac.state === "suspended") _ac.resume();
+      var t = _ac.currentTime;
+      [0, 0.22].forEach(function (off) {            // urgent double-beep
+        var o = _ac.createOscillator(), g = _ac.createGain();
+        o.type = "square"; o.frequency.value = 880;
+        g.gain.setValueAtTime(0.0001, t + off);
+        g.gain.exponentialRampToValueAtTime(0.5, t + off + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + off + 0.16);
+        o.connect(g); g.connect(_ac.destination); o.start(t + off); o.stop(t + off + 0.18);
+      });
+    } catch (e) {}
+    if (navigator.vibrate) { try { navigator.vibrate([200, 100, 200]); } catch (e) {} }
+  }
+  function startAlarm() {
+    if (_alarmOn) return; _alarmOn = true;
+    _beep(); _alarmTimer = setInterval(_beep, 2500);   // repeats until stopped
+  }
+  function stopAlarm() {
+    _alarmOn = false;
+    if (_alarmTimer) { clearInterval(_alarmTimer); _alarmTimer = null; }
+    if (navigator.vibrate) { try { navigator.vibrate(0); } catch (e) {} }
+  }
+
   /* ── orders inbox (accept / reject / stock-out) ────────────────────────── */
   async function renderOrders() {
     el("app").innerHTML = '<div class="spin"></div>';
     var r = await API("GET", "/orders");
-    if (!r.ok) { el("app").innerHTML = errState(r.error); return; }
+    if (!r.ok) { el("app").innerHTML = errState(r.error); stopAlarm(); return; }
     var orders = (r.data && r.data.orders) || [];
     var badge = el("orders-badge"); if (badge) { badge.textContent = orders.length; badge.classList.toggle("hidden", orders.length === 0); }
-    if (!orders.length) { el("app").innerHTML = '<div class="empty"><div class="ic">🧾</div><h3>No new orders</h3><p class="muted">New orders appear here when you are online.</p></div>'; return; }
+    if (!orders.length) { stopAlarm(); el("app").innerHTML = '<div class="empty"><div class="ic">🧾</div><h3>No new orders</h3><p class="muted">New orders appear here when you are online.</p></div>'; return; }
     el("app").innerHTML = orders.map(orderCard).join("");
+    startAlarm(); // loud until the seller clears every new order
   }
   function orderCard(o) {
     var items = (o.items || []).map(function (it) {
@@ -286,7 +317,7 @@
     if (state.timer) clearInterval(state.timer);
     state.timer = setInterval(function () { if (state.tab === "orders" && !document.hidden) renderOrders(); }, 20000);
   }
-  function logout() { try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} renderLogin(); }
+  function logout() { stopAlarm(); try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} renderLogin(); }
 
   window.Seller = { boot: boot, go: go, setAvail: setAvail, accept: accept, reject: reject, stockOut: stockOut, catPhoto: catPhoto, catAdd: catAdd, catSave: catSave, history: history, closeSheet: closeSheet, logout: logout, uploadDoc: uploadDoc, saveKyc: saveKyc, submitKyc: submitKyc };
   if (document.readyState !== "loading") boot(); else document.addEventListener("DOMContentLoaded", boot);

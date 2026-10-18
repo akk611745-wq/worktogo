@@ -24,6 +24,7 @@ const Shell = {
     { href: 'commerce-kyc.html',    icon: 'shield', label: 'Seller KYC' },
     { href: 'commerce-verify.html', icon: 'box',    label: 'Product Verification' },
     { href: 'commerce-serviceability.html', icon: 'mappin', label: 'Serviceability' },
+    { href: 'commerce-alerts.html', icon: 'bell', label: 'Alert Channels' },
     { group: 'Operations' },
     { href: 'pricing.html',  icon: 'tag',   label: 'Price Control' },
     { href: 'followup.html', icon: 'bell',  label: 'Follow-up Center' },

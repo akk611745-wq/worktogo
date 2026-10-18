@@ -106,6 +106,16 @@ class CommerceEventBus
                 }
             }
         }
+
+        // 4. PB7 external fan-out (push / SMS / WhatsApp) + per-event tone + log.
+        //    Best-effort: a channel failure is logged inside the notifier and can
+        //    NEVER bubble up to block the order.
+        try {
+            if (!class_exists('CommerceNotifier')) { $f = __DIR__ . '/CommerceNotifier.php'; if (is_file($f)) require_once $f; }
+            if (!class_exists('FcmNotifier'))       { $f = __DIR__ . '/../../core/lib/FcmNotifier.php'; if (is_file($f)) require_once $f; }
+            if (class_exists('CommerceNotifier')) CommerceNotifier::dispatch($db, $eventType, $orderId, $ctx);
+        } catch (\Throwable $e) { error_log('[eventbus notify] ' . $e->getMessage()); }
+
         return $eventId;
     }
 

@@ -30,6 +30,7 @@ require_once SYSTEM_ROOT . '/lib/commerce/KycService.php';
 require_once SYSTEM_ROOT . '/lib/commerce/PaintCatalogue.php';
 require_once SYSTEM_ROOT . '/lib/commerce/Serviceability.php';
 require_once SYSTEM_ROOT . '/lib/commerce/PaintStorefront.php';
+require_once SYSTEM_ROOT . '/lib/commerce/CommerceNotifier.php';
 
 $B   = json_decode(file_get_contents('php://input'), true);
 if (!is_array($B)) $B = [];
@@ -333,6 +334,26 @@ try {
         $audit($auth, 'commerce.seller.manage', 'shop.toggle', ['summary' => ['city_id' => $cityId, 'enabled' => $on], 'outcome' => !empty($res['ok']) ? 'ok' : 'error']);
         if (empty($res['ok'])) { Response::error($res['reason'] ?? 'error', 422); exit; }
         Response::success($res); exit;
+    }
+
+    // ── PB7: alert channel on/off + recent alert log ────────────────────────
+    if ($method === 'GET' && $uri === '/api/commerce-admin/notify-channels') {
+        $gate('commerce.ops.view');
+        Response::success(['channels' => CommerceNotifier::channels($db)]); exit;
+    }
+    if ($method === 'POST' && $uri === '/api/commerce-admin/notify-channels') {
+        $auth = $gate('commerce.config.manage');
+        $res = CommerceNotifier::setChannel($db, $ps('channel'), !empty($B['enabled']));
+        $audit($auth, 'commerce.config.manage', 'notify.channel', ['summary' => ['channel' => $ps('channel'), 'enabled' => !empty($B['enabled'])], 'outcome' => !empty($res['ok']) ? 'ok' : 'error']);
+        if (empty($res['ok'])) { Response::error($res['reason'] ?? 'error', 422); exit; }
+        Response::success($res); exit;
+    }
+    if ($method === 'GET' && $uri === '/api/commerce-admin/notify-log') {
+        $gate('commerce.ops.view');
+        $limit = isset($_GET['limit']) ? max(1, min(200, (int)$_GET['limit'])) : 50;
+        $st = $db->prepare("SELECT order_id, user_id, audience, channel, event_type, tone, priority, status, error, created_at FROM commerce_notification_log ORDER BY id DESC LIMIT ?");
+        $st->bindValue(1, $limit, PDO::PARAM_INT); $st->execute();
+        Response::success(['log' => $st->fetchAll(PDO::FETCH_ASSOC)]); exit;
     }
 
 } catch (\Throwable $e) {
