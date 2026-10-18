@@ -77,6 +77,15 @@ try {
         if (empty($res['ok'])) { Response::error('Could not price: ' . ($res['reason'] ?? 'error'), 422); exit; }
         Response::success($res); exit;
     }
+    // PB10b: seller marks making started (only after the advance is captured) → advance non-refundable.
+    if ($method === 'POST' && preg_match('#^/api/commerce-seller/tint-quotes/(\d+)/making$#', $uri, $m)) {
+        require_once SYSTEM_ROOT . '/lib/commerce/CustomTintQuote.php';
+        $q = CustomTintQuote::get($db, (int)$m[1]);
+        if (!$q || (int)$q['vendor_id'] !== (int)$sellerVendorId) { Response::error('Quote not found', 404); exit; }
+        $res = CustomTintQuote::startMaking($db, (int)$m[1]);
+        if (empty($res['ok'])) { Response::error($res['reason'] === 'advance_not_captured' ? 'The advance isn’t paid yet.' : 'Could not start making.', 422); exit; }
+        Response::success($res); exit;
+    }
     // PB11: seller report — sales, stock movement, payouts (JSON, or CSV download).
     if ($method === 'GET' && $uri === '/api/commerce-seller/report') {
         require_once SYSTEM_ROOT . '/lib/commerce/CommerceReports.php';

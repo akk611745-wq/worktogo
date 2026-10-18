@@ -209,6 +209,34 @@ try {
         Response::success(['quotes' => CustomTintQuote::myQuotes($db, $uid)]);
         exit;
     }
+    // PB10b: the ONE final-price popup + the customer's accept (consent mandatory).
+    if ($method === 'GET' && preg_match('#^/api/shop/tint/quotes/(\d+)$#', $uri, $m)) {
+        $uid = $shopRequireUser();
+        $fin = CustomTintQuote::customerFinal($db, (int)$m[1], $uid);
+        if ($fin === null) { Response::error('Quote not found', 404); exit; }
+        Response::success(['final' => $fin]);
+        exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/shop/tint/quotes/(\d+)/accept$#', $uri, $m)) {
+        $uid = $shopRequireUser(); $b = $shopBody();
+        $shopRateLimit('shop_tint_acc_' . $uid, 20, 60);
+        $res = CustomTintQuote::accept($db, (int)$m[1], $uid, !empty($b['consent']));
+        if (empty($res['ok'])) {
+            $msg = $res['reason'] === 'consent_required' ? 'Please tick the consent box — a custom shade is made to order and can’t be returned.'
+                 : ($res['reason'] === 'not_priced' ? 'The painter hasn’t sent a price yet.' : 'Could not place the order.');
+            Response::error($msg, 422); exit;
+        }
+        // Start the ADVANCE online payment; the webhook captures it, then making begins.
+        try {
+            $uStmt = $db->prepare("SELECT id, name, email, phone FROM users WHERE id = ? LIMIT 1");
+            $uStmt->execute([$uid]); $uRow = $uStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+            $payUser = ['id' => $uid, 'name' => $uRow['name'] ?? 'Customer', 'email' => $uRow['email'] ?? '', 'phone' => $uRow['phone'] ?? ''];
+            $pay = CommercePayment::initAdvance($db, (int)$res['order_id'], $payUser);
+            $res['payment'] = $pay['payment'] ?? $pay;
+        } catch (\Throwable $pe) { error_log('[shop/tint/accept] advance pay: ' . $pe->getMessage()); $res['payment_error'] = 'Could not start the advance payment.'; }
+        Response::success($res, 200, 'Order placed — pay the advance to start making.');
+        exit;
+    }
 
     // ── GET /api/shop/stores — city-scoped, company-first (public) ───────────
     if ($method === 'GET' && $uri === '/api/shop/stores') {

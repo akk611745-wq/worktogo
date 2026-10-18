@@ -16,6 +16,8 @@ require_once __DIR__ . '/CustomTint.php';
 require_once __DIR__ . '/RoutingEngine.php';
 require_once __DIR__ . '/OrderabilityResolver.php';
 require_once __DIR__ . '/CommerceEventBus.php';
+require_once __DIR__ . '/MarginEngine.php';     // PB10b: margin on the colour-price total
+require_once __DIR__ . '/CommercePayment.php';  // PB10b: advance intent
 
 class CustomTintQuote
 {
@@ -148,9 +150,125 @@ class CustomTintQuote
         if ((int)$q['vendor_id'] !== $vendorId) return ['ok' => false, 'reason' => 'not_yours'];
         if ($q['status'] !== 'quoted') return ['ok' => false, 'reason' => 'not_open', 'state' => $q['status']];
         if ($colourPrice <= 0) return ['ok' => false, 'reason' => 'bad_price'];
-        $db->prepare("UPDATE commerce_tint_quotes SET colour_price=?, base_type=COALESCE(?, base_type), status='priced', updated_at=NOW() WHERE id=?")
-           ->execute([round($colourPrice, 2), $baseType !== null && $baseType !== '' ? $baseType : null, $quoteId]);
-        return ['ok' => true, 'quote_id' => $quoteId, 'status' => 'priced'];
+        // PB10b: run the colour price through the SAME MarginEngine (margin on the
+        // total), then cap by the admin ceiling (× the estimate) so it can't balloon.
+        $priced = self::finalize($db, $q, round($colourPrice, 2));
+        $db->prepare("UPDATE commerce_tint_quotes SET colour_price=?, base_type=COALESCE(?, base_type), final_price=?, margin=?, locked_per_litre=?, status='priced', updated_at=NOW() WHERE id=?")
+           ->execute([round($colourPrice, 2), $baseType !== null && $baseType !== '' ? $baseType : null, $priced['final_price'], $priced['margin'], $priced['per_litre'], $quoteId]);
+        return ['ok' => true, 'quote_id' => $quoteId, 'status' => 'priced'] + $priced;
+    }
+
+    /** Admin ceiling multiple (× the estimate) that caps the custom-tint final price. */
+    public static function ceilingMult(PDO $db): float
+    {
+        try { $s = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key='commerce_tint_ceiling_mult' LIMIT 1"); $s->execute(); $v = $s->fetchColumn();
+              if ($v !== false && is_numeric($v) && (float)$v > 0) return (float)$v; } catch (\Throwable $e) {}
+        return 2.0;
+    }
+
+    /**
+     * PB10b pricing: MarginEngine on the colour price, then the admin ceiling.
+     * @return array{colour_price:float, margin:float, final_price:float, per_litre:?float, ceiling:float, ceiling_applied:bool}
+     */
+    public static function finalize(PDO $db, array $q, float $colourPrice): array
+    {
+        $mp = MarginEngine::priceFromBase($db, $colourPrice);
+        $customer = (float)($mp['customer_price'] ?? $colourPrice);
+        $litres = (float)($q['litres'] ?? 0);
+        $estimate = (float)($q['estimate'] ?? 0);
+        $base = $estimate > 0 ? $estimate : $colourPrice;
+        $ceiling = round($base * self::ceilingMult($db), 2);
+        $capped = $customer > $ceiling;
+        $final = $capped ? $ceiling : round($customer, 2);
+        $margin = round(max(0.0, $final - $colourPrice), 2);
+        return ['colour_price' => $colourPrice, 'margin' => $margin, 'final_price' => $final,
+                'per_litre' => $litres > 0 ? round($final / $litres, 4) : null, 'ceiling' => $ceiling, 'ceiling_applied' => $capped];
+    }
+
+    /** The ONE final-price popup for the customer (after the seller priced it). */
+    public static function customerFinal(PDO $db, int $quoteId, int $userId): ?array
+    {
+        $q = self::get($db, $quoteId);
+        if (!$q || (int)$q['user_id'] !== $userId) return null;
+        if ($q['final_price'] === null) return ['quote_id' => $quoteId, 'status' => $q['status'], 'ready' => false];
+        $pct = CommercePayment::advancePct($db);
+        $final = (float)$q['final_price'];
+        $advance = round($final * $pct / 100, 2);
+        return [
+            'quote_id'   => $quoteId, 'ready' => true, 'status' => $q['status'],
+            'brand' => $q['brand'], 'shade_code' => $q['shade_code'], 'shade_name' => $q['shade_name'],
+            'litres' => (float)$q['litres'], 'final_price' => $final,
+            'advance_pct' => $pct, 'advance_amount' => $advance, 'balance_at_door' => round($final - $advance, 2),
+            'consent_required' => CustomTint::consentRequired($db),
+            'non_returnable' => true,
+            'note' => 'Custom-tinted shades are made to order and can’t be returned.',
+        ];
+    }
+
+    /** Create the tint order (parent + seller sub) with the margin recorded for settlement. */
+    private static function createTintOrder(PDO $db, array $q): int
+    {
+        $final = (float)$q['final_price']; $colour = (float)$q['colour_price'];
+        $num = 'TINT-' . $q['id'] . '-' . substr((string)time(), -6);
+        $db->prepare("INSERT INTO orders (order_number,user_id,city_id,status,payment_status,payment_method,subtotal,total,notes,shipping_address,delivery_status,ledger_status,created_at,updated_at)
+                      VALUES (?,?,?, 'confirmed','unpaid','online',?,?, 'custom-tint (non-returnable)','{}','offered','pending',NOW(),NOW())")
+           ->execute([$num, $q['user_id'], $q['city_id'], $final, $final]);
+        $parent = (int)$db->lastInsertId();
+        $db->prepare("INSERT INTO orders (order_number,parent_order_id,user_id,vendor_id,store_id,city_id,status,payment_status,payment_method,subtotal,seller_subtotal,total,notes,shipping_address,delivery_status,ledger_status,created_at,updated_at)
+                      VALUES (?,?,?,?,?,?, 'confirmed','unpaid','online',?,?,?, 'custom-tint','{}','accepted','pending',NOW(),NOW())")
+           ->execute([$num . '-S', $parent, $q['user_id'], $q['vendor_id'], $q['store_id'], $q['city_id'], $final, $colour, $final]);
+        return $parent;
+    }
+
+    /**
+     * Customer accepts the final price → create the order, take the advance intent,
+     * record the repeat-lock, raise the confirm-call flag. Consent is mandatory.
+     * @return array{ok:bool, reason?:string, order_id?:int, advance?:float, balance?:float, final_price?:float}
+     */
+    public static function accept(PDO $db, int $quoteId, int $userId, bool $consent): array
+    {
+        $q = self::get($db, $quoteId);
+        if (!$q || (int)$q['user_id'] !== $userId) return ['ok' => false, 'reason' => 'not_found'];
+        if ($q['status'] !== 'priced' || $q['final_price'] === null) return ['ok' => false, 'reason' => 'not_priced', 'state' => $q['status']];
+        if (CustomTint::consentRequired($db) && !$consent) return ['ok' => false, 'reason' => 'consent_required'];
+
+        $orderId = self::createTintOrder($db, $q);
+        $db->prepare("UPDATE commerce_tint_quotes SET status='ordered', order_id=?, consent=?, updated_at=NOW() WHERE id=?")
+           ->execute([$orderId, $consent ? 1 : 0, $quoteId]);
+
+        // Advance intent (admin %), balance collected at the door (PB5). Margin is
+        // recorded via the sub-order's seller_subtotal → settlement splits it.
+        $adv = CommercePayment::recordAdvanceIntent($db, $orderId);
+
+        // Repeat-lock log (so a future repeat of this shade goes back to this seller).
+        CustomTint::recordMade($db, $userId, $q['customer_ref'] ?? null, $q['brand'], $q['shade_code'], $q['base_type'] ?? null, (int)$q['vendor_id'], $orderId);
+
+        // Confirm-call flag (ops) for a custom order / high value.
+        if (CustomTint::needsConfirmCall($db, (float)$q['final_price'], true)) {
+            try { CommerceEventBus::raiseFlag($db, $orderId, 'confirm_call', 'custom-tint order needs a confirm call'); } catch (\Throwable $e) {}
+        }
+        try { CommerceEventBus::emit($db, 'order_created', ['order_id' => $orderId, 'actor_type' => 'customer', 'actor_id' => $userId, 'payload' => ['custom_tint' => true, 'quote_id' => $quoteId]]); } catch (\Throwable $e) {}
+
+        return ['ok' => true, 'order_id' => $orderId, 'advance' => (float)($adv['advance'] ?? 0), 'balance' => (float)($adv['balance'] ?? 0), 'final_price' => (float)$q['final_price']];
+    }
+
+    /**
+     * Making has begun (after the advance is captured) → record 'making_started'
+     * so the advance becomes non-refundable (the PB16 CommerceCancellation rule).
+     */
+    public static function startMaking(PDO $db, int $quoteId): array
+    {
+        $q = self::get($db, $quoteId);
+        if (!$q || !$q['order_id']) return ['ok' => false, 'reason' => 'no_order'];
+        // Making may begin only once the advance is actually captured, so the
+        // advance can't be made non-refundable before the customer has paid it.
+        $adv = CommercePayment::advanceStatus($db, (int)$q['order_id']);
+        if (!$adv || $adv['status'] !== 'captured') return ['ok' => false, 'reason' => 'advance_not_captured'];
+        RoutingEngine::recordSignal($db, (int)$q['order_id'], (int)$q['order_id'], $q['store_id'] !== null ? (int)$q['store_id'] : null, $q['vendor_id'] !== null ? (int)$q['vendor_id'] : null, 'making_started');
+        // The 'making_started' signal is the source of truth (PB16 reads it); the
+        // quote stays 'ordered'. updated_at is bumped so dashboards reflect it.
+        $db->prepare("UPDATE commerce_tint_quotes SET updated_at=NOW() WHERE id=?")->execute([$quoteId]);
+        return ['ok' => true, 'order_id' => (int)$q['order_id'], 'making' => true];
     }
 
     /** Move a quote to the next eligible seller (or to ops if none). */

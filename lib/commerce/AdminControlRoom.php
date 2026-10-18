@@ -42,6 +42,8 @@ class AdminControlRoom
             'commerce_coverage_sqft_per_litre', 'commerce_cancel_fee_after_accept', 'commerce_cancel_fee_pct',
             'commerce_quote_timeout_sec', 'commerce_lifecycle_enabled', 'commerce_notify_channels',
             'commerce_vehicle_doubt_near_pct', 'commerce_vehicle_doubt_min_items', 'commerce_ops_auto_escalate',
+            'commerce_cod_open_cap', 'commerce_cod_nopay_limit', 'commerce_abandoned_order_min', 'commerce_media_max_mb',
+            'commerce_tint_estimate_per_litre', 'commerce_tint_ceiling_mult', 'commerce_tint_band_outlier_pct',
         ];
     }
 
