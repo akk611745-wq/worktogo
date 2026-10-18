@@ -18,6 +18,7 @@
 
 require_once __DIR__ . '/OpsConsole.php';
 require_once __DIR__ . '/CommerceVehicle.php';
+require_once __DIR__ . '/CustomTintBand.php';   // PB10c: price-outlier feed
 
 class CommerceOpsQueue
 {
@@ -109,6 +110,24 @@ class CommerceOpsQueue
                 ];
             }
         } catch (\Throwable $e) {}
+
+        // 4) PB10c custom-tint price outliers — a quote too far above the band was
+        //    hidden from the customer + rerouted; ops reviews it (esp. before the
+        //    band has enough data).
+        foreach (CustomTintBand::opsOutliers($db) as $o) {
+            $band = CustomTintBand::median($db, $o['brand'], $o['shade_code']);
+            $items[] = [
+                'kind'       => 'tint_price_outlier',
+                'ref_id'     => (int)$o['id'],
+                'order_id'   => 0,
+                'decide'     => 'Custom-tint price looks high — ' . $o['brand'] . ' ' . $o['shade_code'],
+                'detail'     => 'Quote ₹' . number_format((float)$o['estimate'], 0) . ' est · ' . ($band !== null ? 'band ₹' . number_format($band, 0) . '/L' : 'band has little data yet'),
+                'suggestion' => 'Confirm the colour price is fair; it was hidden from the customer and rerouted.',
+                'actions'    => [['label' => 'Noted', 'action' => 'noop']],
+                'priority'   => 'normal',
+                'since'      => $o['updated_at'],
+            ];
+        }
 
         // escalated first, then oldest first
         usort($items, function ($a, $b) {

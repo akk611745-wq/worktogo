@@ -88,12 +88,13 @@ ok('priced ok', $pr['ok'], true);
 ok('final = colour 2000 + margin 200', (float)$pr['final_price'], 2200.0);
 ok('margin = 200', (float)$pr['margin'], 200.0);
 ok('no ceiling cap (under estimate×2)', $pr['ceiling_applied'], false);
-// ceiling: a fat colour price would balloon → capped at estimate(2500)×2 = 5000
+// ceiling: a fat colour price would balloon → capped at estimate × mult. q1 seeded
+// the band at ₹220/L, so the estimate is 220×10=2200 and the ceiling 2200×2=4400.
 setCfg($pdo,'commerce_margin_slabs','{"enabled":true,"bands":[{"up_to":null,"flat":4000}]}');
 $q2=newQuote($pdo,$cust,$cityId);
 $pr2=CustomTintQuote::sellerRespond($pdo,$q2,$V,2000,'Deep Base');
-ok('ceiling applied (6000 → 5000)', $pr2['ceiling_applied'], true);
-ok('final capped at 5000', (float)$pr2['final_price'], 5000.0);
+ok('ceiling applied (6000 → 4400)', $pr2['ceiling_applied'], true);
+ok('final capped at the band ceiling 4400', (float)$pr2['final_price'], 4400.0);
 setCfg($pdo,'commerce_margin_slabs','{"enabled":true,"bands":[{"up_to":null,"flat":200}]}'); // restore normal
 
 echo "\n== [B] one final-price popup ==\n";

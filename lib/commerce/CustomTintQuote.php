@@ -18,6 +18,7 @@ require_once __DIR__ . '/OrderabilityResolver.php';
 require_once __DIR__ . '/CommerceEventBus.php';
 require_once __DIR__ . '/MarginEngine.php';     // PB10b: margin on the colour-price total
 require_once __DIR__ . '/CommercePayment.php';  // PB10b: advance intent
+require_once __DIR__ . '/CustomTintBand.php';   // PB10c: price band + repeat-lock
 
 class CustomTintQuote
 {
@@ -92,6 +93,27 @@ class CustomTintQuote
         $cityId = isset($c['city_id']) && $c['city_id'] !== '' ? (int)$c['city_id'] : null;
         $litres = (float)($c['litres'] ?? 0);
 
+        // PB10c REPEAT-LOCK: a shade this customer was already charged for prices
+        // instantly from their locked per-litre — same seller, no seller re-ask.
+        $lock = CustomTintBand::lockFor($db, $userId, $brand, $code);
+        if ($lock && $litres > 0 && $lock['vendor_id']) {
+            $final  = round($lock['final_per_litre'] * $litres, 2);
+            $colour = $lock['colour_per_litre'] !== null ? round($lock['colour_per_litre'] * $litres, 2) : null;
+            $db->prepare(
+                "INSERT INTO commerce_tint_quotes (user_id, customer_ref, brand, shade_code, shade_name, product_id, litres, pack_size, pack_unit, mode, estimate, colour_price, margin, final_price, locked_per_litre, colour_per_litre, status, vendor_id, store_id, city_id, created_at, updated_at)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'priced', ?,?,?, NOW(), NOW())"
+            )->execute([
+                $userId, $c['customer_ref'] ?? null, $brand, $code, $shade['shade_name'] ?? null,
+                isset($c['product_id']) && $c['product_id'] !== '' ? (int)$c['product_id'] : null,
+                $litres, $c['pack_size'] ?? null, $c['pack_unit'] ?? null, $mode, $final,
+                $colour, $colour !== null ? round($final - $colour, 2) : null, $final,
+                round($lock['final_per_litre'], 4), $lock['colour_per_litre'] !== null ? round($lock['colour_per_litre'], 4) : null,
+                $lock['vendor_id'], $lock['store_id'], $cityId,
+            ]);
+            $qid = (int)$db->lastInsertId();
+            return ['ok' => true, 'quote_id' => $qid, 'estimate' => $final, 'final_price' => $final, 'vendor_id' => $lock['vendor_id'], 'status' => 'priced', 'locked' => true];
+        }
+
         // Routing: a repeat repaint pins the seller who made it before; else first candidate.
         $vendorId = CustomTint::routeFirstSeller($db, $userId, $brand, $code, $mode);
         $storeId = null;
@@ -153,8 +175,19 @@ class CustomTintQuote
         // PB10b: run the colour price through the SAME MarginEngine (margin on the
         // total), then cap by the admin ceiling (× the estimate) so it can't balloon.
         $priced = self::finalize($db, $q, round($colourPrice, 2));
-        $db->prepare("UPDATE commerce_tint_quotes SET colour_price=?, base_type=COALESCE(?, base_type), final_price=?, margin=?, locked_per_litre=?, status='priced', updated_at=NOW() WHERE id=?")
-           ->execute([round($colourPrice, 2), $baseType !== null && $baseType !== '' ? $baseType : null, $priced['final_price'], $priced['margin'], $priced['per_litre'], $quoteId]);
+        $litres = (float)($q['litres'] ?? 0);
+        $colourPerL = $litres > 0 ? round($colourPrice / $litres, 4) : null;
+        // PB10c: a per-litre far above the band is an OUTLIER — not shown to the
+        // customer. Record it, flag it for ops, and reroute to the next seller.
+        if ($priced['per_litre'] !== null && CustomTintBand::isOutlier($db, $q['brand'], $q['shade_code'], (float)$priced['per_litre'])) {
+            $db->prepare("UPDATE commerce_tint_quotes SET colour_price=?, base_type=COALESCE(?, base_type), outlier_flag=1, updated_at=NOW() WHERE id=?")
+               ->execute([round($colourPrice, 2), $baseType !== null && $baseType !== '' ? $baseType : null, $quoteId]);
+            try { CommerceEventBus::emit($db, 'tint_price_outlier', ['order_id' => null, 'actor_type' => 'seller', 'actor_id' => $vendorId, 'payload' => ['quote_id' => $quoteId, 'brand' => $q['brand'], 'shade_code' => $q['shade_code'], 'per_litre' => $priced['per_litre']]]); } catch (\Throwable $e) {}
+            $rr = self::reroute($db, $quoteId);
+            return ['ok' => true, 'quote_id' => $quoteId, 'outlier' => true, 'rerouted' => !empty($rr['rerouted']), 'status' => self::get($db, $quoteId)['status'] ?? 'quoted'];
+        }
+        $db->prepare("UPDATE commerce_tint_quotes SET colour_price=?, base_type=COALESCE(?, base_type), final_price=?, margin=?, locked_per_litre=?, colour_per_litre=?, outlier_flag=0, status='priced', updated_at=NOW() WHERE id=?")
+           ->execute([round($colourPrice, 2), $baseType !== null && $baseType !== '' ? $baseType : null, $priced['final_price'], $priced['margin'], $priced['per_litre'], $colourPerL, $quoteId]);
         return ['ok' => true, 'quote_id' => $quoteId, 'status' => 'priced'] + $priced;
     }
 
