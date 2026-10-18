@@ -17,7 +17,8 @@
 //  shopping engine. All thresholds/switches are configurable (DB), never hardcoded.
 // ─────────────────────────────────────────────────────────────────────────────
 
-require_once __DIR__ . '/UnitConfig.php'; // layer-4 unit-rule hook (P1)
+require_once __DIR__ . '/UnitConfig.php';       // layer-4 unit-rule hook (P1)
+require_once __DIR__ . '/Serviceability.php';   // PB14 pincode/area consult (layer-2)
 
 class OrderabilityResolver
 {
@@ -61,10 +62,12 @@ class OrderabilityResolver
     }
 
     /**
-     * Per-product 4-layer check.
+     * Per-product 4-layer check. $pincode (PB14) is optional: when a 6-digit
+     * pincode is given, layer-2 also consults area serviceability (platform +
+     * seller delivery area); null/empty keeps the original city+radius behaviour.
      * @return array{orderable:bool, reason:string, layer:int}
      */
-    public static function check(PDO $db, int $productId, ?int $cityId): array
+    public static function check(PDO $db, int $productId, ?int $cityId, ?string $pincode = null): array
     {
         // Layer 0 — global kill-switch
         if (!self::commerceEnabled($db)) {
@@ -111,6 +114,11 @@ class OrderabilityResolver
             if ((int)$r['is_online'] !== 1)                     return ['orderable' => false, 'reason' => 'seller_off',      'layer' => 2];
             if ((int)$r['v_busy'] === 1)                        return ['orderable' => false, 'reason' => 'seller_busy',     'layer' => 2];
         }
+        // Layer 2 (PB14) — pincode / area serviceability (platform + seller area).
+        if ($pincode !== null && $pincode !== '') {
+            $svc = Serviceability::check($db, (int)$r['store_id'], $r['s_city'] !== null ? (int)$r['s_city'] : $cityId, $pincode);
+            if (empty($svc['ok']))                              return ['orderable' => false, 'reason' => $svc['reason'],     'layer' => 2];
+        }
 
         // Layer 3 — stock
         $available = (int)$r['quantity'] - (int)$r['reserved'];
@@ -133,6 +141,8 @@ class OrderabilityResolver
         switch ($reason) {
             case 'commerce_paused': return 'Ordering is temporarily paused. Please try again shortly.';
             case 'out_of_area':     return 'This item isn’t available in your area.';
+            case 'area_not_served': return 'We don’t deliver to your area yet.';
+            case 'seller_not_in_area': return 'This seller doesn’t deliver to your pincode.';
             case 'out_of_stock':    return 'This item is out of stock.';
             case 'seller_off':
             case 'seller_busy':

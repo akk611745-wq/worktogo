@@ -9,6 +9,7 @@ core/secrets/
 # ── Logs & local verification artifacts — never deploy/commit ────────────────
 logs/
 *.log
+cron/*.lock
 AUTHENTICATED_FLOW_TEST_GUIDE.md
 FIXES_APPLIED.md
 FIX_VERIFICATION_REPORT.md

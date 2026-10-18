@@ -37,6 +37,7 @@ require_once SYSTEM_ROOT . '/body/shopping-engine/api/orders/OrderService.php';
 require_once SYSTEM_ROOT . '/core/helpers/CityResolver.php';
 require_once SYSTEM_ROOT . '/core/helpers/RateLimiter.php';
 require_once SYSTEM_ROOT . '/lib/commerce/OrderabilityResolver.php'; // S2: 4-layer orderability + ON/OFF/BUSY gate
+require_once SYSTEM_ROOT . '/lib/commerce/Serviceability.php';       // PB14: pincode/area serviceability
 require_once SYSTEM_ROOT . '/lib/commerce/RoutingEngine.php';        // S3: deterministic routing + signal capture
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceEventBus.php';     // S4: event bus / timeline / flags / notifications
 require_once SYSTEM_ROOT . '/lib/commerce/CommercePayment.php';      // S5: configurable payment methods (online primary + COD) over the gateway abstraction
@@ -60,6 +61,9 @@ $shopUserId = $shopAuth['user_id'] ?? null;
 $shopCityId = $shopUserId
     ? CityResolver::resolveFromUser($db, (int)$shopUserId)
     : CityResolver::resolveId($db, null);
+// PB14: the customer's delivery pincode (query param on browse; falls back to the
+// posted shipping address at checkout). Empty ⇒ city-level behaviour (unchanged).
+$shopPincode = Serviceability::normalizePincode($_GET['pincode'] ?? '');
 
 // ── Small helpers ────────────────────────────────────────────────────────────
 $shopRequireUser = function () {
@@ -107,6 +111,31 @@ try {
         exit;
     }
 
+    // ── GET /api/shop/serviceability?pincode= — do we deliver here? (public) ──
+    if ($method === 'GET' && $uri === '/api/shop/serviceability') {
+        $pin = Serviceability::normalizePincode($_GET['pincode'] ?? '');
+        if ($pin === '') { Response::success(['serviceable' => true, 'reason' => 'no_pincode', 'pincode' => null]); exit; }
+        $served = Serviceability::cityServes($db, (int)$shopCityId, $pin);
+        Response::success([
+            'serviceable' => $served,
+            'reason'      => $served ? 'ok' : 'area_not_served',
+            'message'     => $served ? null : Serviceability::message('area_not_served'),
+            'pincode'     => $pin,
+            'city_id'     => (int)$shopCityId,
+        ]);
+        exit;
+    }
+
+    // ── POST /api/shop/service-request {pincode, phone} — "Notify me" (public) ─
+    if ($method === 'POST' && $uri === '/api/shop/service-request') {
+        $b = $shopBody();
+        $shopRateLimit('shop_service_req_' . ($shopUserId ?: (($_SERVER['REMOTE_ADDR'] ?? 'anon'))), 10, 3600);
+        $res = Serviceability::saveServiceRequest($db, (string)($b['pincode'] ?? ''), (string)($b['phone'] ?? ''), (int)$shopCityId);
+        if (empty($res['ok'])) { Response::validation($res['reason'] === 'bad_phone' ? 'A valid phone number is required.' : 'A valid 6-digit pincode is required.'); exit; }
+        Response::success(['ok' => true], 200, 'Thanks! We’ll notify you when we start delivering to your area.');
+        exit;
+    }
+
     // ── GET /api/shop/stores — city-scoped, company-first (public) ───────────
     if ($method === 'GET' && $uri === '/api/shop/stores') {
         if (!OrderabilityResolver::commerceEnabled($db)) { Response::success(['stores' => [], 'city_id' => (int)$shopCityId]); exit; }
@@ -127,8 +156,14 @@ try {
                  ORDER BY (s.ownership='company') DESC, s.priority DESC, s.is_featured DESC, s.name ASC";
         $stmt = $db->prepare($sql); $stmt->execute($bind);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // PB14: drop stores that don't deliver to the customer's pincode.
+        if ($shopPincode !== '' && $rows) {
+            $keep = array_flip(Serviceability::filterStoreIds($db, array_column($rows, 'id'), (int)$shopCityId, $shopPincode));
+            $rows = array_values(array_filter($rows, fn($r) => isset($keep[(int)$r['id']])));
+        }
         foreach ($rows as &$r) { $r['id']=(int)$r['id']; $r['product_count']=(int)$r['product_count']; $r['is_company']=($r['ownership']==='company'); }
-        Response::success(['stores' => $rows, 'city_id' => (int)$shopCityId]);
+        unset($r);
+        Response::success(['stores' => $rows, 'city_id' => (int)$shopCityId, 'pincode' => $shopPincode ?: null]);
         exit;
     }
 
@@ -157,6 +192,12 @@ try {
         $stmt = $db->prepare($sql);
         foreach ($bind as $k=>$v) $stmt->bindValue($k, $v);
         $stmt->execute();
+        $rawRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // PB14: keep only products from stores that deliver to the pincode.
+        if ($shopPincode !== '' && $rawRows) {
+            $keep = array_flip(Serviceability::filterStoreIds($db, array_column($rawRows, 'store_id'), (int)$shopCityId, $shopPincode));
+            $rawRows = array_values(array_filter($rawRows, fn($r) => isset($keep[(int)$r['store_id']])));
+        }
         $products = array_map(function($row) use ($productService, $db) {
             $p = $productService->formatProduct($row);          // REUSE engine formatting
             $p['store_id']   = (int)$row['store_id'];
@@ -165,8 +206,8 @@ try {
             if (!isset($p['category_id'])) $p['category_id'] = $row['category_id'] !== null ? (int)$row['category_id'] : null;
             // S10: seller-hidden composer — strip seller identity where the Unit config hides it.
             return StorefrontComposer::composeProduct($db, $p);
-        }, $stmt->fetchAll(PDO::FETCH_ASSOC));
-        Response::success(['products' => $products, 'page' => $page, 'city_id' => (int)$shopCityId]);
+        }, $rawRows);
+        Response::success(['products' => $products, 'page' => $page, 'city_id' => (int)$shopCityId, 'pincode' => $shopPincode ?: null]);
         exit;
     }
 
@@ -243,7 +284,8 @@ try {
         $op  = $b['op'] ?? 'add';
         if ($pid <= 0) { Response::validation('product_id is required'); exit; }
         // S2: full 4-layer orderability gate (catalogue / seller ON-OFF-BUSY+city / stock / kill-switch).
-        $ord = OrderabilityResolver::check($db, $pid, (int)$shopCityId);
+        // PB14: also honour the customer's pincode (query param) when present.
+        $ord = OrderabilityResolver::check($db, $pid, (int)$shopCityId, $shopPincode ?: null);
         if (!$ord['orderable']) { Response::error(OrderabilityResolver::message($ord['reason']), 422); exit; }
         $cart = new CartService($db);
         try {
@@ -277,15 +319,24 @@ try {
         if (!CommercePayment::isAllowed($db, $chosenMethod)) { Response::error('Unsupported payment method.', 422); exit; }
         $b['payment_method'] = 'cod';
         $cart  = new CartService($db);
+        // PB14: the delivery pincode from the checkout shipping address (so ordering
+        // outside the serviceable area is caught here, not at dispatch).
+        $coPincode = Serviceability::pincodeFromAddress($b['shipping_address'] ?? $b['address'] ?? $b);
+        if ($coPincode === '') $coPincode = $shopPincode;
         // M2 (audit §4): reject checkout if the cart holds an item from a store
         // outside the customer's city (defence against crafted cross-city carts).
         $cartNow = $cart->get($uid);
         foreach (($cartNow['items'] ?? []) as $it) {
             // S2: re-run the full orderability gate at checkout (seller may have gone OFF/BUSY,
             // stock may be gone, commerce may be paused — not just a cross-city guard).
-            $ord = OrderabilityResolver::check($db, (int)$it['product_id'], (int)$shopCityId);
+            // PB14: + area serviceability for the delivery pincode.
+            $ord = OrderabilityResolver::check($db, (int)$it['product_id'], (int)$shopCityId, $coPincode ?: null);
             if (!$ord['orderable']) {
-                Response::error('An item in your cart is no longer available (' . $ord['reason'] . '). Remove it to continue.', 422);
+                $svcReasons = ['area_not_served', 'seller_not_in_area'];
+                $msg = in_array($ord['reason'], $svcReasons, true)
+                    ? OrderabilityResolver::message($ord['reason'])
+                    : 'An item in your cart is no longer available (' . $ord['reason'] . '). Remove it to continue.';
+                Response::error($msg, 422);
                 exit;
             }
         }
@@ -401,7 +452,7 @@ try {
         foreach ($items as $it) {
             $pid = (int)($it['product_id'] ?? 0); $qty = max(1, (int)($it['quantity'] ?? 1));
             if ($pid <= 0) continue;
-            $ord = OrderabilityResolver::check($db, $pid, (int)$shopCityId);
+            $ord = OrderabilityResolver::check($db, $pid, (int)$shopCityId, $shopPincode ?: null);
             if (!$ord['orderable']) { $skipped[] = ['product_id' => $pid, 'name' => $it['name'] ?? null, 'reason' => $ord['reason']]; continue; }
             try { $cart->add($uid, $pid, $qty); $added[] = ['product_id' => $pid, 'name' => $it['name'] ?? null, 'quantity' => $qty]; }
             catch (\Throwable $e) { $skipped[] = ['product_id' => $pid, 'name' => $it['name'] ?? null, 'reason' => 'unavailable']; }

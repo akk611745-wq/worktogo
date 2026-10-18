@@ -28,6 +28,7 @@ require_once SYSTEM_ROOT . '/lib/commerce/CommerceReturns.php';
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceAdminAudit.php';
 require_once SYSTEM_ROOT . '/lib/commerce/KycService.php';
 require_once SYSTEM_ROOT . '/lib/commerce/PaintCatalogue.php';
+require_once SYSTEM_ROOT . '/lib/commerce/Serviceability.php';
 
 $B   = json_decode(file_get_contents('php://input'), true);
 if (!is_array($B)) $B = [];
@@ -283,6 +284,38 @@ try {
         $audit($auth, 'commerce.seller.manage', 'price_review.' . ($approve ? 'approve' : 'reject'), ['target_type' => 'price_review', 'target_id' => (int)$m[1], 'outcome' => !empty($res['ok']) ? 'ok' : 'error']);
         if (empty($res['ok'])) { Response::error($res['reason'] ?? 'error', 422); exit; }
         Response::success($res); exit;
+    }
+
+    // ───────────────────────── PB14 SERVICEABILITY ──────────────────────────
+    // Admin-config serviceable areas (platform pincodes per city + each seller's
+    // delivery area) and the "Notify me" demand list. Gated like seller management.
+    if ($method === 'GET' && $uri === '/api/commerce-admin/serviceability') {
+        $gate('commerce.seller.manage');
+        $cityId = isset($_GET['city_id']) && $_GET['city_id'] !== '' ? (int)$_GET['city_id'] : null;
+        Response::success(Serviceability::listAreas($db, $cityId)); exit;
+    }
+    if ($method === 'POST' && $uri === '/api/commerce-admin/serviceability') {
+        $auth = $gate('commerce.seller.manage');
+        $scope   = $ps('scope', 'city');
+        $cityId  = $pi('city_id') ?: null;
+        $storeId = $pi('store_id') ?: null;
+        $pincode = $ps('pincode') !== '' ? $ps('pincode') : null;
+        $radius  = isset($B['radius_km']) && $B['radius_km'] !== '' ? (float)$B['radius_km'] : null;
+        $res = Serviceability::addArea($db, $scope, $cityId, $storeId, $pincode, $radius);
+        $audit($auth, 'commerce.seller.manage', 'serviceability.add', ['summary' => ['scope' => $scope, 'city_id' => $cityId, 'store_id' => $storeId, 'pincode' => $pincode, 'radius_km' => $radius], 'outcome' => !empty($res['ok']) ? 'ok' : 'error']);
+        if (empty($res['ok'])) { Response::error($res['reason'] ?? 'error', 422); exit; }
+        Response::success($res); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-admin/serviceability/(\d+)/remove$#', $uri, $m)) {
+        $auth = $gate('commerce.seller.manage');
+        $res = Serviceability::removeArea($db, (int)$m[1]);
+        $audit($auth, 'commerce.seller.manage', 'serviceability.remove', ['target_type' => 'serviceability', 'target_id' => (int)$m[1], 'outcome' => 'ok']);
+        Response::success($res); exit;
+    }
+    if ($method === 'GET' && $uri === '/api/commerce-admin/service-requests') {
+        $gate('commerce.seller.manage');
+        $limit = isset($_GET['limit']) ? max(1, min(500, (int)$_GET['limit'])) : 200;
+        Response::success(['demand' => Serviceability::demandList($db, $limit)]); exit;
     }
 
 } catch (\Throwable $e) {

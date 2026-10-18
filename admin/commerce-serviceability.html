@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Serviceability</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="admin-main">
+    <div id="shell-topbar"></div>
+    <div class="admin-content">
+      <h1>Serviceability</h1>
+      <p class="page-subtitle">Where we deliver. Platform pincodes decide the city area; a seller's pincodes (or a radius from the shop) decide their delivery area. A city with no pincodes listed is served whole.</p>
+
+      <div class="card" style="margin-bottom:16px">
+        <label>City</label>
+        <select id="city-select" onchange="load()"><option value="">Loading…</option></select>
+      </div>
+
+      <h2>Platform pincodes (this city)</h2>
+      <div class="card">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="city-pin" type="text" inputmode="numeric" maxlength="6" placeholder="6-digit pincode" style="width:160px">
+          <button class="btn btn-primary" onclick="addCity()">Add pincode</button>
+          <span class="muted" style="font-size:12px">No pincodes here = the whole city is served.</span>
+        </div>
+        <div id="city-list" style="margin-top:12px"><div class="muted">Loading…</div></div>
+      </div>
+
+      <h2 style="margin-top:22px">Seller delivery areas</h2>
+      <div class="card">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="seller-store" type="number" placeholder="Store ID" style="width:120px">
+          <input id="seller-pin" type="text" inputmode="numeric" maxlength="6" placeholder="pincode" style="width:140px">
+          <span class="muted">or</span>
+          <input id="seller-radius" type="number" step="0.5" placeholder="radius km" style="width:120px">
+          <button class="btn btn-primary" onclick="addSeller()">Add area</button>
+        </div>
+        <div id="seller-list" style="margin-top:12px"><div class="muted">Loading…</div></div>
+      </div>
+
+      <h2 style="margin-top:22px">Demand — "Notify me" requests</h2>
+      <p class="page-subtitle">Pincodes customers asked us to deliver to. Most-requested first — your expand-next list.</p>
+      <div id="demand-list" class="card"><div class="muted">Loading…</div></div>
+    </div>
+  </div>
+</div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/push.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Serviceability', active: 'commerce-serviceability.html' });
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function cityId(){ return document.getElementById('city-select').value || ''; }
+
+async function loadCities() {
+  let r = {};
+  try { r = await API.get('/admin/cities'); } catch(e) {}
+  let cities = ((r && r.data) || r || {}).cities || (Array.isArray(r) ? r : []) || [];
+  const sel = document.getElementById('city-select');
+  if (!cities.length) { sel.innerHTML = '<option value="">(no cities)</option>'; return; }
+  sel.innerHTML = cities.map(c => `<option value="${c.id}">${esc(c.name||('City #'+c.id))}</option>`).join('');
+}
+
+async function load() {
+  const cid = cityId();
+  const r = await API.get('/commerce-admin/serviceability' + (cid ? ('?city_id='+encodeURIComponent(cid)) : ''));
+  const d = (r && r.data) || r || {};
+  renderCity(d.city || []);
+  renderSeller(d.seller || []);
+  loadDemand();
+}
+function renderCity(rows) {
+  const host = document.getElementById('city-list');
+  if (!rows.length) { host.innerHTML = '<div class="muted">No pincodes — the whole city is served.</div>'; return; }
+  host.innerHTML = rows.map(x => `
+    <span class="chip" style="display:inline-flex;align-items:center;gap:6px;margin:4px 6px 0 0;padding:5px 10px;border:1px solid var(--line,#ddd);border-radius:99px;${x.active==0?'opacity:.4':''}">
+      ${esc(x.pincode)} <button class="btn" style="padding:0 6px" onclick="remove(${x.id})" title="Remove">✕</button></span>`).join('');
+}
+function renderSeller(rows) {
+  const host = document.getElementById('seller-list');
+  if (!rows.length) { host.innerHTML = '<div class="muted">No seller areas set — sellers fall back to their shop radius.</div>'; return; }
+  host.innerHTML = rows.map(x => `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line,#eee);${x.active==0?'opacity:.4':''}">
+      <div>${esc(x.store_name || ('Store #'+x.store_id))} <span class="muted">· ${x.pincode ? ('pincode '+esc(x.pincode)) : (x.radius_km!=null ? (esc(x.radius_km)+' km radius') : '—')}</span></div>
+      <button class="btn btn-danger" onclick="remove(${x.id})">Remove</button></div>`).join('');
+}
+async function loadDemand() {
+  const r = await API.get('/commerce-admin/service-requests');
+  const list = ((r && r.data) || r || {}).demand || [];
+  const host = document.getElementById('demand-list');
+  if (!list.length) { host.innerHTML = '<div class="muted">No requests yet.</div>'; return; }
+  host.innerHTML = '<table style="width:100%;border-collapse:collapse"><tr style="text-align:left"><th>Pincode</th><th>Requests</th><th>People</th><th>Last</th></tr>' +
+    list.map(x => `<tr><td style="padding:4px 0"><b>${esc(x.pincode)}</b></td><td>${x.requests}</td><td>${x.people}</td><td class="muted">${esc(x.last_at||'')}</td></tr>`).join('') + '</table>';
+}
+async function addCity() {
+  const pin = document.getElementById('city-pin').value.trim();
+  if (!/^\d{6}$/.test(pin)) { alert('Enter a 6-digit pincode.'); return; }
+  const r = await API.post('/commerce-admin/serviceability', { scope:'city', city_id: cityId()||null, pincode: pin });
+  done(r, 'Added', 'city-pin');
+}
+async function addSeller() {
+  const store = parseInt(document.getElementById('seller-store').value, 10);
+  const pin = document.getElementById('seller-pin').value.trim();
+  const radius = document.getElementById('seller-radius').value.trim();
+  if (!store) { alert('Enter a Store ID.'); return; }
+  if (!pin && !radius) { alert('Enter a pincode or a radius.'); return; }
+  const r = await API.post('/commerce-admin/serviceability', { scope:'seller', store_id: store, pincode: pin||null, radius_km: radius||null, city_id: cityId()||null });
+  done(r, 'Added', 'seller-pin');
+}
+async function remove(id) {
+  if (!confirm('Remove this area?')) return;
+  const r = await API.post(`/commerce-admin/serviceability/${id}/remove`, {});
+  done(r, 'Removed');
+}
+function done(r, msg, clearId) {
+  if (r && r.success !== false) { if (clearId) document.getElementById(clearId).value=''; load(); }
+  else { alert((r && (r.message || r.error)) || 'Failed'); }
+}
+(async function init(){ await loadCities(); load(); })();
+</script>
+</body>
+</html>
