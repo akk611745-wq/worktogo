@@ -15,20 +15,38 @@ $auth = AuthMiddleware::require();
 $uid  = (int)($auth['user_id'] ?? 0);
 
 if ($method === 'POST' && $uri === '/api/media/upload') {
+    // PB12: per-user upload throttle (count/spam guard).
+    require_once SYSTEM_ROOT . '/core/helpers/RateLimiter.php';
+    if (!RateLimiter::check('media_upload_' . $uid, 40, 3600)) { Response::error('Too many uploads. Please try again later.', 429); exit; }
+
     if (empty($_FILES['file']) || !is_array($_FILES['file']) || ($_FILES['file']['error'] ?? 1) !== UPLOAD_ERR_OK) {
         Response::error('No file uploaded (field "file").', 422); exit;
     }
     $f = $_FILES['file'];
     $size = (int)($f['size'] ?? 0);
-    if ($size <= 0 || $size > 5 * 1024 * 1024) { Response::error('File must be 1 byte–5 MB.', 422); exit; }
+    // Max size is admin-config (commerce_media_max_mb, default 5).
+    $maxMb = 5;
+    try { $s = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key='commerce_media_max_mb' LIMIT 1"); $s->execute(); $v = $s->fetchColumn(); if ($v !== false && is_numeric($v) && (float)$v > 0) $maxMb = (float)$v; } catch (\Throwable $e) {}
+    if ($size <= 0 || $size > $maxMb * 1024 * 1024) { Response::error('File must be 1 byte–' . rtrim(rtrim((string)$maxMb, '0'), '.') . ' MB.', 422); exit; }
 
-    $mime = strtolower((string)($f['type'] ?? ''));
     $allowed = [
         'image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'application/pdf' => 'pdf',
     ];
+    // PB12: trust the SERVER-detected MIME from the file bytes, never the browser-supplied type.
+    $mime = '';
+    if (function_exists('finfo_open')) { $fi = finfo_open(FILEINFO_MIME_TYPE); if ($fi) { $mime = strtolower((string)finfo_file($fi, $f['tmp_name'])); finfo_close($fi); } }
+    if ($mime === '' && function_exists('mime_content_type')) { $mime = strtolower((string)@mime_content_type($f['tmp_name'])); }
     if (!isset($allowed[$mime])) { Response::error('Only JPG, PNG, WEBP or PDF allowed.', 422); exit; }
     $ext = $allowed[$mime];
     $mediaType = $mime === 'application/pdf' ? 'doc' : 'image';
+    // Content sanity: images must actually decode; PDFs must start with %PDF-.
+    if ($mediaType === 'image') {
+        $info = @getimagesize($f['tmp_name']);
+        if ($info === false) { Response::error('That image could not be read. Please upload a real photo.', 422); exit; }
+    } else {
+        $head = @file_get_contents($f['tmp_name'], false, null, 0, 5);
+        if ($head !== '%PDF-') { Response::error('That PDF could not be read.', 422); exit; }
+    }
 
     // Save under uploads/kyc/<year-month>/ (created on demand).
     $root = defined('SYSTEM_ROOT') ? SYSTEM_ROOT : dirname(__DIR__, 2);

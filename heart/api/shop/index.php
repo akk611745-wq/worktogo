@@ -151,6 +151,7 @@ try {
 
     // ── GET /api/shop/serviceability?pincode= — do we deliver here? (public) ──
     if ($method === 'GET' && $uri === '/api/shop/serviceability') {
+        $shopRateLimit('shop_svc_' . ($shopUserId ?: ($_SERVER['REMOTE_ADDR'] ?? 'anon')), 60, 60);
         $pin = Serviceability::normalizePincode($_GET['pincode'] ?? '');
         if ($pin === '') { Response::success(['serviceable' => true, 'reason' => 'no_pincode', 'pincode' => null]); exit; }
         $served = Serviceability::cityServes($db, (int)$shopCityId, $pin);
@@ -387,6 +388,12 @@ try {
         $chosenMethod = strtolower(trim($b['payment_method'] ?? ''));
         if ($chosenMethod === '') $chosenMethod = CommercePayment::defaultMethod($db);
         if (!CommercePayment::isAllowed($db, $chosenMethod)) { Response::error('Unsupported payment method.', 422); exit; }
+        // PB12: COD-abuse guard — open-order cap + no-pay block (honest users unaffected).
+        if ($chosenMethod === 'cod') {
+            require_once SYSTEM_ROOT . '/lib/commerce/CommerceCodGuard.php';
+            $cod = CommerceCodGuard::codAllowed($db, $uid);
+            if (empty($cod['ok'])) { Response::error(CommerceCodGuard::message($cod['reason']), 429); exit; }
+        }
         $b['payment_method'] = 'cod';
         $cart  = new CartService($db);
         // PB14: the delivery pincode from the checkout shipping address (so ordering
@@ -489,6 +496,7 @@ try {
     // ── GET /api/shop/orders/{id}/invoice — PB11 GST-ready invoice (own order) ─
     if ($method === 'GET' && preg_match('#^/api/shop/orders/(\d+)/invoice$#', $uri, $m)) {
         $uid = $shopRequireUser();
+        $shopRateLimit('shop_invoice_' . $uid, 40, 60);
         $order = (new OrderService($db, new CartService($db)))->detail($uid, (int)$m[1]); // ownership enforced by the engine
         if (!$order) { Response::notFound('Order'); exit; }
         Response::success(['invoice' => CommerceReports::customerInvoice($db, $order)]);
@@ -498,6 +506,7 @@ try {
     // ── POST /api/shop/orders/{id}/cancel — stage rule (PB16) + REUSE engine ─
     if ($method === 'POST' && preg_match('#^/api/shop/orders/(\d+)/cancel$#', $uri, $m)) {
         $uid = $shopRequireUser(); $b = $shopBody();
+        $shopRateLimit('shop_cancel_' . $uid, 15, 60);
         $oid = (int)$m[1];
         require_once SYSTEM_ROOT . '/lib/commerce/CommerceCancellation.php';
         // PB16: after pickup there is NO cancel — the return flow takes over.

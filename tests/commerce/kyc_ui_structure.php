@@ -34,7 +34,7 @@ echo "\n== Media upload endpoint ==\n";
 check("media endpoint file exists",            $media !== '');
 check("handles POST /api/media/upload",        has($media, "/api/media/upload") && has($media, "'POST'"));
 check("requires auth",                         has($media, "AuthMiddleware::require"));
-check("validates file size (<=5MB)",           has($media, "5 * 1024 * 1024"));
+check("validates file size (admin cap, default 5MB)", has($media, '$maxMb * 1024 * 1024') && has($media, 'commerce_media_max_mb'));
 check("whitelists image/pdf mimes",            has($media, "image/jpeg") && has($media, "application/pdf"));
 check("inserts media row",                     has($media, "INSERT INTO media"));
 check("returns media_id",                      has($media, "'media_id'"));
