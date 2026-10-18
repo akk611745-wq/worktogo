@@ -33,6 +33,7 @@ require_once SYSTEM_ROOT . '/lib/commerce/PaintStorefront.php';
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceNotifier.php';
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceVehicle.php';
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceOpsQueue.php';
+require_once SYSTEM_ROOT . '/lib/commerce/CommerceReports.php';
 
 $B   = json_decode(file_get_contents('php://input'), true);
 if (!is_array($B)) $B = [];
@@ -177,6 +178,23 @@ try {
         if (empty($res['ok'])) { Response::error($res['error'] ?? 'bad_status', 422); exit; }
         Response::success($res); exit;
     }
+    // ── PB3b: margin preview, money stats, per-seller settlement ────────────
+    if ($method === 'GET' && $uri === '/api/commerce-admin/margin-preview') {
+        $gate('commerce.config.view');
+        $base = isset($_GET['base']) ? (float)$_GET['base'] : 0;
+        $cat  = isset($_GET['category_id']) && $_GET['category_id'] !== '' ? (int)$_GET['category_id'] : null;
+        Response::success(CommerceReports::marginPreview($db, $base, $cat)); exit;
+    }
+    if ($method === 'GET' && $uri === '/api/commerce-admin/money-stats') {
+        $gate('commerce.finance.view');
+        $days = isset($_GET['days']) ? max(1, min(365, (int)$_GET['days'])) : 30;
+        Response::success(CommerceReports::moneyStats($db, $days)); exit;
+    }
+    if ($method === 'GET' && $uri === '/api/commerce-admin/settlement') {
+        $gate('commerce.finance.view');
+        Response::success(['sellers' => CommerceReports::perSellerSettlement($db)]); exit;
+    }
+
     if ($method === 'GET' && $uri === '/api/commerce-admin/money') {
         $gate('commerce.finance.view');
         Response::success(AdminControlRoom::moneyDashboard($db)); exit;

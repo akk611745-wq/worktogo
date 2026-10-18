@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Money & Settlement</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="admin-main">
+    <div id="shell-topbar"></div>
+    <div class="admin-content">
+      <h1>Money &amp; Settlement</h1>
+      <p class="page-subtitle">Read-only numbers from the live ledger. Settlement runs the existing eligible-order settle + payout — no new money path.</p>
+
+      <div style="margin-bottom:10px">
+        <label>Window</label>
+        <select id="days" onchange="loadStats()"><option value="1">24h</option><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option></select>
+      </div>
+      <div id="stats" class="stat-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px"></div>
+
+      <h2 style="margin-top:22px">Who we owe</h2>
+      <div id="owe" class="card"><div class="muted">Loading…</div></div>
+
+      <h2 style="margin-top:22px">Per-seller settlement</h2>
+      <div style="margin-bottom:8px"><button class="btn btn-primary" onclick="settle()">Settle eligible orders</button> <button class="btn" onclick="payout()">Run payout</button></div>
+      <div id="sellers" class="card"><div class="muted">Loading…</div></div>
+    </div>
+  </div>
+</div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/push.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Money & Settlement', active: 'commerce-money.html' });
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const money = n => '₹' + Number(n||0).toLocaleString('en-IN');
+function tile(label,val){ return `<div class="card" style="text-align:center"><div style="font-size:22px;font-weight:800">${esc(val)}</div><div class="muted" style="font-size:12px">${esc(label)}</div></div>`; }
+async function loadStats() {
+  const days = document.getElementById('days').value;
+  const r = await API.get('/commerce-admin/money-stats?days=' + days);
+  const d = (r && r.data) || r || {};
+  document.getElementById('stats').innerHTML =
+    tile('Orders', d.orders||0) + tile('Revenue', money(d.revenue)) + tile('Margin earned', money(d.margin)) +
+    tile('Delivery spread', money(d.delivery)) + tile('COD orders', d.cod||0) + tile('Prepaid orders', d.prepaid||0);
+  const m = await API.get('/commerce-admin/money');
+  const md = (m && m.data) || m || {};
+  const owe = md.who_we_owe || {};
+  document.getElementById('owe').innerHTML = `Vendors pending: <b>${money(owe.vendor_pending)}</b> · Rider cash-in-hand: <b>${money(owe.rider_cash_in_hand)}</b>`;
+}
+async function loadSellers() {
+  const r = await API.get('/commerce-admin/settlement');
+  const list = ((r && r.data) || r || {}).sellers || [];
+  const host = document.getElementById('sellers');
+  if (!list.length) { host.innerHTML = '<div class="muted">No sellers with a wallet yet.</div>'; return; }
+  host.innerHTML = '<table style="width:100%;border-collapse:collapse"><tr style="text-align:left"><th>Seller</th><th>Owed</th><th>Paid</th><th>Margin we earned</th></tr>' +
+    list.map(s=>`<tr><td style="padding:4px 0">${esc(s.business_name||('#'+s.vendor_id))}</td><td>${money(s.owed)}</td><td>${money(s.paid)}</td><td>${money(s.margin_earned)}</td></tr>`).join('') + '</table>';
+}
+async function settle() { const r = await API.post('/commerce-admin/settle', {}); alert((r&&r.success!==false)?'Settled eligible orders':'Failed'); loadStats(); loadSellers(); }
+async function payout() { const r = await API.post('/commerce-admin/payout/run', { method: 'bank' }); alert((r&&r.success!==false)?'Payout run created':'Failed'); loadSellers(); }
+loadStats(); loadSellers();
+</script>
+</body>
+</html>

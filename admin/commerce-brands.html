@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Brands</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="admin-main">
+    <div id="shell-topbar"></div>
+    <div class="admin-content">
+      <h1>Brands</h1>
+      <p class="page-subtitle">The brand picker sellers choose from, and the per-brand custom-tint go-live list. Custom-tint stays hidden for any brand not on the second list (PB10).</p>
+
+      <h2>Ready-paint brands (seller picker)</h2>
+      <div class="card">
+        <div style="display:flex;gap:8px"><input id="add-brand" placeholder="Add a brand, e.g. Berger"><button class="btn btn-primary" onclick="addTo('commerce_paint_brands','add-brand')">Add</button></div>
+        <div id="list-commerce_paint_brands" style="margin-top:10px"></div>
+      </div>
+
+      <h2 style="margin-top:22px">Custom-tint enabled brands</h2>
+      <div class="card">
+        <p class="muted" style="font-size:12px">Only brands here can offer custom-tinted shades to customers. Empty = custom-tint off everywhere (ready shades only).</p>
+        <div style="display:flex;gap:8px"><input id="add-tint" placeholder="Enable custom-tint for a brand"><button class="btn btn-primary" onclick="addTo('commerce_custom_tint_brands','add-tint')">Enable</button></div>
+        <div id="list-commerce_custom_tint_brands" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/push.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Brands', active: 'commerce-brands.html' });
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let _cfg = {};
+function listOf(k){ const v=_cfg[k]; return Array.isArray(v)?v:(typeof v==='string'&&v?JSON.parse(v||'[]'):[]); }
+async function load() {
+  const r = await API.get('/commerce-admin/config');
+  _cfg = ((r && r.data) || r || {}).config || {};
+  ['commerce_paint_brands','commerce_custom_tint_brands'].forEach(render);
+}
+function render(k) {
+  const host = document.getElementById('list-'+k); if(!host) return;
+  const arr = listOf(k);
+  host.innerHTML = arr.length ? arr.map(b=>`<span class="chip" style="display:inline-flex;align-items:center;gap:6px;margin:4px 6px 0 0;padding:5px 10px;border:1px solid var(--line,#ddd);border-radius:99px">${esc(b)} <button class="btn" style="padding:0 6px" onclick="removeFrom('${k}','${esc(b)}')">✕</button></span>`).join('')
+    : '<div class="muted">None yet.</div>';
+}
+async function save(k, arr) {
+  const r = await API.post('/commerce-admin/config', { key: k, value: JSON.stringify(arr), reason: 'brand admin' });
+  if (r && r.success !== false) load(); else alert((r&&(r.message||r.error))||'Failed');
+}
+function addTo(k, inputId) {
+  const el=document.getElementById(inputId); const b=(el.value||'').trim(); if(!b)return;
+  const arr=listOf(k); if(!arr.includes(b)) arr.push(b); el.value=''; save(k,arr);
+}
+function removeFrom(k, b) { save(k, listOf(k).filter(x=>x!==b)); }
+load();
+</script>
+</body>
+</html>
