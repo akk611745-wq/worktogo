@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkToGo Admin — Ops Queue</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div id="shell-sidebar"></div>
+  <div class="admin-main">
+    <div id="shell-topbar"></div>
+    <div class="admin-content">
+      <h1>Ops Queue</h1>
+      <p class="page-subtitle">One queue. Each card tells you exactly what to decide and suggests the action. Escalated items are pinned to the top. Every action is logged.</p>
+      <div id="queue"><div class="muted">Loading…</div></div>
+    </div>
+  </div>
+</div>
+<script src="config.js"></script>
+<script src="shared/api.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/push.js"></script>
+<script src="shared/shell.js"></script>
+<script src="assets/app.js"></script>
+<script>
+Shell.init({ title: 'Ops Queue', active: 'commerce-ops.html' });
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function load() {
+  const r = await API.get('/commerce-admin/ops/escalations');
+  const q = ((r && r.data) || r || {}).queue || [];
+  const host = document.getElementById('queue');
+  if (!q.length) { host.innerHTML = '<div class="card"><div class="muted">All clear — nothing needs a human right now. 🎉</div></div>'; return; }
+  host.innerHTML = q.map((it, i) => card(it, i)).join('');
+  window._Q = q;
+}
+function card(it, i) {
+  const esc2 = esc;
+  const pri = it.priority === 'escalated' ? '<span style="background:#fde2e2;color:#b91c1c;font-size:11px;font-weight:800;padding:2px 8px;border-radius:99px">ESCALATED</span>' : '';
+  const btns = (it.actions || []).map((a, j) => {
+    if (a.action === 'vehicle_resolve') {
+      return (a.choices || []).map(ch => `<button class="btn btn-primary" onclick="act(${i},'vehicle_resolve','${esc2(ch)}')">Set ${esc2(ch)}</button>`).join('');
+    }
+    const cls = (a.action === 'cancel' || a.action === 'hold_reject') ? 'btn-danger' : (j === 0 ? 'btn-primary' : '');
+    return `<button class="btn ${cls}" onclick="act(${i},'${esc2(a.action)}')">${esc2(a.label)}</button>`;
+  }).join('');
+  return `<div class="card" style="margin-bottom:12px;${it.priority==='escalated'?'border-left:4px solid #b91c1c':''}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <div style="font-weight:800">${esc2(it.decide)}</div>${pri}</div>
+    <div class="muted" style="font-size:13px;margin:4px 0">${esc2(it.detail||'')}</div>
+    <div style="font-size:13px;margin-bottom:8px">👉 ${esc2(it.suggestion||'')}</div>
+    <div class="ord-actions" style="display:flex;gap:8px;flex-wrap:wrap">${btns}</div>
+  </div>`;
+}
+async function act(i, action, choice) {
+  const it = window._Q[i]; if (!it) return;
+  let url, body = { order_id: it.order_id };
+  const note = () => prompt('Note (logged):', '') || '';
+  if (action === 'claim')        { url = '/commerce-admin/ops/claim'; body.flag = it.flag; }
+  else if (action === 'resolve') { url = '/commerce-admin/ops/resolve'; body.flag = it.flag; body.note = note(); }
+  else if (action === 'hold_approve') { url = '/commerce-admin/ops/hold/approve'; }
+  else if (action === 'hold_reject')  { url = '/commerce-admin/ops/hold/reject'; body.reason = note(); }
+  else if (action === 'reassign') { url = '/commerce-admin/ops/reassign-rider'; }
+  else if (action === 'cancel')   { if (!confirm('Cancel + refund this order?')) return; url = '/commerce-admin/ops/cancel'; body.reason = note(); }
+  else if (action === 'vehicle_resolve') { url = `/commerce-admin/vehicle-doubts/${it.order_id}/resolve`; body = { vehicle: choice }; }
+  else if (action === 'cash_resolve') { url = `/commerce-admin/ops/cash/${it.ref_id}/resolve`; body = { note: note() }; }
+  else return;
+  const r = await API.post(url, body);
+  if (r && r.success !== false) { load(); } else { alert((r && (r.message||r.error)) || 'Failed'); }
+}
+load();
+</script>
+</body>
+</html>

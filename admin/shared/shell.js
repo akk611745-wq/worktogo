@@ -25,6 +25,7 @@ const Shell = {
     { href: 'commerce-verify.html', icon: 'box',    label: 'Product Verification' },
     { href: 'commerce-serviceability.html', icon: 'mappin', label: 'Serviceability' },
     { href: 'commerce-alerts.html', icon: 'bell', label: 'Alert Channels' },
+    { href: 'commerce-ops.html', icon: 'alert-triangle', label: 'Ops Queue' },
     { group: 'Operations' },
     { href: 'pricing.html',  icon: 'tag',   label: 'Price Control' },
     { href: 'followup.html', icon: 'bell',  label: 'Follow-up Center' },

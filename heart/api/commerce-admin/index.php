@@ -32,6 +32,7 @@ require_once SYSTEM_ROOT . '/lib/commerce/Serviceability.php';
 require_once SYSTEM_ROOT . '/lib/commerce/PaintStorefront.php';
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceNotifier.php';
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceVehicle.php';
+require_once SYSTEM_ROOT . '/lib/commerce/CommerceOpsQueue.php';
 
 $B   = json_decode(file_get_contents('php://input'), true);
 if (!is_array($B)) $B = [];
@@ -349,6 +350,19 @@ try {
         if (empty($res['ok'])) { Response::error($res['reason'] ?? 'error', 422); exit; }
         Response::success($res); exit;
     }
+    // ── PB9: unified human-support escalation queue ─────────────────────────
+    if ($method === 'GET' && $uri === '/api/commerce-admin/ops/escalations') {
+        $gate('commerce.ops.view');
+        Response::success(['queue' => CommerceOpsQueue::build($db), 'auto_escalate' => CommerceOpsQueue::autoEscalate($db)]); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-admin/ops/cash/(\d+)/resolve$#', $uri, $m)) {
+        $auth = $gate('commerce.ops.manage');
+        $res = CommerceOpsQueue::resolveCash($db, (int)$m[1], (int)($auth['user_id'] ?? 0), $ps('note'));
+        $audit($auth, 'commerce.ops.manage', 'ops.cash_resolve', ['target_type' => 'cash_collection', 'target_id' => (int)$m[1], 'summary' => ['note' => $ps('note')], 'outcome' => !empty($res['ok']) ? 'ok' : 'error']);
+        if (empty($res['ok'])) { Response::error($res['reason'] ?? 'error', 422); exit; }
+        Response::success($res); exit;
+    }
+
     // ── PB8: vehicle-doubt queue + admin override ───────────────────────────
     if ($method === 'GET' && $uri === '/api/commerce-admin/vehicle-doubts') {
         $gate('commerce.ops.view');
