@@ -41,6 +41,7 @@ require_once SYSTEM_ROOT . '/lib/commerce/Serviceability.php';       // PB14: pi
 require_once SYSTEM_ROOT . '/lib/commerce/PaintStorefront.php';      // PB4: paint customer read-model (home/product/switch)
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceAddress.php';      // PB15: saved-address book
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceReports.php';      // PB11: GST-ready invoice
+require_once SYSTEM_ROOT . '/lib/commerce/CustomTintQuote.php';      // PB10: custom-tint quote machinery
 require_once SYSTEM_ROOT . '/lib/commerce/RoutingEngine.php';        // S3: deterministic routing + signal capture
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceEventBus.php';     // S4: event bus / timeline / flags / notifications
 require_once SYSTEM_ROOT . '/lib/commerce/CommercePayment.php';      // S5: configurable payment methods (online primary + COD) over the gateway abstraction
@@ -172,6 +173,40 @@ try {
         $res = Serviceability::saveServiceRequest($db, (string)($b['pincode'] ?? ''), (string)($b['phone'] ?? ''), (int)$shopCityId);
         if (empty($res['ok'])) { Response::validation($res['reason'] === 'bad_phone' ? 'A valid phone number is required.' : 'A valid 6-digit pincode is required.'); exit; }
         Response::success(['ok' => true], 200, 'Thanks! We’ll notify you when we start delivering to your area.');
+        exit;
+    }
+
+    // ── PB10 custom-tint: estimate (public) + request + my quotes (customer) ──
+    if ($method === 'POST' && $uri === '/api/shop/tint/estimate') {
+        $shopRateLimit('shop_tint_est_' . ($shopUserId ?: ($_SERVER['REMOTE_ADDR'] ?? 'anon')), 60, 60);
+        $b = $shopBody();
+        $brand = trim((string)($b['brand'] ?? '')); $code = trim((string)($b['shade_code'] ?? $b['code'] ?? ''));
+        if (!CustomTint::brandEnabled($db, $brand)) { Response::error('Custom tint isn’t available for this brand yet.', 422); exit; }
+        if ($code === '' || !CustomTint::brandHasCode($db, $brand, $code)) { Response::error('That shade code isn’t in this brand’s fandeck.', 422); exit; }
+        Response::success(CustomTintQuote::estimate($db, $brand, $code, (float)($b['litres'] ?? 0)) + ['shade' => CustomTint::resolveShade($db, $brand, $code)]);
+        exit;
+    }
+    if ($method === 'POST' && $uri === '/api/shop/tint/request') {
+        $uid = $shopRequireUser(); $b = $shopBody();
+        $shopRateLimit('shop_tint_req_' . $uid, 20, 60);
+        $res = CustomTintQuote::request($db, [
+            'user_id' => $uid, 'brand' => $b['brand'] ?? '', 'shade_code' => $b['shade_code'] ?? ($b['code'] ?? ''),
+            'product_id' => $b['product_id'] ?? null, 'litres' => $b['litres'] ?? 0,
+            'pack_size' => $b['pack_size'] ?? null, 'pack_unit' => $b['pack_unit'] ?? null,
+            'mode' => $b['mode'] ?? 'new', 'city_id' => $shopCityId,
+        ]);
+        if (empty($res['ok'])) {
+            $msg = $res['reason'] === 'brand_not_enabled' ? 'Custom tint isn’t available for this brand yet.'
+                 : ($res['reason'] === 'shade_code_not_in_brand' ? 'That shade code isn’t in this brand’s fandeck.'
+                 : ($res['reason'] === 'no_seller' ? 'No painter can tint this shade in your area yet.' : 'Could not start the quote.'));
+            Response::error($msg, 422); exit;
+        }
+        Response::success($res, 200, 'We’ve sent your shade to a painter for an exact price.');
+        exit;
+    }
+    if ($method === 'GET' && $uri === '/api/shop/tint/quotes') {
+        $uid = $shopRequireUser();
+        Response::success(['quotes' => CustomTintQuote::myQuotes($db, $uid)]);
         exit;
     }
 

@@ -40,6 +40,7 @@ if (is_file($envFile)) {
 require_once __DIR__ . '/../core/helpers/Database.php';
 require_once __DIR__ . '/../lib/commerce/RoutingEngine.php';
 require_once __DIR__ . '/../lib/commerce/CommerceCodGuard.php';
+require_once __DIR__ . '/../lib/commerce/CustomTintQuote.php';
 
 // ── Defensive access: allow CLI; over HTTP require a matching cron secret ────
 if (php_sapi_name() !== 'cli') {
@@ -60,7 +61,7 @@ if (!$fp || !flock($fp, LOCK_EX | LOCK_NB)) {
     die("Commerce lifecycle is already running.\n");
 }
 
-$summary = ['offers_expired' => 0, 'quotes_expired' => 0, 'abandoned_cleaned' => 0];
+$summary = ['offers_expired' => 0, 'quotes_expired' => 0, 'tint_quotes_expired' => 0, 'abandoned_cleaned' => 0];
 
 try {
     // Master switch (admin-tunable). Absent table/row → default ON.
@@ -78,6 +79,8 @@ try {
 
     // B. Stale custom-tint quotes → reroute (PB6 seam for PB10).
     $summary['quotes_expired'] = RoutingEngine::expireStaleQuotes($db);
+    // B2. PB10 tint-quote boxes the seller didn't price in time → next seller.
+    $summary['tint_quotes_expired'] = CustomTintQuote::expireStaleQuotes($db);
 
     // C. PB12: abandoned unpaid online orders → cancel + release the held stock.
     $summary['abandoned_cleaned'] = CommerceCodGuard::cleanupAbandoned($db);

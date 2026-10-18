@@ -66,6 +66,17 @@ try {
         if (empty($res['ok'])) { Response::error('Could not flag stock-out: ' . ($res['reason'] ?? 'error'), 422); exit; }
         Response::success($res); exit;
     }
+    // PB10: custom-tint quote box — the shade codes waiting for this seller's price.
+    if ($method === 'GET' && $uri === '/api/commerce-seller/tint-quotes') {
+        require_once SYSTEM_ROOT . '/lib/commerce/CustomTintQuote.php';
+        Response::success(['quotes' => CustomTintQuote::sellerInbox($db, (int)$sellerVendorId)]); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-seller/tint-quotes/(\d+)/price$#', $uri, $m)) {
+        require_once SYSTEM_ROOT . '/lib/commerce/CustomTintQuote.php';
+        $res = CustomTintQuote::sellerRespond($db, (int)$m[1], (int)$sellerVendorId, (float)($B['colour_price'] ?? 0), (string)($B['base_type'] ?? ''));
+        if (empty($res['ok'])) { Response::error('Could not price: ' . ($res['reason'] ?? 'error'), 422); exit; }
+        Response::success($res); exit;
+    }
     // PB11: seller report — sales, stock movement, payouts (JSON, or CSV download).
     if ($method === 'GET' && $uri === '/api/commerce-seller/report') {
         require_once SYSTEM_ROOT . '/lib/commerce/CommerceReports.php';
