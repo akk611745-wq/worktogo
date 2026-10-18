@@ -48,6 +48,11 @@ try {
     }
     if ($method === 'POST' && preg_match('#^/api/commerce-seller/orders/(\d+)/accept$#', $uri, $m)) {
         $res = SellerConsole::accept($db, $sellerVendorId, (int)$m[1]);
+        // PB8: before the rider goes blind, confirm the vehicle when it's unclear.
+        if (!empty($res['ok'])) {
+            require_once SYSTEM_ROOT . '/lib/commerce/CommerceVehicle.php';
+            try { $res['vehicle'] = CommerceVehicle::evaluateOnDispatch($db, (int)$m[1], (int)$sellerVendorId); } catch (\Throwable $e) { error_log('[seller vehicle] ' . $e->getMessage()); }
+        }
         if (empty($res['ok'])) { Response::error('Could not accept: ' . ($res['reason'] ?? 'error'), 422); exit; }
         Response::success($res); exit;
     }
@@ -59,6 +64,21 @@ try {
     if ($method === 'POST' && preg_match('#^/api/commerce-seller/orders/(\d+)/stock-out$#', $uri, $m)) {
         $res = SellerConsole::stockOut($db, $sellerVendorId, (int)$m[1], (string)($B['reason'] ?? 'out of stock'));
         if (empty($res['ok'])) { Response::error('Could not flag stock-out: ' . ($res['reason'] ?? 'error'), 422); exit; }
+        Response::success($res); exit;
+    }
+    // PB8: the vehicle-confirm prompt for an accepted order (options + the open doubt).
+    if ($method === 'GET' && preg_match('#^/api/commerce-seller/orders/(\d+)/vehicle$#', $uri, $m)) {
+        require_once SYSTEM_ROOT . '/lib/commerce/CommerceVehicle.php';
+        $own = $db->prepare("SELECT parent_order_id, vendor_id FROM orders WHERE id=? LIMIT 1"); $own->execute([(int)$m[1]]); $o = $own->fetch(PDO::FETCH_ASSOC);
+        if (!$o || (int)$o['vendor_id'] !== (int)$sellerVendorId) { Response::error('Order not found', 404); exit; }
+        $pid = $o['parent_order_id'] ? (int)$o['parent_order_id'] : (int)$m[1];
+        Response::success(['doubt' => CommerceVehicle::doubtFor($db, $pid), 'options' => CommerceVehicle::options($db)]); exit;
+    }
+    // PB8: seller suggests a vehicle (they know the goods).
+    if ($method === 'POST' && preg_match('#^/api/commerce-seller/orders/(\d+)/vehicle$#', $uri, $m)) {
+        require_once SYSTEM_ROOT . '/lib/commerce/CommerceVehicle.php';
+        $res = CommerceVehicle::sellerSuggest($db, (int)$m[1], (int)$sellerVendorId, (string)($B['vehicle'] ?? ''));
+        if (empty($res['ok'])) { Response::error('Could not suggest: ' . ($res['reason'] ?? 'error'), 422); exit; }
         Response::success($res); exit;
     }
     // PB16: seller cancels AFTER accepting → reroute to the next seller + score penalty.

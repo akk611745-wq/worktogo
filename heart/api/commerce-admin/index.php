@@ -31,6 +31,7 @@ require_once SYSTEM_ROOT . '/lib/commerce/PaintCatalogue.php';
 require_once SYSTEM_ROOT . '/lib/commerce/Serviceability.php';
 require_once SYSTEM_ROOT . '/lib/commerce/PaintStorefront.php';
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceNotifier.php';
+require_once SYSTEM_ROOT . '/lib/commerce/CommerceVehicle.php';
 
 $B   = json_decode(file_get_contents('php://input'), true);
 if (!is_array($B)) $B = [];
@@ -348,6 +349,19 @@ try {
         if (empty($res['ok'])) { Response::error($res['reason'] ?? 'error', 422); exit; }
         Response::success($res); exit;
     }
+    // ── PB8: vehicle-doubt queue + admin override ───────────────────────────
+    if ($method === 'GET' && $uri === '/api/commerce-admin/vehicle-doubts') {
+        $gate('commerce.ops.view');
+        Response::success(['doubts' => CommerceVehicle::queue($db)]); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/commerce-admin/vehicle-doubts/(\d+)/resolve$#', $uri, $m)) {
+        $auth = $gate('commerce.delivery.manage');
+        $res = CommerceVehicle::resolve($db, (int)$m[1], $ps('vehicle'), 'admin', (int)($auth['user_id'] ?? 0));
+        $audit($auth, 'commerce.delivery.manage', 'vehicle.override', ['target_type' => 'order', 'target_id' => (int)$m[1], 'summary' => ['vehicle' => $ps('vehicle')], 'outcome' => !empty($res['ok']) ? 'ok' : 'error']);
+        if (empty($res['ok'])) { Response::error($res['reason'] ?? 'error', 422); exit; }
+        Response::success($res); exit;
+    }
+
     if ($method === 'GET' && $uri === '/api/commerce-admin/notify-log') {
         $gate('commerce.ops.view');
         $limit = isset($_GET['limit']) ? max(1, min(200, (int)$_GET['limit'])) : 50;

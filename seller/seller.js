@@ -193,7 +193,31 @@
         '<button class="btn btn-danger" onclick="Seller.reject(' + o.sub_order_id + ')">Reject</button>' +
       '</div></div>';
   }
-  async function accept(id) { var r = await API("POST", "/orders/" + id + "/accept"); toast(r.ok ? "Order accepted ✓" : r.error); renderOrders(); }
+  async function accept(id) {
+    var r = await API("POST", "/orders/" + id + "/accept");
+    toast(r.ok ? "Order accepted ✓" : r.error);
+    // PB8: if the vehicle is unclear, ask the seller to confirm it (they know the goods).
+    var v = r.ok && r.data && r.data.vehicle;
+    if (v && v.vehicle_doubt && v.decision) { vehiclePrompt(id, v.decision); return; }
+    renderOrders();
+  }
+  var VEH = { bike: "🏍️ Bike", e_rickshaw: "🛺 E-rickshaw", loader: "🚚 Loader" };
+  function vehiclePrompt(id, d) {
+    var opts = (d.options || []).map(function (vk) {
+      return '<button class="btn btn-primary" style="margin:4px" onclick="Seller.suggestVehicle(' + id + ',\'' + esc(vk) + '\')">' + esc(VEH[vk] || vk) + '</button>';
+    }).join("");
+    var host = el("app");
+    host.innerHTML = '<div class="ord"><div class="nm">Confirm the delivery vehicle</div>' +
+      '<p class="sub">Auto-pick: ' + esc(VEH[d.vehicle] || d.vehicle) + ' · ' + esc(d.reason || "please confirm") + '</p>' +
+      '<p class="muted" style="font-size:12px">You know the goods — which vehicle fits? Admin can still override.</p>' +
+      '<div class="ord-actions" style="flex-wrap:wrap">' + opts + '</div>' +
+      '<div class="ord-actions"><button class="btn btn-ghost" onclick="Seller.go(\'orders\')">Skip for now</button></div></div>';
+  }
+  async function suggestVehicle(id, vehicle) {
+    var r = await API("POST", "/orders/" + id + "/vehicle", { vehicle: vehicle });
+    toast(r.ok ? "Vehicle suggested ✓ — admin will confirm" : (r.error || "Couldn't suggest"));
+    go("orders");
+  }
   async function reject(id) { if (!confirm("Reject this order?")) return; var r = await API("POST", "/orders/" + id + "/reject", { reason: "declined" }); toast(r.ok ? "Order declined" : r.error); renderOrders(); }
   async function stockOut(id) { var r = await API("POST", "/orders/" + id + "/stock-out", { reason: "out of stock" }); toast(r.ok ? "Marked out of stock — rerouting" : r.error); renderOrders(); }
 
@@ -319,6 +343,6 @@
   }
   function logout() { stopAlarm(); try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} renderLogin(); }
 
-  window.Seller = { boot: boot, go: go, setAvail: setAvail, accept: accept, reject: reject, stockOut: stockOut, catPhoto: catPhoto, catAdd: catAdd, catSave: catSave, history: history, closeSheet: closeSheet, logout: logout, uploadDoc: uploadDoc, saveKyc: saveKyc, submitKyc: submitKyc };
+  window.Seller = { boot: boot, go: go, setAvail: setAvail, accept: accept, reject: reject, stockOut: stockOut, suggestVehicle: suggestVehicle, catPhoto: catPhoto, catAdd: catAdd, catSave: catSave, history: history, closeSheet: closeSheet, logout: logout, uploadDoc: uploadDoc, saveKyc: saveKyc, submitKyc: submitKyc };
   if (document.readyState !== "loading") boot(); else document.addEventListener("DOMContentLoaded", boot);
 })();

@@ -46,6 +46,7 @@ class CommerceEventBus
             'reroute_failed'  => 'needs_ops',
             'delivery_failed' => 'needs_ops',
             'payment_failed'  => 'payment_issue',
+            'vehicle_doubt'   => 'vehicle_doubt',   // PB8 → PB9 ops queue
         ];
     }
 
