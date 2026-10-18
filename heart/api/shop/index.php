@@ -485,18 +485,25 @@ try {
         exit;
     }
 
-    // ── POST /api/shop/orders/{id}/cancel — REUSE OrderService::cancel ──────
+    // ── POST /api/shop/orders/{id}/cancel — stage rule (PB16) + REUSE engine ─
     if ($method === 'POST' && preg_match('#^/api/shop/orders/(\d+)/cancel$#', $uri, $m)) {
-        $uid = $shopRequireUser();
+        $uid = $shopRequireUser(); $b = $shopBody();
+        $oid = (int)$m[1];
+        require_once SYSTEM_ROOT . '/lib/commerce/CommerceCancellation.php';
+        // PB16: after pickup there is NO cancel — the return flow takes over.
+        $q = CommerceCancellation::quote($db, $oid);
+        if (!$q['cancellable'] && !empty($q['requires_return'])) {
+            Response::error('This order has been picked up — please start a return instead.', 409);
+            exit;
+        }
         $cart = new CartService($db);
         try {
-            $res = (new OrderService($db, $cart))->cancel($uid, (int)$m[1]);
-            // M3 (audit §4): cancel the order's active delivery + free the rider
-            // (the never-touch cancel is delivery-unaware). The lifecycle cron is
-            // the safety net for admin/vendor cancel paths.
+            $res = (new OrderService($db, $cart))->cancel($uid, $oid);   // REUSE never-touch engine cancel
             require_once SYSTEM_ROOT . '/core/delivery/DeliveryEngine.php';
-            DeliveryEngine::cancelForOrder($db, (int)$m[1]);
-            Response::success($res);
+            DeliveryEngine::cancelForOrder($db, $oid);                   // free the rider (M3)
+            // PB16: record who bears the cost + auto-refund a prepaid order (minus any fee).
+            $settle = CommerceCancellation::settle($db, $oid, 'customer', $q, trim((string)($b['reason'] ?? '')));
+            Response::success(array_merge(is_array($res) ? $res : [], ['cancellation' => $settle]));
         } catch (\Throwable $e) { Response::error($e->getMessage(), 400); }
         exit;
     }

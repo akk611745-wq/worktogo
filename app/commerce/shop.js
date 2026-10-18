@@ -694,8 +694,12 @@ async function loadDeliveryTrack(orderId) {
 async function cancelOrder(id) {
   if (!confirm("Cancel this order?")) return;
   const r = await ShopAPI.cancelOrder(id);
-  if (!r.ok) { toast(r.error, "error"); return; }
-  toast("Order cancelled", "info"); renderOrder(id);
+  if (!r.ok) { toast(r.error, "error"); return; } // e.g. picked-up → "start a return instead"
+  const c = (r.data && r.data.cancellation) || {};
+  let msg = "Order cancelled";
+  if (c.refund_amount > 0) msg = `Cancelled · ₹${Math.round(c.refund_amount)} refunded to source`;
+  else if (c.fee > 0) msg = `Cancelled · ₹${Math.round(c.fee)} cancellation fee applied`;
+  toast(msg, "info"); renderOrder(id);
 }
 /* S10: one-tap reorder — re-adds the past order's still-orderable items to cart. */
 async function reorder(id) {

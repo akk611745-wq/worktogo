@@ -61,6 +61,13 @@ try {
         if (empty($res['ok'])) { Response::error('Could not flag stock-out: ' . ($res['reason'] ?? 'error'), 422); exit; }
         Response::success($res); exit;
     }
+    // PB16: seller cancels AFTER accepting → reroute to the next seller + score penalty.
+    if ($method === 'POST' && preg_match('#^/api/commerce-seller/orders/(\d+)/cancel$#', $uri, $m)) {
+        require_once SYSTEM_ROOT . '/lib/commerce/CommerceCancellation.php';
+        $res = CommerceCancellation::sellerCancel($db, (int)$m[1], (int)$sellerVendorId, (string)($B['reason'] ?? ''));
+        if (empty($res['ok'])) { Response::error('Could not cancel: ' . ($res['reason'] ?? 'error'), 422); exit; }
+        Response::success($res); exit;
+    }
     // ── KYC (S18): the seller's own onboarding application ──────────────────────
     if ($method === 'GET' && $uri === '/api/commerce-seller/kyc') {
         Response::success(['kyc' => KycService::sellerGet($db, $sellerVendorId)]); exit;
