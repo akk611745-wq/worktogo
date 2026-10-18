@@ -167,3 +167,5 @@
 .pack-btn.oos{opacity:.45;cursor:not-allowed;}
 .pack-btn .pk-sz{font-weight:800;font-size:13px;color:var(--shop-ink,#1a1d24);}
 .pack-btn .pk-pr{font-size:12px;color:var(--shop-brand-ink);font-weight:700;}
+/* PB15 address picker */
+.addr-list{display:flex;flex-direction:column;gap:8px;margin-bottom:6px;}

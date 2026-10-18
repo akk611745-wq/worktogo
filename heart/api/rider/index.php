@@ -97,6 +97,8 @@ try {
             $r['drop_address'] = is_array($addr) ? trim(($addr['line1'] ?? $addr['address'] ?? '') . ' ' . ($addr['city'] ?? '')) : null;
             $r['customer_name'] = is_array($addr) ? ($addr['name'] ?? null) : null;
             $r['customer_phone'] = is_array($addr) ? ($addr['phone'] ?? null) : null;
+            // PB15: the rider gets the landmark too (the GPS pin rides on d.drop_lat/d.drop_lng).
+            $r['landmark'] = is_array($addr) ? ($addr['landmark'] ?? null) : null;
             unset($r['shipping_address']);
             // Money line — ALWAYS computed on the server, never in the rider's JS.
             $collect = CommercePayment::collectAtDoor($db, (int)$r['order_id']);

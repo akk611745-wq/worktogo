@@ -46,6 +46,11 @@ export const ShopAPI = {
   // PB14 serviceability
   serviceability: (pincode)        => _req("GET",  "/serviceability" + _qs({ pincode })),
   serviceRequest: (pincode, phone) => _req("POST", "/service-request", { pincode, phone }),
+  // PB15 saved addresses
+  addresses:      ()               => _req("GET",  "/addresses"),
+  saveAddress:    (payload)        => _req("POST", "/addresses", payload),
+  setDefaultAddr: (id)             => _req("POST", `/addresses/${id}/default`),
+  removeAddress:  (id)             => _req("POST", `/addresses/${id}/remove`),
   cart:           ()               => _req("GET",  "/cart"),
   addToCart:      (product_id, quantity = 1) => _req("POST", "/cart", { product_id, quantity, op: "add" }),
   setQty:         (product_id, quantity)     => _req("POST", "/cart", { product_id, quantity, op: "set" }),

@@ -138,7 +138,8 @@ const Rider = (() => {
     return `<div class="job">
       <div class="row"><div><div class="nm">#${esc(j.order_number || j.order_id)}</div>
         <div class="sub">Pickup: ${esc(j.store_name || "Store")}${j.store_locality ? " · " + esc(j.store_locality) : ""}</div>
-        <div class="sub">Drop: ${esc(j.drop_address || j.customer_name || "Customer")}</div></div>
+        <div class="sub">Drop: ${esc(j.drop_address || j.customer_name || "Customer")}</div>
+        ${j.landmark ? `<div class="sub">📍 Landmark: ${esc(j.landmark)}</div>` : ""}</div>
         <div style="text-align:right"><div class="payout">${money(j.rider_payout)}</div><span class="pill ${j.status}">${esc(j.status)}</span></div></div>
       ${moneyLine}
       <div class="leg">📍 ${j.distance_km ? j.distance_km + " km" : "—"} ${j.customer_phone ? `· <a href="tel:${esc(j.customer_phone)}" style="color:var(--r-brand)">Call customer</a>` : ""}</div>

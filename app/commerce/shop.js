@@ -19,6 +19,7 @@ let _payMethod = null; // chosen at checkout (falls back to _meta.default_method
 let _pincode = ""; try { _pincode = localStorage.getItem("wtg_shop_pincode") || ""; } catch {}
 let _paintCards = [], _activeFamily = "", _activeBrand = "", _paintQ = "";
 let _paintProduct = null, _selVariant = null, _selPack = null;
+let _addresses = [], _selAddr = null, _addingAddr = false, _gpsPin = { lat: null, lng: null };
 const paintMode = () => !!(_meta && _meta.shop_enabled && Array.isArray(_meta.paint_families) && _meta.paint_families.length);
 
 /* ── utils ─────────────────────────────────────────────────────────────── */
@@ -464,32 +465,93 @@ async function cartRemove(id) {
 }
 
 /* ── CHECKOUT ──────────────────────────────────────────────────────────── */
-function renderCheckout() {
-  const u = (window.AUTH && AUTH.getUser && AUTH.getUser()) || {};
+async function renderCheckout() {
   const methods = (_meta.payment_methods && _meta.payment_methods.length) ? _meta.payment_methods : ["cod"];
   if (!_payMethod || !methods.includes(_payMethod)) _payMethod = _meta.default_method && methods.includes(_meta.default_method) ? _meta.default_method : methods[0];
-  view().innerHTML = shellWithBack("Checkout", `<div class="shop-body">
+  view().innerHTML = shellWithBack("Checkout", `<div class="shop-body" id="ck-body">${listSkeleton(2)}</div>`);
+  const r = await ShopAPI.addresses();
+  _addresses = r.ok ? (r.data.addresses || []) : [];
+  if (!_selAddr && _addresses.length) _selAddr = (_addresses.find(a => a.is_default) || _addresses[0]).id;
+  if (!_addresses.length) _addingAddr = true;
+  paintCheckout(methods);
+}
+function paintCheckout(methods) {
+  methods = methods || ((_meta.payment_methods && _meta.payment_methods.length) ? _meta.payment_methods : ["cod"]);
+  const body = document.getElementById("ck-body"); if (!body) return;
+  const cards = _addresses.map(addressChoice).join("");
+  const addBtn = `<button class="btn-add" style="width:100%;margin-top:6px" onclick="ShopUI.toggleAddAddr()">${_addingAddr ? "✕ Cancel new address" : "＋ Add a new address"}</button>`;
+  body.innerHTML = `
     <div class="shop-section-title" style="margin-top:4px">Delivery address</div>
-    <div class="shop-field"><label>Full name</label><input id="ck-name" value="${esc(u.name || "")}"></div>
-    <div class="shop-field"><label>Phone</label><input id="ck-phone" value="${esc(u.phone || "")}" inputmode="tel"></div>
-    <div class="shop-field"><label>Address (house, street, area)</label><textarea id="ck-line1" rows="2" placeholder="e.g. House 12, Mukhani"></textarea></div>
-    <div style="display:flex;gap:10px">
-      <div class="shop-field" style="flex:1"><label>City</label><input id="ck-city" value="${esc(_meta.city ? _meta.city.name : "")}"></div>
-      <div class="shop-field" style="flex:1"><label>Pincode</label><input id="ck-pin" inputmode="numeric" value="${esc(_pincode)}"></div>
-    </div>
-    <div class="shop-field"><label>State</label><input id="ck-state" value="Uttarakhand"></div>
-    <div class="shop-field"><label>Order notes (optional)</label><input id="ck-notes" placeholder="Any instructions for delivery"></div>
+    ${cards ? `<div class="addr-list">${cards}</div>` : `<div class="toast-inline">Add your first delivery address.</div>`}
+    ${addBtn}
+    <div id="addr-form">${_addingAddr ? addressForm() : ""}</div>
     <div class="summary" id="ck-fee"><div class="ln"><span>Delivery fee</span><span id="ck-fee-val">Locating you…</span></div>
       <div class="ln" style="font-size:11px;color:var(--shop-muted)"><span id="ck-fee-note">Calculated by distance to the store.</span></div></div>
+    <div class="shop-field"><label>Order notes (optional)</label><input id="ck-notes" placeholder="Any instructions for delivery"></div>
     <div class="shop-section-title" style="margin-top:4px">Payment</div>
     <div class="pay-opts" id="pay-opts">${methods.map(payOption).join("")}</div>
-    <div style="height:8px"></div>
-  </div>`);
-  const bar = document.createElement("div");
-  bar.className = "sticky-bar";
+    <div style="height:70px"></div>`;
+  let bar = document.querySelector("#shop-app .sticky-bar");
+  if (!bar) { bar = document.createElement("div"); bar.className = "sticky-bar"; document.getElementById("shop-app").appendChild(bar); }
   bar.innerHTML = `<button class="btn-primary-shop btn-block" id="place-btn" onclick="ShopUI.placeOrder()">${placeBtnLabel()}</button>`;
-  document.getElementById("shop-app").appendChild(bar);
   quoteDelivery();
+}
+function addressChoice(a) {
+  const on = a.id === _selAddr;
+  const lbl = { home: "🏠 Home", shop: "🏪 Shop", site: "🏗️ Site" }[a.label] || a.label;
+  return `<div class="pay-opt ${on ? "on" : ""}" onclick="ShopUI.pickAddr(${a.id})">
+    <div class="radio">${on ? "●" : ""}</div>
+    <div class="pay-mid"><div class="pay-nm">${lbl}${a.is_default ? ' · <span style="color:var(--shop-brand-ink)">Default</span>' : ""}</div>
+      <div class="pay-sub">${esc(a.name)} · ${esc(a.phone)}<br>${esc(a.line1)}, ${esc(a.city)} ${esc(a.pincode)}<br>📍 ${esc(a.landmark)}</div></div>
+    <button class="shop-back" style="font-size:13px" onclick="event.stopPropagation();ShopUI.removeAddr(${a.id})">🗑️</button></div>`;
+}
+function addressForm() {
+  const u = (window.AUTH && AUTH.getUser && AUTH.getUser()) || {};
+  const chip = (k, t) => `<div class="shop-chip" id="al-${k}" onclick="ShopUI.addrLabel('${k}')">${t}</div>`;
+  return `<div class="summary" style="margin-top:4px">
+    <div class="shop-chips" id="addr-labels">${chip("home", "🏠 Home")}${chip("shop", "🏪 Shop")}${chip("site", "🏗️ Site")}</div>
+    <div class="shop-field"><label>Full name</label><input id="ad-name" value="${esc(u.name || "")}"></div>
+    <div class="shop-field"><label>Phone</label><input id="ad-phone" value="${esc(u.phone || "")}" inputmode="tel"></div>
+    <div class="shop-field"><label>Address (house, street, area)</label><textarea id="ad-line1" rows="2" placeholder="e.g. House 12, Mukhani"></textarea></div>
+    <div class="shop-field"><label>Landmark <span style="color:var(--shop-accent)">* required</span></label><input id="ad-landmark" placeholder="e.g. behind SBI, near red gate"></div>
+    <div style="display:flex;gap:10px">
+      <div class="shop-field" style="flex:1"><label>City</label><input id="ad-city" value="${esc(_meta.city ? _meta.city.name : "")}"></div>
+      <div class="shop-field" style="flex:1"><label>Pincode</label><input id="ad-pin" inputmode="numeric" value="${esc(_pincode)}"></div>
+    </div>
+    <div class="shop-field"><label>State</label><input id="ad-state" value="Uttarakhand"></div>
+    <button class="btn-add" style="width:100%" onclick="ShopUI.captureGps()" id="gps-btn">📍 Pin my exact location (optional)</button>
+    <div id="gps-note" class="toast-inline" style="padding:6px"></div>
+    <button class="btn-primary-shop btn-block" onclick="ShopUI.saveAddr()">Save address</button>
+  </div>`;
+}
+function addrLabel(k) {
+  _newAddrLabel = k;
+  ["home", "shop", "site"].forEach(x => document.getElementById("al-" + x)?.classList.toggle("on", x === k));
+}
+let _newAddrLabel = "home";
+function captureGps() {
+  const note = document.getElementById("gps-note");
+  if (!navigator.geolocation) { if (note) note.textContent = "Location not available on this device."; return; }
+  if (note) note.textContent = "Locating…";
+  navigator.geolocation.getCurrentPosition(
+    pos => { _gpsPin = { lat: pos.coords.latitude, lng: pos.coords.longitude }; if (note) note.textContent = "✓ Location pinned."; },
+    () => { if (note) note.textContent = "Couldn't get your location — you can still save."; },
+    { enableHighAccuracy: true, timeout: 7000, maximumAge: 60000 }
+  );
+}
+async function saveNewAddress() {
+  const g = id => (document.getElementById(id)?.value || "").trim();
+  const payload = { label: _newAddrLabel, name: g("ad-name"), phone: g("ad-phone"), line1: g("ad-line1"),
+    landmark: g("ad-landmark"), city: g("ad-city"), state: g("ad-state"), pincode: g("ad-pin"),
+    lat: _gpsPin.lat, lng: _gpsPin.lng };
+  if (!payload.landmark) { toast("Landmark is required so the rider can find you", "error"); return; }
+  const r = await ShopAPI.saveAddress(payload);
+  if (!r.ok) { toast(r.error, "error"); return; }
+  toast("Address saved", "success");
+  _addingAddr = false; _gpsPin = { lat: null, lng: null };
+  const rr = await ShopAPI.addresses(); _addresses = rr.ok ? (rr.data.addresses || []) : [];
+  _selAddr = r.data && r.data.id ? r.data.id : _selAddr;
+  paintCheckout();
 }
 function payOption(m) {
   const on = m === _payMethod;
@@ -524,10 +586,13 @@ function quoteDelivery() {
   } else doQuote();
 }
 async function placeOrder() {
+  // PB15: order ships to the SELECTED saved address (full — incl. landmark + pin).
+  const sel = _addresses.find(a => a.id === _selAddr);
+  if (!sel) { toast(_addingAddr ? "Save the address first" : "Add a delivery address", "error"); return; }
+  const addr = { name: sel.name, phone: sel.phone, line1: sel.line1, landmark: sel.landmark,
+    city: sel.city, state: sel.state, pincode: sel.pincode, label: sel.label };
+  if (sel.lat != null && sel.lng != null) { addr.lat = sel.lat; addr.lng = sel.lng; _drop = { lat: sel.lat, lng: sel.lng }; }
   const g = id => (document.getElementById(id)?.value || "").trim();
-  const addr = { name: g("ck-name"), phone: g("ck-phone"), line1: g("ck-line1"), city: g("ck-city"), state: g("ck-state"), pincode: g("ck-pin") };
-  const missing = ["name", "phone", "line1", "city", "state", "pincode"].filter(k => !addr[k]);
-  if (missing.length) { toast("Please fill: " + missing.join(", "), "error"); return; }
   const btn = document.querySelector(".sticky-bar .btn-primary-shop");
   if (btn) { btn.disabled = true; btn.textContent = _payMethod === "online" ? "Starting payment…" : "Placing order…"; }
   const r = await ShopAPI.checkout({ shipping_address: addr, notes: g("ck-notes"), drop_lat: _drop.lat, drop_lng: _drop.lng, payment_method: _payMethod });
@@ -694,6 +759,13 @@ window.ShopUI = {
   addPack: () => addSelectedPack(),
   coverage: () => coveragePanel(),
   calcCoverage: () => calcCoverage(),
+  // PB15 addresses
+  pickAddr: id => { _selAddr = id; _addingAddr = false; paintCheckout(); },
+  toggleAddAddr: () => { _addingAddr = !_addingAddr; paintCheckout(); if (_addingAddr) setTimeout(() => addrLabel(_newAddrLabel || "home"), 0); },
+  addrLabel: k => addrLabel(k),
+  captureGps: () => captureGps(),
+  saveAddr: () => saveNewAddress(),
+  removeAddr: async id => { if (!confirm("Remove this address?")) return; const r = await ShopAPI.removeAddress(id); if (!r.ok) { toast(r.error, "error"); return; } if (_selAddr === id) _selAddr = null; const rr = await ShopAPI.addresses(); _addresses = rr.ok ? (rr.data.addresses || []) : []; if (!_selAddr && _addresses.length) _selAddr = (_addresses.find(a => a.is_default) || _addresses[0]).id; paintCheckout(); },
   setType: id => { _activeType = id; renderChips(); loadStores().then(loadProducts); },
   filterStore: id => { location.hash = "#shop"; _search = ""; ShopAPI.products({ store_id: id }).then(r => { if (r.ok) { _products = r.data.products || []; const host = document.getElementById("browse-body"); if (host) host.innerHTML = `<div class="shop-section-title">Store products</div><div class="prod-grid">${_products.map(prodCard).join("")}</div>`; } }); },
   clearSearch: () => { _search = ""; const q = document.getElementById("shop-q"); if (q) q.value = ""; loadProducts(); },

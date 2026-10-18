@@ -39,6 +39,7 @@ require_once SYSTEM_ROOT . '/core/helpers/RateLimiter.php';
 require_once SYSTEM_ROOT . '/lib/commerce/OrderabilityResolver.php'; // S2: 4-layer orderability + ON/OFF/BUSY gate
 require_once SYSTEM_ROOT . '/lib/commerce/Serviceability.php';       // PB14: pincode/area serviceability
 require_once SYSTEM_ROOT . '/lib/commerce/PaintStorefront.php';      // PB4: paint customer read-model (home/product/switch)
+require_once SYSTEM_ROOT . '/lib/commerce/CommerceAddress.php';      // PB15: saved-address book
 require_once SYSTEM_ROOT . '/lib/commerce/RoutingEngine.php';        // S3: deterministic routing + signal capture
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceEventBus.php';     // S4: event bus / timeline / flags / notifications
 require_once SYSTEM_ROOT . '/lib/commerce/CommercePayment.php';      // S5: configurable payment methods (online primary + COD) over the gateway abstraction
@@ -310,6 +311,38 @@ try {
             });
         Response::success($quote);
         exit;
+    }
+
+    // ── PB15 saved addresses (customer-scoped) ──────────────────────────────
+    if ($method === 'GET' && $uri === '/api/shop/addresses') {
+        $uid = $shopRequireUser();
+        Response::success(['addresses' => CommerceAddress::listForUser($db, $uid), 'labels' => CommerceAddress::LABELS]);
+        exit;
+    }
+    if ($method === 'POST' && $uri === '/api/shop/addresses') {
+        $uid = $shopRequireUser(); $b = $shopBody();
+        $shopRateLimit('shop_addr_' . $uid, 30, 60);
+        if (empty($b['city_id']) && $shopCityId) $b['city_id'] = (int)$shopCityId;
+        $res = CommerceAddress::save($db, $uid, $b, isset($b['id']) && $b['id'] !== '' ? (int)$b['id'] : null);
+        if (empty($res['ok'])) {
+            $msg = $res['reason'] === 'landmark_required' ? 'A landmark is required so the rider can find you.'
+                 : ($res['reason'] === 'area_not_served' ? Serviceability::message('area_not_served')
+                 : ($res['reason'] === 'bad_pincode' ? 'A valid 6-digit pincode is required.' : 'Please fill all address fields.'));
+            Response::error($msg, 422); exit;
+        }
+        Response::success($res, 200, 'Address saved'); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/shop/addresses/(\d+)/default$#', $uri, $m)) {
+        $uid = $shopRequireUser();
+        $res = CommerceAddress::setDefault($db, (int)$m[1], $uid);
+        if (empty($res['ok'])) { Response::error('Address not found', 404); exit; }
+        Response::success($res); exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/shop/addresses/(\d+)/remove$#', $uri, $m)) {
+        $uid = $shopRequireUser();
+        $res = CommerceAddress::remove($db, (int)$m[1], $uid);
+        if (empty($res['ok'])) { Response::error('Address not found', 404); exit; }
+        Response::success($res); exit;
     }
 
     // ── POST /api/shop/cart — add or set quantity (REUSE CartService) ───────
