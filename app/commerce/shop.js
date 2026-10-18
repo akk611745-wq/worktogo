@@ -15,6 +15,11 @@ let _cartMap = {}, _cartCount = 0;
 let _product = null, _related = [], _orderId = null;
 let _drop = { lat: null, lng: null }, _deliveryFee = null;
 let _payMethod = null; // chosen at checkout (falls back to _meta.default_method)
+// PB4 paint storefront state
+let _pincode = ""; try { _pincode = localStorage.getItem("wtg_shop_pincode") || ""; } catch {}
+let _paintCards = [], _activeFamily = "", _activeBrand = "", _paintQ = "";
+let _paintProduct = null, _selVariant = null, _selPack = null;
+const paintMode = () => !!(_meta && _meta.shop_enabled && Array.isArray(_meta.paint_families) && _meta.paint_families.length);
 
 /* ── utils ─────────────────────────────────────────────────────────────── */
 const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -47,7 +52,9 @@ export async function render(container) {
   container.innerHTML = `<div class="shop-app" id="shop-app"><div id="shop-view"></div>${tabBar()}</div>`;
   await loadMeta();
   await refreshCartState();
-  nav("browse");
+  // PB4: paint shop opens on the pincode gate until the customer gives a serviceable one.
+  if (paintMode() && !_pincode) nav("pincode");
+  else nav("browse");
 }
 export async function refresh() { if (_view === "orders") renderOrders(); }
 
@@ -63,7 +70,9 @@ function nav(v, opts = {}) {
     return;
   }
   syncTabs();
-  if (v === "browse")       renderBrowse();
+  if (v === "pincode")      renderPincodeGate();
+  else if (v === "browse")  (paintMode() ? renderPaintHome() : renderBrowse());
+  else if (v === "paintproduct") renderPaintProduct(opts.id);
   else if (v === "product") renderProduct(opts.id);
   else if (v === "cart")    renderCart();
   else if (v === "checkout")renderCheckout();
@@ -188,6 +197,172 @@ async function cartSet(id, qty) {
   applyCart(r.data); updateCta(id); if (_view === "cart") renderCart();
 }
 
+/* ── PB4 PAINT: pincode gate ────────────────────────────────────────────── */
+function renderPincodeGate(msg, notServed) {
+  view().innerHTML = `<div class="shop-header"><div class="shop-header-row"><div class="shop-title">🎨 ${esc(platformLabel())} Paint</div></div></div>
+    <div class="shop-body">
+      <div class="shop-section-title" style="margin-top:6px">Where should we deliver?</div>
+      <p class="pd-desc">Enter your 6-digit pincode so we show only paint that reaches you.</p>
+      <div class="shop-field"><label>Delivery pincode</label><input id="pin-in" inputmode="numeric" maxlength="6" placeholder="e.g. 263139" value="${esc(_pincode)}"></div>
+      ${msg ? `<div class="toast-inline" style="color:var(--shop-accent)">${esc(msg)}</div>` : ""}
+      <button class="btn-primary-shop btn-block" onclick="ShopUI.checkPin()">Check & continue</button>
+      ${notServed ? `
+        <div class="summary" style="margin-top:16px">
+          <div class="shop-section-title" style="margin-top:0">We don't deliver here yet</div>
+          <p class="pd-desc">Leave your number and we'll tell you the moment we start.</p>
+          <div class="shop-field"><label>Phone</label><input id="pin-phone" inputmode="tel" placeholder="10-digit mobile"></div>
+          <button class="btn-add" style="width:100%" onclick="ShopUI.notifyMe()">🔔 Notify me</button>
+        </div>` : ""}
+    </div>`;
+}
+async function checkPin() {
+  const pin = (document.getElementById("pin-in")?.value || "").replace(/\D+/g, "");
+  if (pin.length !== 6) { toast("Enter a 6-digit pincode", "error"); return; }
+  const r = await ShopAPI.serviceability(pin);
+  if (!r.ok) { toast(r.error, "error"); return; }
+  if (r.data && r.data.serviceable === false) { renderPincodeGate(r.data.message || "We don't deliver to your area yet.", true); return; }
+  _pincode = pin; try { localStorage.setItem("wtg_shop_pincode", pin); } catch {}
+  toast("Great — delivering to " + pin, "success");
+  nav("browse");
+}
+async function notifyMe() {
+  const phone = (document.getElementById("pin-phone")?.value || "").trim();
+  const pin = (document.getElementById("pin-in")?.value || "").replace(/\D+/g, "");
+  if (pin.length !== 6) { toast("Enter your pincode", "error"); return; }
+  if (phone.replace(/\D+/g, "").length < 7) { toast("Enter a valid phone", "error"); return; }
+  const r = await ShopAPI.serviceRequest(pin, phone);
+  toast(r.ok ? (r.data && r.data.message) || "Thanks — we'll notify you!" : (r.error || "Couldn't save"), r.ok ? "success" : "error");
+}
+
+/* ── PB4 PAINT: home (families + brands + search) ───────────────────────── */
+async function renderPaintHome() {
+  const fams = _meta.paint_families || [];
+  const brands = _meta.paint_brands || [];
+  const locBar = _pincode
+    ? `Delivering to <b>${esc(_pincode)}</b> · <a href="javascript:void(0)" onclick="ShopUI.changePin()" style="color:var(--shop-accent)">change</a>`
+    : `<a href="javascript:void(0)" onclick="ShopUI.changePin()" style="color:var(--shop-accent)">Set your pincode</a>`;
+  const famChips = [`<div class="shop-chip ${_activeFamily === "" ? "on" : ""}" onclick="ShopUI.setFamily('')">All paint</div>`]
+    .concat(fams.map(f => `<div class="shop-chip ${String(_activeFamily) === String(f.id) ? "on" : ""}" onclick="ShopUI.setFamily('${f.id}')">${esc(f.name.replace(/^Paint[\s—-]*/i, "") || f.name)}</div>`)).join("");
+  const brandChips = [`<div class="shop-chip ${_activeBrand === "" ? "on" : ""}" onclick="ShopUI.setBrand('')">All brands</div>`]
+    .concat(brands.map(b => `<div class="shop-chip ${_activeBrand === b ? "on" : ""}" onclick="ShopUI.setBrand('${esc(b)}')">${esc(b)}</div>`)).join("");
+  view().innerHTML = `
+    <div class="shop-header">
+      <div class="shop-header-row"><div class="shop-loc">${locBar}</div></div>
+      <div class="shop-search"><span>🔍</span><input id="shop-q" placeholder="Search paint & brands" value="${esc(_paintQ)}"></div>
+      <div style="height:8px"></div>
+      <div class="shop-chips">${famChips}</div>
+      <div style="height:6px"></div>
+      <div class="shop-chips">${brandChips}</div>
+    </div>
+    <div class="shop-body" id="paint-body">${gridSkeleton()}</div>`;
+  const q = document.getElementById("shop-q");
+  let t; q.addEventListener("input", e => { clearTimeout(t); _paintQ = e.target.value; t = setTimeout(loadPaintHome, 300); });
+  loadPaintHome();
+}
+async function loadPaintHome() {
+  const host = document.getElementById("paint-body"); if (!host) return;
+  host.innerHTML = gridSkeleton();
+  const r = await ShopAPI.paintHome({ family: _activeFamily, brand: _activeBrand, q: _paintQ, pincode: _pincode });
+  if (!r.ok) { host.innerHTML = errState(r.error, "ShopUI.reloadPaint()"); return; }
+  _paintCards = (r.data && r.data.products) || [];
+  if (!_paintCards.length) {
+    host.innerHTML = emptyState("🎨", "No paint here yet",
+      (_paintQ || _activeBrand || _activeFamily) ? "Try clearing a filter." : "We're stocking up — check back soon.",
+      (_paintQ || _activeBrand || _activeFamily) ? "ShopUI.clearPaint()" : null,
+      (_paintQ || _activeBrand || _activeFamily) ? "Clear filters" : null);
+    return;
+  }
+  host.innerHTML = `<div class="prod-grid">${_paintCards.map(paintCard).join("")}</div>`;
+}
+function paintCard(p) {
+  const photo = p.image
+    ? `<img class="prod-photo" loading="lazy" src="${esc(p.image)}" onclick="ShopUI.openPaint(${p.parent_id})">`
+    : `<div class="prod-photo" onclick="ShopUI.openPaint(${p.parent_id})">🪣</div>`;
+  return `<div class="prod-card">
+    ${photo}
+    <div class="prod-info">
+      <div class="prod-nm" onclick="ShopUI.openPaint(${p.parent_id})">${esc(p.name)}</div>
+      <div class="prod-store">${esc(p.brand || p.family || "Paint")}</div>
+      <div class="prod-price"><span class="now">from ${money(p.from_price)}</span></div>
+      <div class="prod-cta">${p.in_stock ? `<button class="btn-add" onclick="ShopUI.openPaint(${p.parent_id})">View</button>` : `<div class="oos">Out of stock</div>`}</div>
+    </div></div>`;
+}
+
+/* ── PB4 PAINT: product (variant chips + pack selector + ONE server price) ─ */
+async function renderPaintProduct(id) {
+  view().innerHTML = shellWithBack("Paint", `<div class="shop-body"><div class="shop-skel" style="height:280px;margin-bottom:12px"></div><div class="shop-skel" style="height:20px;width:70%;margin-bottom:8px"></div><div class="shop-skel" style="height:40px"></div></div>`);
+  const r = await ShopAPI.paintProduct(id, _pincode);
+  if (!r.ok) { view().innerHTML = shellWithBack("Paint", errState(r.error, `ShopUI.openPaint(${id})`)); return; }
+  _paintProduct = r.data.product;
+  const p = _paintProduct;
+  _selVariant = (p.variants && p.variants[0]) ? p.variants[0].key : null;
+  _selPack = firstPackFor(_selVariant);
+  paintProductPaint();
+}
+function firstPackFor(vkey) {
+  const packs = (_paintProduct.packs || []).filter(pk => pk.variant_key === vkey);
+  return (packs.find(pk => pk.in_stock) || packs[0] || null);
+}
+function paintProductPaint() {
+  const p = _paintProduct;
+  const hero = p.image ? `<img class="pd-hero" loading="lazy" src="${esc(p.image)}">` : `<div class="pd-hero">🪣</div>`;
+  const vchips = (p.variants || []).map(v =>
+    `<div class="shop-chip ${v.key === _selVariant ? "on" : ""}" onclick="ShopUI.pickVariant('${esc(v.key)}')">${esc(v.label)}${v.finish ? " · " + esc(v.finish) : ""}</div>`).join("");
+  const packs = (p.packs || []).filter(pk => pk.variant_key === _selVariant);
+  const packBtns = packs.map(pk => {
+    const on = _selPack && pk.product_id === _selPack.product_id;
+    const oos = !pk.in_stock;
+    return `<button class="pack-btn ${on ? "on" : ""} ${oos ? "oos" : ""}" ${oos ? "disabled" : ""} onclick="ShopUI.pickPack(${pk.product_id})">
+      <span class="pk-sz">${esc(pk.pack_label)}</span><span class="pk-pr">${money(pk.price)}</span></button>`;
+  }).join("");
+  const sel = _selPack;
+  const inStock = sel && sel.in_stock;
+  const priceNow = sel ? sel.price : (p.packs[0] ? p.packs[0].price : 0);
+  view().innerHTML = `
+    <div class="shop-header"><div class="shop-header-row"><button class="shop-back" onclick="ShopUI.back()">←</button><div class="shop-title">${esc(platformLabel())}</div></div></div>
+    ${hero}
+    <div class="pd-body">
+      <div class="pd-nm">${esc(p.name)}</div>
+      <div class="pd-store"><span class="badge-fulfil">⚡ Fulfilled by ${esc(platformLabel())}</span>${p.brand ? " · " + esc(p.brand) : ""}${p.family ? " · " + esc(p.family) : ""}</div>
+      ${vchips ? `<div class="shop-section-title" style="margin-top:14px">Shade / finish</div><div class="shop-chips">${vchips}</div>` : ""}
+      <div class="shop-section-title" style="margin-top:14px">Pack size</div>
+      <div class="pack-row">${packBtns || '<span class="oos">No packs available here</span>'}</div>
+      <div style="margin-top:14px"><a href="javascript:void(0)" onclick="ShopUI.coverage()" style="color:var(--shop-accent);font-weight:600">📐 Coverage calculator — how much paint do I need?</a></div>
+      <div id="cov-panel"></div>
+    </div>
+    <div class="sticky-bar">
+      <div class="info"><div class="a">${inStock ? "In stock" : "Out of stock"}</div><div class="b" id="pd-price">${money(priceNow)}</div></div>
+      <div id="pd-cta">${inStock ? `<button class="btn-primary-shop" onclick="ShopUI.addPack()">Add to cart</button>` : `<span class="oos">Out of stock</span>`}</div>
+    </div>`;
+}
+function pickVariant(vkey) { _selVariant = vkey; _selPack = firstPackFor(vkey); paintProductPaint(); }
+function pickPack(pid) { _selPack = (_paintProduct.packs || []).find(pk => pk.product_id === pid) || _selPack; paintProductPaint(); }
+async function addSelectedPack() {
+  if (!_selPack || !_selPack.in_stock) { toast("Pick an available pack", "info"); return; }
+  await cartAdd(_selPack.product_id);
+}
+function coveragePanel() {
+  const host = document.getElementById("cov-panel"); if (!host) return;
+  if (host.innerHTML) { host.innerHTML = ""; return; } // toggle off
+  const rate = Number(_meta.coverage_sqft_per_litre || 140);
+  host.innerHTML = `
+    <div class="summary" style="margin-top:12px">
+      <div class="shop-field"><label>Wall area (sq ft)</label><input id="cov-area" inputmode="numeric" placeholder="e.g. 600"></div>
+      <div class="shop-field"><label>Coats</label><input id="cov-coats" inputmode="numeric" value="2"></div>
+      <button class="btn-add" style="width:100%" onclick="ShopUI.calcCoverage()">Calculate</button>
+      <div id="cov-out" class="toast-inline" style="margin-top:8px">1 litre covers ≈ ${rate} sq ft / coat.</div>
+    </div>`;
+}
+function calcCoverage() {
+  const rate = Number(_meta.coverage_sqft_per_litre || 140);
+  const area = Number((document.getElementById("cov-area") || {}).value || 0);
+  const coats = Math.max(1, Number((document.getElementById("cov-coats") || {}).value || 1));
+  const out = document.getElementById("cov-out"); if (!out) return;
+  if (!area) { out.textContent = "Enter the wall area."; return; }
+  const litres = Math.ceil((area * coats) / rate);
+  out.innerHTML = `You'll need about <b>${litres} litre${litres > 1 ? "s" : ""}</b> for ${area} sq ft × ${coats} coat(s).`;
+}
+
 /* ── PRODUCT DETAIL ────────────────────────────────────────────────────── */
 async function renderProduct(id) {
   view().innerHTML = `<div class="shop-header"><div class="shop-header-row"><button class="shop-back" onclick="ShopUI.back()">←</button><div class="shop-title">Product</div></div></div>
@@ -300,7 +475,7 @@ function renderCheckout() {
     <div class="shop-field"><label>Address (house, street, area)</label><textarea id="ck-line1" rows="2" placeholder="e.g. House 12, Mukhani"></textarea></div>
     <div style="display:flex;gap:10px">
       <div class="shop-field" style="flex:1"><label>City</label><input id="ck-city" value="${esc(_meta.city ? _meta.city.name : "")}"></div>
-      <div class="shop-field" style="flex:1"><label>Pincode</label><input id="ck-pin" inputmode="numeric"></div>
+      <div class="shop-field" style="flex:1"><label>Pincode</label><input id="ck-pin" inputmode="numeric" value="${esc(_pincode)}"></div>
     </div>
     <div class="shop-field"><label>State</label><input id="ck-state" value="Uttarakhand"></div>
     <div class="shop-field"><label>Order notes (optional)</label><input id="ck-notes" placeholder="Any instructions for delivery"></div>
@@ -477,7 +652,7 @@ function tabBar() {
   </div>`;
 }
 function syncTabs() {
-  const map = { browse: "tab-browse", product: "tab-browse", cart: "tab-cart", checkout: "tab-cart", orders: "tab-orders", order: "tab-orders" };
+  const map = { pincode: "tab-browse", browse: "tab-browse", paintproduct: "tab-browse", product: "tab-browse", cart: "tab-cart", checkout: "tab-cart", orders: "tab-orders", order: "tab-orders" };
   ["tab-browse", "tab-cart", "tab-orders"].forEach(t => document.getElementById(t)?.classList.remove("on"));
   document.getElementById(map[_view])?.classList.add("on");
   const b = document.getElementById("cart-badge");
@@ -504,7 +679,21 @@ window.ShopUI = {
   go: v => nav(v),
   open: id => nav("product", { id }),
   openOrder: id => nav("order", { id }),
-  back: () => { if (_view === "product" || _view === "checkout" || _view === "order") nav(_view === "checkout" ? "cart" : "browse"); else nav("browse"); },
+  back: () => { if (_view === "product" || _view === "paintproduct" || _view === "checkout" || _view === "order") nav(_view === "checkout" ? "cart" : "browse"); else nav("browse"); },
+  // PB4 paint
+  checkPin: () => checkPin(),
+  notifyMe: () => notifyMe(),
+  changePin: () => nav("pincode"),
+  setFamily: id => { _activeFamily = id; loadPaintHome(); renderPaintHome(); },
+  setBrand: b => { _activeBrand = b; loadPaintHome(); renderPaintHome(); },
+  clearPaint: () => { _activeFamily = ""; _activeBrand = ""; _paintQ = ""; renderPaintHome(); },
+  reloadPaint: () => loadPaintHome(),
+  openPaint: id => nav("paintproduct", { id }),
+  pickVariant: k => pickVariant(k),
+  pickPack: id => pickPack(id),
+  addPack: () => addSelectedPack(),
+  coverage: () => coveragePanel(),
+  calcCoverage: () => calcCoverage(),
   setType: id => { _activeType = id; renderChips(); loadStores().then(loadProducts); },
   filterStore: id => { location.hash = "#shop"; _search = ""; ShopAPI.products({ store_id: id }).then(r => { if (r.ok) { _products = r.data.products || []; const host = document.getElementById("browse-body"); if (host) host.innerHTML = `<div class="shop-section-title">Store products</div><div class="prod-grid">${_products.map(prodCard).join("")}</div>`; } }); },
   clearSearch: () => { _search = ""; const q = document.getElementById("shop-q"); if (q) q.value = ""; loadProducts(); },

@@ -144,7 +144,15 @@ const ROUTER = (() => {
   }
 
   function _isHiddenByServiceOnly(page) {
+    // PB4: the paint shop is gated by its OWN admin module switch (per city),
+    // NOT the global SERVICE_ONLY_MODE. When the module is ON the #shop route is
+    // permitted even during the service pilot; every other page is unchanged.
+    if (page === "shop" && _shopModuleEnabled()) return false;
     return Boolean(CONFIG.FEATURES?.SERVICE_ONLY_MODE && SERVICE_ONLY_HIDDEN_PAGES.includes(page));
+  }
+  function _shopModuleEnabled() {
+    if (typeof window.WTG_COMMERCE_SHOP_ENABLED === "boolean") return window.WTG_COMMERCE_SHOP_ENABLED;
+    try { return localStorage.getItem("wtg_shop_enabled") === "1"; } catch { return false; }
   }
 
   function _notifyHiddenRoute() {

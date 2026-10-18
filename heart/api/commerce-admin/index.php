@@ -29,6 +29,7 @@ require_once SYSTEM_ROOT . '/lib/commerce/CommerceAdminAudit.php';
 require_once SYSTEM_ROOT . '/lib/commerce/KycService.php';
 require_once SYSTEM_ROOT . '/lib/commerce/PaintCatalogue.php';
 require_once SYSTEM_ROOT . '/lib/commerce/Serviceability.php';
+require_once SYSTEM_ROOT . '/lib/commerce/PaintStorefront.php';
 
 $B   = json_decode(file_get_contents('php://input'), true);
 if (!is_array($B)) $B = [];
@@ -316,6 +317,22 @@ try {
         $gate('commerce.seller.manage');
         $limit = isset($_GET['limit']) ? max(1, min(500, (int)$_GET['limit'])) : 200;
         Response::success(['demand' => Serviceability::demandList($db, $limit)]); exit;
+    }
+
+    // ── PB4: paint-shop module switch per city (ON/OFF) ──────────────────────
+    if ($method === 'GET' && $uri === '/api/commerce-admin/shop-enabled') {
+        $gate('commerce.seller.manage');
+        $cityId = isset($_GET['city_id']) && $_GET['city_id'] !== '' ? (int)$_GET['city_id'] : null;
+        Response::success(['enabled' => $cityId !== null ? PaintStorefront::shopEnabled($db, $cityId) : false, 'city_id' => $cityId]); exit;
+    }
+    if ($method === 'POST' && $uri === '/api/commerce-admin/shop-enabled') {
+        $auth = $gate('commerce.seller.manage');
+        $cityId = $pi('city_id') ?: null;
+        $on = !empty($B['enabled']);
+        $res = PaintStorefront::setShopEnabled($db, $cityId, $on);
+        $audit($auth, 'commerce.seller.manage', 'shop.toggle', ['summary' => ['city_id' => $cityId, 'enabled' => $on], 'outcome' => !empty($res['ok']) ? 'ok' : 'error']);
+        if (empty($res['ok'])) { Response::error($res['reason'] ?? 'error', 422); exit; }
+        Response::success($res); exit;
     }
 
 } catch (\Throwable $e) {

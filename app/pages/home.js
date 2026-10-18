@@ -24,6 +24,7 @@ export async function render(container) {
       </header>
 
       <div class="home-content">
+        <div id="paint-entry-slot"></div>
         <section class="market-search-section top-search-hidden" aria-hidden="true">
           <div class="market-search-box">
             <span>⌕</span>
@@ -153,6 +154,10 @@ export async function render(container) {
       </div>
     </div>
   `;
+
+  // PB4: show a "Paint" entry when the commerce module is ON for this city.
+  // Service home is otherwise untouched; the global SERVICE_ONLY_MODE is NOT flipped.
+  _mountPaintEntry();
 
   window.HomePage = {
     scrollToServices() {
@@ -2148,6 +2153,36 @@ function _renderServices(res) {
 
   el.innerHTML = list.map(s => _vendorCardHTML(s)).join("");
   if (window.WtgSheet) WtgSheet.setVendors(list);
+}
+
+// PB4: fetch the paint-shop module flag and, when ON for this city, show a
+// "Paint" entry on the service home + remember the flag so the router permits
+// the #shop route. Fully isolated + defensive — any failure leaves the service
+// home exactly as it was.
+async function _mountPaintEntry() {
+  try {
+    const base = (window.CONFIG && CONFIG.BASE_URL) || "";
+    const token = (window.CONFIG && CONFIG.TOKEN_KEY) ? (localStorage.getItem(CONFIG.TOKEN_KEY) || "") : "";
+    const res = await fetch(`${base}/api/shop/meta`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    const j = await res.json().catch(() => null);
+    const meta = (j && (j.data || j)) || {};
+    const on = !!meta.shop_enabled;
+    window.WTG_COMMERCE_SHOP_ENABLED = on;
+    try { localStorage.setItem("wtg_shop_enabled", on ? "1" : "0"); } catch {}
+    const slot = document.getElementById("paint-entry-slot");
+    if (!slot || !on) return;
+    const label = meta.platform_label || "Paint";
+    slot.innerHTML = `
+      <button class="paint-entry-card" onclick="ROUTER.go('shop')" aria-label="Open the paint shop"
+        style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:1px solid #e4d9c6;background:linear-gradient(90deg,#fff7ec,#fdeede);border-radius:14px;padding:14px 16px;margin:4px 0 14px;cursor:pointer">
+        <span style="font-size:26px">🎨</span>
+        <span style="flex:1">
+          <span style="display:block;font-weight:800;font-size:15px;color:#7c3a12">Paint Shop is open</span>
+          <span style="display:block;font-size:12px;color:#9a6b3f">Order paint for delivery — brands, packs & shades</span>
+        </span>
+        <span style="font-size:20px;color:#b45309">›</span>
+      </button>`;
+  } catch (e) { /* service home unaffected */ }
 }
 
 async function _loadPilotConfig() {

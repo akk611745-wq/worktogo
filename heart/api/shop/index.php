@@ -38,6 +38,7 @@ require_once SYSTEM_ROOT . '/core/helpers/CityResolver.php';
 require_once SYSTEM_ROOT . '/core/helpers/RateLimiter.php';
 require_once SYSTEM_ROOT . '/lib/commerce/OrderabilityResolver.php'; // S2: 4-layer orderability + ON/OFF/BUSY gate
 require_once SYSTEM_ROOT . '/lib/commerce/Serviceability.php';       // PB14: pincode/area serviceability
+require_once SYSTEM_ROOT . '/lib/commerce/PaintStorefront.php';      // PB4: paint customer read-model (home/product/switch)
 require_once SYSTEM_ROOT . '/lib/commerce/RoutingEngine.php';        // S3: deterministic routing + signal capture
 require_once SYSTEM_ROOT . '/lib/commerce/CommerceEventBus.php';     // S4: event bus / timeline / flags / notifications
 require_once SYSTEM_ROOT . '/lib/commerce/CommercePayment.php';      // S5: configurable payment methods (online primary + COD) over the gateway abstraction
@@ -107,7 +108,42 @@ try {
             'platform_label'  => $unitUi['platform_label'],
             'unit_ui'         => $unitUi['ui'],
             'seller_visibility' => $unitUi['seller_visibility'],
+            // PB4: paint module switch + paint home data (families/brands/coverage).
+            'shop_enabled'    => PaintStorefront::shopEnabled($db, (int)$shopCityId),
+            'paint_families'  => PaintStorefront::families($db),
+            'paint_brands'    => PaintStorefront::brands($db),
+            'coverage_sqft_per_litre' => PaintStorefront::coverageSqftPerLitre($db),
+            'custom_tint'     => false, // PB10 — kept hidden
         ]);
+        exit;
+    }
+
+    // ── GET /api/shop/paint/home — paint cards (families/brands/search) (public)
+    if ($method === 'GET' && $uri === '/api/shop/paint/home') {
+        if (!OrderabilityResolver::commerceEnabled($db) || !PaintStorefront::shopEnabled($db, (int)$shopCityId)) {
+            Response::success(['products' => [], 'shop_enabled' => false]); exit;
+        }
+        $f = [
+            'family' => isset($_GET['family']) && $_GET['family'] !== '' ? (int)$_GET['family'] : null,
+            'brand'  => isset($_GET['brand'])  && $_GET['brand']  !== '' ? trim((string)$_GET['brand']) : null,
+            'q'      => isset($_GET['q'])       && $_GET['q']      !== '' ? trim((string)$_GET['q']) : null,
+        ];
+        Response::success([
+            'products'     => PaintStorefront::home($db, (int)$shopCityId, $shopPincode ?: null, $f),
+            'shop_enabled' => true,
+            'pincode'      => $shopPincode ?: null,
+        ]);
+        exit;
+    }
+
+    // ── GET /api/shop/paint/product/{parentId} — variant/pack page (public) ──
+    if ($method === 'GET' && preg_match('#^/api/shop/paint/product/(\d+)$#', $uri, $m)) {
+        if (!OrderabilityResolver::commerceEnabled($db) || !PaintStorefront::shopEnabled($db, (int)$shopCityId)) {
+            Response::error('Shop is not available.', 404); exit;
+        }
+        $prod = PaintStorefront::product($db, (int)$m[1], (int)$shopCityId, $shopPincode ?: null);
+        if (!$prod) { Response::error(OrderabilityResolver::message('area_not_served'), 404); exit; }
+        Response::success(['product' => $prod]);
         exit;
     }
 

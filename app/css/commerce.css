@@ -160,3 +160,10 @@
 .shop-tab.on{color:var(--shop-brand-ink);}
 .shop-tab .cartbadge{position:absolute;top:8px;left:calc(50% + 6px);background:var(--shop-accent);color:#fff;font-size:9px;font-weight:800;min-width:15px;height:15px;border-radius:99px;display:flex;align-items:center;justify-content:center;padding:0 3px;}
 .toast-inline{text-align:center;font-size:12px;color:var(--shop-muted);padding:10px;}
+/* PB4 paint pack selector */
+.pack-row{display:flex;gap:8px;flex-wrap:wrap;}
+.pack-btn{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:78px;border:1.5px solid var(--shop-line);background:var(--shop-surface);border-radius:12px;padding:9px 12px;cursor:pointer;}
+.pack-btn.on{border-color:var(--shop-brand);background:#eafaf1;}
+.pack-btn.oos{opacity:.45;cursor:not-allowed;}
+.pack-btn .pk-sz{font-weight:800;font-size:13px;color:var(--shop-ink,#1a1d24);}
+.pack-btn .pk-pr{font-size:12px;color:var(--shop-brand-ink);font-weight:700;}

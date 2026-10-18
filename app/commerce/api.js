@@ -40,6 +40,12 @@ export const ShopAPI = {
   stores:         (params = {})    => _req("GET",  "/stores" + _qs(params)),
   products:       (params = {})    => _req("GET",  "/products" + _qs(params)),
   product:        (id)             => _req("GET",  `/products/${id}`),
+  // PB4 paint storefront (grouped by parent; variant + pack selector; one server price).
+  paintHome:      (params = {})    => _req("GET",  "/paint/home" + _qs(params)),
+  paintProduct:   (id, pincode)    => _req("GET",  `/paint/product/${id}` + _qs({ pincode })),
+  // PB14 serviceability
+  serviceability: (pincode)        => _req("GET",  "/serviceability" + _qs({ pincode })),
+  serviceRequest: (pincode, phone) => _req("POST", "/service-request", { pincode, phone }),
   cart:           ()               => _req("GET",  "/cart"),
   addToCart:      (product_id, quantity = 1) => _req("POST", "/cart", { product_id, quantity, op: "add" }),
   setQty:         (product_id, quantity)     => _req("POST", "/cart", { product_id, quantity, op: "set" }),
